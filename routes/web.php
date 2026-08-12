@@ -703,14 +703,10 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->middleware('throttle:10,1')
             ->name('balance.withdraw');
 
-        // Campaigns (project-backed hub)
-        Route::get('/campaigns', [ProjectController::class, 'index'])->name('campaigns');
-        Route::get('/campaigns/{project}', [ProjectController::class, 'show'])->name('campaigns.show');
-        Route::post('/campaigns', [ProjectController::class, 'store'])->name('campaigns.store');
-        Route::put('/campaigns/{project}', [ProjectController::class, 'update'])->name('campaigns.update');
-        Route::delete('/campaigns/{project}', [ProjectController::class, 'destroy'])->name('campaigns.destroy');
-        Route::post('/campaigns/{project}/activate', [ProjectController::class, 'activate'])->name('campaigns.activate');
-        Route::post('/campaigns/deactivate', [ProjectController::class, 'deactivate'])->name('campaigns.deactivate');
+        // Campaigns (orphaned UI) — redirect to dashboard until product ships nav entry
+        Route::get('/campaigns', function () {
+            return redirect()->route('advertiser.dashboard');
+        })->name('campaigns');
 
         // Place a guest post wizard (market → publishers → content → pay)
         Route::get('/place-guest-post', [GuestPostWizardController::class, 'start'])
@@ -782,15 +778,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Favorites
         Route::post('/favorites/save', [CatalogController::class, 'saveFavorites'])->name('favorites.save');
-        Route::post('/favorites/toggle', [CatalogController::class, 'toggleFavorite'])
-            ->middleware('throttle:60,1')
-            ->name('favorites.toggle');
 
         // Blacklist
         Route::post('/blacklist/save', [CatalogController::class, 'saveBlacklist'])->name('blacklist.save');
-        Route::post('/blacklist/toggle', [CatalogController::class, 'toggleBlacklist'])
-            ->middleware('throttle:60,1')
-            ->name('blacklist.toggle');
 
         // Dedicated Saved Sites manager (favorites + blacklist)
         Route::get('/saved-sites', [SavedSitesController::class, 'index'])->name('saved-sites');
@@ -840,7 +830,7 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
             ->name('content-library.upload');
         Route::get('/content-library/{submission}/order', [ContentLibraryController::class, 'orderInCatalog'])
             ->name('content-library.order');
-        Route::post('/content-library/order', [ContentLibraryController::class, 'startOrder'])
+        Route::post('/content-library/order', [ContentLibraryController::class, 'orderInCatalog'])
             ->name('content-library.order.post');
 
         // Native content upload workflow
@@ -991,9 +981,10 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         Route::get('/websites', [SiteController::class, 'index'])->name('websites');
         Route::post('/websites/store', [SiteController::class, 'store'])->name('sites.store');
         Route::get('/websites/ajax', [SiteController::class, 'ajax'])->name('sites.ajax');
-        Route::get('/websites/bulk-template', [SiteController::class, 'bulkTemplate'])->name('sites.bulk-template');
+        Route::get('/websites/bulk-template', [SiteController::class, 'bulkTemplate'])
+            ->name('sites.bulk-template');
         Route::post('/websites/bulk-import', [SiteController::class, 'bulkImport'])
-            ->middleware('throttle:10,1')
+            ->middleware('throttle:5,1')
             ->name('sites.bulk-import');
         Route::post('/websites/bulk-request', [PublisherBulkSiteRequestController::class, 'store'])->name('bulk-sites.request');
         Route::get('/websites/bulk-complete', [PublisherBulkSiteRequestController::class, 'completeIndex'])->name('bulk-sites.complete');

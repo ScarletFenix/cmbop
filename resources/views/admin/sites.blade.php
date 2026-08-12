@@ -431,19 +431,16 @@ function editSiteWithImage(siteId) {
     let site = allSites.find(s => s.id == siteId);
     if (!site) return;
 
-    const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        || @json(csrf_token());
-
     Swal.fire({
         title: 'Edit Site',
-        width: 720,
+        width: 840,
         showCancelButton: true,
         confirmButtonText: 'Update',
         showLoaderOnConfirm: true,
         allowOutsideClick: () => !Swal.isLoading(),
         allowEscapeKey: () => !Swal.isLoading(),
         html: `
-            <div style="text-align: left; width: 100%;">
+            <div style="text-align: left;">
                 <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
                 <input id="swal-site_name" class="swal2-input" value="${escapeHtml(site.site_name ?? '')}" placeholder="Site Name">
                 
@@ -512,14 +509,7 @@ function editSiteWithImage(siteId) {
                 Swal.resetValidationMessage();
             }
 
-            // Snapshot fields before the loader replaces dialog content.
-            const siteName = document.getElementById('swal-site_name')?.value ?? '';
-            let site_url = (document.getElementById('swal-site_url')?.value || '').trim();
-            const da = document.getElementById('swal-da')?.value ?? '';
-            const dr = document.getElementById('swal-dr')?.value ?? '';
-            const traffic = document.getElementById('swal-traffic')?.value ?? '';
-            const fileInput = document.getElementById('swal-site_image');
-            const file = fileInput?.files?.[0] || null;
+            let site_url = document.getElementById('swal-site_url').value.trim();
             let domain = '';
 
             try {
@@ -528,6 +518,8 @@ function editSiteWithImage(siteId) {
                 domain = site_url.replace(/^(https?:\/\/)?(www\.)?/, '').split('/')[0];
             }
 
+            const fileInput = document.getElementById('swal-site_image');
+            const file = fileInput?.files?.[0];
             let imagePath = null;
             let imageUrl = null;
 
@@ -540,7 +532,7 @@ function editSiteWithImage(siteId) {
 
                 const uploadFormData = new FormData();
                 uploadFormData.append('site_image', file);
-                uploadFormData.append('_token', csrfToken);
+                uploadFormData.append('_token', CSRF_TOKEN);
 
                 try {
                     const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
@@ -549,7 +541,7 @@ function editSiteWithImage(siteId) {
                         headers: {
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest',
-                            'X-CSRF-TOKEN': csrfToken,
+                            'X-CSRF-TOKEN': CSRF_TOKEN,
                         },
                         credentials: 'same-origin',
                     });
@@ -569,16 +561,10 @@ function editSiteWithImage(siteId) {
                     }
 
                     imagePath = uploadResult.image_path || null;
-                    imageUrl = uploadResult.image_url || (imagePath ? siteStorageUrl(imagePath) : null);
-
-                    // Keep the in-memory row in sync so the next open shows the new image.
-                    if (imagePath) {
-                        site.site_image = imagePath;
+                    imageUrl = uploadResult.image_url || null;
+                    if (imageUrl) {
                         site.image_url = imageUrl;
-                        const idx = allSites.findIndex((s) => String(s.id) === String(siteId));
-                        if (idx >= 0) {
-                            allSites[idx] = { ...allSites[idx], site_image: imagePath, image_url: imageUrl };
-                        }
+                        site.site_image = imagePath;
                     }
                 } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
@@ -587,13 +573,13 @@ function editSiteWithImage(siteId) {
             }
 
             return {
-                site_name: siteName,
+                site_name: document.getElementById('swal-site_name').value,
                 site_url: site_url,
                 domain: domain,
                 site_image: imagePath, // null = leave existing image unchanged on update
-                da: da,
-                dr: dr,
-                traffic: traffic,
+                da: document.getElementById('swal-da').value,
+                dr: document.getElementById('swal-dr').value,
+                traffic: document.getElementById('swal-traffic').value,
                 _imageUploaded: !!imagePath,
             };
         }

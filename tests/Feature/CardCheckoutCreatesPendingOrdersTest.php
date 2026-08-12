@@ -109,7 +109,6 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
 
         $site = $this->activeSite($publisher);
         $submission = $this->createApprovedSubmission($advertiser, $site->id);
-        $campaign = $this->createCampaign($advertiser);
 
         $this->fakeStripeCheckoutSession('cs_test_card_fix_2');
 
@@ -122,12 +121,10 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
                     'price' => 9999,
                     'sensitive_type' => null,
                 ]],
-                'active_campaign_id' => $campaign->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'card',
                 'reference_code' => 'CARD42',
-                'project_id' => $campaign->id,
                 'publication_mode' => 'immediate',
                 'content_submissions' => [
                     $site->id => [$submission->id],
@@ -145,9 +142,7 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
 
         // Add Funds style: no order rows until Stripe payment succeeds.
         $this->assertSame(0, Order::where('reference_code', 'CARD42')->count());
-        $package = Cache::get('pending_card_checkout:CARD42');
-        $this->assertNotNull($package);
-        $this->assertSame($campaign->id, (int) ($package['project_id'] ?? 0));
+        $this->assertNotNull(Cache::get('pending_card_checkout:CARD42'));
         $this->assertFalse(session()->missing('cart'));
         $this->assertSame('CARD42', session('pending_card_reference'));
     }
@@ -163,7 +158,6 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $publisher->roles()->attach($publisherRole->id);
         $site = $this->activeSite($publisher);
         $submission = $this->createApprovedSubmission($advertiser, $site->id);
-        $campaign = $this->createCampaign($advertiser);
 
         $client = Mockery::mock(ClientInterface::class);
         $customerBody = json_encode([
@@ -188,12 +182,10 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
                     'quantity' => 1,
                     'sensitive_type' => null,
                 ]],
-                'active_campaign_id' => $campaign->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'card',
                 'reference_code' => 'FAIL99',
-                'project_id' => $campaign->id,
                 'content_submissions' => [
                     $site->id => [$submission->id],
                 ],
@@ -218,7 +210,6 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $publisher->roles()->attach($publisherRole->id);
         $site = $this->activeSite($publisher);
         $submission = $this->createApprovedSubmission($advertiser, $site->id);
-        $campaign = $this->createCampaign($advertiser);
 
         $customerBody = json_encode([
             'id' => 'cus_test_fallback',
@@ -254,12 +245,10 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
                     'quantity' => 1,
                     'sensitive_type' => null,
                 ]],
-                'active_campaign_id' => $campaign->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'card',
                 'reference_code' => 'FALLBK',
-                'project_id' => $campaign->id,
                 'content_submissions' => [
                     $site->id => [$submission->id],
                 ],
@@ -289,7 +278,6 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $publisher->roles()->attach($publisherRole->id);
         $site = $this->activeSite($publisher);
         $submission = $this->createApprovedSubmission($advertiser, $site->id);
-        $campaign = $this->createCampaign($advertiser);
 
         $this->actingAs($advertiser)
             ->withSession([
@@ -299,12 +287,10 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
                     'quantity' => 1,
                     'sensitive_type' => null,
                 ]],
-                'active_campaign_id' => $campaign->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
                 'payment_method' => 'card',
                 'reference_code' => 'NOCFG1',
-                'project_id' => $campaign->id,
                 'content_submissions' => [
                     $site->id => [$submission->id],
                 ],

@@ -11,25 +11,6 @@ class InvoicePdfGenerator
 {
     public function generateAndStore(Invoice $invoice): Invoice
     {
-        // DomPDF is memory-heavy; skip binary generation in automated tests.
-        if (app()->environment('testing')) {
-            $disk = (string) config('billing.storage.disk', 'local');
-            $directory = trim((string) config('billing.storage.directory', 'invoices'), '/');
-            $filename = sprintf(
-                '%s/%s/%s-test.pdf',
-                $directory,
-                now()->format('Y/m'),
-                Str::slug($invoice->invoice_number)
-            );
-            Storage::disk($disk)->put($filename, '%PDF-1.4 test stub');
-            $invoice->update([
-                'pdf_disk' => $disk,
-                'pdf_path' => $filename,
-            ]);
-
-            return $invoice->fresh();
-        }
-
         $html = view('billing.pdf.invoice', [
             'invoice' => $invoice,
             'company' => config('billing.company'),

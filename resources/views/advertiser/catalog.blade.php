@@ -1,5 +1,34 @@
 @extends('advertiser.layouts.app')
 
+@push('page-styles')
+    <link href="{{ asset('assets/css/catalog.css') }}?v={{ @filemtime(public_path('assets/css/catalog.css')) ?: '1' }}" rel="stylesheet">
+    {{-- Critical catalog guards: if a stale CDN copy of catalog.css wins the
+         race, Chrome still must not paint a stuck busy layer, teal NEW pills,
+         or intrinsic-size metric logos. --}}
+    <style id="catalog-critical">
+        .catalog-results-busy[hidden]{display:none!important}
+        .catalog-page button.site-badge-new,
+        .catalog-page .site-badge-new{background:#ef4444!important;background-image:none!important;color:#fff!important;border:0!important}
+        .catalog-page .metric-source{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px);overflow:hidden}
+        .catalog-page .metric-source img{width:var(--metric-source-size,20px);height:var(--metric-source-size,20px);max-width:var(--metric-source-size,20px);max-height:var(--metric-source-size,20px)}
+        /* Category clamps — must survive a stale CDN catalog.css (chips otherwise
+           paint over Traffic/DR/DA while table overflow stays visible for sticky). */
+        .catalog-page .catalog-table td.catalog-category-cell{overflow:hidden;max-width:0;min-width:0}
+        .catalog-page .categories-wrapper{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;max-width:100%;width:100%;margin:0 auto;overflow:hidden;min-width:0}
+        .catalog-page .categories-column{display:flex;flex-direction:row;flex-wrap:wrap;justify-content:center;align-items:center;align-content:center;gap:4px;min-width:0;width:100%;max-width:100%;overflow:hidden}
+        .catalog-page .category-badge{box-sizing:border-box;flex:0 1 auto;max-width:100%;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+        /* Metric bars must paint even if a stale CDN copy of catalog.css wins. */
+        .catalog-page .catalog-metric{display:inline-flex;flex-direction:column;align-items:center;gap:4px;min-width:3.5rem}
+        .catalog-page .catalog-metric__bar{display:block!important;width:3.25rem;max-width:100%;height:6px;border-radius:999px;background:#d5dbe3;overflow:hidden}
+        .catalog-page .catalog-metric__fill{display:block!important;height:100%;border-radius:inherit;background:#3faeb2}
+        .catalog-page .catalog-metric--da .catalog-metric__fill{background:#24abe2}
+        .catalog-page .catalog-country{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+        .catalog-page .catalog-country__flag{font-size:22px;line-height:1}
+        .catalog-page .catalog-table tbody td,
+        .catalog-page .catalog-table tbody td.catalog-stat-cell{vertical-align:middle}
+    </style>
+@endpush
+
 @section('content')
 
 @php
@@ -7,7 +36,6 @@
     $sites = $sites ?? collect();
     $favorites = $favorites ?? [];
     $blacklist = $blacklist ?? [];
-    $cart = $cart ?? [];
 
     if (!function_exists('getCountryFlag')) {
         function getCountryFlag($countryCode){
@@ -37,163 +65,250 @@
     }
 @endphp
 
-<div class="container-fluid">
+{{-- catalog-page scopes this page's stylesheet. Without it, rules for .table,
+     .badge and .form-control reached the cart drawer and the shell chrome. --}}
+<div class="container-fluid catalog-page">
+    @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
 
-    @php
-        $campaigns = $campaigns ?? collect();
-        $activeCampaign = $activeCampaign ?? null;
-        $campaignOrderedSiteIds = $campaignOrderedSiteIds ?? [];
-    @endphp
+    @if(request()->boolean('wizard') && ! empty(\App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession()['language']))
+        @include('advertiser.wizard._catalog_chrome')
+    @elseif(!empty($orderingSubmission))
+        @include('advertiser.partials.ordering-path', [
+            'step' => 2,
+            'title' => 'Place a guest post · Publishers',
+            'subtitle' => 'Ordering “'.($orderingSubmission->title ?: $orderingSubmission->original_filename).'” ('
+                .strtoupper((string) $orderingSubmission->language).'). Browse any sites — language does not have to match — then assign in your cart.',
+            'linkAll' => true,
+            'contentRoute' => route('advertiser.content-library'),
+            'actions' => '<button type="button" class="btn btn-sm btn-primary" onclick="openCart()">Review cart</button>'
+                .'<a href="'.e(route('advertiser.catalog', ['cancel_library_order' => 1])).'" class="btn btn-sm btn-outline-secondary">Cancel</a>'
+                .'<a href="'.e(route('advertiser.content-library')).'" class="btn btn-sm btn-outline-secondary">Back to library</a>',
+        ])
+    @else
+        @include('advertiser.partials.ordering-path', [
+            'step' => 2,
+            'title' => 'Catalog · Publishers',
+            'subtitle' => 'One job here: pick publishers. Keep browsing with items in your cart — finish payment when ready. Prefer steps? Use Guided.',
+            'linkAll' => true,
+            'contentRoute' => route('advertiser.content-library'),
+            'actions' => '<button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">Open cart</button>'
+                .'<a href="'.e(route('advertiser.wizard.start')).'" class="btn btn-sm btn-outline-secondary">Guided</a>',
+        ])
+    @endif
 
-    @if(session('success'))
-        <div class="alert alert-success alert-dismissible fade show">
-            {{ session('success') }}
-            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    @if(($approvedArticleCount ?? 0) === 0 && empty($orderingSubmission))
+        <div class="alert alert-info border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="small mb-0">
+                Each website needs its own <strong>approved</strong> article. You can still add publishers —
+                readiness chips show what’s missing, and the cart checklist walks you through assignment.
+            </div>
+            <a href="{{ route('advertiser.content-library', ['upload' => 1]) }}" class="btn btn-sm btn-upload">
+                <i class="fa fa-upload me-1" aria-hidden="true"></i> Upload article
+            </a>
         </div>
     @endif
 
-    <div class="card border-0 shadow-sm mb-3">
-        <div class="card-body py-3 d-flex flex-column flex-md-row align-items-md-center justify-content-between gap-2">
-            <div>
-                <div class="fw-semibold"><i class="fa fa-bullseye me-1"></i> Shopping campaign</div>
-                <div class="small text-muted">
-                    @if($activeCampaign)
-                        Placements you buy will be attributed to
-                        <strong>{{ $activeCampaign->project_name }}</strong>.
-                    @elseif($campaigns->isEmpty())
-                        Create a campaign first so order packages stay grouped per client site.
-                    @else
-                        Select a campaign before checkout — or activate one from
-                        <a href="{{ route('advertiser.campaigns') }}">Campaigns</a>.
-                    @endif
-                </div>
+    @php
+        $catalogCart = session('cart', []);
+        $catalogCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), is_array($catalogCart) ? $catalogCart : []));
+    @endphp
+    @if($catalogCartCount > 0)
+        <div class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <div class="small mb-0">
+                You have <strong>{{ $catalogCartCount }}</strong> {{ Str::plural('site', $catalogCartCount) }} in your cart.
+                Keep browsing anytime — open the cart when you are ready to assign articles and pay.
             </div>
-            <div class="d-flex flex-wrap gap-2 align-items-center">
-                @if($campaigns->isNotEmpty())
-                    <form method="POST" id="catalogCampaignForm" class="d-flex gap-2 align-items-center">
-                        @csrf
-                        <input type="hidden" name="redirect" value="{{ url()->full() }}">
-                        <select id="catalogCampaignSwitch" class="form-select form-select-sm" style="min-width: 220px;"
-                                data-activate-url-template="{{ url('/advertiser/campaigns') }}/__ID__/activate">
-                            @foreach($campaigns as $campaign)
-                                <option value="{{ $campaign->id }}" @selected($activeCampaign && (int)$activeCampaign->id === (int)$campaign->id)>
-                                    {{ $campaign->project_name }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </form>
-                    <script>
-                        (function () {
-                            var select = document.getElementById('catalogCampaignSwitch');
-                            var form = document.getElementById('catalogCampaignForm');
-                            if (!select || !form) return;
-                            select.addEventListener('change', function () {
-                                var tpl = select.getAttribute('data-activate-url-template') || '';
-                                form.action = tpl.replace('__ID__', encodeURIComponent(select.value));
-                                form.submit();
-                            });
-                        })();
-                    </script>
+            <button type="button" class="btn btn-sm btn-outline-primary" onclick="openCart()">
+                <i class="fa fa-shopping-cart me-1" aria-hidden="true"></i> Open cart
+            </button>
+        </div>
+    @endif
+
+    @php
+        $inCatalogHideMode = (bool) (auth()->user()?->inCatalogHideMode() ?? false);
+        $catalogHideUntil = auth()->user()?->catalog_hide_until;
+        $catalogHideUntilLabel = ($inCatalogHideMode && $catalogHideUntil)
+            ? $catalogHideUntil->timezone(config('app.timezone'))->format('M j, g:i A')
+            : null;
+    @endphp
+    @if($inCatalogHideMode)
+        <div class="alert alert-warning border-0 shadow-sm mb-3 catalog-hide-mode-banner" role="status">
+            <div class="small mb-0">
+                We’ve temporarily hidden listing names and website addresses on your catalog.
+                You can still browse, compare metrics, and place orders as normal.
+                Think this shouldn’t apply to you? Contact
+                <a href="mailto:support@seolinkbuildings.com">support@seolinkbuildings.com</a>.
+                @if($catalogHideUntilLabel)
+                    <span class="text-muted d-block mt-1">Until {{ $catalogHideUntilLabel }}. Use the eye icon to reveal a listing’s name and URL when you need them.</span>
                 @endif
-                <a href="{{ route('advertiser.campaigns') }}" class="btn btn-sm btn-outline-primary">
-                    Manage
-                </a>
             </div>
         </div>
+    @endif
+
+    @if(($catalogBonusBalance ?? 0) > 0)
+        <p class="small text-muted mb-3">
+            Spendable <strong>€{{ number_format((float) ($catalogSpendableBalance ?? 0), 2) }}</strong>
+            (cash €{{ number_format((float) ($catalogCashBalance ?? 0), 2) }}
+            + bonus €{{ number_format((float) $catalogBonusBalance, 2) }}).
+            Apply bonus at checkout.
+        </p>
+    @endif
+
+    <div id="catalogBulkHost" data-catalog-bulk-host>
+@include('advertiser.partials.catalog-bulk-deals')
     </div>
-    @include('components.ad-banners', ['placement' => 'marketplace', 'audience' => 'advertiser'])
+
 
     <!-- HEADER -->
     <div class="row mb-3">
         <div class="col-md-12">
             <h2 class="mb-1 fw-semibold">Catalog</h2>
-            <p class="text-muted mb-0">Browse verified publishers and explore available placement opportunities.</p>
+            <p class="text-muted mb-0">
+                @if(!empty($orderingSubmission))
+                    Browse any verified publishers for “{{ $orderingSubmission->title ?: $orderingSubmission->original_filename }}”. Filters stay optional — language does not have to match.
+                @else
+                    Browse verified publishers and add sites to your cart.
+                @endif
+            </p>
         </div>
     </div>
 
     <!-- FILTERS SECTION -->
 @php
-    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge'];
+    $moreFilterKeys = ['sponsored','favorites_filter','blacklist_filter','bulk_deals','da_min','da_max','dr_min','dr_max','traffic_min','traffic_max','new_badge','on_sale','quality','rating_min','has_completions'];
     $moreFiltersOpen = collect($moreFilterKeys)->contains(fn ($k) => filled(request($k)));
+    // Each chip carries the query keys it owns so it can be dismissed on its own.
+    // Range filters span two inputs, so one chip clears both ends.
+    // Category: one named chip per niche (clear removes that niche only).
     $activeFilterChips = [];
-    if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site'];
-    if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search'];
-    if (request('category')) $activeFilterChips[] = ['label' => 'Category', 'key' => 'category'];
-    if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country'];
-    if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price'];
-    if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language'];
-    if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored'];
-    if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter'];
-    if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter'];
-    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da'];
-    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr'];
-    if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic'];
-    if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge'];
+    if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
+    if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
+    if (request('category')) {
+        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category'));
+        foreach (\App\Models\Category::parseCatalogCategoryParam($categoryCanonical) as $niche) {
+            $activeFilterChips[] = [
+                'label' => $niche,
+                'key' => 'category:'.$niche,
+                'params' => [],
+                'category_remove' => $niche,
+            ];
+        }
+    }
+    if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
+    if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
+    if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
+    if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored', 'params' => ['sponsored']];
+    if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
+    if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
+    if (request('bulk_deals') == '1') $activeFilterChips[] = ['label' => 'Bulk deals', 'key' => 'bulk_deals', 'params' => ['bulk_deals']];
+    if (request('da_min') || request('da_max')) $activeFilterChips[] = ['label' => 'DA (Domain Authority)', 'key' => 'da', 'params' => ['da_min', 'da_max']];
+    if (request('dr_min') || request('dr_max')) $activeFilterChips[] = ['label' => 'DR (Domain Rating)', 'key' => 'dr', 'params' => ['dr_min', 'dr_max']];
+    if (request('traffic_min') || request('traffic_max')) $activeFilterChips[] = ['label' => 'Traffic', 'key' => 'traffic', 'params' => ['traffic_min', 'traffic_max']];
+    if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
+    if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
+    if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
+    if (request()->filled('rating_min')) $activeFilterChips[] = ['label' => 'Min rating '.request('rating_min').'+', 'key' => 'rating_min', 'params' => ['rating_min']];
+    if (request('has_completions') == '1') $activeFilterChips[] = ['label' => 'Has completions', 'key' => 'has_completions', 'params' => ['has_completions']];
+    $catalogPerPage = \App\Services\Catalog\CatalogUrlQuery::perPage(request());
+    if ($catalogPerPage !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE) {
+        $activeFilterChips[] = ['label' => $catalogPerPage.' per page', 'key' => 'per_page', 'params' => ['per_page']];
+    }
     $inventoryTotal = $sites->total();
     $inventoryFrom = $sites->getCollection()->min(fn ($s) => (float) $s->price);
-    $filtersExpanded = count($activeFilterChips) > 0 || $moreFiltersOpen || request()->boolean('filters_open');
 @endphp
 
-{{-- Result-first teaser (CV2): inventory + price before heavy filter chrome --}}
-<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
+{{-- Result-first teaser (CV2): inventory + price under the Catalog title.
+     Filters live just above the results table (no Hide/Show toggle). --}}
+<div class="catalog-inventory-teaser d-flex flex-wrap align-items-center gap-2 mb-3">
     <div class="small">
         @if($inventoryTotal > 0)
             <strong class="text-dark">{{ number_format($inventoryTotal) }}</strong>
             {{ Str::plural('placement', $inventoryTotal) }} available
             @if($inventoryFrom !== null)
-                · from <strong style="color:#0b6266;">€{{ number_format($inventoryFrom, 2) }}</strong>
+                · from <strong class="catalog-inventory-teaser__price">€{{ number_format($inventoryFrom, 2) }}</strong>
             @endif
         @else
             <span class="text-muted">No placements match yet — broaden filters below</span>
         @endif
     </div>
-    <button type="button"
-            class="btn btn-sm btn-outline-secondary"
-            id="toggleCatalogFilters"
-            aria-expanded="{{ $filtersExpanded ? 'true' : 'false' }}"
-            aria-controls="catalogFiltersPanel">
-        <i class="fa fa-sliders me-1" aria-hidden="true"></i>
-        <span id="toggleCatalogFiltersLabel">{{ $filtersExpanded ? 'Hide filters' : 'Show filters' }}</span>
-    </button>
 </div>
 
-<div class="row mb-3 {{ $filtersExpanded ? '' : 'd-none' }}" id="catalogFiltersPanel">
-    <div class="col-md-12">
-        <div class="card border-0 shadow-sm catalog-filters-card">
-            <div class="card-body py-3">
+
+
+<!-- CONTENT AREA -->
+    <div class="row">
+        <div class="col-md-12">
+
+            @php
+                $resultTotal = $sites->total();
+                $hasActiveFilters = count($activeFilterChips) > 0;
+                $sortValue = request('sort', 'dr_desc');
+                $catalogFilterStatus = app(\App\Services\Catalog\CatalogFilterStatus::class);
+                $catalogResultsCopy = $catalogFilterStatus->summarize(
+                    request(),
+                    $resultTotal,
+                    $sites->firstItem(),
+                    $sites->lastItem()
+                );
+                $catalogEmptyRecovery = ($resultTotal < 1 && $hasActiveFilters)
+                    ? $catalogFilterStatus->emptyRecovery(request())
+                    : null;
+            @endphp
+
+            {{-- Filters + sort + suggest sit immediately above the results table. --}}
+            <div class="row mb-3" id="catalogFiltersPanel">
+                <div class="col-md-12">
+                    <div class="card border-0 shadow-sm catalog-filters-card">
+                        <div class="card-body py-3">
                 <form method="GET" action="{{ route('advertiser.catalog') }}" id="filterForm">
-                    <input type="hidden" name="filters_open" value="1">
-                    <div class="row g-2 g-md-3 align-items-end">
+                    <div class="row g-2 g-md-3 align-items-start">
                         <!-- Primary: Search (site + category/country/language text) -->
-                        <div class="col-md-2">
-                            <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                            <input type="text"
-                                   name="search"
-                                   class="form-control form-control-sm"
-                                   placeholder="Site, category, country, language…"
-                                   value="{{ request('search') }}"
-                                   autocomplete="off">
+                        <div class="col-12 col-sm-6 col-lg-2">
+                            <label class="form-label fw-semibold small text-muted mb-1" for="catalogSearchInput">Search</label>
+                            <div class="catalog-search-field slb-search-wrap">
+                                <input type="search"
+                                       name="search"
+                                       id="catalogSearchInput"
+                                       class="form-control form-control-sm"
+                                       placeholder="{{ $inCatalogHideMode
+                                           ? 'Name, domain, category… (rows stay masked)'
+                                           : 'Name, domain, category… or da>40 / price<100' }}"
+                                       title="{{ $inCatalogHideMode
+                                           ? 'Results update as you type. Matching rows stay masked until you use the eye.'
+                                           : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
+                                       value="{{ request('search') }}"
+                                       autocomplete="off"
+                                       enterkeyhint="search"
+                                       aria-describedby="catalogSearchStatus">
+                                <button type="button"
+                                        id="catalogSearchClear"
+                                        class="btn btn-sm btn-link slb-search-clear{{ request('search') ? '' : ' d-none' }}"
+                                        aria-label="Clear search">
+                                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                                </button>
+                                <span id="catalogSearchStatus" class="visually-hidden" role="status" aria-live="polite"></span>
+                            </div>
                         </div>
 
                         <!-- Primary: Category (searchable dropdown) -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Category</label>
                             <div class="multi-select-wrapper" data-multi-select="category">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('categoryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCategoriesDisplay">
-                                        <span class="placeholder-text">Select categories...</span>
+                                    <div class="selected-items" id="selectedCategoriesDisplay" data-placeholder="All categories" data-singular="category" data-plural="categories">
+                                        <span class="placeholder-text">All categories</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="categoryMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
-                                        <input type="text" id="categorySearch" class="form-control form-control-sm" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
+                                        <input type="text" id="categorySearch" class="form-control form-control-sm" aria-label="Search categories" placeholder="Type to search categories…" onkeyup="filterMultiOptions('categoryMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="categoryMultiOptions">
                                         @foreach($siteCategories as $category)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $category }}" data-type="category" data-name="{{ $category }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $category }}</span>
                                             </label>
                                         @endforeach
@@ -201,31 +316,60 @@
                                     <div class="multi-select-empty d-none">No categories found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="category" id="selectedCategory" value="{{ request('category') }}">
+                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', '')) }}">
                         </div>
 
                         <!-- Primary: Country (searchable dropdown) -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Country</label>
                             <div class="multi-select-wrapper" data-multi-select="country">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('countryMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedCountriesDisplay">
-                                        <span class="placeholder-text">Select countries...</span>
+                                    <div class="selected-items" id="selectedCountriesDisplay" data-placeholder="All countries" data-singular="country" data-plural="countries">
+                                        <span class="placeholder-text">All countries</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="countryMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
-                                        <input type="text" id="countrySearch" class="form-control form-control-sm" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
+                                        <input type="text" id="countrySearch" class="form-control form-control-sm" aria-label="Search countries" placeholder="Type to search countries…" onkeyup="filterMultiOptions('countryMultiOptions', this.value)" autocomplete="off">
                                     </div>
+                                    @if(!empty($countryPickerGroups))
+                                        <div class="multi-select-group-actions" onclick="event.stopPropagation()">
+                                            @foreach($countryPickerGroups as $group)
+                                                <button type="button"
+                                                        class="btn btn-link btn-sm multi-select-group-action"
+                                                        data-country-group="{{ $group['key'] }}"
+                                                        data-country-codes="{{ implode(',', $group['codes']) }}">
+                                                    Select {{ $group['label'] }}
+                                                </button>
+                                            @endforeach
+                                        </div>
+                                    @endif
                                     <div class="options-list" id="countryMultiOptions">
-                                        @foreach($availableCountries as $code => $name)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $code }}" data-type="country" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
-                                                <span>{{ $name }}</span>
-                                            </label>
+                                        @foreach(($countryPickerSections ?? []) as $section)
+                                            <div class="multi-select-section{{ ($section['key'] ?? '') === 'recent' ? ' is-empty' : '' }}"
+                                                 data-section="{{ $section['key'] }}"
+                                                 @if(($section['key'] ?? '') === 'recent') hidden @endif>
+                                                <div class="multi-select-section__label" role="presentation">{{ $section['label'] }}</div>
+                                                @foreach(($section['options'] ?? []) as $option)
+                                                    <label class="option-item">
+                                                        <input type="checkbox"
+                                                               value="{{ $option['code'] }}"
+                                                               data-type="country"
+                                                               data-name="{{ $option['name'] }}"
+                                                               data-count="{{ (int) $option['count'] }}"
+                                                               onchange="updateMultiFilter(this)">
+                                                        <span>{{ $option['name'] }} ({{ number_format((int) $option['count']) }})</span>
+                                                    </label>
+                                                @endforeach
+                                            </div>
                                         @endforeach
+                                        @if(empty($countryPickerSections) || collect($countryPickerSections)->every(fn ($s) => ($s['key'] ?? '') === 'recent' || empty($s['options'])))
+                                            <div class="multi-select-section" data-section="empty-inventory">
+                                                <div class="text-muted small px-2 py-1">No markets with listings yet</div>
+                                            </div>
+                                        @endif
                                     </div>
                                     <div class="multi-select-empty d-none">No countries found</div>
                                 </div>
@@ -234,24 +378,24 @@
                         </div>
 
                         <!-- Primary: Language (searchable dropdown) -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Language</label>
                             <div class="multi-select-wrapper" data-multi-select="language">
                                 <div class="multi-select-input form-control form-control-sm" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" onclick="toggleMultiDropdown('languageMultiDropdown', this)">
-                                    <div class="selected-items" id="selectedLanguagesDisplay">
-                                        <span class="placeholder-text">Select languages...</span>
+                                    <div class="selected-items" id="selectedLanguagesDisplay" data-placeholder="All languages" data-singular="language" data-plural="languages">
+                                        <span class="placeholder-text">All languages</span>
                                     </div>
                                     <i class="fa fa-chevron-down" aria-hidden="true"></i>
                                 </div>
-                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox">
+                                <div class="multi-select-dropdown" id="languageMultiDropdown" role="listbox" aria-multiselectable="true">
                                     <div class="search-box" onclick="event.stopPropagation()">
                                         <i class="fa fa-search" aria-hidden="true"></i>
-                                        <input type="text" id="languageSearch" class="form-control form-control-sm" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
+                                        <input type="text" id="languageSearch" class="form-control form-control-sm" aria-label="Search languages" placeholder="Type to search languages…" onkeyup="filterMultiOptions('languageMultiOptions', this.value)" autocomplete="off">
                                     </div>
                                     <div class="options-list" id="languageMultiOptions">
                                         @foreach($availableLanguages as $code => $name)
-                                            <label class="option-item">
-                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)">
+                                            <label class="option-item" role="option" aria-selected="false" tabindex="-1">
+                                                <input type="checkbox" value="{{ $code }}" data-type="language" data-name="{{ $name }}" onchange="updateMultiFilter(this)" tabindex="-1">
                                                 <span>{{ $name }}</span>
                                             </label>
                                         @endforeach
@@ -263,19 +407,19 @@
                         </div>
 
                         <!-- Primary: Price -->
-                        <div class="col-md-2">
+                        <div class="col-6 col-sm-6 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1">Price (€)</label>
                             <div class="d-flex gap-2">
                                 <input type="number"
                                        name="price_min"
-                                       id="priceMinInput"
+                                       id="priceMinInput" aria-label="Minimum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Min"
                                        min="0" step="0.01"
                                        value="{{ request('price_min') }}">
                                 <input type="number"
                                        name="price_max"
-                                       id="priceMaxInput"
+                                       id="priceMaxInput" aria-label="Maximum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Max"
                                        min="0" step="0.01"
@@ -289,29 +433,32 @@
                         </div>
 
                         <!-- Actions -->
-                        <div class="col-md-2">
+                        <div class="col-12 col-lg-2">
                             <label class="form-label fw-semibold small text-muted mb-1 d-none d-md-block">&nbsp;</label>
                             <div class="d-flex flex-wrap gap-2">
-                                <button type="button" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
-                                    <i class="fa-solid fa-filter me-1"></i> Filter
+                                <button type="submit" class="btn btn-sm btn-primary px-3" id="applyFiltersBtn">
+                                    <i class="fa-solid fa-filter me-1" aria-hidden="true"></i> Filter
                                 </button>
-                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
+                                <button type="button" class="btn btn-sm btn-cta-secondary px-2" id="toggleMoreFiltersBtn" aria-controls="moreFiltersDrawer" aria-expanded="{{ $moreFiltersOpen ? 'true' : 'false' }}">
                                     More
                                     @if($moreFiltersOpen)
-                                        <span class="badge rounded-pill ms-1" style="background:#0b6266;">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
+                                        <span class="badge rounded-pill ms-1" data-more-filters-count
+                                              style="background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e);border:1px solid var(--brand-primary-border,#b8e4e4);">{{ collect($moreFilterKeys)->filter(fn($k) => filled(request($k)))->count() }}</span>
                                     @endif
                                 </button>
-                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-cta-tertiary px-1">
+                                <a href="{{ route('advertiser.catalog') }}"
+                                   class="btn btn-sm btn-cta-tertiary px-1 catalog-reset-filters"
+                                   id="catalogResetFilters">
                                     Reset
                                 </a>
                             </div>
                         </div>
                     </div>
 
-                    <!-- More filters drawer -->
-                    <div id="moreFiltersDrawer" class="mt-3 pt-3 border-top" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
+                    <!-- More filters drawer (teal mist theme) -->
+                    <div id="moreFiltersDrawer" class="mt-3" style="{{ $moreFiltersOpen ? '' : 'display:none;' }}">
                         <div class="row g-3 align-items-end">
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Sponsored</label>
                                 <select name="sponsored" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
@@ -319,7 +466,7 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Favorites</label>
                                 <select name="favorites_filter" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
@@ -327,7 +474,7 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Blacklist</label>
                                 <select name="blacklist_filter" class="form-select form-select-sm">
                                     <option value="">All Sites</option>
@@ -335,13 +482,13 @@
                                 </select>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="da_min" id="daMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('da_min') }}">
-                                    <input type="number" name="da_max" id="daMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('da_max') }}">
+                                    <input type="number" name="da_min" id="daMinInput" aria-label="Minimum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('da_min') }}">
+                                    <input type="number" name="da_max" id="daMaxInput" aria-label="Maximum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('da_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="da">
                                     <button type="button" class="filter-preset" data-min="20" data-max="" data-target-min="daMinInput" data-target-max="daMaxInput">DA 20+</button>
@@ -349,13 +496,13 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="dr_min" id="drMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('dr_min') }}">
-                                    <input type="number" name="dr_max" id="drMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('dr_max') }}">
+                                    <input type="number" name="dr_min" id="drMinInput" aria-label="Minimum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('dr_min') }}">
+                                    <input type="number" name="dr_max" id="drMaxInput" aria-label="Maximum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('dr_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="dr">
                                     <button type="button" class="filter-preset" data-min="30" data-max="" data-target-min="drMinInput" data-target-max="drMaxInput">DR 30+</button>
@@ -363,11 +510,11 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-3">
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="traffic_min" id="trafficMinInput" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('traffic_min') }}">
-                                    <input type="number" name="traffic_max" id="trafficMaxInput" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('traffic_max') }}">
+                                    <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_min') }}">
+                                    <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_max') }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="traffic">
                                     <button type="button" class="filter-preset" data-min="10000" data-max="" data-target-min="trafficMinInput" data-target-max="trafficMaxInput">10k+</button>
@@ -375,124 +522,139 @@
                                 </div>
                             </div>
 
-                            <div class="col-md-2">
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Bulk deals</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="bulk_deals" id="bulk_deals" value="1" {{ request('bulk_deals') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="bulk_deals">Show Bulk Deals</label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">On sale</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="on_sale" id="on_sale" value="1" {{ request('on_sale') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="on_sale">Show On Sale</label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">New Sites</label>
                                 <div class="form-check">
                                     <input class="form-check-input" type="checkbox" name="new_badge" id="new_badge" value="1" {{ request('new_badge') == 1 ? 'checked' : '' }}>
                                     <label class="form-check-label" for="new_badge">Show New Sites</label>
                                 </div>
                             </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Quality</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="quality" id="catalogQualityGate" value="1" {{ request('quality') == 1 ? 'checked' : '' }}
+                                           title="DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}">
+                                    <label class="form-check-label" for="catalogQualityGate">
+                                        Quality bar
+                                        <span class="text-muted">(DA {{ \App\Models\Site::GOOD_MIN_DA }}+ · DR {{ \App\Models\Site::GOOD_MIN_DR }}+ · {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC / 1000) }}k+)</span>
+                                    </label>
+                                </div>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1" for="catalogRatingMin">Min rating</label>
+                                <select name="rating_min" id="catalogRatingMin" class="form-select form-select-sm">
+                                    <option value="">Any</option>
+                                    <option value="3" @selected(request('rating_min') === '3')>3.0+</option>
+                                    <option value="4" @selected(request('rating_min') === '4')>4.0+</option>
+                                    <option value="4.5" @selected(request('rating_min') === '4.5')>4.5+</option>
+                                </select>
+                            </div>
+
+                            <div class="col-6 col-md-4 col-lg-3">
+                                <label class="form-label fw-semibold small text-muted mb-1">Completions</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="has_completions" id="catalogHasCompletions" value="1" {{ request('has_completions') == 1 ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="catalogHasCompletions">Has completed placements</label>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </form>
 
+                <div id="catalogActiveFiltersHost">
                 @if(count($activeFilterChips))
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-3" id="activeFilterChips">
                         <span class="small text-muted me-1">Active:</span>
                         @foreach($activeFilterChips as $chip)
-                            <span class="badge rounded-pill filter-chip">{{ $chip['label'] }}</span>
+                            @php
+                                // Drop only this chip's own keys; page resets so the
+                                // narrower result set does not land on an empty page.
+                                // Allowlisted via CatalogUrlQuery so chip links match
+                                // live / refresh URLs (same source of truth).
+                                // Category niches: rebuild category= without that niche.
+                                if (! empty($chip['category_remove'])) {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::withoutCategoryNiche(
+                                            request()->query(),
+                                            (string) $chip['category_remove']
+                                        )
+                                    );
+                                } else {
+                                    $chipRemoveUrl = route(
+                                        'advertiser.catalog',
+                                        \App\Services\Catalog\CatalogUrlQuery::except(
+                                            request()->query(),
+                                            $chip['params']
+                                        )
+                                    );
+                                }
+                            @endphp
+                            <span class="badge rounded-pill filter-chip">
+                                {{ $chip['label'] }}
+                                <a href="{{ $chipRemoveUrl }}"
+                                   class="filter-chip__remove"
+                                   aria-label="Remove filter: {{ $chip['label'] }}"
+                                   title="Remove this filter">&times;</a>
+                            </span>
                         @endforeach
-                        <a href="{{ route('advertiser.catalog') }}" class="small ms-1" style="color:#0b6266;font-weight:600;">Clear all</a>
+                        <a href="{{ route('advertiser.catalog') }}" class="small ms-1 catalog-clear-all">Clear all</a>
                     </div>
                 @endif
+                </div>
+                        </div>
+                    </div>
+                </div>
             </div>
-        </div>
-    </div>
-</div>
-
-<style>
-.filter-chip {
-    background: rgba(78, 205, 203, 0.18) !important;
-    color: #0b6266 !important;
-    font-weight: 600;
-    border: 1px solid #c8ebe9;
-}
-#toggleMoreFiltersBtn[aria-expanded="true"] {
-    border-color: #0b6266;
-    color: #0b6266;
-}
-</style>
-<script>
-document.addEventListener('DOMContentLoaded', function () {
-    const filtersPanel = document.getElementById('catalogFiltersPanel');
-    const filtersToggle = document.getElementById('toggleCatalogFilters');
-    const filtersToggleLabel = document.getElementById('toggleCatalogFiltersLabel');
-    if (filtersToggle && filtersPanel) {
-        filtersToggle.addEventListener('click', function () {
-            const currentlyOpen = !filtersPanel.classList.contains('d-none');
-            filtersPanel.classList.toggle('d-none', currentlyOpen);
-            filtersToggle.setAttribute('aria-expanded', currentlyOpen ? 'false' : 'true');
-            if (filtersToggleLabel) {
-                filtersToggleLabel.textContent = currentlyOpen ? 'Show filters' : 'Hide filters';
-            }
-        });
-    }
-
-    const btn = document.getElementById('toggleMoreFiltersBtn');
-    const drawer = document.getElementById('moreFiltersDrawer');
-    if (btn && drawer) {
-        btn.addEventListener('click', function () {
-            const open = drawer.style.display !== 'none';
-            drawer.style.display = open ? 'none' : 'block';
-            btn.setAttribute('aria-expanded', open ? 'false' : 'true');
-        });
-    }
-
-    // FR2 — preset chips set min/max inputs
-    document.querySelectorAll('.filter-preset').forEach(function (chip) {
-        chip.addEventListener('click', function () {
-            const minEl = document.getElementById(chip.dataset.targetMin);
-            const maxEl = document.getElementById(chip.dataset.targetMax);
-            if (!minEl || !maxEl) return;
-            minEl.value = chip.dataset.min || '';
-            maxEl.value = chip.dataset.max || '';
-            const group = chip.closest('.filter-presets');
-            if (group) {
-                group.querySelectorAll('.filter-preset').forEach(c => c.classList.remove('is-active'));
-            }
-            chip.classList.add('is-active');
-        });
-    });
-});
-</script>
-
-
-
-    <!-- CONTENT AREA -->
-    <div class="row">
-        <div class="col-md-12">
-
-            @php
-                $resultTotal = $sites->total();
-                $hasActiveFilters = count($activeFilterChips) > 0;
-                $sortValue = request('sort', 'dr_desc');
-            @endphp
 
             <div class="catalog-results-bar d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2">
-                <div class="text-muted small">
-                    @if($resultTotal > 0)
-                        Showing
-                        <strong class="text-dark">{{ $sites->firstItem() }}–{{ $sites->lastItem() }}</strong>
-                        of <strong class="text-dark">{{ number_format($resultTotal) }}</strong>
-                        {{ Str::plural('site', $resultTotal) }}
-                    @else
-                        No sites match your filters
-                    @endif
+                <div class="text-muted small" id="catalogResultsCount" data-catalog-results-count>
+                    {{ $catalogResultsCopy['text'] }}
                 </div>
+                <div id="catalogLiveStatus" class="visually-hidden" aria-live="polite" aria-atomic="true">{{ $catalogResultsCopy['announce'] }}</div>
                 <div class="d-flex flex-wrap align-items-center gap-2">
+                    <label for="catalogPerPage" class="small text-muted mb-0">Per page</label>
+                    <select id="catalogPerPage"
+                            name="per_page"
+                            form="filterForm"
+                            class="form-select form-select-sm catalog-sort-select"
+                            aria-label="Sites per page">
+                        @foreach(\App\Services\Catalog\CatalogUrlQuery::ALLOWED_PER_PAGE as $size)
+                            <option value="{{ $size }}" @selected($catalogPerPage === $size)>{{ $size }}</option>
+                        @endforeach
+                    </select>
                     <label for="catalogSort" class="small text-muted mb-0">Sort</label>
                     <select id="catalogSort"
                             name="sort"
                             form="filterForm"
-                            class="form-select form-select-sm"
-                            style="width: auto; min-width: 160px;"
-                            onchange="document.getElementById('filterForm').submit()">
+                            class="form-select form-select-sm catalog-sort-select">
                         <option value="dr_desc" @selected($sortValue === 'dr_desc')>DR (high → low)</option>
+                        <option value="dr_asc" @selected($sortValue === 'dr_asc')>DR (low → high)</option>
                         <option value="da_desc" @selected($sortValue === 'da_desc')>DA (high → low)</option>
+                        <option value="da_asc" @selected($sortValue === 'da_asc')>DA (low → high)</option>
                         <option value="traffic_desc" @selected($sortValue === 'traffic_desc')>Traffic (high → low)</option>
                         <option value="price_asc" @selected($sortValue === 'price_asc')>Price (low → high)</option>
                         <option value="price_desc" @selected($sortValue === 'price_desc')>Price (high → low)</option>
                         <option value="newest" @selected($sortValue === 'newest')>Newest first</option>
+                        <option value="rating_desc" @selected($sortValue === 'rating_desc')>Rating (high → low)</option>
                     </select>
                 </div>
             </div>
@@ -503,2656 +665,61 @@ document.addEventListener('DOMContentLoaded', function () {
                 </p>
                 <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
                         data-search="{{ request('search') }}">
-                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
+                    <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>
 
-            @if(isset($bulkDeals) && $bulkDeals->count())
-            <div class="card border-0 shadow-sm mb-3 catalog-bulk-section">
-                <div class="card-header bg-white d-flex flex-wrap justify-content-between align-items-center gap-2">
-                    <div>
-                        <strong><i class="fa-solid fa-tags me-1 text-success"></i> Bulk discount deals</strong>
-                        <div class="small text-muted">Buy 3–5 articles on these sites and save 10–15%. Totals at checkout include the discount.</div>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        @foreach($bulkDeals as $deal)
-                            @php
-                                $unit = (float) $deal->price;
-                                $pct = (float) $deal->bulk_discount_percent;
-                                $qtyExample = 3;
-                                $list = round($unit * $qtyExample, 2);
-                                $save = round($list * ($pct / 100), 2);
-                                $after = round($list - $save, 2);
-                            @endphp
-                            <div class="col-md-4 col-lg-3">
-                                <div class="bulk-deal-card h-100">
-                                    <div class="d-flex justify-content-between align-items-start gap-2 mb-1">
-                                        <div class="fw-semibold text-truncate">{{ $deal->site_name }}</div>
-                                        <span class="badge bg-success-subtle text-success border">−{{ rtrim(rtrim(number_format($pct, 1), '0'), '.') }}%</span>
-                                    </div>
-                                    <div class="small text-muted mb-2">DR {{ $deal->dr }} · DA {{ $deal->da }}</div>
-                                    <div class="small">
-                                        <span class="text-decoration-line-through text-muted">€{{ number_format($list, 2) }}</span>
-                                        for {{ $qtyExample }} →
-                                        <strong class="text-success">€{{ number_format($after, 2) }}</strong>
-                                    </div>
-                                    <button class="btn btn-sm btn-outline-primary mt-2 buy-now w-100"
-                                            data-id="{{ $deal->id }}"
-                                            data-base-price="{{ $deal->price }}"
-                                            data-name="{{ $deal->site_name }}"
-                                            data-bulk-hint="1">
-                                        Add to cart
-                                    </button>
-                                </div>
-                            </div>
-                        @endforeach
-                    </div>
-                </div>
-            </div>
-            @endif
 
             <!-- Publishers Table -->
-            <div class="card border-0 shadow-sm catalog-results-card">
-                <div class="card-body p-0">
-                    
-                    <div class="table-responsive catalog-table-scroll d-none d-md-block">
-    <table class="table table-borderless align-middle mb-0 data-table catalog-table">
-        <thead class="table-light">
-            <tr>
-                <th class="text-start catalog-th" style="min-width: 250px;">
-                    <span class="catalog-th-label">
-                        Site
-                        <x-glass-tip
-                            title="Site"
-                            body="Domains are partially masked to protect publisher inventory. Reveal the URL to inspect before buying — full access stays tied to your order."
-                            label="About Site column"
-                            placement="bottom" />
-                    </span>
-                </th>
-                <th class="text-center catalog-th">
-                    <span class="catalog-th-label">
-                        Category
-                        <x-glass-tip
-                            title="Category"
-                            body="Topic niches this site accepts for guest posts and placements."
-                            label="About Category column"
-                            placement="bottom" />
-                    </span>
-                </th>
-                <th class="text-center catalog-th">
-                    <span class="catalog-th-label">
-                        Traffic
-                        <x-glass-tip
-                            title="Monthly Traffic"
-                            body="Estimated monthly organic visits from our enrichment providers. Higher traffic usually means more reach for your placement. Check the Updated label under each row for metric freshness."
-                            label="About Traffic column"
-                            placement="bottom" />
-                    </span>
-                </th>
-                <th class="text-center catalog-th">
-                    <span class="catalog-th-label">
-                        DR
-                        <x-glass-tip
-                            title="Domain Rating (DR)"
-                            body="Ahrefs Domain Rating (0–100): how strong the site’s backlink profile is compared to others on the web."
-                            label="About Domain Rating"
-                            placement="bottom" />
-                    </span>
-                </th>
-                <th class="text-center catalog-th">
-                    <span class="catalog-th-label">
-                        DA
-                        <x-glass-tip
-                            title="Domain Authority (DA)"
-                            body="Moz Domain Authority (0–100): an overall site authority score used to compare ranking potential."
-                            label="About Domain Authority"
-                            placement="bottom" />
-                    </span>
-                </th>
-                <th class="text-center catalog-th">
-                    <span class="catalog-th-label">
-                        Country
-                        <x-glass-tip
-                            title="Country"
-                            body="Primary country / audience market for this publisher website."
-                            label="About Country column"
-                            placement="bottom" />
-                    </span>
-                </th>
-                <th class="text-center catalog-th catalog-th-action" style="min-width: 180px;">
-                    <span class="catalog-th-label">
-                        Action
-                        <x-glass-tip
-                            title="Actions"
-                            body="Buy a placement, save the site to favorites, or blacklist it so it stays out of your way."
-                            label="About Action column"
-                            placement="bottom" />
-                    </span>
-                </th>
-            </tr>
-        </thead>
-        <tbody>
-            @forelse($sites as $site)
-            @php
-                $isBlacklisted = in_array($site->id, $blacklist);
-                $isFavorited = in_array($site->id, $favorites);
-                // Decode sensitive prices
-                $sensitivePrices = $site->sensitive_prices;
-                if (is_string($sensitivePrices)) {
-                    $sensitivePrices = json_decode($sensitivePrices, true);
-                }
-                $sensitivePrices = is_array($sensitivePrices) ? $sensitivePrices : [];
-            @endphp
-            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}{{ $site->metricsFreshnessState() === 'stale' ? ' metrics-stale' : '' }}" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}" style="{{ $isBlacklisted ? 'opacity: 0.7; background-color: #fff3f3;' : '' }}">
-                
-                <td class="catalog-site-cell" style="min-width: 250px;">
-                    @php
-                        // Dynamic "new" flag — listing created within the last 30 days
-                        $isNew = $site->created_at->gt(now()->subDays(30));
-                        $ratingCompact = $site->catalogRatingCompactLabel();
-                        $completionCompact = $site->catalogCompletionCompactLabel();
-                        $metricsFreshness = $site->metricsFreshnessState();
-                        $metricsUpdatedLabel = $site->lastUpdatedLabel();
-                    @endphp
+            {{-- Sorting and paging are full reloads. Without this the click looked
+                 dead for as long as the request took. --}}
+            @include('advertiser.partials.catalog-results')
 
-                    @php
-                        $rawHost = (string) Str::of($site->site_url)
-                            ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-                            ->before('/');
-                        $hostParts = explode('.', $rawHost);
-                        if (count($hostParts) >= 2) {
-                            $tld = array_pop($hostParts);
-                            $namePart = implode('.', $hostParts);
-                            $visibleLen = min(4, max(2, strlen($namePart)));
-                            $maskedHost = substr($namePart, 0, $visibleLen) . '***.' . $tld;
-                        } else {
-                            $maskedHost = substr($rawHost, 0, 3) . '******';
-                        }
-                    @endphp
-
-                    <div class="catalog-site-stack">
-                        <!-- URL Row -->
-                        <div class="d-flex align-items-center gap-2 flex-wrap">
-                            <span class="text-dark catalog-site-url"
-                                  id="url-masked-{{ $site->id }}"
-                                  data-glass-tip
-                                  data-glass-tip-title="Masked for publishers"
-                                  data-glass-tip-body="We hide part of the domain so publisher inventory isn’t scraped. Metrics stay visible — reveal the full URL when you’re ready to buy."
-                                  data-glass-tip-placement="top">
-                                {{ $maskedHost }}
-                            </span>
-
-                            <span class="url-full text-muted d-none catalog-site-url"
-                                  id="url-full-{{ $site->id }}">
-                                {{ $rawHost }}
-                            </span>
-
-                            @if($site->isFeatured())
-                                <span class="site-chip site-chip--featured"
-                                      title="Featured placement — higher visibility in the catalog">
-                                    <i class="fa-solid fa-bolt" aria-hidden="true"></i>
-                                    <span>Featured</span>
-                                </span>
-                            @endif
-
-                            @if($site->hasActiveCustomDiscount())
-                                <span class="site-chip site-chip--sale"
-                                      title="Limited-time publisher discount">
-                                    <i class="fa-solid fa-percent" aria-hidden="true"></i>
-                                    <span>−{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 1), '0'), '.') }}%</span>
-                                </span>
-                            @endif
-
-                            @if($site->joinsBulkDiscount())
-                                <span class="site-chip site-chip--bulk"
-                                      title="Bulk discount available on 3–5 articles">
-                                    <i class="fa-solid fa-layer-group" aria-hidden="true"></i>
-                                    <span>Bulk −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 1), '0'), '.') }}%</span>
-                                </span>
-                            @endif
-
-                            @if($site->verified)
-                                <button type="button"
-                                        class="site-chip site-chip--verified"
-                                        data-glass-tip
-                                        data-glass-tip-title="Verified Publisher"
-                                        data-glass-tip-body="This publisher has successfully completed our verification process and meets our platform's quality standards."
-                                        data-glass-tip-placement="top"
-                                        aria-label="Verified publisher">
-                                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i>
-                                    <span>Verified</span>
-                                </button>
-                            @endif
-
-                            @if($isNew)
-                                <button type="button"
-                                        class="site-badge-new"
-                                        data-glass-tip
-                                        data-glass-tip-title="New Listing"
-                                        data-glass-tip-body="Added in the last 30 days — fresh inventory worth reviewing early."
-                                        data-glass-tip-placement="top"
-                                        aria-label="New listing">
-                                    NEW
-                                </button>
-                            @endif
-
-                            <button class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
-                                    data-id="{{ $site->id }}"
-                                    title="Reveal or hide full URL"
-                                    aria-label="Reveal or hide full URL"
-                                    style="font-size: 15px;">
-                                <i class="fa-regular fa-eye"></i>
-                            </button>
-
-                            <a href="{{ $site->site_url }}"
-                               target="_blank"
-                               rel="noopener noreferrer"
-                               class="text-muted"
-                               title="Open website"
-                               aria-label="Open website in new tab"
-                               style="display:inline-flex; align-items:center; text-decoration:none;">
-                                <i class="fa-solid fa-arrow-up-right-from-square" style="font-size: 13px;" aria-hidden="true"></i>
-                            </a>
-
-                            <button type="button"
-                                    class="btn btn-sm btn-link text-muted p-0 expand-arrow"
-                                    id="arrow-{{ $site->id }}"
-                                    aria-label="Expand site details"
-                                    aria-expanded="false"
-                                    style="font-size: 13px; line-height: 1;">
-                                <i class="fa-solid fa-chevron-down" aria-hidden="true"></i>
-                            </button>
-                        </div>
-
-                        @if($isBlacklisted)
-                        <div class="site-status-row" role="list" aria-label="Site status">
-                            <span class="site-chip site-chip--blacklist"
-                                  role="listitem"
-                                  tabindex="0"
-                                  data-glass-tip
-                                  data-glass-tip-title="Blacklisted"
-                                  data-glass-tip-body="You blacklisted this site — it stays dimmed in your catalog until you remove it."
-                                  data-glass-tip-placement="top"
-                                  aria-label="Blacklisted site details">
-                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                                <span>Blacklisted</span>
-                            </span>
-                        </div>
-                        @endif
-
-                        <!-- DoFollow Links -->
-                        <div class="text-muted catalog-site-meta">
-                            Max 03 DoFollow links
-                        </div>
-
-                        <!-- Turnaround Time -->
-                        <div>
-                            <span class="turnaround-badge catalog-site-meta">
-                                Turnaround: {{ $site->turnaround_time ?? 'N/A' }}
-                            </span>
-                        </div>
-
-                        {{-- Closed-row trust strip: ratings, completion counts, metrics freshness --}}
-                        <div class="site-trust-row" aria-label="Trust signals">
-                            @if($ratingCompact)
-                                <span class="site-trust-chip site-trust-chip--rating"
-                                      title="{{ $site->ratingStarsLabel() }}">
-                                    <i class="fa-solid fa-star" aria-hidden="true"></i>
-                                    <span>{{ $ratingCompact }}</span>
-                                </span>
-                            @else
-                                <span class="site-trust-chip site-trust-chip--muted" title="No advertiser ratings yet">
-                                    <i class="fa-regular fa-star" aria-hidden="true"></i>
-                                    <span>New</span>
-                                </span>
-                            @endif
-
-                            @if($completionCompact)
-                                <span class="site-trust-chip site-trust-chip--completion"
-                                      title="Completed vs cancelled placements on this site">
-                                    {{ $completionCompact }}
-                                </span>
-                            @endif
-
-                            @if($metricsFreshness === 'fresh' && $metricsUpdatedLabel)
-                                <span class="site-trust-chip site-trust-chip--fresh"
-                                      title="When DA / DR / traffic were last refreshed">
-                                    Updated {{ $metricsUpdatedLabel }}
-                                </span>
-                            @elseif($metricsFreshness === 'stale')
-                                <span class="site-trust-chip site-trust-chip--stale"
-                                      title="Metrics are older than our freshness window — treat DA / DR / traffic cautiously">
-                                    Metrics outdated
-                                </span>
-                            @endif
-                        </div>
-                    </div>
-                </td>
-
-                <td class="text-center catalog-stat-cell">
-                   @php
-    $categoryArray = [];
-
-    // Handle categories array
-    if (!empty($site->categories) && is_array($site->categories)) {
-
-        foreach ($site->categories as $cat) {
-
-            if (str_contains($cat, ',')) {
-                $splitCats = array_map('trim', explode(',', $cat));
-                $categoryArray = array_merge($categoryArray, $splitCats);
-            } else {
-                $categoryArray[] = trim($cat);
-            }
-        }
-    }
-
-    // Fallback to category string
-    elseif (!empty($site->category)) {
-
-        if (str_contains($site->category, ',')) {
-            $categoryArray = array_map('trim', explode(',', $site->category));
-        } else {
-            $categoryArray[] = trim($site->category);
-        }
-    }
-
-    // Clean array
-    $categoryArray = array_values(array_unique(array_filter($categoryArray)));
-
-    $showLimit = 3;
-    $totalCategories = count($categoryArray);
-@endphp
-
-@if(count($categoryArray))
-    <div class="categories-wrapper">
-
-        <div class="categories-column">
-
-            @foreach($categoryArray as $index => $cat)
-
-                <span class="category-badge {{ $index >= $showLimit ? 'extra-category d-none' : '' }}">
-                    {{ $cat }}
-                </span>
-
-            @endforeach
-
-        </div>
-
-        @if($totalCategories > $showLimit)
-            <button type="button"
-                    class="toggle-cats-btn"
-                    onclick="
-                        const wrapper = this.closest('.categories-wrapper');
-                        const hiddenItems = wrapper.querySelectorAll('.extra-category');
-
-                        hiddenItems.forEach(el => el.classList.toggle('d-none'));
-
-                        this.innerText = this.innerText.includes('more')
-                            ? 'Show less'
-                            : '+{{ $totalCategories - $showLimit }} more';
-                    ">
-                +{{ $totalCategories - $showLimit }} more
-            </button>
-        @endif
-
-    </div>
-@endif
-                </td>
-
-                <td class="text-center catalog-stat-cell">
-                    <div class="catalog-stat">
-                        <img src="{{ asset('assets/img/traffic.svg') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold">{{ number_format($site->traffic) }}</span>
-                    </div>
-                </td>
-
-                <td class="text-center catalog-stat-cell">
-                    <div class="catalog-stat">
-                        <img src="{{ asset('assets/img/ahref.jpeg') }}" alt="" style="width: 16px; height: 16px; border-radius: 2px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold text-info">{{ $site->dr }}</span>
-                    </div>
-                </td>
-
-                <td class="text-center catalog-stat-cell">
-                    <div class="catalog-stat">
-                        <img src="{{ asset('assets/img/moz_da.png') }}" alt="" style="width: 16px; height: 16px;" onerror="this.style.display='none'">
-                        <span class="fw-semibold text-primary">{{ $site->da }}</span>
-                    </div>
-                </td>
-
-                <td class="text-center catalog-stat-cell">
-                    @php
-                        $countryCode = $site->primaryCountryCode() ?: $site->country;
-                    @endphp
-                    <div class="d-flex flex-column align-items-center gap-1">
-                        <span style="font-size: 22px; line-height: 1;" aria-hidden="true">{!! getCountryFlag($countryCode) !!}</span>
-                        <span class="text-muted small text-center">{{ fullCountry($countryCode) }}</span>
-                    </div>
-                </td>
-
-                <td class="text-center catalog-stat-cell catalog-td-action">
-                    <div class="catalog-row-actions">
-                        @php
-                            $catalogSalePct = $site->activeCustomDiscountPercent();
-                            $catalogSalePrice = $catalogSalePct
-                                ? round((float) $site->price * (1 - $catalogSalePct / 100), 2)
-                                : null;
-                        @endphp
-                        <button class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
-                                data-id="{{ $site->id }}"
-                                data-base-price="{{ $site->price }}"
-                                data-name="{{ $site->site_name }}"
-                                aria-label="Buy placement for {{ $site->site_name }}">
-                            <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                            <span>Buy</span>
-                            @if($catalogSalePrice !== null)
-                                <span class="small text-decoration-line-through opacity-75">€{{ number_format((float) $site->price, 2) }}</span>
-                                <span class="fw-semibold base-price-display">€{{ number_format($catalogSalePrice, 2) }}</span>
-                            @else
-                                <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
-                            @endif
-                        </button>
-
-                        <div class="catalog-row-actions-quiet">
-                            <button type="button"
-                                    class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-name="{{ $site->site_name }}"
-                                    aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
-                                    title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
-                                <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
-                            </button>
-
-                            <button type="button"
-                                    class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
-                                    data-id="{{ $site->id }}"
-                                    data-name="{{ $site->site_name }}"
-                                    aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
-                                    title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
-                                <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                            </button>
-                        </div>
-                    </div>
-                </td>
-            </tr>
-            
-            <tr class="expanded-row-{{ $site->id }}" style="display: none;">
-    <td colspan="7" style="background-color: #f9f9f9; padding: 20px;">
-        <div class="row">
-            <div class="col-md-12">
-                <h6 class="mb-3">Site Details</h6>
-
-                {{-- Expandable panel: screenshot + tags/DF links + sample only (no DR/DA/traffic/country) --}}
-                <div class="row align-items-start g-4">
-
-                    <div class="col-md-3 text-center">
-                        <p class="small text-muted mb-2"><strong>Homepage preview</strong></p>
-                        @php
-                            // Prefer admin-uploaded site_image, then auto screenshot
-                            $previewPath = $site->site_image ?: $site->screenshot_path;
-                            $previewUrl = $previewPath ? asset('storage/' . $previewPath) : null;
-                        @endphp
-                        @if($previewUrl)
-                            <div class="site-preview-zoom">
-                                <img src="{{ $previewUrl }}"
-                                     alt="{{ $site->site_name }} homepage preview"
-                                     loading="lazy"
-                                     class="site-image-thumbnail"
-                                     onerror="this.onerror=null;this.closest('.site-preview-zoom').classList.add('is-broken');">
-                            </div>
-                            <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;"></i>
-                            </div>
-                        @else
-                            <div class="site-preview-fallback bg-light border rounded d-inline-flex align-items-center justify-content-center">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;"></i>
-                            </div>
-                        @endif
-                    </div>
-
-                    <div class="col-md-5">
-                        <p class="mb-1"><strong class="small">Description</strong></p>
-                        <div class="text-muted small">
-                            {!! $site->description !!}
-                        </div>
-                        <div class="text-muted small mt-2">
-                            <strong>DoFollow links:</strong> Max 03 DoFollow links
-                        </div>
-                        @if($site->lastPublicationLabel())
-                            <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
-                                {{ $site->lastPublicationLabel() }}
-                            </p>
-                        @endif
-
-                        @php
-                            $avg = (float) ($site->rating_avg ?? 0);
-                            $count = (int) ($site->rating_count ?? 0);
-                            $roundedAvg = (int) round($avg);
-                            $completionCompact = $site->catalogCompletionCompactLabel();
-                            $metricsFreshness = $site->metricsFreshnessState();
-                            $metricsUpdatedLabel = $site->lastUpdatedLabel();
-                        @endphp
-                        <div class="site-trust-compact mt-2" data-site-id="{{ $site->id }}">
-                            <span class="site-trust-compact__stars" aria-label="Average rating {{ $count > 0 ? number_format($avg, 1) : 'new' }} out of 5">
-                                @for($i = 1; $i <= 5; $i++)
-                                    <i class="fa-{{ $i <= $roundedAvg && $count > 0 ? 'solid' : 'regular' }} fa-star" aria-hidden="true"></i>
-                                @endfor
-                                <span class="site-trust-compact__score">
-                                    @if($count > 0)
-                                        {{ number_format($avg, 1) }}
-                                        <span class="site-trust-compact__count">({{ $count }})</span>
-                                    @else
-                                        New
-                                    @endif
-                                </span>
-                            </span>
-                            <span class="site-trust-compact__sep" aria-hidden="true">·</span>
-                            <span class="site-trust-compact__orders" title="Completed vs cancelled placements on this site">
-                                @if($completionCompact)
-                                    {{ $completionCompact }}
-                                @else
-                                    No completions yet
-                                @endif
-                            </span>
-                            @if($metricsFreshness === 'fresh' && $metricsUpdatedLabel)
-                                <span class="site-trust-compact__sep" aria-hidden="true">·</span>
-                                <span class="site-trust-compact__fresh" title="When DA / DR / traffic were last refreshed">
-                                    Updated {{ $metricsUpdatedLabel }}
-                                </span>
-                            @elseif($metricsFreshness === 'stale')
-                                <span class="site-trust-compact__sep" aria-hidden="true">·</span>
-                                <span class="site-trust-compact__stale" title="Metrics are older than our freshness window">
-                                    Metrics outdated
-                                </span>
-                            @endif
-                        </div>
-                    </div>
-
-                    <div class="col-md-2">
-                        <p><strong>Tags:</strong></p>
-
-                        <div class="d-flex flex-column gap-2">
-                            <div>
-                                @if($site->link_type)
-                                    <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Link Type">
-                                        <i class="fa-solid fa-link me-1"></i>{{ $site->link_type }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">No link type specified</span>
-                                @endif
-                            </div>
-
-                            <div class="d-flex flex-wrap gap-1">
-                                @if($site->sponsored)
-                                    <span class="badge bg-warning-subtle text-dark border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Sponsored placement">
-                                        <i class="fa-solid fa-star me-1"></i>Sponsored
-                                    </span>
-                                @endif
-
-                                @if($site->partner_material)
-                                    <span class="badge bg-success-subtle text-success border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Partner content allowed">
-                                        <i class="fa-solid fa-handshake me-1"></i>Partner
-                                    </span>
-                                @endif
-
-                                @if($site->as_you_prefer ?? false)
-                                    <span class="badge bg-primary-subtle text-primary border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Flexible placement">
-                                        <i class="fa-solid fa-sliders-h me-1"></i>As You Prefer
-                                    </span>
-                                @endif
-
-                                @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
-                                    <span class="text-muted small">No additional tags</span>
-                                @endif
-                            </div>
-
-                            <div>
-                                @if(!empty($sensitivePrices))
-                                    <p><strong>Sensitive Prices (Additional Charges):</strong></p>
-
-                                    <div class="sensitive-prices-group"
-                                         data-site-id="{{ $site->id }}"
-                                         data-base-price="{{ $site->price }}"
-                                         role="radiogroup"
-                                         aria-label="Sensitive topic pricing">
-
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input sensitive-price-checkbox"
-                                                   type="radio"
-                                                   name="sensitive_prices_{{ $site->id }}"
-                                                   value="0"
-                                                   data-type="none"
-                                                   data-additional-price="0"
-                                                   data-total-price="{{ $site->price }}"
-                                                   data-site-id="{{ $site->id }}"
-                                                   id="sensitive_{{ $site->id }}_none"
-                                                   checked>
-                                            <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
-                                                <strong>No sensitive topic</strong>
-                                                <span class="text-muted">Base price</span>
-                                            </label>
-                                        </div>
-
-                                        @foreach($sensitivePrices as $type => $additionalPrice)
-                                            @php
-                                                $totalPrice = $site->price + $additionalPrice;
-                                            @endphp
-
-                                            <div class="form-check mb-2">
-                                                <input class="form-check-input sensitive-price-checkbox"
-                                                       type="radio"
-                                                       name="sensitive_prices_{{ $site->id }}"
-                                                       value="{{ $additionalPrice }}"
-                                                       data-type="{{ $type }}"
-                                                       data-additional-price="{{ $additionalPrice }}"
-                                                       data-total-price="{{ $totalPrice }}"
-                                                       data-site-id="{{ $site->id }}"
-                                                       id="sensitive_{{ $site->id }}_{{ $loop->index }}">
-
-                                                <label class="form-check-label"
-                                                       for="sensitive_{{ $site->id }}_{{ $loop->index }}">
-                                                    <strong>{{ ucfirst($type) }}</strong>
-                                                    <span class="text-danger">
-                                                        €{{ number_format($additionalPrice, 2) }}
-                                                    </span>
-                                                </label>
-                                            </div>
-                                        @endforeach
-                                    </div>
-
-                                    <div class="selected-price-info mt-2"
-                                         id="price-info-{{ $site->id }}">
-                                        <small class="text-muted">
-                                            Current price:
-                                            <strong>€{{ number_format($site->price, 2) }}</strong>
-                                            (Base price)
-                                        </small>
-                                    </div>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="col-md-2">
-                        <p><strong>Sample article:</strong></p>
-
-                        <div class="d-flex flex-column gap-2">
-                            <div class="d-flex align-items-center gap-2">
-                                <a href="{{ $site->example_url ?? '#' }}"
-                                   target="_blank"
-                                   class="text-decoration-none"
-                                   style="word-break: break-all;">
-                                    {{ Str::limit($site->example_url ?? 'Not available', 50) }}
-                                </a>
-
-                                @if($site->example_url)
-                                    <a href="{{ $site->example_url }}"
-                                       target="_blank"
-                                       rel="noopener noreferrer"
-                                       class="text-muted d-inline-flex align-items-center"
-                                       title="Open sample article">
-                                        <i class="fa-solid fa-arrow-up-right-from-square"
-                                           style="font-size: 13px;"></i>
-                                    </a>
-                                @endif
-                            </div>
-
-                            @if($site->example_url)
-                                <button class="btn btn-sm btn-outline-secondary copy-example-url"
-                                        data-url="{{ $site->example_url }}"
-                                        style="width: fit-content;">
-                                    <i class="fa-regular fa-copy"></i> Copy URL
-                                </button>
-                            @endif
-
-                            <div class="d-flex align-items-center gap-2">
-                                <strong>Publication Duration:</strong>
-
-                                @if($site->publication_time)
-                                    <span class="badge text-muted border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Publication Duration">
-                                        <i class="fa-solid fa-clock me-1"></i>
-                                        {{ $site->publication_time }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">
-                                        No publication duration specified
-                                    </span>
-                                @endif
-                            </div>
-                        </div>
-                    </div>
-
-                </div>
-            </div>
-        </div>
-    </td>
-</tr>
-            @empty
-            <tr>
-                <td colspan="7" class="text-center py-5">
-                    <div class="catalog-empty-state mx-auto">
-                        <div class="catalog-empty-icon" aria-hidden="true">
-                            <i class="fa-solid fa-filter-circle-xmark"></i>
-                        </div>
-                        <h5 class="mb-2">
-                            {{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}
-                        </h5>
-                        <p class="text-muted mb-3">
-                            {{ $hasActiveFilters
-                                ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                                : 'New verified sites show up here as publishers list them.' }}
-                        </p>
-                        @if($hasActiveFilters)
-                            <div class="d-flex flex-wrap justify-content-center gap-2 mb-3">
-                                <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
-                                <a href="{{ route('advertiser.catalog', ['sort' => 'dr_desc']) }}" class="btn btn-outline-secondary btn-sm">Browse top DR</a>
-                                <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
-                                        data-search="{{ request('search') }}">
-                                    <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
-                                </button>
-                            </div>
-                            <p class="small text-muted mb-0">
-                                Can’t find a site you need?
-                                @if(request('search'))
-                                    Suggest “{{ request('search') }}” and we’ll try to add it.
-                                @else
-                                    Suggest it and we’ll try to include it in the marketplace.
-                                @endif
-                            </p>
-                        @else
-                            <a href="{{ route('advertiser.catalog', ['new_badge' => 1]) }}" class="btn btn-outline-secondary btn-sm">Show new sites</a>
-                        @endif
-                    </div>
-                </td>
-            </tr>
-            @endforelse
-        </tbody>
-    </table>
-</div>
-
-{{-- Mobile card list (R1) — same buy/favorite/blacklist actions --}}
-<div class="catalog-mobile-list d-md-none p-3">
-    @forelse($sites as $site)
-        @php
-            $isBlacklisted = in_array($site->id, $blacklist);
-            $isFavorited = in_array($site->id, $favorites);
-            $isNew = $site->created_at->gt(now()->subDays(30));
-            $ratingCompact = $site->catalogRatingCompactLabel();
-            $completionCompact = $site->catalogCompletionCompactLabel();
-            $metricsFreshness = $site->metricsFreshnessState();
-            $metricsUpdatedLabel = $site->lastUpdatedLabel();
-            $rawHost = (string) Str::of($site->site_url)
-                ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-                ->before('/');
-            $hostParts = explode('.', $rawHost);
-            if (count($hostParts) >= 2) {
-                $tld = array_pop($hostParts);
-                $namePart = implode('.', $hostParts);
-                $visibleLen = min(4, max(2, strlen($namePart)));
-                $maskedHost = substr($namePart, 0, $visibleLen) . '***.' . $tld;
-            } else {
-                $maskedHost = substr($rawHost, 0, 3) . '******';
-            }
-            $mobileCategory = is_array($site->categories) && count($site->categories)
-                ? $site->categories[0]
-                : ($site->category ?? '—');
-            if (is_string($mobileCategory) && str_contains($mobileCategory, ',')) {
-                $mobileCategory = trim(explode(',', $mobileCategory)[0]);
-            }
-        @endphp
-        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}{{ $metricsFreshness === 'stale' ? ' metrics-stale' : '' }}" data-id="{{ $site->id }}">
-            <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
-                <div class="min-w-0">
-                    <div class="fw-semibold text-dark text-truncate catalog-site-url" id="url-masked-mobile-{{ $site->id }}">{{ $maskedHost }}</div>
-                    <div class="url-full text-muted small d-none text-truncate" id="url-full-mobile-{{ $site->id }}">{{ $rawHost }}</div>
-                    <div class="d-flex flex-wrap align-items-center gap-1 mt-1">
-                        @if($site->verified)
-                            <span class="site-chip site-chip--verified"><i class="fa-solid fa-circle-check" aria-hidden="true"></i><span>Verified</span></span>
-                        @endif
-                        @if($isNew)
-                            <span class="site-badge-new" aria-label="New listing">NEW</span>
-                        @endif
-                        @if($site->isFeatured())
-                            <span class="site-chip site-chip--featured"><i class="fa-solid fa-bolt" aria-hidden="true"></i><span>Featured</span></span>
-                        @endif
-                        <span class="category-badge">{{ $mobileCategory }}</span>
-                    </div>
-                    <div class="site-trust-row site-trust-row--mobile mt-2" aria-label="Trust signals">
-                        @if($ratingCompact)
-                            <span class="site-trust-chip site-trust-chip--rating" title="{{ $site->ratingStarsLabel() }}">
-                                <i class="fa-solid fa-star" aria-hidden="true"></i>
-                                <span>{{ $ratingCompact }}</span>
-                            </span>
-                        @else
-                            <span class="site-trust-chip site-trust-chip--muted" title="No advertiser ratings yet">
-                                <i class="fa-regular fa-star" aria-hidden="true"></i>
-                                <span>New</span>
-                            </span>
-                        @endif
-                        @if($completionCompact)
-                            <span class="site-trust-chip site-trust-chip--completion">{{ $completionCompact }}</span>
-                        @endif
-                        @if($metricsFreshness === 'fresh' && $metricsUpdatedLabel)
-                            <span class="site-trust-chip site-trust-chip--fresh">Updated {{ $metricsUpdatedLabel }}</span>
-                        @elseif($metricsFreshness === 'stale')
-                            <span class="site-trust-chip site-trust-chip--stale">Metrics outdated</span>
-                        @endif
-                    </div>
-                </div>
-                <button type="button"
-                        class="btn btn-sm btn-link text-secondary p-0 toggle-url btn-icon-quiet"
-                        data-id="{{ $site->id }}"
-                        data-url-prefix="mobile"
-                        aria-label="Reveal or hide full URL">
-                    <i class="fa-regular fa-eye" aria-hidden="true"></i>
-                </button>
-            </div>
-            @php
-                $mobileCountry = $site->primaryCountryCode() ?: $site->country;
-            @endphp
-            <div class="catalog-mobile-metrics">
-                <div><span class="text-muted">Traffic</span><strong>{{ number_format($site->traffic) }}</strong></div>
-                <div><span class="text-muted">DR</span><strong>{{ $site->dr }}</strong></div>
-                <div><span class="text-muted">DA</span><strong>{{ $site->da }}</strong></div>
-                <div><span class="text-muted">Country</span><strong>{!! getCountryFlag($mobileCountry) !!} {{ fullCountry($mobileCountry) }}</strong></div>
-            </div>
-            <div class="d-flex align-items-center gap-2 mt-3">
-                <button class="btn btn-sm btn-primary buy-now flex-grow-1 d-inline-flex justify-content-center align-items-center gap-2"
-                        data-id="{{ $site->id }}"
-                        data-base-price="{{ $site->price }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="Buy placement for {{ $site->site_name }}">
-                    <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
-                    <span>Buy</span>
-                    <span class="fw-semibold base-price-display">€{{ number_format($site->price, 2) }}</span>
-                </button>
-                <button type="button"
-                        class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
-                    <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
-                </button>
-                <button type="button"
-                        class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
-                    <i class="fa-solid fa-ban" aria-hidden="true"></i>
-                </button>
-            </div>
-        </article>
-    @empty
-        <div class="catalog-empty-state mx-auto text-center py-4">
-            <div class="catalog-empty-icon" aria-hidden="true"><i class="fa-solid fa-filter-circle-xmark"></i></div>
-            <h5 class="mb-2">{{ $hasActiveFilters ? 'No sites match these filters' : 'No publishers available yet' }}</h5>
-            <p class="text-muted mb-3">
-                {{ $hasActiveFilters
-                    ? 'Try broader filters — clear a category, widen price, or remove DA/DR limits.'
-                    : 'New verified sites show up here as publishers list them.' }}
-            </p>
-            @if($hasActiveFilters)
-                <div class="d-flex flex-wrap justify-content-center gap-2">
-                    <a href="{{ route('advertiser.catalog') }}" class="btn btn-primary btn-sm">Clear all filters</a>
-                    <button type="button" class="btn btn-outline-success btn-sm btn-suggest-website"
-                            data-search="{{ request('search') }}">
-                        <i class="fa-solid fa-lightbulb me-1"></i> Suggest a website
-                    </button>
-                </div>
-            @endif
-        </div>
-    @endforelse
-</div>
-
-                    <!-- Pagination -->
-                    <div class="d-flex justify-content-center mt-4 pb-3">
-                        {{ $sites->links() }}
-                    </div>
-
-                </div>
-            </div>
-    
         </div>
     </div>
 
 </div>
-
-<style>
-.table {
-    border-radius: 12px;
-    overflow: hidden;
-}
-
-.table thead th {
-    border-bottom: 2px solid #e9ecef;
-    font-weight: 600;
-    font-size: 0.85rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: #495057;
-    padding: var(--table-head-y, 14px) var(--table-cell-x, 12px);
-}
-
-.table tbody td {
-    padding: var(--table-cell-y, 16px) var(--table-cell-x, 12px);
-    vertical-align: middle;
-    border-bottom: 1px solid #f0f0f0;
-}
-
-thead th {
-    text-align: center;
-}
-
-.catalog-th {
-    white-space: nowrap;
-    vertical-align: middle;
-}
-
-.catalog-th-label {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    line-height: 1.2;
-}
-
-.catalog-th-label .glass-tip-trigger {
-    margin-left: 2px;
-    transform: translateY(-0.5px);
-}
-
-.catalog-stat-cell {
-    text-align: center !important;
-    vertical-align: middle;
-}
-
-.catalog-stat {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    min-width: 4.5rem;
-    line-height: 1.2;
-}
-
-.catalog-stat .fw-semibold {
-    font-variant-numeric: tabular-nums;
-    font-size: 0.95rem;
-}
-
-.categories-wrapper {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-}
-
-.categories-wrapper .categories-column {
-    align-items: center;
-}
-
-.categories-wrapper .toggle-cats-btn {
-    text-align: center;
-}
-
-.table tbody tr.site-row {
-    transition: background-color 0.2s ease;
-    cursor: pointer;
-}
-
-.table tbody tr.site-row:hover {
-    background-color: #f5f9ff !important;
-}
-
-.table tbody tr.blacklisted-row:hover {
-    background-color: #ffe6e6 !important;
-}
-
-.table tbody tr[class*="expanded-row"]:hover {
-    background-color: #f9f9f9 !important;
-}
-
-.btn-link {
-    text-decoration: none;
-}
-
-.btn-link:hover {
-    background-color: #f1f3f5;
-    border-radius: 4px;
-}
-
-.badge {
-    font-size: 0.75rem;
-    font-weight: 500;
-}
-
-.favorite-btn.btn-danger {
-    background-color: #dc3545 !important;
-    color: white !important;
-}
-
-.blacklist-btn.btn-dark {
-    background-color: #6c757d !important;
-    color: white !important;
-}
-
-.buy-now:hover {
-    background-color: #0b6266 !important;
-}
-
-.rotate-arrow {
-    transform: rotate(180deg);
-}
-
-@media (max-width: 768px) {
-    .btn-sm {
-        font-size: 0.75rem;
-    }
-
-    .catalog-filters-card .card-body {
-        padding-top: 0.85rem;
-        padding-bottom: 0.85rem;
-    }
-}
-
-.catalog-mobile-card {
-    border: 1px solid #e2e8f0;
-    border-radius: 12px;
-    background: #fff;
-    padding: 14px;
-    margin-bottom: 12px;
-}
-.catalog-mobile-card.is-blacklisted {
-    opacity: 0.75;
-    background: #fff8f8;
-}
-.catalog-mobile-metrics {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 8px;
-    padding: 10px 0 0;
-    border-top: 1px solid #f1f5f9;
-}
-.catalog-mobile-metrics > div {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    font-size: 12px;
-}
-.catalog-mobile-metrics strong {
-    font-size: 13px;
-    color: #0f172a;
-}
-
-#filterForm input[type="number"]::-webkit-inner-spin-button,
-#filterForm input[type="number"]::-webkit-outer-spin-button {
-    opacity: 0.5;
-}
-
-.form-control-sm, .form-select-sm {
-    font-size: 0.875rem;
-}
-
-.sensitive-price-checkbox {
-    background-color: #3aaeb2;
-    cursor: pointer;
-}
-
-.sensitive-prices-group .form-check {
-    margin-bottom: 8px;                         
-}
-
-.selected-price-info {
-    font-size: 0.875rem;
-    padding: 5px 0;
-    border-top: 1px solid #e9ecef;
-}
-
-/* Result-first inventory teaser */
-.catalog-inventory-teaser {
-    padding: 0.65rem 0.85rem;
-    border: 1px solid #d9ecec;
-    border-radius: 10px;
-    background: linear-gradient(180deg, #f4fbfb 0%, #ffffff 100%);
-}
-
-.site-preview-zoom {
-    width: 100%;
-    max-width: 260px;
-    margin: 0 auto;
-    border-radius: 12px;
-    overflow: hidden;
-    border: 1px solid #e2e8f0;
-    box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
-    background: #f8fafc;
-    aspect-ratio: 16 / 10;
-}
-.site-preview-zoom img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    object-position: center top;
-    display: block;
-    transition: transform .45s cubic-bezier(.22, 1, .36, 1);
-    will-change: transform;
-}
-.site-preview-zoom:hover img {
-    transform: scale(1.12);
-}
-.site-preview-zoom.is-broken { display: none; }
-.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }
-.site-preview-fallback {
-    width: 180px;
-    height: 120px;
-    margin: 0 auto;
-}
-.site-trust-compact {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px 8px;
-    font-size: 11px;
-    line-height: 1.3;
-    color: #64748b;
-}
-.site-trust-compact__stars {
-    display: inline-flex;
-    align-items: center;
-    gap: 2px;
-    color: #f59e0b;
-    font-size: 11px;
-}
-.site-trust-compact__stars .fa-regular { color: #cbd5e1; }
-.site-trust-compact__score {
-    margin-left: 4px;
-    color: #475569;
-    font-weight: 600;
-}
-.site-trust-compact__count {
-    font-weight: 500;
-    color: #94a3b8;
-}
-.site-trust-compact__sep { color: #cbd5e1; }
-.site-trust-compact__orders {
-    color: #0b6266;
-    font-weight: 600;
-}
-.site-trust-compact__fresh {
-    color: #64748b;
-    font-weight: 500;
-}
-.site-trust-compact__stale {
-    color: #b45309;
-    font-weight: 600;
-}
-
-.site-trust-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin-top: 6px;
-}
-.site-trust-row--mobile {
-    margin-top: 8px;
-}
-.site-trust-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 2px 7px;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.3;
-    border: 1px solid #e2e8f0;
-    background: #f8fafc;
-    color: #475569;
-    white-space: nowrap;
-}
-.site-trust-chip--rating {
-    color: #b45309;
-    border-color: #fde68a;
-    background: #fffbeb;
-}
-.site-trust-chip--rating i { font-size: 10px; }
-.site-trust-chip--completion {
-    color: #0b6266;
-    border-color: #cce8e9;
-    background: #f0fafa;
-}
-.site-trust-chip--fresh {
-    color: #64748b;
-    font-weight: 500;
-}
-.site-trust-chip--stale {
-    color: #9a3412;
-    border-color: #fed7aa;
-    background: #fff7ed;
-}
-.site-trust-chip--muted {
-    color: #94a3b8;
-    font-weight: 500;
-}
-.site-row.metrics-stale .catalog-stat,
-.catalog-mobile-card.metrics-stale .catalog-mobile-metrics strong {
-    opacity: 0.55;
-}
-
-.catalog-bulk-section .bulk-deal-card {
-    border: 1px solid #d9ecec;
-    border-radius: 12px;
-    padding: 12px;
-    background: linear-gradient(180deg, #f4fbfb 0%, #fff 100%);
-}
-.site-chip--featured {
-    background: #fff7e6;
-    color: #b45309;
-    border: 1px solid #fde68a;
-}
-.site-chip--sale {
-    background: #fef2f2;
-    color: #b91c1c;
-    border: 1px solid #fecaca;
-}
-.site-chip--bulk {
-    background: #ecfdf5;
-    color: #047857;
-    border: 1px solid #a7f3d0;
-}
-
-/* Results toolbar + empty recovery */
-.catalog-results-bar {
-    padding: 0.15rem 0.1rem;
-}
-.catalog-empty-state {
-    max-width: 420px;
-    padding: 0.5rem 1rem 1rem;
-}
-.catalog-empty-icon {
-    width: 52px;
-    height: 52px;
-    margin: 0 auto 0.85rem;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    background: var(--brand-primary-bg, #e8f8f7);
-    color: var(--brand-primary, #0b6266);
-    font-size: 1.25rem;
-}
-
-/* Sticky Buy column while browsing wide tables */
-.catalog-table-scroll {
-    overflow-x: auto;
-}
-.catalog-th-action,
-.catalog-td-action {
-    position: sticky;
-    right: 0;
-    z-index: 2;
-    background: #fff;
-    box-shadow: -8px 0 12px -10px rgba(15, 23, 42, 0.28);
-}
-.catalog-th-action {
-    z-index: 3;
-    background: #f8fafc;
-}
-
-/* Site column — status chips (Verified / New / Blacklisted) */
-.catalog-site-cell {
-    position: relative;
-}
-
-.catalog-site-stack {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
-.catalog-site-url {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-weight: 600;
-    font-size: 13.5px;
-}
-
-.catalog-site-meta {
-    font-size: 12.5px;
-}
-
-/* Compact NEW pill — brand teal, gentle pulse (beside site title) */
-.site-badge-new {
-    position: static;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    height: 20px;
-    padding: 0 8px;
-    border: 0;
-    border-radius: 999px;
-    background: var(--brand-primary, #0b6266);
-    color: #fff;
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0.06em;
-    line-height: 1;
-    cursor: help;
-    user-select: none;
-    outline: none;
-    box-shadow: 0 1px 3px rgba(11, 98, 102, 0.22);
-    animation: siteNewPulse 2s ease-in-out infinite;
-    flex-shrink: 0;
-}
-
-.site-badge-new:hover,
-.site-badge-new:focus-visible,
-.site-badge-new.is-open {
-    background: var(--brand-primary-soft, #3aaeb2);
-}
-
-.site-badge-new:focus-visible {
-    box-shadow: 0 0 0 3px rgba(58, 174, 178, 0.28);
-}
-
-@keyframes siteNewPulse {
-    0%, 100% {
-        transform: scale(1);
-        opacity: 1;
-    }
-    50% {
-        transform: scale(1.06);
-        opacity: 0.82;
-    }
-}
-
-.site-status-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    margin-top: 2px;
-}
-
-.site-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 5px;
-    height: 22px;
-    padding: 0 9px;
-    border: 1px solid transparent;
-    border-radius: 999px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-    line-height: 1;
-    white-space: nowrap;
-    transition: transform 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-    cursor: help;
-    user-select: none;
-    background: transparent;
-}
-
-button.site-chip {
-    margin: 0;
-    font-family: inherit;
-}
-
-.site-chip i {
-    font-size: 11px;
-    line-height: 1;
-}
-
-.site-chip:hover {
-    transform: translateY(-1px);
-}
-
-.site-chip--verified {
-    background: linear-gradient(180deg, #ecfdf5 0%, #d1fae5 100%);
-    color: #0f766e;
-    border-color: rgba(15, 118, 110, 0.22);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.site-chip--verified:hover,
-.site-chip--verified:focus-visible {
-    box-shadow: 0 2px 8px rgba(15, 118, 110, 0.14);
-}
-
-.site-chip--verified i {
-    color: #0d9488;
-}
-
-.site-chip--blacklist {
-    background: linear-gradient(180deg, #fff5f5 0%, #fee2e2 100%);
-    color: #b91c1c;
-    border-color: rgba(220, 38, 38, 0.22);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
-}
-
-.site-chip--blacklist:hover {
-    box-shadow: 0 2px 8px rgba(220, 38, 38, 0.12);
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .site-badge-new {
-        animation: none !important;
-    }
-}
-
-/* Legacy pulse-dot kept inert if referenced elsewhere */
-.pulse-dot {
-    width: 6px;
-    height: 6px;
-    background-color: currentColor;
-    border-radius: 50%;
-    position: relative;
-    display: none;
-}
-
-/* Outer pulse ring */
-.pulse-dot::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.6);
-    animation: pulse-ring 1.6s infinite ease-out;
-}
-
-/* Category */
-.category-tile {
-    transition: all 0.3s ease;
-}
-
-.btn-toggle-categories {
-    transition: all 0.2s ease;
-}
-
-.btn-toggle-categories:hover {
-    text-decoration: underline !important;
-}
-
-/* For the grid version */
-.categories-grid {
-    transition: all 0.3s ease;
-}
-
-.category-item {
-    transition: all 0.2s ease;
-}
-
-
-.no-spinner::-webkit-inner-spin-button,
-.no-spinner::-webkit-outer-spin-button {
-    -webkit-appearance: none;
-    margin: 0;
-}
-
-.no-spinner {
-    -moz-appearance: textfield;
-}
-
-/* Multi-select Styles - Matching Bootstrap exactly */
-.multi-select-wrapper {
-    position: relative;
-    width: 100%;
-}
-
-.multi-select-input {
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    cursor: pointer !important;
-    padding-right: 2.25rem !important;
-}
-
-.multi-select-input .selected-items {
-    flex: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-    align-items: center;
-    min-height: 23px;
-}
-
-.multi-select-input .placeholder-text {
-    color: #6c757d;
-    font-size: 0.875rem;
-}
-
-.selected-tag {
-    background-color: #3aaeb2;
-    color: #495057;
-    border-radius: 4px;
-    padding: 2px 6px;
-    font-size: 0.75rem;
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.selected-tag .remove-tag {
-    cursor: pointer;
-    font-weight: bold;
-    margin-left: 4px;
-    color: #6c757d;
-}
-
-.selected-tag .remove-tag:hover {
-    color: #dc3545;
-}
-
-.multi-select-dropdown {
-    position: absolute;
-    top: 100%;
-    left: 0;
-    right: 0;
-    background: white;
-    border: 1px solid #ced4da;
-    border-radius: 0.2rem;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
-    z-index: 1000;
-    max-height: 280px;
-    overflow-y: auto;
-    display: none;
-    margin-top: 4px;
-}
-
-.multi-select-dropdown.show {
-    display: block;
-}
-
-.multi-select-dropdown .search-box {
-    padding: 8px 10px;
-    border-bottom: 1px solid #dee2e6;
-    position: sticky;
-    top: 0;
-    background: white;
-    z-index: 1;
-}
-
-.multi-select-dropdown .search-box i {
-    position: absolute;
-    left: 18px;
-    top: 50%;
-    transform: translateY(-50%);
-    color: #3aaeb2;
-    font-size: 12px;
-    z-index: 2;
-}
-
-.multi-select-dropdown .search-box input {
-    padding-left: 28px;
-    
-}
-
-.options-list {
-    max-height: 220px;
-    overflow-y: auto;
-}
-
-.option-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    transition: background 0.15s ease;
-    margin: 0;
-}
-
-.option-item:hover {
-    background-color: #3aaeb2;
-}
-
-.option-item input[type="checkbox"] {
-    margin: 0;
-    cursor: pointer;
-    width: 14px;
-    height: 14px;
-}
-
-.option-item span {
-    font-size: 0.875rem;
-    color: #212529;
-    cursor: pointer;
-}
-
-/* Ensure chevron icon is positioned correctly */
-.multi-select-input i {
-    position: absolute;
-    right: 0.75rem;
-    top: 50%;
-    transform: translateY(-50%);
-    pointer-events: none;
-    font-size: 0.75rem;
-    color: #6c757d;
-}
-
-.categories-column {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-}
-
-.category-badge {
-    background: #e8f8f7;
-    color: #0b6266;
-    border: 1px solid #b8e8e6;
-    border-radius: 6px;
-    padding: 4px 10px;
-    font-size: 10px;
-    font-weight: 500;
-    line-height: 1.2;
-    width: fit-content;
-    max-width: 100%;
-}
-
-.toggle-cats-btn {
-    background: none;
-    border: none;
-    color: #0b6266;
-    font-size: 10px;
-    font-weight: 600;
-    cursor: pointer;
-    padding: 4px 0 0;
-    text-align: left;
-}
-
-.toggle-cats-btn:hover {
-    text-decoration: underline;
-}
-
-
-/* Update the CSS styles - remove border colors from normal state, add on hover/focus */
-
-/* Only show borders on hover/focus for form controls */
-.form-control, 
-.form-select,
-.multi-select-input {
-    border-color: #ced4da;
-    transition: all 0.2s ease;
-}
-
-.form-control:hover, 
-.form-select:hover,
-.multi-select-input:hover {
-    border-color: #3aaeb2;
-}
-
-.form-control:focus, 
-.form-select:focus,
-.multi-select-input:focus-within {
-    border-color: #3aaeb2 !important;
-    box-shadow: 0 0 0 0.2rem rgba(58, 174, 178, 0.25) !important;
-}
-
-/* Multi-select dropdown styles */
-.option-item {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 6px 12px;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    margin: 0;
-}
-
-.option-item:hover {
-    background-color: #3aaeb2 !important;
-}
-
-.option-item:hover span {
-    color: white !important;
-}
-
-/* Checkbox styling */
-.option-item input[type="checkbox"] {
-    accent-color: #3aaeb2;
-    cursor: pointer;
-    width: 14px;
-    height: 14px;
-}
-
-.form-check-input:checked {
-    background-color: #3aaeb2 !important;
-    border-color: #3aaeb2 !important;
-}
-
-.form-check-input:focus {
-    border-color: #3aaeb2 !important;
-    box-shadow: 0 0 0 0.2rem rgba(58, 174, 178, 0.25) !important;
-}
-
-/* Selected tags */
-.selected-tag {
-    background-color: #3aaeb2;
-    color: white;
-}
-
-.selected-tag .remove-tag {
-    color: white;
-}
-
-.selected-tag .remove-tag:hover {
-    color: #ffcccc;
-}
-
-/* Dropdown chevron icon */
-.multi-select-input i {
-    color: #6c757d;
-}
-
-.multi-select-input:hover i {
-    color: #3aaeb2;
-}
-
-/* Search icon in dropdown */
-.multi-select-dropdown .search-box i {
-    color: #3aaeb2;
-}
-
-/* Sponsored, Favorites, Blacklist select dropdown options background - Updated */
-select.form-select option:hover,
-select.form-select option:focus,
-select.form-select option:active {
-    background-color: #3aaeb2 !important;
-    color: white !important;
-}
-
-/* Style for select dropdown when focused */
-select.form-select:focus {
-    border-color: #3aaeb2 !important;
-    box-shadow: 0 0 0 0.2rem rgba(58, 174, 178, 0.25) !important;
-}
-
-/* For the select options background in different browsers */
-select.form-select option {
-    transition: background-color 0.2s ease;
-    background-color: white;
-    color: #212529;
-}
-
-/* Chrome/Safari/Edge - selected and hover states */
-select.form-select option:checked,
-select.form-select option:hover {
-    background: #3aaeb2 !important;
-    background-color: #3aaeb2 !important;
-    color: white !important;
-}
-
-/* Firefox specific */
-@-moz-document url-prefix() {
-    select.form-select option:checked,
-    select.form-select option:hover {
-        background-color: #3aaeb2 !important;
-        color: white !important;
-    }
-}
-
-/* For when the select is opened and options are hovered */
-select.form-select[size] option:hover,
-select.form-select[multiple] option:hover {
-    background-color: #3aaeb2 !important;
-    color: white !important;
-}
-
-/* Style the select dropdown arrow on hover */
-select.form-select:hover {
-    border-color: #3aaeb2;
-    cursor: pointer;
-}
-
-/* Custom dropdown styling for better hover effect */
-select.form-select {
-    cursor: pointer;
-    transition: all 0.2s ease;
-}
-
-select.form-select option {
-    padding: 8px 12px;
-    cursor: pointer;
-}
-
-/* Style the dropdown when opened */
-select.form-select:focus option:hover {
-    background: #3aaeb2 linear-gradient(0deg, #3aaeb2 0%, #3aaeb2 100%);
-    color: white;
-}
-
-/* Additional style for the select element hover state */
-select.form-select:focus option:checked {
-    background: #3aaeb2 linear-gradient(0deg, #3aaeb2 0%, #3aaeb2 100%);
-    color: white;
-}
-
-/* Animation */
-@keyframes pulse-ring {
-    0% {
-        transform: scale(1);
-        opacity: 0.8;
-    }
-    70% {
-        transform: scale(2.5);
-        opacity: 0;
-    }
-    100% {
-        opacity: 0;
-    }
-}
-</style>
 
 <script>
-// Initialize favorites and blacklist from database
-let favorites = @json($favorites);
-let blacklist = @json($blacklist);
-
-// Multi-select variables
-let selectedMultiFilters = {
-    category: [],
-    country: [],
-    language: []
+window.CatalogConfig = {
+    favorites: @json($favorites ?? []),
+    blacklist: @json($blacklist ?? []),
+    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', ''))),
+    categoryNames: @json(array_values($siteCategories ?? [])),
+    countryParam: @json((string) request('country', '')),
+    languageParam: @json((string) request('language', '')),
+    countryLanguageMap: @json(app(\App\Services\Marketplace\CountryLanguagePairs::class)->mapWithNames()),
+    countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
+    countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),
+    favoritesFilter: @json(request('favorites_filter') == '1'),
+    blacklistFilter: @json(request('blacklist_filter') == '1'),
+    csrfToken: @json(csrf_token()),
+    contactEmail: @json(auth()->user()->email ?? ''),
+    inCatalogHideMode: @json(auth()->user()?->inCatalogHideMode() ?? false),
+    catalogHideUntil: @json(optional(auth()->user()?->catalog_hide_until)->toIso8601String()),
+    // URL is the source of truth for listing state (Phase 2).
+    catalogPath: @json(parse_url(route('advertiser.catalog'), PHP_URL_PATH)),
+    queryKeys: @json(\App\Services\Catalog\CatalogUrlQuery::KEYS),
+    defaultSort: @json(\App\Services\Catalog\CatalogUrlQuery::DEFAULT_SORT),
+    // Phase 7 kill switch — false falls back to full page navigations.
+    liveSearch: @json((bool) config('catalog.live_search.enabled', true)),
+    routes: {
+        results: @json(route('advertiser.catalog.results')),
+        bulkDeals: @json(route('advertiser.catalog.bulk-deals')),
+        favoritesSave: @json(route('advertiser.favorites.save')),
+        blacklistSave: @json(route('advertiser.blacklist.save')),
+        websiteSuggestionsStore: @json(route('advertiser.website-suggestions.store')),
+        siteClaim: @json(route('advertiser.sites.claim')),
+        siteClaimsIndex: @json(route('site-claims.index')),
+        revealUrl: @json(route('advertiser.catalog.reveal-url', ['site' => '__SITE__'])),
+        hideUrl: @json(route('advertiser.catalog.hide-url', ['site' => '__SITE__'])),
+        copyTrack: @json(route('advertiser.catalog.copy-track')),
+        // Kept for a future quick-jump UI; typing search uses live /results rows.
+        suggest: @json(route('advertiser.catalog.suggest')),
+        catalog: @json(route('advertiser.catalog'))
+    }
 };
-
-// Initialize from URL parameters
-@php
-    $categoryParam = request('category', '');
-    $countryParam = request('country', '');
-    $languageParam = request('language', '');
-@endphp
-
-if ('{{ $categoryParam }}') {
-    selectedMultiFilters.category = '{{ $categoryParam }}'.split(',').filter(function(v) { return v; });
-}
-if ('{{ $countryParam }}') {
-    selectedMultiFilters.country = '{{ $countryParam }}'.split(',').filter(function(v) { return v; });
-}
-if ('{{ $languageParam }}') {
-    selectedMultiFilters.language = '{{ $languageParam }}'.split(',').filter(function(v) { return v; });
-}
-
-function closeAllMultiDropdowns(exceptId) {
-    var dropdowns = document.querySelectorAll('.multi-select-dropdown');
-    for (var i = 0; i < dropdowns.length; i++) {
-        if (exceptId && dropdowns[i].id === exceptId) continue;
-        dropdowns[i].classList.remove('show');
-        var otherTrigger = dropdowns[i].previousElementSibling;
-        if (otherTrigger) otherTrigger.setAttribute('aria-expanded', 'false');
-    }
-}
-
-function getVisibleMultiOptions(dropdown) {
-    return Array.prototype.slice.call(dropdown.querySelectorAll('.option-item')).filter(function (el) {
-        return el.style.display !== 'none';
-    });
-}
-
-function focusMultiOption(dropdown, index) {
-    var options = getVisibleMultiOptions(dropdown);
-    if (!options.length) return;
-    var i = ((index % options.length) + options.length) % options.length;
-    options.forEach(function (el) { el.classList.remove('is-keyboard-focus'); });
-    options[i].classList.add('is-keyboard-focus');
-    var input = options[i].querySelector('input');
-    if (input) input.focus({ preventScroll: false });
-    options[i].scrollIntoView({ block: 'nearest' });
-    dropdown.dataset.focusIndex = String(i);
-}
-
-function toggleMultiDropdown(dropdownId, triggerEl) {
-    if (typeof event !== 'undefined' && event) event.stopPropagation();
-    closeAllMultiDropdowns(dropdownId);
-    var dropdown = document.getElementById(dropdownId);
-    if (!dropdown) return;
-    var willOpen = !dropdown.classList.contains('show');
-    dropdown.classList.toggle('show', willOpen);
-    if (triggerEl) triggerEl.setAttribute('aria-expanded', willOpen ? 'true' : 'false');
-    if (willOpen) {
-        var searchInput = dropdown.querySelector('.search-box input');
-        if (searchInput) {
-            searchInput.value = '';
-            var list = dropdown.querySelector('.options-list');
-            if (list) filterMultiOptions(list.id, '');
-            setTimeout(function () { searchInput.focus(); }, 10);
-        }
-        dropdown.dataset.focusIndex = '-1';
-    }
-}
-
-document.addEventListener('keydown', function (e) {
-    var openDropdown = document.querySelector('.multi-select-dropdown.show');
-    var trigger = e.target.closest && e.target.closest('.multi-select-input');
-
-    if (trigger && (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown')) {
-        e.preventDefault();
-        var wrapper = trigger.closest('.multi-select-wrapper');
-        var dropdown = wrapper ? wrapper.querySelector('.multi-select-dropdown') : null;
-        if (dropdown) toggleMultiDropdown(dropdown.id, trigger);
-        return;
-    }
-
-    if (!openDropdown) return;
-
-    if (e.key === 'Escape') {
-        e.preventDefault();
-        openDropdown.classList.remove('show');
-        var openTrigger = openDropdown.previousElementSibling;
-        if (openTrigger) {
-            openTrigger.setAttribute('aria-expanded', 'false');
-            openTrigger.focus();
-        }
-        return;
-    }
-
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        e.preventDefault();
-        var current = parseInt(openDropdown.dataset.focusIndex || '-1', 10);
-        focusMultiOption(openDropdown, e.key === 'ArrowDown' ? current + 1 : current - 1);
-        return;
-    }
-
-    if (e.key === 'Enter' && e.target && e.target.matches && e.target.matches('.option-item input, .option-item')) {
-        // native checkbox toggle via Enter on focused input
-        return;
-    }
-});
-
-function filterMultiOptions(optionsId, searchTerm) {
-    var options = document.getElementById(optionsId);
-    if (!options) return;
-    var optionItems = options.querySelectorAll('.option-item');
-    var term = (searchTerm || '').toLowerCase().trim();
-    var visible = 0;
-
-    for (var i = 0; i < optionItems.length; i++) {
-        var option = optionItems[i];
-        var text = (option.querySelector('span') ? option.querySelector('span').textContent : '').toLowerCase();
-        var code = (option.querySelector('input') ? option.querySelector('input').value : '').toLowerCase();
-        var match = term === '' || text.indexOf(term) !== -1 || code.indexOf(term) !== -1;
-        option.style.display = match ? 'flex' : 'none';
-        if (match) visible++;
-    }
-
-    var empty = options.parentElement ? options.parentElement.querySelector('.multi-select-empty') : null;
-    if (empty) empty.classList.toggle('d-none', visible > 0);
-}
-
-function updateMultiFilter(checkbox) {
-    var type = checkbox.getAttribute('data-type');
-    var value = checkbox.value;
-    
-    if (checkbox.checked) {
-        if (selectedMultiFilters[type].indexOf(value) === -1) {
-            selectedMultiFilters[type].push(value);
-        }
-    } else {
-        var newArray = [];
-        for (var i = 0; i < selectedMultiFilters[type].length; i++) {
-            if (selectedMultiFilters[type][i] !== value) {
-                newArray.push(selectedMultiFilters[type][i]);
-            }
-        }
-        selectedMultiFilters[type] = newArray;
-    }
-    
-    // Update display
-    updateMultiDisplay(type);
-}
-
-function updateMultiDisplay(type) {
-    var container = document.getElementById('selected' + type.charAt(0).toUpperCase() + type.slice(1) + 'sDisplay');
-    var values = selectedMultiFilters[type];
-    
-    if (!container) return;
-    
-    container.innerHTML = '';
-    
-    if (values.length === 0) {
-        container.innerHTML = '<span class="placeholder-text">Select ' + type + 's...</span>';
-        return;
-    }
-    
-    for (var i = 0; i < values.length; i++) {
-        var value = values[i];
-        var displayName = value;
-        
-        if (type === 'country') {
-            var option = document.querySelector('#countryMultiOptions input[value="' + value + '"]');
-            if (option) {
-                displayName = option.getAttribute('data-name') || value;
-            }
-        }
-        
-        if (type === 'language') {
-            var option = document.querySelector('#languageMultiOptions input[value="' + value + '"]');
-            if (option) {
-                displayName = option.getAttribute('data-name') || value;
-            }
-        }
-        
-        var tag = document.createElement('span');
-        tag.className = 'selected-tag';
-        tag.innerHTML = displayName + ' <span class="remove-tag" onclick="event.stopPropagation(); removeMultiFilter(\'' + type + '\', \'' + value + '\')">&times;</span>';
-        container.appendChild(tag);
-    }
-}
-
-function removeMultiFilter(type, value) {
-    var newArray = [];
-    for (var i = 0; i < selectedMultiFilters[type].length; i++) {
-        if (selectedMultiFilters[type][i] !== value) {
-            newArray.push(selectedMultiFilters[type][i]);
-        }
-    }
-    selectedMultiFilters[type] = newArray;
-    
-    var checkbox = document.querySelector('#' + type + 'MultiOptions input[value="' + value + '"]');
-    if (checkbox) {
-        checkbox.checked = false;
-    }
-    
-    updateMultiDisplay(type);
-}
-
-function initializeMultiSelects() {
-    // Initialize checkboxes
-    for (var i = 0; i < selectedMultiFilters.category.length; i++) {
-        var value = selectedMultiFilters.category[i];
-        var checkbox = document.querySelector('#categoryMultiOptions input[value="' + value + '"]');
-        if (checkbox) checkbox.checked = true;
-    }
-    
-    for (var i = 0; i < selectedMultiFilters.country.length; i++) {
-        var value = selectedMultiFilters.country[i];
-        var checkbox = document.querySelector('#countryMultiOptions input[value="' + value + '"]');
-        if (checkbox) checkbox.checked = true;
-    }
-    
-    for (var i = 0; i < selectedMultiFilters.language.length; i++) {
-        var value = selectedMultiFilters.language[i];
-        var checkbox = document.querySelector('#languageMultiOptions input[value="' + value + '"]');
-        if (checkbox) checkbox.checked = true;
-    }
-    
-    // Update displays
-    updateMultiDisplay('category');
-    updateMultiDisplay('country');
-    updateMultiDisplay('language');
-}
-
-function submitCatalogFilters() {
-    document.getElementById('selectedCategory').value = selectedMultiFilters.category.join(',');
-    document.getElementById('selectedCountry').value = selectedMultiFilters.country.join(',');
-    document.getElementById('selectedLanguage').value = selectedMultiFilters.language.join(',');
-    document.getElementById('filterForm').submit();
-}
-
-// Apply Filters button - submit the form with all selected values
-document.getElementById('applyFiltersBtn').addEventListener('click', function() {
-    submitCatalogFilters();
-});
-
-// Favorites / Blacklist selects apply immediately so heart & block workflows are obvious
-['favorites_filter', 'blacklist_filter'].forEach(function (name) {
-    const select = document.querySelector('select[name="' + name + '"]');
-    if (!select) return;
-    select.addEventListener('change', function () {
-        submitCatalogFilters();
-    });
-});
-
-// Close dropdown when clicking outside
-document.addEventListener('click', function(event) {
-    if (!event.target.closest('.multi-select-wrapper')) {
-        var dropdowns = document.querySelectorAll('.multi-select-dropdown');
-        for (var i = 0; i < dropdowns.length; i++) {
-            if (dropdowns[i]) {
-                dropdowns[i].classList.remove('show');
-            }
-        }
-    }
-});
-
-// Initialize multi-selects on page load
-initializeMultiSelects();
-
-// Store selected sensitive price additional amount for each site
-let selectedSensitiveAdditionalPrice = {};
-
-// Toast function
-function showToast(message, type = 'success') {
-    const toastEl = document.getElementById('toastMessage');
-    if (toastEl) {
-        const toastBody = document.getElementById('toastMessageBody');
-        toastBody.innerText = message;
-        
-        if (type === 'success') {
-            toastEl.classList.remove('bg-danger', 'bg-warning');
-            toastEl.classList.add('bg-success');
-        } else if (type === 'error') {
-            toastEl.classList.remove('bg-success', 'bg-warning');
-            toastEl.classList.add('bg-danger');
-        } else if (type === 'warning') {
-            toastEl.classList.remove('bg-success', 'bg-danger');
-            toastEl.classList.add('bg-warning');
-        }
-        
-        const toast = new bootstrap.Toast(toastEl, { delay: 3000 });
-        toast.show();
-    } else {
-        alert(message);
-    }
-}
-
-// Update cart badge
-function updateCartBadge() {
-    if (typeof window.updateCartBadge === 'function') {
-        window.updateCartBadge();
-    }
-}
-
-// Add to cart
-function addToCart(id, name, basePrice, additionalPrice = 0) {
-    let finalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
-    
-    if (typeof window.addToCart === 'function') {
-        window.addToCart(id, name, finalPrice);
-    } else {
-        window.location.reload();
-    }
-    
-    return finalPrice;
-}
-
-// Update UI for favorites and blacklist (quiet icon actions)
-function updateButtonStates() {
-    document.querySelectorAll('.favorite-btn').forEach(btn => {
-        let id = parseInt(btn.dataset.id);
-        const icon = btn.querySelector('i');
-        if (favorites.includes(id)) {
-            btn.classList.add('is-active');
-            if (icon) { icon.classList.remove('fa-regular'); icon.classList.add('fa-solid'); }
-            btn.title = 'Remove from Favorites';
-            btn.setAttribute('aria-label', 'Remove from favorites');
-        } else {
-            btn.classList.remove('is-active');
-            if (icon) { icon.classList.remove('fa-solid'); icon.classList.add('fa-regular'); }
-            btn.title = 'Add to Favorites';
-            btn.setAttribute('aria-label', 'Add to favorites');
-        }
-    });
-
-    document.querySelectorAll('.blacklist-btn').forEach(btn => {
-        let id = parseInt(btn.dataset.id);
-        if (blacklist.includes(id)) {
-            btn.classList.add('is-active');
-            btn.title = 'Remove from Blacklist';
-            btn.setAttribute('aria-label', 'Remove from blacklist');
-        } else {
-            btn.classList.remove('is-active');
-            btn.title = 'Blacklist Site';
-            btn.setAttribute('aria-label', 'Blacklist site');
-        }
-        btn.style.backgroundColor = '';
-        btn.style.color = '';
-    });
-}
-
-// Update buy button price display
-function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0) {
-    document.querySelectorAll(`.buy-now[data-id="${siteId}"]`).forEach(function (buyButton) {
-        let priceSpan = buyButton.querySelector('.base-price-display, .fw-semibold');
-        let totalPrice = parseFloat(basePrice) + parseFloat(additionalPrice);
-        if (priceSpan) {
-            priceSpan.textContent = `€${totalPrice.toFixed(2)}`;
-        }
-        buyButton.dataset.currentAdditionalPrice = additionalPrice;
-    });
-}
-
-// Patch one favorite (avoids full-array replace races across tabs)
-function toggleFavorite(siteId, active) {
-    return fetch('{{ route("advertiser.favorites.toggle") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({ site_id: siteId, active: !!active })
-    }).then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || data.error || 'Could not update favorite');
-        }
-        return data;
-    });
-}
-
-// Patch one blacklist entry (mutual exclusivity with favorites is server-enforced)
-function toggleBlacklist(siteId, active) {
-    return fetch('{{ route("advertiser.blacklist.toggle") }}', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': '{{ csrf_token() }}'
-        },
-        body: JSON.stringify({ site_id: siteId, active: !!active })
-    }).then(async (res) => {
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok || !data.success) {
-            throw new Error(data.message || data.error || 'Could not update blacklist');
-        }
-        return data;
-    });
-}
-
-function setListMembership(list, siteId, active) {
-    const id = parseInt(siteId, 10);
-    const index = list.indexOf(id);
-    if (active && index === -1) {
-        list.push(id);
-    } else if (!active && index !== -1) {
-        list.splice(index, 1);
-    }
-}
-
-function hideCatalogSite(siteId) {
-    document.querySelectorAll(`.site-row[data-id="${siteId}"], .catalog-mobile-card[data-id="${siteId}"]`).forEach((el) => {
-        el.style.transition = 'opacity 0.3s ease';
-        el.style.opacity = '0';
-        setTimeout(() => { el.style.display = 'none'; }, 300);
-    });
-    const expandedRow = document.querySelector('.expanded-row-' + siteId);
-    if (expandedRow) {
-        expandedRow.style.transition = 'opacity 0.3s ease';
-        expandedRow.style.opacity = '0';
-        setTimeout(() => { expandedRow.style.display = 'none'; }, 300);
-    }
-}
-
-function showCatalogSite(siteId) {
-    document.querySelectorAll(`.site-row[data-id="${siteId}"], .catalog-mobile-card[data-id="${siteId}"]`).forEach((el) => {
-        el.style.display = '';
-        el.style.opacity = '';
-        el.style.transition = '';
-        el.classList.remove('blacklisted-row', 'is-blacklisted');
-    });
-    const expandedRow = document.querySelector('.expanded-row-' + siteId);
-    if (expandedRow) {
-        expandedRow.style.display = '';
-        expandedRow.style.opacity = '';
-        expandedRow.style.transition = '';
-    }
-}
-
-document.addEventListener('DOMContentLoaded', function() {
-    updateButtonStates();
-
-    // Store selected sensitive price for each site
-    let selectedSensitivePrices = {};
-
-    // Handle sensitive price checkbox selection
-    document.querySelectorAll('.sensitive-prices-group').forEach(group => {
-        let siteId = group.dataset.siteId;
-        let basePrice = parseFloat(group.dataset.basePrice);
-        let checkboxes = group.querySelectorAll('.sensitive-price-checkbox');
-        
-        checkboxes.forEach(checkbox => {
-            checkbox.addEventListener('change', function(e) {
-                e.stopPropagation();
-                
-                if (!this.checked) return;
-
-                let additionalPrice = parseFloat(this.dataset.additionalPrice);
-                let totalPrice = parseFloat(this.dataset.totalPrice);
-                let priceType = this.dataset.type;
-
-                if (priceType === 'none' || additionalPrice === 0) {
-                    delete selectedSensitivePrices[siteId];
-                    updateBuyButtonPrice(siteId, basePrice, 0);
-                    let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
-                    if (priceInfoDiv) {
-                        priceInfoDiv.innerHTML = `
-                            <small class="text-muted">Current price: <strong>€${basePrice.toFixed(2)}</strong> (Base price)</small>
-                        `;
-                    }
-                    return;
-                }
-
-                selectedSensitivePrices[siteId] = {
-                    type: priceType,
-                    additionalPrice: additionalPrice,
-                    totalPrice: totalPrice
-                };
-
-                updateBuyButtonPrice(siteId, basePrice, additionalPrice);
-
-                let priceInfoDiv = document.getElementById(`price-info-${siteId}`);
-                if (priceInfoDiv) {
-                    priceInfoDiv.innerHTML = `
-                        <small class="text-muted">Base price: <strong>€${basePrice.toFixed(2)}</strong></small><br>
-                        <small class="text-success">Selected: <strong>${priceType}</strong> - Total: <strong>€${totalPrice.toFixed(2)}</strong> (+€${additionalPrice.toFixed(2)})</small>
-                    `;
-                }
-
-                showToast(`${priceType} selected: +€${additionalPrice.toFixed(2)} - Total: €${totalPrice.toFixed(2)}`, 'success');
-            });
-        });
-    });
-
-    // Toggle URL visibility (desktop table + mobile cards)
-    document.querySelectorAll('.toggle-url').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = this.dataset.id;
-            let prefix = this.dataset.urlPrefix ? this.dataset.urlPrefix + '-' : '';
-            let maskedSpan = document.getElementById('url-masked-' + prefix + id);
-            let fullSpan = document.getElementById('url-full-' + prefix + id);
-            if (!maskedSpan || !fullSpan) return;
-
-            if (maskedSpan.classList.contains('d-none')) {
-                maskedSpan.classList.remove('d-none');
-                fullSpan.classList.add('d-none');
-                this.querySelector('i').classList.remove('fa-eye-slash');
-                this.querySelector('i').classList.add('fa-eye');
-                this.setAttribute('aria-label', 'Reveal full URL');
-            } else {
-                maskedSpan.classList.add('d-none');
-                fullSpan.classList.remove('d-none');
-                this.querySelector('i').classList.remove('fa-eye');
-                this.querySelector('i').classList.add('fa-eye-slash');
-                this.setAttribute('aria-label', 'Hide full URL');
-            }
-        });
-    });
-
-    // Toggle expanded row
-    function toggleExpandRow(id, arrowElement) {
-        let expandedRow = document.querySelector('.expanded-row-' + id);
-        
-        if (expandedRow.style.display === 'none' || expandedRow.style.display === '') {
-            document.querySelectorAll('[class^="expanded-row-"]').forEach(row => {
-                if (row.style.display === 'table-row') {
-                    row.style.display = 'none';
-                    let rowId = row.className.match(/expanded-row-(\d+)/);
-                    if (rowId && rowId[1]) {
-                        let otherArrow = document.getElementById('arrow-' + rowId[1]);
-                        if (otherArrow) {
-                            otherArrow.classList.remove('rotate-arrow');
-                        }
-                    }
-                }
-            });
-            
-            expandedRow.style.display = 'table-row';
-            if (arrowElement) {
-                arrowElement.classList.add('rotate-arrow');
-                arrowElement.setAttribute('aria-expanded', 'true');
-            }
-        } else {
-            expandedRow.style.display = 'none';
-            if (arrowElement) {
-                arrowElement.classList.remove('rotate-arrow');
-                arrowElement.setAttribute('aria-expanded', 'false');
-            }
-        }
-    }
-
-    document.querySelectorAll('.site-row').forEach(row => {
-        row.addEventListener('click', function(e) {
-            if(e.target.closest('.toggle-url') || e.target.closest('.buy-now') || 
-               e.target.closest('.favorite-btn') || e.target.closest('.blacklist-btn') ||
-               e.target.closest('.copy-example-url') || e.target.closest('.expand-arrow') ||
-               e.target.closest('.sensitive-price-checkbox') || e.target.closest('a') ||
-               e.target.closest('.form-check-label')) {
-                return;
-            }
-            
-            let id = this.dataset.id;
-            let arrowElement = document.getElementById('arrow-' + id);
-            toggleExpandRow(id, arrowElement);
-        });
-    });
-
-    document.querySelectorAll('.expand-arrow').forEach(arrow => {
-        arrow.addEventListener('click', function(e) {
-            e.stopPropagation();
-            let id = this.id.replace('arrow-', '');
-            toggleExpandRow(id, this);
-        });
-    });
-
-    // Copy example URL
-    document.querySelectorAll('.copy-example-url').forEach(button => {
-        button.addEventListener('click', async function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let url = this.dataset.url;
-            
-            try {
-                await navigator.clipboard.writeText(url);
-                showToast('URL copied to clipboard!', 'success');
-                let originalText = this.innerHTML;
-                this.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
-                setTimeout(() => {
-                    this.innerHTML = originalText;
-                }, 1500);
-            } catch (err) {
-                console.error('Failed to copy:', err);
-                showToast('Failed to copy URL', 'error');
-            }
-        });
-    });
-
-    // Add to Cart
-    document.querySelectorAll('.buy-now').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            let id = parseInt(this.dataset.id);
-            let basePrice = parseFloat(this.dataset.basePrice);
-            let name = this.dataset.name;
-            
-            let sensitiveType = selectedSensitivePrices[id] ? selectedSensitivePrices[id].type : null;
-            let additionalPrice = selectedSensitivePrices[id] ? selectedSensitivePrices[id].additionalPrice : 0;
-            let finalPrice = basePrice + additionalPrice;
-            
-            if (typeof window.addToCart === 'function') {
-                window.addToCart(id, name, finalPrice, sensitiveType, additionalPrice, basePrice);
-            }
-            
-            let originalText = this.innerHTML;
-            this.innerHTML = '<i class="fa-solid fa-check"></i> Added!';
-            setTimeout(() => {
-                this.innerHTML = originalText;
-            }, 1000);
-        });
-    });
-
-    // Favorite functionality (desktop table + mobile cards stay in sync)
-    document.querySelectorAll('.favorite-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this.dataset.busy === '1') return;
-
-            let id = parseInt(this.dataset.id);
-            let name = this.dataset.name;
-            let wasFavorited = favorites.includes(id);
-            let nextFavorited = !wasFavorited;
-            let wasBlacklisted = blacklist.includes(id);
-
-            setListMembership(favorites, id, nextFavorited);
-            if (nextFavorited) {
-                setListMembership(blacklist, id, false);
-            }
-            updateButtonStates();
-
-            if (nextFavorited) {
-                showToast(`${name} added to favorites!`, 'success');
-                @if(request('blacklist_filter') == '1')
-                // Moved off blacklist onto favorites — leave Blacklisted Only view
-                hideCatalogSite(id);
-                @endif
-            } else {
-                showToast(`${name} removed from favorites!`, 'warning');
-                @if(request('favorites_filter') == '1')
-                hideCatalogSite(id);
-                @endif
-            }
-
-            this.dataset.busy = '1';
-            toggleFavorite(id, nextFavorited)
-                .catch((err) => {
-                    console.error('Error toggling favorite:', err);
-                    setListMembership(favorites, id, wasFavorited);
-                    setListMembership(blacklist, id, wasBlacklisted);
-                    updateButtonStates();
-                    if (nextFavorited) {
-                        @if(request('blacklist_filter') == '1')
-                        showCatalogSite(id);
-                        @endif
-                    } else {
-                        @if(request('favorites_filter') == '1')
-                        showCatalogSite(id);
-                        @endif
-                    }
-                    showToast(err.message || 'Could not update favorite', 'error');
-                })
-                .finally(() => { this.dataset.busy = '0'; });
-        });
-    });
-
-    // Blacklist functionality — hide from catalog; show again under Blacklisted Only / after unblock
-    document.querySelectorAll('.blacklist-btn').forEach(button => {
-        button.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            if (this.dataset.busy === '1') return;
-
-            let id = parseInt(this.dataset.id);
-            let name = this.dataset.name;
-            let wasBlacklisted = blacklist.includes(id);
-            let nextBlacklisted = !wasBlacklisted;
-            let wasFavorited = favorites.includes(id);
-
-            setListMembership(blacklist, id, nextBlacklisted);
-            if (nextBlacklisted) {
-                setListMembership(favorites, id, false);
-            }
-            updateButtonStates();
-
-            if (nextBlacklisted) {
-                showToast(`${name} has been blacklisted!`, 'warning');
-                @if(!request('blacklist_filter'))
-                hideCatalogSite(id);
-                @endif
-                @if(request('favorites_filter') == '1')
-                hideCatalogSite(id);
-                @endif
-            } else {
-                showToast(`${name} removed from blacklist!`, 'success');
-                @if(request('blacklist_filter') == '1')
-                hideCatalogSite(id);
-                @else
-                showCatalogSite(id);
-                @endif
-            }
-
-            this.dataset.busy = '1';
-            toggleBlacklist(id, nextBlacklisted)
-                .catch((err) => {
-                    console.error('Error toggling blacklist:', err);
-                    setListMembership(blacklist, id, wasBlacklisted);
-                    setListMembership(favorites, id, wasFavorited);
-                    updateButtonStates();
-                    if (nextBlacklisted) {
-                        @if(!request('blacklist_filter'))
-                        showCatalogSite(id);
-                        @endif
-                        @if(request('favorites_filter') == '1')
-                        showCatalogSite(id);
-                        @endif
-                    } else {
-                        @if(request('blacklist_filter') == '1')
-                        showCatalogSite(id);
-                        @else
-                        hideCatalogSite(id);
-                        @endif
-                    }
-                    showToast(err.message || 'Could not update blacklist', 'error');
-                })
-                .finally(() => { this.dataset.busy = '0'; });
-        });
-    });
-});
-
-// Safety net: hide any blacklisted sites still rendered on the main catalog
-@if(!request('blacklist_filter'))
-document.querySelectorAll('.site-row[data-id], .catalog-mobile-card[data-id]').forEach(el => {
-    let id = parseInt(el.dataset.id);
-    if (blacklist.includes(id)) {
-        hideCatalogSite(id);
-    }
-});
-@endif
 </script>
-
-<script>
-document.addEventListener('click', async function (e) {
-    const btn = e.target.closest('.btn-suggest-website');
-    if (!btn) return;
-    const prefill = btn.dataset.search || document.querySelector('input[name="search"]')?.value || '';
-    const { value: form } = await Swal.fire({
-        title: 'Suggest a website',
-        html: `<p class="small text-muted mb-2">Can’t find a publisher site? Suggest it and we’ll try to include it.</p>
-               <input id="swal-site-name" class="swal2-input" placeholder="Website name" value="${prefill.replace(/"/g, '&quot;')}">
-               <input id="swal-site-url" class="swal2-input" placeholder="https://example.com">
-               <textarea id="swal-site-notes" class="swal2-textarea" placeholder="Why should we add it? (optional)"></textarea>`,
-        showCancelButton: true,
-        confirmButtonText: 'Submit suggestion',
-        confirmButtonColor: '#0b6266',
-        preConfirm: () => {
-            const website_name = document.getElementById('swal-site-name').value.trim();
-            const website_url = document.getElementById('swal-site-url').value.trim();
-            const notes = document.getElementById('swal-site-notes').value.trim();
-            if (!website_name || !website_url) {
-                Swal.showValidationMessage('Website name and URL are required');
-                return false;
-            }
-            return { website_name, website_url, notes, search_query: prefill };
-        },
-    });
-    if (!form) return;
-    const res = await fetch(`{{ route('advertiser.website-suggestions.store') }}`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Accept': 'application/json',
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
-        },
-        body: JSON.stringify(form),
-    });
-    const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-});
-</script>
+<script src="{{ asset('assets/js/catalog.js') }}?v={{ @filemtime(public_path('assets/js/catalog.js')) ?: '1' }}" defer></script>
 
 @endsection

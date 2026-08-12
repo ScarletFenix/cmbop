@@ -107,18 +107,6 @@ class CheckoutSystemFixTest extends TestCase
         ApiRequestor::setHttpClient($client);
     }
 
-    private function fundAdvertiserWallet(User $advertiser, float $balance = 500): void
-    {
-        $advRole = Role::where('name', 'advertiser')->firstOrFail();
-        Wallet::create([
-            'user_id' => $advertiser->id,
-            'role_id' => $advRole->id,
-            'balance' => $balance,
-            'reserved_balance' => 0,
-            'currency' => 'EUR',
-        ]);
-    }
-
     public function test_wallet_checkout_from_content_library_session(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -126,7 +114,6 @@ class CheckoutSystemFixTest extends TestCase
         Role::firstOrCreate(['name' => 'admin']);
 
         $advertiser = $this->advertiser();
-        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $site = $this->activeSite($publisher, 'wallet', 50);
         $sub = $this->createApprovedSubmission($advertiser, null);
@@ -152,7 +139,6 @@ class CheckoutSystemFixTest extends TestCase
                 'checkout_schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'project_id' => $campaign->id,
                 'payment_method' => 'wallet',
                 'reference_code' => 'WAL1',
                 'publication_mode' => 'immediate',
@@ -172,7 +158,6 @@ class CheckoutSystemFixTest extends TestCase
         Mail::fake();
 
         $advertiser = $this->advertiser();
-        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $site = $this->activeSite($publisher, 'cancel', 40);
         $sub = $this->createApprovedSubmission($advertiser, null);
@@ -189,7 +174,6 @@ class CheckoutSystemFixTest extends TestCase
                 'checkout_content_submission_id' => $sub->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'project_id' => $campaign->id,
                 'payment_method' => 'card',
                 'reference_code' => 'CAN1',
                 'publication_mode' => 'immediate',
@@ -271,7 +255,6 @@ class CheckoutSystemFixTest extends TestCase
         Mail::fake();
 
         $advertiser = $this->advertiser();
-        $campaign = $this->createCampaign($advertiser);
         $this->fundAdvertiserWallet($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'a', 40);
@@ -291,7 +274,6 @@ class CheckoutSystemFixTest extends TestCase
                 'checkout_content_submission_id' => $sub->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'project_id' => $campaign->id,
                 'payment_method' => 'wallet',
                 'reference_code' => 'SAFE1',
                 'publication_mode' => 'immediate',
@@ -320,7 +302,6 @@ class CheckoutSystemFixTest extends TestCase
         Mail::fake();
 
         $advertiser = $this->advertiser();
-        $campaign = $this->createCampaign($advertiser);
         $publisher = $this->publisher();
         $siteA = $this->activeSite($publisher, 'a', 40);
         $sub = $this->createApprovedSubmission($advertiser, null);
@@ -333,7 +314,6 @@ class CheckoutSystemFixTest extends TestCase
                 'checkout_content_submission_id' => $sub->id,
             ])
             ->postJson(route('advertiser.checkout.process'), [
-                'project_id' => $campaign->id,
                 'payment_method' => 'wise',
                 'reference_code' => 'SAFE2',
                 'publication_mode' => 'immediate',

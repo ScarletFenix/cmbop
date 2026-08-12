@@ -33,7 +33,3 @@ ALTER TABLE `order_items` ADD COLUMN `rejection_reason` text NULL;
 ALTER TABLE `order_items` ADD COLUMN `completion_notes` text NULL;
 ALTER TABLE `order_items` ADD COLUMN `live_url` varchar(1000) NULL;
 ALTER TABLE `order_items` ADD COLUMN `live_url_submitted_at` timestamp NULL;
-ALTER TABLE `order_items` ADD COLUMN `content_revision_requested` varchar(10) NULL DEFAULT 'no';
-ALTER TABLE `order_items` ADD COLUMN `content_revision_requested_at` timestamp NULL;
-ALTER TABLE `order_items` ADD COLUMN `content_revision_reason` text NULL;
-ALTER TABLE `order_items` ADD COLUMN `content_revision_resolved_at` timestamp NULL;
