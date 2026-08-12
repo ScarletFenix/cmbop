@@ -393,9 +393,19 @@
     // Cart Functionality with Sensitive Price Support
     let cart = [];
     
-    // Generate unique key for cart item (includes sensitive type)
+    // Generate unique key for cart item (site + sensitive + homepage days)
     function getCartItemKey(item) {
-        return `${item.id}_${item.sensitive_type || 'standard'}`;
+        const homepage = (item.homepage_days == null || item.homepage_days === '')
+            ? 'none'
+            : String(item.homepage_days);
+        return `${item.id}_${item.sensitive_type || 'standard'}_${homepage}`;
+    }
+
+    function cartHomepageParam(item) {
+        if (item.homepage_days == null || item.homepage_days === '') {
+            return 'none';
+        }
+        return String(item.homepage_days);
     }
     
     let approvedArticles = [];
@@ -536,7 +546,7 @@
         });
     }
 
-    function assignCartArticle(siteId, sensitiveType, submissionId, copyIndex) {
+    function assignCartArticle(siteId, sensitiveType, submissionId, copyIndex, homepageDays) {
         $.ajax({
             url: '{{ route("advertiser.cart.assign-article") }}',
             method: 'POST',
@@ -547,6 +557,9 @@
             data: {
                 id: siteId,
                 sensitive_type: sensitiveType || '',
+                homepage_days: (homepageDays === undefined || homepageDays === null || homepageDays === '')
+                    ? 'none'
+                    : homepageDays,
                 content_submission_id: submissionId || '',
                 copy_index: copyIndex || 0
             },
@@ -687,6 +700,15 @@
                 const siteName = item.name || 'Website';
                 const sensitiveDisplay = item.sensitive_type ? 
                     `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
+                const homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
+                const homepageFee = parseFloat(item.homepage_price) || 0;
+                const homepageDisplay = homepageDays
+                    ? `<div class="cart-item-homepage"><small>Homepage ${homepageDays} day${homepageDays === 1 ? '' : 's'}${homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)'}</small></div>`
+                    : '';
+                const socialList = Array.isArray(item.social_channels) ? item.social_channels : [];
+                const socialDisplay = socialList.length
+                    ? `<div class="cart-item-social"><small>Social: ${escapeHtml(socialList.map((c) => c === 'x' ? 'X' : (c.charAt(0).toUpperCase() + c.slice(1))).join(', '))}</small></div>`
+                    : '';
                 const placementIds = lineContentIds(item);
                 let articleBlock = '';
                 if (approvedArticles.length === 0 && placementIds.every((id) => !id)) {
@@ -738,6 +760,7 @@
                                     class="cart-article-select"
                                     data-id="${item.id}"
                                     data-sensitive-type="${item.sensitive_type || ''}"
+                                    data-homepage-days="${cartHomepageParam(item)}"
                                     data-copy-index="${copyIndex}"
                                     data-prev-value="${selectedId || ''}">
                                 ${opts}
@@ -757,18 +780,20 @@
                             <div class="cart-item-info">
                                 <div class="cart-item-name">${escapeHtml(siteName)}</div>
                                 ${sensitiveDisplay}
+                                ${homepageDisplay}
+                                ${socialDisplay}
                                 <div class="cart-item-price">€${(parseFloat(item.price) || 0).toFixed(2)} each</div>
                             </div>
                             <div class="cart-item-quantity">
-                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Decrease quantity">
+                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease quantity">
                                     <i class="fa fa-minus" aria-hidden="true"></i>
                                 </button>
                                 <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
-                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Increase quantity">
+                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase quantity">
                                     <i class="fa fa-plus" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" aria-label="Remove ${escapeHtml(siteName)} from cart">
+                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
                                 <i class="fa fa-times" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -802,6 +827,11 @@
         const body = new URLSearchParams();
         body.set('id', String(id));
         body.set('sensitive_type', sensitiveType || '');
+        if (Object.prototype.hasOwnProperty.call(opts, 'homepage_days')) {
+            body.set('homepage_days', opts.homepage_days == null || opts.homepage_days === ''
+                ? 'none'
+                : String(opts.homepage_days));
+        }
         if (opts.bulk) {
             body.set('bulk', '1');
         }
@@ -921,11 +951,20 @@
         
         const id = parseInt(btn.dataset.id);
         const sensitiveType = btn.dataset.sensitiveType || null;
+        const homepageDays = Object.prototype.hasOwnProperty.call(btn.dataset, 'homepageDays')
+            ? btn.dataset.homepageDays
+            : null;
         
-        // Find the exact item (including sensitive type)
-        const itemIndex = cart.findIndex(item => 
-            item.id === id && (item.sensitive_type || null) === sensitiveType
-        );
+        // Find the exact item (including sensitive type + homepage)
+        const itemIndex = cart.findIndex(item => {
+            if (item.id !== id || (item.sensitive_type || null) !== sensitiveType) {
+                return false;
+            }
+            if (homepageDays === null) {
+                return true;
+            }
+            return cartHomepageParam(item) === String(homepageDays);
+        });
         
         if (itemIndex === -1) return;
         
@@ -969,18 +1008,23 @@
         if (!select) return;
         const id = parseInt(select.dataset.id, 10);
         const sensitiveType = select.dataset.sensitiveType || null;
+        const homepageDays = Object.prototype.hasOwnProperty.call(select.dataset, 'homepageDays')
+            ? select.dataset.homepageDays
+            : 'none';
         const copyIndex = parseInt(select.dataset.copyIndex || '0', 10) || 0;
         const submissionId = select.value ? parseInt(select.value, 10) : 0;
         const previous = select.dataset.prevValue || '';
 
         if (!submissionId) {
             select.dataset.prevValue = '';
-            assignCartArticle(id, sensitiveType, 0, copyIndex);
+            assignCartArticle(id, sensitiveType, 0, copyIndex, homepageDays);
             return;
         }
 
         const item = cart.find((row) =>
-            row.id === id && (row.sensitive_type || null) === sensitiveType
+            row.id === id
+            && (row.sensitive_type || null) === sensitiveType
+            && cartHomepageParam(row) === String(homepageDays)
         );
         const article = approvedArticles.find((row) => row.id === submissionId);
         const siteLangs = siteLanguageCodes(item);
@@ -993,7 +1037,7 @@
 
         const proceed = function () {
             select.dataset.prevValue = select.value || '';
-            assignCartArticle(id, sensitiveType, submissionId, copyIndex);
+            assignCartArticle(id, sensitiveType, submissionId, copyIndex, homepageDays);
         };
 
         if (!mismatch) {

@@ -183,15 +183,20 @@ class OrderItem extends Model
      */
     public function getBasePriceAttribute()
     {
-        return $this->price - $this->additional_price;
+        return $this->markedUpBasePrice();
     }
 
     /**
-     * Marked-up base paid by the advertiser (excludes sensitive add-ons).
+     * Marked-up base paid by the advertiser (excludes sensitive / homepage add-ons).
      */
     public function markedUpBasePrice(): float
     {
-        return round((float) $this->price - (float) ($this->additional_price ?? 0), 2);
+        return round(
+            (float) $this->price
+            - (float) ($this->additional_price ?? 0)
+            - (float) ($this->homepage_price ?? 0),
+            2
+        );
     }
 
     /**
@@ -199,17 +204,23 @@ class OrderItem extends Model
      */
     public function publisherBasePrice(): float
     {
+        if ($this->publisher_price !== null && $this->publisher_price !== '') {
+            return round((float) $this->publisher_price, 2);
+        }
+
         return round($this->markedUpBasePrice() / self::PLATFORM_MARKUP_RATE, 2);
     }
 
     /**
      * Amount credited to the publisher on approval.
-     * Publisher gets original base + sensitive add-ons; platform keeps the 15% markup.
+     * Publisher gets original base + sensitive + homepage fees; platform keeps markup on the article base.
      */
     public function publisherPayoutAmount(): float
     {
         return round(
-            $this->publisherBasePrice() + (float) ($this->additional_price ?? 0),
+            $this->publisherBasePrice()
+            + (float) ($this->additional_price ?? 0)
+            + (float) ($this->homepage_price ?? 0),
             2
         );
     }
@@ -234,7 +245,8 @@ class OrderItem extends Model
         $qualified = $table === '' ? '' : rtrim($table, '.').'.';
 
         return DB::raw(
-            "({$qualified}price - COALESCE({$qualified}additional_price, 0)) / {$rate} + COALESCE({$qualified}additional_price, 0)"
+            "({$qualified}price - COALESCE({$qualified}additional_price, 0) - COALESCE({$qualified}homepage_price, 0)) / {$rate}"
+            ." + COALESCE({$qualified}additional_price, 0) + COALESCE({$qualified}homepage_price, 0)"
         );
     }
 
@@ -256,7 +268,7 @@ class OrderItem extends Model
         }
 
         return DB::raw(
-            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0)) / '.$rate.'))'
+            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0)) / '.$rate.'))'
         );
     }
 

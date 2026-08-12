@@ -3254,6 +3254,31 @@ function getSelectedSensitiveForSite(siteId) {
     };
 }
 
+/**
+ * Read the checked homepage-placement radio for a catalog site.
+ * When no radios exist the site does not offer homepage — return explicit:false
+ * so Buy omits homepage_days and the server applies its default.
+ */
+function getSelectedHomepageForSite(siteId) {
+    const id = String(siteId);
+    const checked = catalogVisibleFirst(document.querySelectorAll(
+        'input.homepage-placement-radio[data-site-id="' + id + '"]:checked'
+    ));
+    if (!checked) {
+        return { days: null, price: 0, explicit: false };
+    }
+    const daysRaw = (checked.dataset.days || checked.value || '').trim();
+    if (!daysRaw || daysRaw === 'none') {
+        return { days: null, price: 0, explicit: true };
+    }
+    const fee = parseFloat(checked.dataset.price);
+    return {
+        days: parseInt(daysRaw, 10),
+        price: Number.isFinite(fee) ? catalogRoundMoney(fee) : 0,
+        explicit: true,
+    };
+}
+
 // Update UI for favorites and blacklist (quiet icon actions)
 function updateButtonStates() {
     document.querySelectorAll('.favorite-btn').forEach(btn => {
@@ -3329,17 +3354,22 @@ function catalogFormatPercentLabel(percent) {
     return String(catalogRoundMoney(n)).replace(/\.0+$/, '');
 }
 
-function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0, homepageFee = 0) {
     const id = String(siteId);
     const base = parseFloat(basePrice);
     const addOn = parseFloat(additionalPrice);
     const safeBase = Number.isFinite(base) ? base : 0;
     const safeAdd = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
     const pct = Number.isFinite(parseFloat(discountPercent)) ? parseFloat(discountPercent) : 0;
+    const homeRaw = parseFloat(homepageFee);
+    const homeFee = Number.isFinite(homeRaw) && homeRaw > 0 ? catalogRoundMoney(homeRaw) : 0;
     const listTotal = catalogRoundMoney(safeBase + safeAdd);
     const floor = catalogPublisherPayoutFloor(id, safeAdd);
-    const totalPrice = catalogApplyDiscount(listTotal, pct, floor);
-    const effectivePct = catalogEffectiveDiscountPercent(listTotal, totalPrice);
+    const articlePay = catalogApplyDiscount(listTotal, pct, floor);
+    // Homepage fee is never discounted — added at full price after article math.
+    const totalPrice = catalogRoundMoney(articlePay + homeFee);
+    const displayList = catalogRoundMoney(listTotal + homeFee);
+    const effectivePct = catalogEffectiveDiscountPercent(listTotal, articlePay);
     const offerLabel = effectivePct > 0 ? (catalogFormatPercentLabel(effectivePct) + '% off') : '';
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
@@ -3351,7 +3381,7 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
 
         // Strike-through shows the pre-discount list total when a sale is active.
         if (price.list) {
-            price.list.textContent = '€' + listTotal.toFixed(2);
+            price.list.textContent = '€' + displayList.toFixed(2);
             price.list.hidden = !(pct > 0);
         }
 
@@ -3369,6 +3399,7 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         }
 
         buyButton.dataset.currentAdditionalPrice = String(safeAdd);
+        buyButton.dataset.homepageFee = String(homeFee);
         if (sensitiveType) {
             buyButton.dataset.sensitiveType = sensitiveType;
             buyButton.setAttribute('aria-label',
@@ -3385,6 +3416,7 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
 
 function syncSensitiveSelectionUi(siteId) {
     const selected = getSelectedSensitiveForSite(siteId);
+    const homepage = getSelectedHomepageForSite(siteId);
     const basePrice = selected.basePrice != null
         ? selected.basePrice
         : (parseFloat((document.querySelector(
@@ -3393,25 +3425,32 @@ function syncSensitiveSelectionUi(siteId) {
     const discountPercent = selected.discountPercent != null
         ? selected.discountPercent
         : catalogDiscountPercentForSite(siteId);
-    const payTotal = selected.totalPrice != null
+    const articlePay = selected.totalPrice != null
         ? selected.totalPrice
         : catalogApplyDiscount(
             catalogRoundMoney(basePrice + (selected.additionalPrice || 0)),
             discountPercent,
             catalogPublisherPayoutFloor(siteId, selected.additionalPrice || 0)
         );
+    const homeFee = homepage.price || 0;
+    const payTotal = catalogRoundMoney(Number(articlePay) + homeFee);
 
     updateBuyButtonPrice(
         siteId,
         basePrice,
         selected.additionalPrice,
         selected.type,
-        discountPercent
+        discountPercent,
+        homeFee
     );
 
     let infoHtml;
     const listForLabel = Number(selected.listTotal != null ? selected.listTotal : (basePrice + (selected.additionalPrice || 0)));
-    const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, payTotal);
+    const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, articlePay);
+    const homeNote = homepage.days
+        ? (' · Homepage ' + homepage.days + 'd'
+            + (homeFee > 0 ? (' +€' + homeFee.toFixed(2)) : ' Free'))
+        : '';
 
     if (selected.type && selected.additionalPrice > 0) {
         infoHtml =
@@ -3426,12 +3465,20 @@ function syncSensitiveSelectionUi(siteId) {
                 + catalogFormatPercentLabel(effectiveOfferPct)
                 + '% offer';
         }
-        infoHtml += ')</small>';
-    } else if (discountPercent > 0) {
+        infoHtml += homeNote + ')</small>';
+    } else if (discountPercent > 0 || homeFee > 0 || homepage.days) {
         infoHtml =
             '<small class="text-muted">Current price: <strong>€' + Number(payTotal).toFixed(2)
-            + '</strong> <span class="text-decoration-line-through">€'
-            + Number(basePrice).toFixed(2) + '</span> (offer price)</small>';
+            + '</strong>';
+        if (discountPercent > 0) {
+            infoHtml += ' <span class="text-decoration-line-through">€'
+                + catalogRoundMoney(listForLabel + homeFee).toFixed(2) + '</span> (offer price)';
+        } else if (homepage.days) {
+            infoHtml += homeNote;
+        } else {
+            infoHtml += ' (Base price)';
+        }
+        infoHtml += '</small>';
     } else {
         infoHtml =
             '<small class="text-muted">Current price: <strong>€' + Number(basePrice).toFixed(2)
@@ -3598,31 +3645,35 @@ function showCatalogSite(siteId) {
 document.addEventListener('DOMContentLoaded', function() {
     updateButtonStates();
 
-    // Sensitive topic radios: delegate so late/expanded markup still works.
+    // Sensitive topic + homepage radios: delegate so late/expanded markup still works.
     document.addEventListener('change', function (e) {
         const radio = e.target && e.target.closest
-            ? e.target.closest('.sensitive-price-checkbox')
+            ? e.target.closest('.sensitive-price-checkbox, .homepage-placement-radio')
             : null;
         if (!radio || !radio.checked) return;
 
         e.stopPropagation();
 
         const siteId = radio.dataset.siteId
-            || (radio.closest('.sensitive-prices-group') || {}).dataset?.siteId;
+            || (radio.closest('.sensitive-prices-group, .homepage-placement-group') || {}).dataset?.siteId;
         if (!siteId) return;
 
         syncSensitiveSelectionUi(siteId);
 
-        const selected = getSelectedSensitiveForSite(siteId);
-        if (selected.type && selected.additionalPrice > 0) {
-            const total = selected.totalPrice != null
-                ? selected.totalPrice
-                : (selected.basePrice + selected.additionalPrice);
-            catalogToast(
-                selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
-                + ' — Total: €' + Number(total).toFixed(2),
-                'success'
-            );
+        if (radio.classList.contains('sensitive-price-checkbox')) {
+            const selected = getSelectedSensitiveForSite(siteId);
+            const homepage = getSelectedHomepageForSite(siteId);
+            if (selected.type && selected.additionalPrice > 0) {
+                const article = selected.totalPrice != null
+                    ? selected.totalPrice
+                    : (selected.basePrice + selected.additionalPrice);
+                const total = catalogRoundMoney(Number(article) + (homepage.price || 0));
+                catalogToast(
+                    selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
+                    + ' — Total: €' + Number(total).toFixed(2),
+                    'success'
+                );
+            }
         }
     });
 
@@ -3812,7 +3863,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Interactive chrome must not toggle Details — ↗, eye, Buy, favorite,
         // blacklist, claim, tip chips, Details itself (has its own handler), etc.
         return !!e.target.closest(
-            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
+            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .homepage-placement-radio, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
         );
     }
 
@@ -4098,18 +4149,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const selected = getSelectedSensitiveForSite(id);
+        const homepage = getSelectedHomepageForSite(id);
         const sensitiveType = selected.type;
         const additionalPrice = selected.additionalPrice || 0;
         if (Number.isFinite(selected.basePrice)) {
             basePrice = selected.basePrice;
         }
-        const finalPrice = selected.totalPrice != null
+        const articlePrice = selected.totalPrice != null
             ? selected.totalPrice
             : catalogApplyDiscount(
                 catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
                 selected.discountPercent || catalogDiscountPercentForSite(id),
                 catalogPublisherPayoutFloor(id, additionalPrice)
             );
+        const finalPrice = catalogRoundMoney(Number(articlePrice) + (homepage.price || 0));
 
         if (typeof window.addToCart !== 'function') {
             catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
@@ -4123,6 +4176,11 @@ document.addEventListener('DOMContentLoaded', function() {
             cartOptions.bulk = true;
             cartOptions.quantity = Number.isFinite(packQty) && packQty > 0 ? packQty : 3;
             cartOptions.openCart = true;
+        }
+        // When homepage radios exist, always send the selection (incl. none).
+        // When absent, omit so the server auto-picks the longest free duration.
+        if (homepage.explicit) {
+            cartOptions.homepage_days = homepage.days == null ? 'none' : homepage.days;
         }
 
         const btn = button;
