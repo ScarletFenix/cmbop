@@ -180,9 +180,9 @@
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? asset('storage/'.$site->site_image) : '' }}">
+                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
+                                    <img src="{{ '/storage/'.$site->site_image }}" alt="Current site image">
                                 @else
                                     <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
@@ -351,9 +351,9 @@
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? asset('storage/'.$site->site_image) : '' }}">
+                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
+                                    <img src="{{ '/storage/'.$site->site_image }}" alt="Current site image">
                                 @else
                                     <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif

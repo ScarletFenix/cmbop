@@ -91,10 +91,11 @@
   outline: none;
 }
 
+/* contain = full desktop homepage in the 16:10 frame (cover crops/zooms). */
 .site-row-preview img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center top;
   display: block;
   background: #f8fafc;
@@ -118,7 +119,7 @@
 }
 
 .site-preview-detail {
-  width: min(100%, 220px);
+  width: min(100%, 360px);
   aspect-ratio: 16 / 10;
   overflow: hidden;
   border-radius: var(--radius-sm, 8px);
@@ -130,7 +131,7 @@
 .site-preview-detail img {
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  object-fit: contain;
   object-position: center top;
   display: block;
 }
@@ -146,13 +147,24 @@
   border: 1px solid #e2e8f0;
   background: #f8fafc;
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  aspect-ratio: 16 / 10;
+  flex-shrink: 0;
+  align-self: stretch;
 }
 
 .site-image-desktop-preview::before {
   content: '';
   display: block;
   width: 100%;
-  padding-top: 62.5%; /* 10 / 16 — Safari-safe vs aspect-ratio alone */
+  padding-top: 62.5%; /* 10 / 16 — Safari-safe when aspect-ratio is ignored */
+}
+
+@supports (aspect-ratio: 16 / 10) {
+  .site-image-desktop-preview::before {
+    content: none;
+    display: none;
+    padding-top: 0;
+  }
 }
 
 .site-image-desktop-preview img {
@@ -181,15 +193,73 @@
   text-align: center;
 }
 
-/* SweetAlert edit dialog: use the full popup width for the desktop frame. */
-.swal2-popup .site-image-desktop-preview {
+/* SweetAlert portals to body as display:flex — keep the frame full-width. */
+.swal2-popup .site-image-desktop-preview,
+.swal2-html-container .site-image-desktop-preview {
   max-width: none;
   width: 100%;
-}
-
-.swal2-popup .swal2-html-container .site-image-desktop-preview {
   margin-left: 0;
   margin-right: 0;
+}
+
+.swal2-html-container .site-image-desktop-preview {
+  margin-top: 0.5rem;
+}
+
+/* Floating hover zoom for Sites Management row thumbs (desktop 16:10). */
+.site-preview-zoom-pop {
+  position: fixed;
+  z-index: 1200;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(340px, calc(100vh - 24px));
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(26, 88, 94, 0.18);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  transition: opacity .16s ease, transform .16s ease;
+  overflow: hidden;
+}
+
+.site-preview-zoom-pop.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.site-preview-zoom-pop::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 62.5%;
+}
+
+.site-preview-zoom-pop img {
+  position: absolute;
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+  max-width: none;
+  object-fit: contain;
+  object-position: center top;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: block;
+}
+
+@media (hover: none) {
+  .site-preview-zoom-pop { display: none !important; }
+  .site-row-preview { cursor: default; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-preview-zoom-pop {
+    transition: none;
+  }
 }
 
 .site-details {

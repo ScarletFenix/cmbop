@@ -213,7 +213,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertIsString($html);
         $this->assertStringContainsString('site-image-desktop-preview', $html);
         $this->assertStringContainsString('Desktop-size preview (16:10)', $html);
-        $this->assertStringContainsString('width: 840', $html);
+        $this->assertStringContainsString('width: 960', $html);
         $this->assertStringContainsString('SITE_IMAGE_MAX_KB', $html);
         $this->assertStringContainsString("X-CSRF-TOKEN': CSRF_TOKEN", $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
@@ -223,5 +223,11 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
         $this->assertStringContainsString('.swal2-popup .site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('.site-preview-zoom-pop', $staffCss);
+        // Row thumbs must contain the full desktop frame (not crop/zoom like mobile).
+        $this->assertMatchesRegularExpression(
+            '/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s',
+            $staffCss
+        );
     }
 }

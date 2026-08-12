@@ -202,7 +202,14 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('object-fit: contain', $staffCss);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
-        $this->assertStringContainsString('min-width: 136px', $css);
+        $this->assertStringContainsString('min-width: 168px', $css);
         $this->assertStringNotContainsString('width: min(120px, 100%)', $css);
+
+        $staffCss = (string) file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertMatchesRegularExpression(
+            '/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s',
+            $staffCss
+        );
+        $this->assertStringContainsString('.site-preview-zoom-pop', $staffCss);
     }
 }
