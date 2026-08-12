@@ -345,8 +345,8 @@ class Site extends Model
     }
 
     /**
-     * @param  Builder<\App\Models\Site>  $query
-     * @return Builder<\App\Models\Site>
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
      */
     public function scopeNeedsAdminReview($query)
     {
@@ -1174,6 +1174,42 @@ class Site extends Model
         }
 
         return array_values(array_unique(array_filter($codes)));
+    }
+
+    public function hasMarketplaceCountry(): bool
+    {
+        return $this->countryCodes() !== [];
+    }
+
+    /**
+     * Sites with no usable country / countries value (invisible to catalog country filters).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeMissingMarketplaceCountry($query)
+    {
+        return $query
+            ->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            })
+            ->where(function ($q) {
+                $q->whereNull('countries')
+                    ->orWhere('countries', '')
+                    ->orWhere('countries', '[]')
+                    ->orWhere('countries', 'null');
+            });
+    }
+
+    /**
+     * Active listings missing a marketplace country (ops hygiene queue).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeActiveMissingMarketplaceCountry($query)
+    {
+        return $query->where('active', 1)->missingMarketplaceCountry();
     }
 
     /**

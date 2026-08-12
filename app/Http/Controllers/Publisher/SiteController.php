@@ -246,6 +246,8 @@ class SiteController extends Controller
                     'description' => $cleanDescription,
                     'verified' => false,
                     'active' => false,
+                    // Self-created listings are accepted immediately (not staff invites).
+                    'publisher_accepted_at' => now(),
                     'enrichment_status' => 'pending',
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
                 ]);
