@@ -200,7 +200,9 @@ class PublisherMySitesPageTest extends TestCase
             '/\.site-row-preview \{[^}]*width: 136px;/s',
             $ajaxHtml
         );
-        $this->assertStringContainsString('width:152px;">Preview</th>', $ajaxHtml);
+        $this->assertStringContainsString('col-preview', $ajaxHtml);
+        $this->assertStringContainsString('>Preview</th>', $ajaxHtml);
+        $this->assertStringContainsString('padding: 14px 16px', $ajaxHtml);
         $this->assertStringNotContainsString('width: 72px', $ajaxHtml);
         $this->assertStringNotContainsString('height: 48px', $ajaxHtml);
         $this->assertStringContainsString('data-label="Preview"', $ajaxHtml);
