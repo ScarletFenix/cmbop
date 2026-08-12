@@ -85,13 +85,13 @@ class CatalogHomepagePreviewTest extends TestCase
         $this->assertStringContainsString('site-preview-zoom', $html);
         $this->assertStringContainsString('storage/site-screenshots/home-full.webp', $html);
         $this->assertStringNotContainsString('storage/sites/admin-upload.webp', $html);
-        // Eager src so Safari loads captures that start inside display:none expand rows.
+        // Deferred data-src; hydrateExpandScreenshots promotes it on first open (Safari-safe).
         $this->assertMatchesRegularExpression(
-            '/site-preview-zoom[\s\S]*?<img[^>]+src="[^"]*site-screenshots\/home-full\.webp"/',
+            '/site-preview-zoom[\s\S]*?<img[^>]+data-src="[^"]*site-screenshots\/home-full\.webp"/',
             $html
         );
         $this->assertMatchesRegularExpression(
-            '/site-preview-zoom[\s\S]*?<img[^>]+loading="eager"/',
+            '/site-preview-zoom[\s\S]*?<img[^>]+class="[^"]*catalog-deferred-preview/',
             $html
         );
         // First open still hydrates any deferred data-src imgs (assets must exist).
