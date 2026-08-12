@@ -13,6 +13,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\PublicStorageLink;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
@@ -234,17 +235,13 @@ class AppServiceProvider extends ServiceProvider
             return;
         }
 
-        $link = public_path('storage');
-        $linkTarget = is_link($link) ? readlink($link) : (is_dir($link) ? realpath($link) : false);
-        $mediaReal = realpath($path) ?: $path;
-        $linkReal = is_string($linkTarget) ? (realpath($linkTarget) ?: $linkTarget) : false;
-
-        if ($linkReal === false || rtrim((string) $linkReal, DIRECTORY_SEPARATOR) !== rtrim($mediaReal, DIRECTORY_SEPARATOR)) {
-            Log::warning('public/storage does not point at MEDIA_PATH — site images will look blank after upload. '
-                .'Run: rm -f public/storage && php artisan storage:link', [
-                    'media_path' => $mediaReal,
-                    'public_storage' => $link,
-                    'public_storage_target' => $linkTarget,
+        // Best-effort: recreate public/storage → MEDIA_PATH when it drifted after a deploy.
+        $ensure = PublicStorageLink::ensure();
+        if (! $ensure['ok']) {
+            Log::warning('public/storage does not point at MEDIA_PATH — site images may look blank after upload. '
+                .'Run: php artisan media:ensure-link', [
+                    'media_path' => $path,
+                    'ensure' => $ensure,
                 ]);
         }
     }

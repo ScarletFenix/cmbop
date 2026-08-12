@@ -954,10 +954,22 @@ function escapeHtml(str) {
 function siteStorageUrl(path) {
     if (!path) return null;
     const raw = String(path);
-    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/')) {
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/') || raw.startsWith('/media/')) {
         return raw;
     }
     return `/storage/${raw.replace(/^\/+/, '')}`;
+}
+
+function siteMediaUrl(path) {
+    if (!path) return null;
+    const raw = String(path);
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/media/')) {
+        return raw;
+    }
+    if (raw.startsWith('/storage/')) {
+        return '/media/' + raw.slice('/storage/'.length);
+    }
+    return `/media/${raw.replace(/^\/+/, '')}`;
 }
 
 function sitePreviewPaths(site) {
@@ -972,6 +984,7 @@ function sitePreviewPaths(site) {
     const uploaded = site.image_url || siteStorageUrl(site.site_image);
     // Admin Images upload must lead the chain even when preview_fallback_urls is [].
     push(uploaded);
+    push(siteMediaUrl(site.site_image));
 
     const apiFallbacks = Array.isArray(site.preview_fallback_urls)
         ? site.preview_fallback_urls
@@ -985,6 +998,7 @@ function sitePreviewPaths(site) {
         push(site.screenshot_url);
         push(site.image_url);
         push(siteStorageUrl(site.site_image));
+        push(siteMediaUrl(site.site_image));
     } else {
         // Legacy payload without disk checks.
         push(site.preview_thumb_url);
@@ -993,8 +1007,11 @@ function sitePreviewPaths(site) {
         push(site.screenshot_url);
         push(site.image_url);
         push(siteStorageUrl(site.screenshot_thumb_path));
+        push(siteMediaUrl(site.screenshot_thumb_path));
         push(siteStorageUrl(site.screenshot_path));
+        push(siteMediaUrl(site.screenshot_path));
         push(siteStorageUrl(site.site_image));
+        push(siteMediaUrl(site.site_image));
     }
 
     const thumb = uploaded || site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
