@@ -16,9 +16,10 @@
  * Legacy dual-load: websites.blade.php still ships a full inline script.
  * When that flag is set, skip this file's form/table boot to avoid
  * re-binding selects and double-fetching the sites table.
+ * Accept / Decline / Get Verified always bind below (outside this gate).
  */
 if (window.__publisherWebsitesInlineLoaded) {
-    // no-op — Blade inline owns the page behaviour.
+    // no-op — Blade inline owns form/table behaviour.
 } else {
 (function publisherWebsitesExternalBoot() {
 
@@ -1499,288 +1500,6 @@ $(document).on('click', '.btn-edit', function() {
     }, 500);
 });
 
-/* —— File-based site verification —— */
-function verificationCsrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
-        || '';
-}
-
-async function postSiteVerification(url, body) {
-    const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'X-CSRF-TOKEN': verificationCsrfToken(),
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify(body || {}),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 419) {
-        return {
-            success: false,
-            message: 'Your session expired. Refresh the page and try Get Verified again.',
-            error_code: 'csrf',
-        };
-    }
-    if (res.status === 401 || res.status === 403) {
-        return {
-            success: false,
-            message: data.message || 'Please sign in again to verify this website.',
-            error_code: 'auth',
-        };
-    }
-    return data;
-}
-
-async function startSiteVerification(siteId, regenerate = false) {
-    return postSiteVerification(`/publisher/sites/${siteId}/verification/start`, {
-        regenerate: !!regenerate,
-    });
-}
-
-async function checkSiteVerification(siteId) {
-    return postSiteVerification(`/publisher/sites/${siteId}/verification/check`, {});
-}
-
-function verificationErrorTitle(errorCode) {
-    switch (errorCode) {
-        case 'not_found':
-            return 'File not found';
-        case 'mismatch':
-            return 'Wrong content';
-        case 'unreachable':
-            return 'Site not reachable';
-        case 'not_public':
-            return 'File not publicly accessible';
-        case 'rate_limited':
-            return 'Too many checks';
-        case 'incomplete':
-            return 'Finish site details';
-        case 'pending_acceptance':
-            return 'Accept this site first';
-        case 'csrf':
-            return 'Session expired';
-        case 'auth':
-            return 'Sign in required';
-        default:
-            return 'Not verified yet';
-    }
-}
-
-function verificationInstructionsHtml(data, siteName) {
-    const esc = (value) => String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    const token = esc(data.token || '');
-    const fileName = esc(data.file_name || 'seolinkbuildings-verify.txt');
-    const fileUrl = esc(data.file_url || '');
-    return `
-        <div class="text-start">
-            <p class="mb-2">Upload a small file to prove you control this domain. After we find it, your site gets the Verified badge automatically.</p>
-            <ol class="mb-3 ps-3">
-                <li class="mb-2">Create a file named <code>${fileName}</code></li>
-                <li class="mb-2">Paste this code into the file:<br>
-                    <code id="verifyTokenCode" style="display:inline-block;margin-top:6px;padding:6px 8px;background:#f1f5f5;border-radius:6px;word-break:break-all;">${token}</code>
-                </li>
-                <li class="mb-2">Upload it to your site root so it opens at:<br>
-                    <a href="${fileUrl}" target="_blank" rel="noopener noreferrer"><code>${fileUrl}</code></a>
-                </li>
-                <li>Click <strong>Check verification</strong></li>
-            </ol>
-            <p class="small text-muted mb-0">Keep the file live until verification succeeds. You can regenerate a new code if needed.</p>
-        </div>
-    `;
-}
-
-async function openSiteVerificationDialog(siteId, siteName) {
-    Swal.fire({
-        title: 'Preparing verification…',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-    });
-
-    let data;
-    try {
-        data = await startSiteVerification(siteId, false);
-    } catch (e) {
-        await Swal.fire({
-            icon: 'error',
-            title: 'Network error',
-            text: 'Could not start verification. Check your connection and try again.',
-        });
-        return;
-    }
-
-    if (data.verified) {
-        await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
-        if (typeof window.loadSites === 'function') window.loadSites();
-        else if (typeof fetchSites === 'function') fetchSites();
-        return;
-    }
-    if (!data.success || !data.token) {
-        await Swal.fire({
-            icon: 'error',
-            title: verificationErrorTitle(data.error_code),
-            text: data.message || 'Unable to start verification.',
-        });
-        return;
-    }
-
-    while (true) {
-        const choice = await Swal.fire({
-            title: 'Verify this website',
-            html: verificationInstructionsHtml(data, siteName),
-            showDenyButton: true,
-            showCancelButton: true,
-            confirmButtonText: 'Check verification',
-            denyButtonText: 'Regenerate code',
-            cancelButtonText: 'Close',
-            width: 560,
-        });
-
-        if (choice.isDismissed) {
-            break;
-        }
-
-        if (choice.isDenied) {
-            Swal.fire({
-                title: 'Generating new code…',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading(),
-            });
-            let regen;
-            try {
-                regen = await startSiteVerification(siteId, true);
-            } catch (e) {
-                await Swal.fire({
-                    icon: 'error',
-                    title: 'Network error',
-                    text: 'Could not regenerate the code. Try again.',
-                });
-                break;
-            }
-            if (!regen.success || !regen.token) {
-                await Swal.fire({
-                    icon: 'error',
-                    title: verificationErrorTitle(regen.error_code),
-                    text: regen.message || 'Try again.',
-                });
-                break;
-            }
-            Object.assign(data, regen);
-            continue;
-        }
-
-        Swal.fire({
-            title: 'Checking file…',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading(),
-        });
-        let result;
-        try {
-            result = await checkSiteVerification(siteId);
-        } catch (e) {
-            await Swal.fire({
-                icon: 'error',
-                title: 'Network error',
-                text: 'Could not check the verification file. Try again.',
-                confirmButtonText: 'Back to instructions',
-            });
-            continue;
-        }
-        if (result.success && result.verified) {
-            await Swal.fire({
-                icon: 'success',
-                title: 'Verified!',
-                text: result.message || 'Your Verified badge is now live.',
-            });
-            if (typeof window.loadSites === 'function') window.loadSites();
-            else if (typeof fetchSites === 'function') fetchSites();
-            break;
-        }
-
-        await Swal.fire({
-            icon: 'error',
-            title: verificationErrorTitle(result.error_code),
-            text: result.message || 'Upload the file, then try again.',
-            confirmButtonText: 'Back to instructions',
-        });
-    }
-}
-
-$(document).on('click', '.btn-verify-site', function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    openSiteVerificationDialog(id, name);
-});
-
-async function postSiteAssignment(url) {
-    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-TOKEN': token,
-        },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Request failed');
-    }
-    return data;
-}
-
-$(document).on('click', '.btn-accept-assignment', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    const confirm = await Swal.fire({
-        icon: 'question',
-        title: 'Accept this site?',
-        text: name + ' will appear in My Sites (Pending) until staff activate it.',
-        showCancelButton: true,
-        confirmButtonText: 'Accept',
-    });
-    if (!confirm.isConfirmed) return;
-    try {
-        const data = await postSiteAssignment(`/publisher/sites/${id}/accept-assignment`);
-        Swal.fire({ icon: 'success', title: data.message || 'Accepted', timer: 2200, showConfirmButton: false });
-        sitesStatusFilter = 'pending';
-        fetchSites(1, $('#siteSearch').val());
-    } catch (e) {
-        Swal.fire({ icon: 'error', title: e.message || 'Could not accept' });
-    }
-});
-
-$(document).on('click', '.btn-reject-assignment', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    const confirm = await Swal.fire({
-        icon: 'warning',
-        title: 'Decline this invite?',
-        text: name + ' will be removed from your account.',
-        showCancelButton: true,
-        confirmButtonText: 'Decline',
-        customClass: { confirmButton: 'slb-swal-danger' },
-    });
-    if (!confirm.isConfirmed) return;
-    try {
-        const data = await postSiteAssignment(`/publisher/sites/${id}/reject-assignment`);
-        Swal.fire({ icon: 'success', title: data.message || 'Declined', timer: 2200, showConfirmButton: false });
-        fetchSites(1, $('#siteSearch').val());
-    } catch (e) {
-        Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
-    }
-});
-
 /* —— Site promotions: Feature / Discount / Bulk —— */
 const promoCsrf = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken) || '';
 
@@ -1947,3 +1666,308 @@ $(document).on('click', '.btn-bulk-leave', async function () {
 });
 })(); // publisherWebsitesExternalBoot
 }
+
+/*
+ * Always-on row actions: Blade sets __publisherWebsitesInlineLoaded and skips the
+ * form/table boot above, but Accept / Decline / Get Verified still need handlers.
+ */
+(function publisherWebsitesAlwaysOnActions() {
+'use strict';
+
+function reloadPublisherSitesTable(page) {
+    const q = (window.jQuery && $('#siteSearch').length) ? $('#siteSearch').val() : '';
+    if (typeof window.loadSites === 'function') {
+        window.loadSites(page || 1, q);
+        return;
+    }
+}
+
+function setPublisherSitesFilter(status) {
+    if (typeof window.setSitesStatusFilter === 'function') {
+        window.setSitesStatusFilter(status);
+    }
+}
+
+/* —— File-based site verification —— */
+function verificationCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
+        || '';
+}
+
+async function postSiteVerification(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'X-CSRF-TOKEN': verificationCsrfToken(),
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 419) {
+        return {
+            success: false,
+            message: 'Your session expired. Refresh the page and try Get Verified again.',
+            error_code: 'csrf',
+        };
+    }
+    if (res.status === 401 || res.status === 403) {
+        return {
+            success: false,
+            message: data.message || 'Please sign in again to verify this website.',
+            error_code: 'auth',
+        };
+    }
+    return data;
+}
+
+async function startSiteVerification(siteId, regenerate = false) {
+    return postSiteVerification(`/publisher/sites/${siteId}/verification/start`, {
+        regenerate: !!regenerate,
+    });
+}
+
+async function checkSiteVerification(siteId) {
+    return postSiteVerification(`/publisher/sites/${siteId}/verification/check`, {});
+}
+
+function verificationErrorTitle(errorCode) {
+    switch (errorCode) {
+        case 'not_found':
+            return 'File not found';
+        case 'mismatch':
+            return 'Wrong content';
+        case 'unreachable':
+            return 'Site not reachable';
+        case 'not_public':
+            return 'File not publicly accessible';
+        case 'rate_limited':
+            return 'Too many checks';
+        case 'incomplete':
+            return 'Finish site details';
+        case 'pending_acceptance':
+            return 'Accept this site first';
+        case 'csrf':
+            return 'Session expired';
+        case 'auth':
+            return 'Sign in required';
+        default:
+            return 'Not verified yet';
+    }
+}
+
+function verificationInstructionsHtml(data, siteName) {
+    const esc = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const token = esc(data.token || '');
+    const fileName = esc(data.file_name || 'seolinkbuildings-verify.txt');
+    const fileUrl = esc(data.file_url || '');
+    return `
+        <div class="text-start">
+            <p class="mb-2">Upload a small file to prove you control this domain. After we find it, your site gets the Verified badge automatically.</p>
+            <ol class="mb-3 ps-3">
+                <li class="mb-2">Create a file named <code>${fileName}</code></li>
+                <li class="mb-2">Paste this code into the file:<br>
+                    <code id="verifyTokenCode" style="display:inline-block;margin-top:6px;padding:6px 8px;background:#f1f5f5;border-radius:6px;word-break:break-all;">${token}</code>
+                </li>
+                <li class="mb-2">Upload it to your site root so it opens at:<br>
+                    <a href="${fileUrl}" target="_blank" rel="noopener noreferrer"><code>${fileUrl}</code></a>
+                </li>
+                <li>Click <strong>Check verification</strong></li>
+            </ol>
+            <p class="small text-muted mb-0">Keep the file live until verification succeeds. You can regenerate a new code if needed.</p>
+        </div>
+    `;
+}
+
+async function openSiteVerificationDialog(siteId, siteName) {
+    Swal.fire({
+        title: 'Preparing verification…',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+    });
+
+    let data;
+    try {
+        data = await startSiteVerification(siteId, false);
+    } catch (e) {
+        await Swal.fire({
+            icon: 'error',
+            title: 'Network error',
+            text: 'Could not start verification. Check your connection and try again.',
+        });
+        return;
+    }
+
+    if (data.verified) {
+        await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
+        reloadPublisherSitesTable();
+        return;
+    }
+    if (!data.success || !data.token) {
+        await Swal.fire({
+            icon: 'error',
+            title: verificationErrorTitle(data.error_code),
+            text: data.message || 'Unable to start verification.',
+        });
+        return;
+    }
+
+    while (true) {
+        const choice = await Swal.fire({
+            title: 'Verify this website',
+            html: verificationInstructionsHtml(data, siteName),
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Check verification',
+            denyButtonText: 'Regenerate code',
+            cancelButtonText: 'Close',
+            width: 560,
+        });
+
+        if (choice.isDismissed) {
+            break;
+        }
+
+        if (choice.isDenied) {
+            Swal.fire({
+                title: 'Generating new code…',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            let regen;
+            try {
+                regen = await startSiteVerification(siteId, true);
+            } catch (e) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Network error',
+                    text: 'Could not regenerate the code. Try again.',
+                });
+                break;
+            }
+            if (!regen.success || !regen.token) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: verificationErrorTitle(regen.error_code),
+                    text: regen.message || 'Try again.',
+                });
+                break;
+            }
+            Object.assign(data, regen);
+            continue;
+        }
+
+        Swal.fire({
+            title: 'Checking file…',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+        });
+        let result;
+        try {
+            result = await checkSiteVerification(siteId);
+        } catch (e) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Network error',
+                text: 'Could not check the verification file. Try again.',
+                confirmButtonText: 'Back to instructions',
+            });
+            continue;
+        }
+        if (result.success && result.verified) {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Verified!',
+                text: result.message || 'Your Verified badge is now live.',
+            });
+            reloadPublisherSitesTable();
+            break;
+        }
+
+        await Swal.fire({
+            icon: 'error',
+            title: verificationErrorTitle(result.error_code),
+            text: result.message || 'Upload the file, then try again.',
+            confirmButtonText: 'Back to instructions',
+        });
+    }
+}
+
+window.openSiteVerificationDialog = openSiteVerificationDialog;
+
+$(document).on('click', '.btn-verify-site', function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    openSiteVerificationDialog(id, name);
+});
+
+async function postSiteAssignment(url) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': token,
+        },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Request failed');
+    }
+    return data;
+}
+
+$(document).on('click', '.btn-accept-assignment', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    const confirm = await Swal.fire({
+        icon: 'question',
+        title: 'Accept this site?',
+        text: name + ' will appear in My Sites (Pending) until staff activate it.',
+        showCancelButton: true,
+        confirmButtonText: 'Accept',
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        const data = await postSiteAssignment(`/publisher/sites/${id}/accept-assignment`);
+        Swal.fire({ icon: 'success', title: data.message || 'Accepted', timer: 2200, showConfirmButton: false });
+        setPublisherSitesFilter('pending');
+        reloadPublisherSitesTable(1);
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: e.message || 'Could not accept' });
+    }
+});
+
+$(document).on('click', '.btn-reject-assignment', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'Decline this invite?',
+        text: name + ' will be removed from your account.',
+        showCancelButton: true,
+        confirmButtonText: 'Decline',
+        customClass: { confirmButton: 'slb-swal-danger' },
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        const data = await postSiteAssignment(`/publisher/sites/${id}/reject-assignment`);
+        Swal.fire({ icon: 'success', title: data.message || 'Declined', timer: 2200, showConfirmButton: false });
+        reloadPublisherSitesTable(1);
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
+    }
+});
+
+})(); // publisherWebsitesAlwaysOnActions

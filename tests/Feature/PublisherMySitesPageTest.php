@@ -325,6 +325,98 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringNotContainsString('Pending Site', $inviteHtml);
         $this->assertStringNotContainsString('Active Site', $inviteHtml);
         $this->assertStringContainsString('data-status="invites"', $inviteHtml);
+        $this->assertStringContainsString('site-status--invite', $inviteHtml);
+        $this->assertStringContainsString('btn-accept-assignment', $inviteHtml);
+        $this->assertStringContainsString('btn-reject-assignment', $inviteHtml);
+    }
+
+    public function test_active_and_pending_counts_exclude_archived_sites(): void
+    {
+        $live = $this->makeSite([
+            'site_name' => 'Live Active',
+            'site_url' => 'https://live-active.example',
+            'domain' => 'live-active.example',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $this->makeSite([
+            'site_name' => 'Archived Active',
+            'site_url' => 'https://archived-active.example',
+            'domain' => 'archived-active.example',
+            'verified' => true,
+            'active' => true,
+            'archived_at' => now(),
+        ]);
+        $this->makeSite([
+            'site_name' => 'Live Pending',
+            'site_url' => 'https://live-pending.example',
+            'domain' => 'live-pending.example',
+            'verified' => false,
+            'active' => false,
+        ]);
+        $this->makeSite([
+            'site_name' => 'Archived Pending',
+            'site_url' => 'https://archived-pending.example',
+            'domain' => 'archived-pending.example',
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        $activeHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Live Active', $activeHtml);
+        $this->assertStringNotContainsString('Archived Active', $activeHtml);
+        $this->assertStringContainsString('data-active="1"', $activeHtml);
+        $this->assertStringContainsString('data-active-ids="'.$live->id.'"', $activeHtml);
+
+        $pendingHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Live Pending', $pendingHtml);
+        $this->assertStringNotContainsString('Archived Pending', $pendingHtml);
+        $this->assertStringContainsString('data-pending="1"', $pendingHtml);
+    }
+
+    public function test_accept_decline_verify_handlers_bind_when_inline_owns_page(): void
+    {
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+
+        $this->assertStringContainsString('window.__publisherWebsitesInlineLoaded = true', $html);
+        $this->assertStringContainsString('window.setSitesStatusFilter', $html);
+        $this->assertStringContainsString('syncSitesStatusUrl', $html);
+        $this->assertStringContainsString('history.replaceState', $html);
+        $this->assertStringContainsString('.site-status-filter.is-active', $html);
+        $this->assertStringContainsString('background: #0f766e', $html);
+
+        $gateEnd = strpos($js, '})(); // publisherWebsitesExternalBoot');
+        $alwaysOn = strpos($js, 'publisherWebsitesAlwaysOnActions');
+        $accept = strpos($js, "$(document).on('click', '.btn-accept-assignment'");
+        $reject = strpos($js, "$(document).on('click', '.btn-reject-assignment'");
+        $verify = strpos($js, "$(document).on('click', '.btn-verify-site'");
+
+        $this->assertNotFalse($gateEnd);
+        $this->assertNotFalse($alwaysOn);
+        $this->assertNotFalse($accept);
+        $this->assertNotFalse($reject);
+        $this->assertNotFalse($verify);
+        $this->assertGreaterThan($gateEnd, $alwaysOn, 'Always-on boot must run after the inline skip gate closes');
+        $this->assertGreaterThan($alwaysOn, $accept, 'Accept handler must live in always-on boot');
+        $this->assertGreaterThan($alwaysOn, $reject);
+        $this->assertGreaterThan($alwaysOn, $verify);
+        $this->assertStringContainsString('setPublisherSitesFilter', $js);
+        $this->assertStringContainsString('reloadPublisherSitesTable', $js);
+        $this->assertStringContainsString('window.loadSites', $js);
     }
 
     public function test_pending_ajax_shows_bulk_waiting_items_and_stage_chips(): void

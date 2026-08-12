@@ -596,10 +596,31 @@
         gap: 6px;
         line-height: 1.2;
         padding: 0.4rem 0.9rem !important;
-    }
-    .site-status-filter.is-active,
-    .site-status-filter.btn-primary {
+        background: #fff;
+        border: 1px solid #c5d4d6;
+        color: #334155;
         box-shadow: none;
+    }
+    .site-status-filter:hover {
+        background: #f1f7f7;
+        border-color: #9ec5c8;
+        color: #123f42;
+    }
+    .site-status-filter.is-active {
+        background: #0f766e;
+        border-color: #0f766e;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: none;
+    }
+    .site-status-filter.is-active:hover {
+        background: #0d9488;
+        border-color: #0d9488;
+        color: #fff;
+    }
+    .site-status-filter.is-active .badge {
+        background: rgba(255, 255, 255, 0.22) !important;
+        color: #fff !important;
     }
     .site-status-filter .filter-main {
         display: inline-flex;
@@ -2122,6 +2143,31 @@ let sitesStatusFilter = (function () {
         return 'active';
     }
 })();
+
+function syncSitesStatusUrl(status) {
+    try {
+        const url = new URL(window.location.href);
+        if (status && status !== 'active') {
+            url.searchParams.set('status', status);
+        } else {
+            url.searchParams.delete('status');
+        }
+        history.replaceState({}, '', url.pathname + url.search + url.hash);
+    } catch (e) { /* ignore */ }
+}
+
+window.setSitesStatusFilter = function (status) {
+    const next = (status === 'pending' || status === 'invites') ? status : 'active';
+    sitesStatusFilter = next;
+    syncSitesStatusUrl(next);
+    syncSitesFilterUi(
+        parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
+        parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
+        sitesStatusFilter,
+        null,
+        parseInt(document.getElementById('sitesInviteCount')?.textContent || '0', 10)
+    );
+};
 const ACTIVE_SITES_SEEN_KEY = 'slb_publisher_active_sites_seen_v1';
 
 function parseActiveIds(raw) {
@@ -2431,6 +2477,7 @@ $(document).ready(function(){
             return;
         }
         sitesStatusFilter = next;
+        syncSitesStatusUrl(sitesStatusFilter);
         syncSitesFilterUi(
             parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
             parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),

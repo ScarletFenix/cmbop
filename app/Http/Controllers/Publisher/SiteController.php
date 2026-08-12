@@ -347,11 +347,13 @@ class SiteController extends Controller
                 });
 
             $waitingItemsCount = (clone $waitingItemsQuery)->count();
-            $sitePendingCount = (clone $acceptedBase)->where('active', 0)->where('verified', 0)->count();
+            // Match list filters: Active/Pending badges exclude archived sites.
+            $sitePendingCount = (clone $acceptedBase)->notArchived()
+                ->where('active', 0)->where('verified', 0)->count();
             $pendingCount = $sitePendingCount + $waitingItemsCount;
             $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
 
-            $activeQuery = (clone $acceptedBase)->where(function ($q) {
+            $activeQuery = (clone $acceptedBase)->notArchived()->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
             });
             $activeCount = (clone $activeQuery)->count();
