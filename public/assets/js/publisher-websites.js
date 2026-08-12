@@ -128,6 +128,65 @@ $('#sensitiveDisclosureBtn').on('click', function () {
     $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
 });
 
+$('#placementDisclosureBtn').on('click', function () {
+    const panel = $('#placementDisclosurePanel');
+    const open = panel.prop('hidden');
+    panel.prop('hidden', !open);
+    $(this).attr('aria-expanded', open ? 'true' : 'false');
+    $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+});
+
+function setPlacementDisclosureOpen(open) {
+    const panel = $('#placementDisclosurePanel');
+    const btn = $('#placementDisclosureBtn');
+    if (!panel.length || !btn.length) return;
+    panel.prop('hidden', !open);
+    btn.attr('aria-expanded', open ? 'true' : 'false');
+    btn.find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+}
+
+function clearHomepageSocialFields() {
+    $('.homepage-checkbox').prop('checked', false);
+    $('.homepage-price').val('');
+    $('.social-checkbox').prop('checked', false);
+}
+
+function fillHomepageSocialFromSite(site) {
+    clearHomepageSocialFields();
+    let hasPlacement = false;
+
+    let homepage = site.homepage_placement_prices || null;
+    if (typeof homepage === 'string') {
+        try { homepage = JSON.parse(homepage); } catch (e) { homepage = null; }
+    }
+    if (homepage && typeof homepage === 'object') {
+        Object.keys(homepage).forEach(function (days) {
+            const $cb = $(`#homepage${days}`);
+            if (!$cb.length) return;
+            $cb.prop('checked', true);
+            $(`input[name="price_homepage[${days}]"]`).val(homepage[days]);
+            hasPlacement = true;
+        });
+    }
+
+    let social = site.social_promotion || null;
+    if (typeof social === 'string') {
+        try { social = JSON.parse(social); } catch (e) { social = null; }
+    }
+    if (social && typeof social === 'object') {
+        ['facebook', 'instagram', 'x'].forEach(function (channel) {
+            if (!social[channel]) return;
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', true);
+            hasPlacement = true;
+        });
+    }
+
+    if (hasPlacement) {
+        setPlacementDisclosureOpen(true);
+    }
+}
+
 // FR3 — inline validation on blur
 function markFieldValidity(el) {
     if (!el || !el.checkValidity) return;
@@ -485,12 +544,23 @@ function saveSiteDraft() {
             siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
+            homepage: {},
+            price_homepage: {},
+            social: {},
             step: wizardStep,
             savedAt: Date.now()
         };
         ['crypto','trading','CBD','forex'].forEach(topic => {
             draft.sensitive[topic] = $(`#sensitive${topic}`).is(':checked');
             draft.price_sensitive[topic] = $(`input[name="price_sensitive[${topic}]"]`).val();
+        });
+        [1, 7, 30].forEach(days => {
+            draft.homepage[days] = $(`#homepage${days}`).is(':checked');
+            draft.price_homepage[days] = $(`input[name="price_homepage[${days}]"]`).val();
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            draft.social[channel] = $(id).is(':checked');
         });
         localStorage.setItem(SITE_DRAFT_KEY, JSON.stringify(draft));
         $('#wizardDraftHint').text('Draft saved');
@@ -540,6 +610,22 @@ function loadSiteDraft() {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
             $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
         });
+        let hasPlacementDraft = false;
+        [1, 7, 30].forEach(days => {
+            const on = !!(draft.homepage && draft.homepage[days]);
+            $(`#homepage${days}`).prop('checked', on);
+            $(`input[name="price_homepage[${days}]"]`).val((draft.price_homepage && draft.price_homepage[days]) || '');
+            if (on) hasPlacementDraft = true;
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const on = !!(draft.social && draft.social[channel]);
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', on);
+            if (on) hasPlacementDraft = true;
+        });
+        if (hasPlacementDraft) {
+            setPlacementDisclosureOpen(true);
+        }
 
         if (draft.country) {
             const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
@@ -1328,6 +1414,8 @@ closeBtn.on('click', function(){
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     
     // Reset selects
     languageSingleSelect.clearSelection();
@@ -1436,6 +1524,8 @@ $(document).on('click', '.btn-edit', function() {
     // Sensitive topics
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     
     if (site.sensitive_prices) {
         let prices = typeof site.sensitive_prices === 'string' ? JSON.parse(site.sensitive_prices) : site.sensitive_prices;
@@ -1444,6 +1534,8 @@ $(document).on('click', '.btn-edit', function() {
             $(`input[name="price_sensitive[${key}]"]`).val(prices[key]);
         }
     }
+
+    fillHomepageSocialFromSite(site);
     
     // Country first, then paired language
     const langCode = (site.language || site.language_code || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();

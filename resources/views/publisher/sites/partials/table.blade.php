@@ -1018,7 +1018,8 @@
                     $editPayload = $site->only([
                         'id', 'site_name', 'site_url', 'example_url', 'da', 'dr', 'traffic', 'price',
                         'turnaround_time', 'publication_time', 'link_type', 'sponsored', 'partner_material',
-                        'as_you_prefer', 'sensitive_prices', 'language', 'languages', 'country', 'countries',
+                        'as_you_prefer', 'sensitive_prices', 'homepage_placement_prices', 'social_promotion',
+                        'language', 'languages', 'country', 'countries',
                         'categories', 'category', 'description',
                     ]);
                 @endphp
@@ -1165,6 +1166,27 @@
                             @endphp
                             @foreach($prices as $key => $value)
                                 <span class="sensitive-badge">{{ ucfirst($key) }}: €{{ number_format($value, 2) }}</span>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @if($site->offersHomepagePlacement())
+                        <div class="detail-line">
+                            <strong>Homepage placement:</strong>
+                            @foreach($site->homepagePlacementOptions() as $days => $fee)
+                                <span class="sensitive-badge">
+                                    {{ $days }} day{{ $days > 1 ? 's' : '' }}:
+                                    {{ (float) $fee <= 0 ? 'Free' : '€'.number_format((float) $fee, 2) }}
+                                </span>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    @if($site->offersSocialPromotion())
+                        <div class="detail-line">
+                            <strong>Social sharing:</strong>
+                            @foreach($site->enabledSocialChannels() as $channel)
+                                <span class="tag-badge">{{ $channel === 'x' ? 'X' : ucfirst($channel) }}</span>
                             @endforeach
                         </div>
                     @endif

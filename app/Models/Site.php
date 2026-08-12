@@ -57,6 +57,8 @@ class Site extends Model
         'as_you_prefer',
         'description',
         'sensitive_prices',
+        'homepage_placement_prices',
+        'social_promotion',
         'verified',
         'active',
         'archived_at',
@@ -102,6 +104,8 @@ class Site extends Model
         'price' => 'decimal:2',
         'publication_time' => 'string',
         'sensitive_prices' => 'array',
+        'homepage_placement_prices' => 'array',
+        'social_promotion' => 'array',
         'categories' => 'array',
         'countries' => 'array',
         'languages' => 'array',
@@ -1018,6 +1022,91 @@ class Site extends Model
     {
         return app(SiteDescriptionSanitizer::class)
             ->sanitize((string) ($this->description ?? ''));
+    }
+
+    /**
+     * Offered homepage placement durations (days => fee EUR). Empty = not offered.
+     *
+     * @return array<int, float>
+     */
+    public function homepagePlacementOptions(): array
+    {
+        if (! static::hasSitesColumn('homepage_placement_prices')) {
+            return [];
+        }
+
+        $raw = $this->homepage_placement_prices;
+        if (! is_array($raw) || $raw === []) {
+            return [];
+        }
+
+        $allowed = config('site_placement.homepage_days', [1, 7, 30]);
+        $out = [];
+        foreach ($raw as $days => $price) {
+            $daysInt = (int) $days;
+            if (! in_array($daysInt, $allowed, true)) {
+                continue;
+            }
+            if (! is_numeric($price) || (float) $price < 0) {
+                continue;
+            }
+            $out[$daysInt] = round((float) $price, 2);
+        }
+        ksort($out);
+
+        return $out;
+    }
+
+    public function offersHomepagePlacement(): bool
+    {
+        return $this->homepagePlacementOptions() !== [];
+    }
+
+    /**
+     * Longest free (€0) homepage duration, if any.
+     */
+    public function longestFreeHomepageDays(): ?int
+    {
+        $free = [];
+        foreach ($this->homepagePlacementOptions() as $days => $price) {
+            if ((float) $price <= 0) {
+                $free[] = (int) $days;
+            }
+        }
+
+        return $free === [] ? null : max($free);
+    }
+
+    /**
+     * Social channels the publisher offers (always €0). Empty = not offered.
+     *
+     * @return list<string>
+     */
+    public function enabledSocialChannels(): array
+    {
+        if (! static::hasSitesColumn('social_promotion')) {
+            return [];
+        }
+
+        $raw = $this->social_promotion;
+        if (! is_array($raw) || $raw === []) {
+            return [];
+        }
+
+        $allowed = config('site_placement.social_channels', ['facebook', 'instagram', 'x']);
+        $out = [];
+        foreach ($allowed as $channel) {
+            if (! empty($raw[$channel])) {
+                $out[] = $channel;
+            }
+        }
+
+        return $out;
+    }
+
+    public function offersSocialPromotion(): bool
+    {
+        return $this->enabledSocialChannels() !== [];
     }
 
     /**
