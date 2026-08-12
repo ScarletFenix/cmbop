@@ -586,6 +586,63 @@ class Site extends Model
     }
 
     /**
+     * How long a guest post stays live (catalog / My Sites display).
+     */
+    public function publicationDurationLabel(?string $fallback = null): ?string
+    {
+        $raw = trim((string) ($this->publication_time ?? ''));
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        return match (strtolower($raw)) {
+            '6months', '6 months' => '6 months',
+            '1year', '1 year' => '1 year',
+            'permanent' => 'Permanent',
+            default => preg_match('/^(\d+)\s*days?$/i', $raw, $m)
+                ? ((int) $m[1] === 1 ? '1 day' : ((int) $m[1]).' days')
+                : $raw,
+        };
+    }
+
+    /**
+     * Typical publisher turnaround once an order is accepted.
+     */
+    public function turnaroundLabel(?string $fallback = null): ?string
+    {
+        $raw = trim((string) ($this->turnaround_time ?? ''));
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        return match (strtolower($raw)) {
+            '24h' => '24 hours',
+            '48h' => '48 hours',
+            '3days', '3 days' => '3 days',
+            '5days', '5 days' => '5 days',
+            '7days', '7 days' => '7 days',
+            default => $raw,
+        };
+    }
+
+    /**
+     * Link attribute label for chips / tags (DoFollow / NoFollow).
+     */
+    public function linkTypeLabel(?string $fallback = null): ?string
+    {
+        $raw = strtolower(trim((string) ($this->link_type ?? '')));
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        return match ($raw) {
+            'dofollow' => 'DoFollow',
+            'nofollow' => 'NoFollow',
+            default => ucfirst($raw),
+        };
+    }
+
+    /**
      * Get the publisher that owns the site.
      */
     public function publisher()

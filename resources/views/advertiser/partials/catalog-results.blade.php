@@ -401,8 +401,7 @@
                         @endif
 
                         @include('advertiser.partials.catalog-meta-chips', [
-                            'linkType' => $site->link_type,
-                            'turnaround' => $site->turnaround_time,
+                            'site' => $site,
                         ])
                         </div>
                     </div>
@@ -587,9 +586,6 @@
                         <div class="text-muted small">
                             {!! $site->safeDescriptionHtml() !!}
                         </div>
-                        <div class="text-muted small mt-2">
-                            <strong>DoFollow links:</strong> Max 03 DoFollow links
-                        </div>
                         @if($site->lastPublicationLabel())
                             <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
                                 {{ $site->lastPublicationLabel() }}
@@ -604,11 +600,11 @@
 
                         <div class="d-flex flex-column gap-2">
                             <div>
-                                @if($site->link_type)
+                                @if($site->linkTypeLabel())
                                     <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
                                           style="font-size: 11px;"
-                                          title="Link Type">
-                                        <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->link_type }}
+                                          title="Link type">
+                                        <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->linkTypeLabel() }}
                                     </span>
                                 @else
                                     <span class="text-muted small">No link type specified</span>
@@ -836,15 +832,15 @@
                                 @endif
                             @endif
 
-                            <div class="d-flex align-items-center gap-2">
-                                <strong>Publication Duration:</strong>
+                            <div class="d-flex align-items-center gap-2 flex-wrap">
+                                <strong title="How long the published article stays live">Publication duration:</strong>
 
-                                @if($site->publication_time)
+                                @if($site->publicationDurationLabel())
                                     <span class="badge text-muted border px-2 py-1"
                                           style="font-size: 11px;"
-                                          title="Publication Duration">
+                                          title="How long the published article stays live">
                                         <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>
-                                        {{ $site->publication_time }}
+                                        {{ $site->publicationDurationLabel() }}
                                     </span>
                                 @else
                                     <span class="text-muted small">
@@ -1034,8 +1030,7 @@
                         <span class="category-badge">{{ $mobileCategory }}</span>
                     </div>
                     @include('advertiser.partials.catalog-meta-chips', [
-                        'linkType' => $site->link_type,
-                        'turnaround' => $site->turnaround_time,
+                        'site' => $site,
                     ])
                     </div>
                 </div>
@@ -1285,15 +1280,15 @@
                 </div>
                 <div class="catalog-card-details__row">
                     <dt>Turnaround</dt>
-                    <dd>{{ $site->turnaround_time ?? 'Not specified' }}</dd>
+                    <dd>{{ $site->turnaroundLabel('Not specified') }}</dd>
                 </div>
                 <div class="catalog-card-details__row">
                     <dt>Publication duration</dt>
-                    <dd>{{ $site->publication_time ?: 'Not specified' }}</dd>
+                    <dd>{{ $site->publicationDurationLabel('Not specified') }}</dd>
                 </div>
                 <div class="catalog-card-details__row">
                     <dt>Link type</dt>
-                    <dd>Max 03 {{ $site->link_type ?: 'DoFollow' }} links</dd>
+                    <dd>{{ $site->linkTypeLabel('Not specified') }}</dd>
                 </div>
                 @if($site->description)
                     <div class="catalog-card-details__row">
