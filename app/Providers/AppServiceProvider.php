@@ -208,6 +208,8 @@ class AppServiceProvider extends ServiceProvider
     /**
      * When MEDIA_PATH is set (Hostinger durable media), fail loudly if the
      * directory is missing or not writable so uploads do not silently die.
+     * Also warn when public/storage does not resolve to MEDIA_PATH (blank
+     * admin previews after a "successful" upload).
      * Unset MEDIA_PATH keeps the default storage/app/public (local/CI).
      */
     private function assertConfiguredMediaPath(): void
@@ -219,15 +221,31 @@ class AppServiceProvider extends ServiceProvider
 
         $path = rtrim($configured, DIRECTORY_SEPARATOR);
         $ok = is_dir($path) && is_writable($path);
-        if ($ok) {
+        if (! $ok) {
+            $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
+                .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
+
+            Log::critical($message);
+
+            throw new \RuntimeException($message);
+        }
+
+        if (app()->runningUnitTests()) {
             return;
         }
 
-        $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
-            .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
+        $link = public_path('storage');
+        $linkTarget = is_link($link) ? readlink($link) : (is_dir($link) ? realpath($link) : false);
+        $mediaReal = realpath($path) ?: $path;
+        $linkReal = is_string($linkTarget) ? (realpath($linkTarget) ?: $linkTarget) : false;
 
-        Log::critical($message);
-
-        throw new \RuntimeException($message);
+        if ($linkReal === false || rtrim((string) $linkReal, DIRECTORY_SEPARATOR) !== rtrim($mediaReal, DIRECTORY_SEPARATOR)) {
+            Log::warning('public/storage does not point at MEDIA_PATH — site images will look blank after upload. '
+                .'Run: rm -f public/storage && php artisan storage:link', [
+                    'media_path' => $mediaReal,
+                    'public_storage' => $link,
+                    'public_storage_target' => $linkTarget,
+                ]);
+        }
     }
 }

@@ -562,9 +562,20 @@ function editSiteWithImage(siteId) {
 
                     imagePath = uploadResult.image_path || null;
                     imageUrl = uploadResult.image_url || null;
-                    if (imageUrl) {
-                        site.image_url = imageUrl;
-                        site.site_image = imagePath;
+                    if (imagePath || imageUrl) {
+                        site.site_image = imagePath || site.site_image;
+                        if (imageUrl) {
+                            site.image_url = imageUrl;
+                            // Keep list/hover in sync until fetchUserSites refreshes rows.
+                            site.preview_thumb_url = imageUrl;
+                            site.preview_full_url = imageUrl;
+                            const prior = Array.isArray(site.preview_fallback_urls)
+                                ? site.preview_fallback_urls
+                                : [];
+                            site.preview_fallback_urls = [imageUrl].concat(
+                                prior.filter((u) => u && u !== imageUrl)
+                            );
+                        }
                     }
                 } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
@@ -595,6 +606,10 @@ async function submitSiteUpdate(siteId, updateData) {
     const imageAlreadySaved = !!(updateData && updateData._imageUploaded);
     const payload = { ...(updateData || {}) };
     delete payload._imageUploaded;
+    // Path already persisted by upload-image — omit so a partial PUT cannot clobber it.
+    if (imageAlreadySaved) {
+        delete payload.site_image;
+    }
 
     try {
         const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
@@ -954,6 +969,10 @@ function sitePreviewPaths(site) {
         if (u && !chain.includes(u)) chain.push(u);
     };
 
+    const uploaded = site.image_url || siteStorageUrl(site.site_image);
+    // Admin Images upload must lead the chain even when preview_fallback_urls is [].
+    push(uploaded);
+
     const apiFallbacks = Array.isArray(site.preview_fallback_urls)
         ? site.preview_fallback_urls
         : null;
@@ -965,6 +984,7 @@ function sitePreviewPaths(site) {
         push(site.screenshot_thumb_url);
         push(site.screenshot_url);
         push(site.image_url);
+        push(siteStorageUrl(site.site_image));
     } else {
         // Legacy payload without disk checks.
         push(site.preview_thumb_url);
@@ -977,8 +997,8 @@ function sitePreviewPaths(site) {
         push(siteStorageUrl(site.site_image));
     }
 
-    const thumb = site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
-    const full = site.preview_full_url || site.screenshot_url || site.image_url || thumb || null;
+    const thumb = uploaded || site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
+    const full = site.preview_full_url || site.screenshot_url || uploaded || thumb || null;
 
     if (thumb) push(thumb);
     if (full) push(full);
