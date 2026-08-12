@@ -36,6 +36,7 @@ class PublisherSiteStoreTest extends TestCase
         $this->seed(RolesTableSeeder::class);
         $this->seed(CountriesTableSeeder::class);
         $this->seed(LanguagesTableSeeder::class);
+        $this->seed(CountryLanguageSeeder::class);
         $this->seed(CategoriesTableSeeder::class);
 
         $role = Role::where('name', 'publisher')->firstOrFail();
@@ -527,5 +528,95 @@ class PublisherSiteStoreTest extends TestCase
         $site->refresh();
         $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
         $this->assertFalse($site->needsAdminReview());
+    }
+
+    public function test_publisher_can_add_site_with_crypto_sensitive_using_html_on_checkbox(): void
+    {
+        Queue::fake();
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        // Browsers send "on" when a checkbox has no value= attribute — that used
+        // to fail Laravel's boolean rule ("must be true or false").
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Crypto Sensitive News',
+                'siteUrl' => 'https://crypto-sensitive.example',
+                'exampleUrl' => 'https://crypto-sensitive.example/sample',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 5000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'categories' => [$category->name],
+                'price' => 90,
+                'turnaround_time' => '3days',
+                'publicationTime' => '1year',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Quality editorial site for guest posts. ', 4),
+                'site_tag' => '',
+                'sensitive' => ['crypto' => 'on'],
+                'price_sensitive' => ['crypto' => '25'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $site = Site::where('domain', 'crypto-sensitive.example')->first();
+        $this->assertNotNull($site);
+        $this->assertEqualsWithDelta(25.0, (float) $site->sensitive_prices['crypto'], 0.001);
+    }
+
+    public function test_publisher_can_add_site_with_crypto_sensitive_using_value_one(): void
+    {
+        Queue::fake();
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Crypto One News',
+                'siteUrl' => 'https://crypto-one.example',
+                'exampleUrl' => 'https://crypto-one.example/sample',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 5000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'categories' => [$category->name],
+                'price' => 90,
+                'turnaround_time' => '3days',
+                'publicationTime' => '1year',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Quality editorial site for guest posts. ', 4),
+                'site_tag' => '',
+                'sensitive' => ['crypto' => '1'],
+                'price_sensitive' => ['crypto' => '15.50'],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $site = Site::where('domain', 'crypto-one.example')->first();
+        $this->assertNotNull($site);
+        $this->assertEqualsWithDelta(15.5, (float) $site->sensitive_prices['crypto'], 0.001);
+    }
+
+    public function test_sensitive_checkboxes_declare_value_one_in_websites_form(): void
+    {
+        $blade = file_get_contents(resource_path('views/publisher/websites.blade.php'));
+        $this->assertIsString($blade);
+        $this->assertMatchesRegularExpression(
+            '/name="sensitive\[\s*\{\{\s*\$topic\s*\}\}\s*\]"[^>]*value="1"/s',
+            $blade
+        );
     }
 }
