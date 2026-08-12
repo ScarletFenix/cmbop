@@ -105,5 +105,11 @@ class MediaPathFilesystemTest extends TestCase
         $this->assertIsString($example);
         $this->assertStringContainsString('MEDIA_PATH=', $example);
         $this->assertFileExists(base_path('docs/hostinger-media.md'));
+        $this->assertFileExists(base_path('docs/deploy-hostinger.md'));
+
+        $deploy = file_get_contents(base_path('docs/deploy-hostinger.md'));
+        $this->assertIsString($deploy);
+        $this->assertStringContainsString('persistent/media', $deploy);
+        $this->assertStringContainsString('storage:link', $deploy);
     }
 }

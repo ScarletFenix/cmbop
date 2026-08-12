@@ -170,6 +170,47 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame('thum_io', $warnings[0]['context']['provider'] ?? null);
     }
 
+    public function test_failed_refresh_keeps_previous_screenshot_files(): void
+    {
+        if (! function_exists('imagecreatetruecolor') || ! function_exists('imagewebp')) {
+            $this->markTestSkipped('GD WebP not available');
+        }
+
+        Storage::fake('public');
+        Http::fake([
+            'image.thum.io/*' => Http::response('nope', 500),
+        ]);
+        config([
+            'site_enrichment.enabled' => true,
+            'site_enrichment.screenshots.provider' => 'thum_io',
+        ]);
+
+        $oldPath = 'site-screenshots/site-keep-full.webp';
+        $oldThumb = 'site-screenshots/site-keep-thumb.webp';
+        Storage::disk('public')->put($oldPath, 'good-full');
+        Storage::disk('public')->put($oldThumb, 'good-thumb');
+
+        $site = $this->makeSite([
+            'screenshot_path' => $oldPath,
+            'screenshot_thumb_path' => $oldThumb,
+        ]);
+
+        $result = app(ScreenshotCaptureService::class)->capture($site);
+        $run = app(SiteEnrichmentService::class)->refreshScreenshot($site->fresh(), 'test');
+        $site->refresh();
+
+        $this->assertFalse($result['success']);
+        $this->assertFalse($result['used_placeholder']);
+        $this->assertSame($oldPath, $result['path']);
+        $this->assertSame($oldThumb, $result['thumb_path']);
+        $this->assertTrue(Storage::disk('public')->exists($oldPath));
+        $this->assertTrue(Storage::disk('public')->exists($oldThumb));
+        $this->assertSame($oldPath, $site->screenshot_path);
+        $this->assertSame($oldThumb, $site->screenshot_thumb_path);
+        $this->assertNotSame('success', $run->status);
+        $this->assertStringContainsString('previous preview kept', (string) $site->enrichment_error);
+    }
+
     public function test_verify_dispatches_enrichment_job(): void
     {
         Queue::fake();

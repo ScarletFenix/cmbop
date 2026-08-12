@@ -116,5 +116,7 @@ See [`docs/ops-mail-reminders.md`](docs/ops-mail-reminders.md) for `APP_URL` /
 ### Durable media (Hostinger)
 Public uploads use the `public` disk (`/storage/...`). Leave `MEDIA_PATH` empty
 locally (defaults to `storage/app/public`). On Hostinger set an absolute path
-**outside** `public_html` so code deploys cannot wipe images. Full ops runbook:
-[`docs/hostinger-media.md`](docs/hostinger-media.md).
+**outside** `public_html` so code deploys cannot wipe images.
+
+- Ops runbook (one-time migrate + weekly backup): [`docs/hostinger-media.md`](docs/hostinger-media.md)
+- **Pinned every-deploy checklist:** [`docs/deploy-hostinger.md`](docs/deploy-hostinger.md)

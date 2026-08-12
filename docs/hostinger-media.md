@@ -95,26 +95,77 @@ only after verification (keep the directory for Laravel if needed).
 
 ---
 
-## Phase 3 — Deploy rules (every update)
+## Phase 3 — Deploy SOP (every website update)
 
-**Allowed to overwrite:** app code under `public_html` (`app/`, `config/`,
-`resources/`, `vendor/`, `public/assets`, etc.).
+**Pinned rule for whoever updates the site:** media lives outside `public_html`.
+Code deploys must never wipe it.
 
-**Never overwrite / never delete:**
+### Allowed to overwrite
 
-- `/home/USER/persistent/media/**`
-- Live `.env` (unless intentional)
-- The `public/storage` symlink (recreate with `storage:link` if lost)
+App code under `public_html` (or the Laravel root), including:
 
-**After each deploy:**
+- `app/`, `bootstrap/`, `config/`, `database/`, `resources/`, `routes/`, `vendor/`
+- `public/assets/` (CSS/JS), compiled views, etc.
 
-1. Confirm `.env` still has `MEDIA_PATH=...`
-2. `php artisan storage:link` if `public/storage` is missing
-3. Spot-check 2 image URLs
-4. Confirm new uploads land in `persistent/media`, not a wiped folder
+### Never overwrite / never delete
 
-FTP / File Manager: sync into `public_html` only. Never upload into
-`/persistent/media` as part of a code deploy.
+| Path | Why |
+|------|-----|
+| `/home/USER/persistent/media/**` | All site images / screenshots / blogs / banners |
+| Live `.env` | Contains `MEDIA_PATH`, DB, Stripe, mail secrets |
+| `public/storage` symlink | Web entry to durable media — recreate if lost |
+
+### After each deploy checklist
+
+Copy/paste for the person doing the update:
+
+```bash
+# 1) MEDIA_PATH still set
+grep '^MEDIA_PATH=' .env
+
+# 2) Symlink exists and points at persistent media
+ls -la public/storage
+# expect → /home/USER/persistent/media
+# if missing or wrong:
+rm -f public/storage && php artisan storage:link
+
+# 3) Config picks up .env (when you use config cache)
+php artisan config:clear
+# php artisan config:cache   # only if prod normally caches config
+
+# 4) Spot-check two known /storage/... image URLs in the browser
+
+# 5) Optional: touch a new upload and confirm it lands under persistent/media
+```
+
+### FTP / File Manager tip
+
+- Sync/upload into `public_html` only
+- If using “replace all files”, exclude anything that would delete `public/storage`
+  without recreating it
+- Never upload into `/persistent/media` as part of a code deploy
+
+---
+
+## Phase 4 — Hardening
+
+### Weekly backup of durable media
+
+At least weekly, back up `/home/USER/persistent/media` (zip download, Hostinger
+backup that includes that path, or `rsync`/`tar` to another disk):
+
+```bash
+tar -czf ~/backups/media-$(date +%F).tar.gz -C /home/USER/persistent media
+```
+
+Keep several recent archives. DB dumps alone are not enough — image files are
+not in MySQL.
+
+### Safer screenshot delete-on-success (in app)
+
+`ScreenshotCaptureService` only deletes previous screenshot files **after** a
+successful new WebP save. A failed refresh keeps the prior preview on disk and
+in the DB (placeholder is used only when the site had no prior capture).
 
 ---
 
@@ -124,6 +175,7 @@ FTP / File Manager: sync into `public_html` only. Never upload into
 - New uploads still appear at `/storage/...` with unchanged DB paths
 - `ls public/storage` points at `/home/USER/persistent/media`
 - After a full code redeploy, old images still load
+- A failed screenshot refresh does not wipe a good existing preview
 
 ## Hostinger gotchas
 
