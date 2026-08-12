@@ -565,7 +565,8 @@
                             <div class="site-preview-zoom">
                                 {{-- Deferred until expand opens (hydrateExpandScreenshots). Avoids
                                      Safari never loading lazy imgs that start inside display:none. --}}
-                                <img data-src="{{ $previewUrl }}"
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                                     data-src="{{ $previewUrl }}"
                                      alt="{{ $identityLabel }} homepage preview"
                                      decoding="async"
                                      class="catalog-deferred-preview site-image-thumbnail"
@@ -1282,6 +1283,7 @@
                         @if($mobilePreviewUrl)
                             <div class="site-preview-zoom catalog-card-preview">
                                 <img class="catalog-deferred-preview site-image-thumbnail"
+                                     src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                                      data-src="{{ $mobilePreviewUrl }}"
                                      alt="{{ $identityLabel }} homepage preview"
                                      decoding="async"

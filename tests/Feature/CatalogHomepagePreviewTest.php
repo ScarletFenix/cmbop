@@ -99,6 +99,8 @@ class CatalogHomepagePreviewTest extends TestCase
         $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
         $this->assertStringContainsString('img.catalog-deferred-preview[data-src]', $js);
         $this->assertStringContainsString('hydrateExpandScreenshots(expandedRow)', $js);
+        $this->assertStringContainsString('function syncDefaultHomepagePrices', $js);
+        $this->assertStringContainsString('syncDefaultHomepagePrices()', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('padding-top: 62.5%', $css);
