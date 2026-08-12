@@ -3467,9 +3467,9 @@ function syncSensitiveSelectionUi(siteId) {
                 + '% offer';
         }
         infoHtml += homeNote + ')</small>';
-    } else if (discountPercent > 0 || homeFee > 0 || homepage.days) {
+            } else if (discountPercent > 0 || homeFee > 0 || homepage.days) {
         infoHtml =
-            '<small class="text-muted">Current price: <strong>€' + Number(payTotal).toFixed(2)
+            '<small class="text-muted">You pay: <strong>€' + Number(payTotal).toFixed(2)
             + '</strong>';
         if (discountPercent > 0) {
             infoHtml += ' <span class="text-decoration-line-through">€'
@@ -3482,7 +3482,7 @@ function syncSensitiveSelectionUi(siteId) {
         infoHtml += '</small>';
     } else {
         infoHtml =
-            '<small class="text-muted">Current price: <strong>€' + Number(basePrice).toFixed(2)
+            '<small class="text-muted">You pay: <strong>€' + Number(basePrice).toFixed(2)
             + '</strong> (Base price)</small>';
     }
 
