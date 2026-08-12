@@ -86,7 +86,8 @@ class HomepageSocialCartTest extends TestCase
         $this->assertStringContainsString('homepage-placement-group', $html);
         $this->assertStringContainsString('homepage-placement-radio', $html);
         $this->assertStringContainsString('id="homepage_'.$site->id.'_30"', $html);
-        $this->assertStringContainsString('Social promotion included', $html);
+        $this->assertStringContainsString('Homepage promotions', $html);
+        $this->assertStringContainsString('<strong>Social</strong>', $html);
         $this->assertStringContainsString('Facebook', $html);
     }
 

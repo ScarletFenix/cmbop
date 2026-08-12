@@ -191,8 +191,73 @@ class HomepageSocialDeliveryTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('completeSocialFields', $html);
+        $this->assertStringContainsString('socialPostsModal', $html);
+        $this->assertStringContainsString('update-social-posts', $html);
         $this->assertStringContainsString('social-post-url', $html);
         $this->assertStringContainsString('collectSocialPostUrls', $html);
+        $this->assertStringContainsString('/social-posts', $html);
+    }
+
+    public function test_social_posts_can_be_added_after_live_url(): void
+    {
+        $item = $this->makeProcessingItem([
+            'live_url' => 'https://delivery.example/article',
+            'live_url_submitted_at' => now(),
+        ]);
+        $item->order->update(['status' => 'review']);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.social-posts', $item->id), [
+                'social_post_urls' => [
+                    'facebook' => 'https://www.facebook.com/posts/999',
+                    'x' => 'https://x.com/user/status/999',
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('social_post_urls.facebook', 'https://www.facebook.com/posts/999');
+
+        $item->refresh();
+        $this->assertSame([
+            'facebook' => 'https://www.facebook.com/posts/999',
+            'x' => 'https://x.com/user/status/999',
+        ], $item->social_post_urls);
+        $this->assertSame('https://delivery.example/article', $item->live_url);
+    }
+
+    public function test_social_posts_endpoint_requires_live_url_first(): void
+    {
+        $item = $this->makeProcessingItem();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.social-posts', $item->id), [
+                'social_post_urls' => [
+                    'facebook' => 'https://www.facebook.com/posts/1',
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($item->fresh()->social_post_urls);
+    }
+
+    public function test_social_posts_endpoint_rejects_when_social_not_offered(): void
+    {
+        $item = $this->makeProcessingItem([
+            'live_url' => 'https://delivery.example/article',
+            'live_url_submitted_at' => now(),
+            'social_channels' => [],
+        ]);
+        $item->order->update(['status' => 'review']);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.social-posts', $item->id), [
+                'social_post_urls' => [
+                    'facebook' => 'https://www.facebook.com/posts/1',
+                ],
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
     }
 
     public function test_social_post_url_validator_unit_behaviour(): void

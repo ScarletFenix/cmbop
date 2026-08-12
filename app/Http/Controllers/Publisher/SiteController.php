@@ -4,14 +4,12 @@ namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
 use App\Jobs\CaptureSiteScreenshotJob;
-use App\Mail\NewSiteNotification;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
-use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\AgencySiteImportService;
 use App\Services\EmailNotificationService;
@@ -19,10 +17,10 @@ use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
 
@@ -149,6 +147,8 @@ class SiteController extends Controller
                 ])
                 ->withInput();
         }
+
+        $this->normalizeOptionalCheckboxGroups($request);
 
         $validator = Validator::make($request->all(), [
             'siteName' => 'required|string|max:255',
@@ -305,25 +305,9 @@ class SiteController extends Controller
 
         if ($site) {
             try {
-                $admins = User::where('active_role_id', function ($query) {
-                    $query->select('id')
-                        ->from('roles')
-                        ->where('name', 'admin')
-                        ->limit(1);
-                })->get();
-
-                if ($admins->count() > 0) {
-                    foreach ($admins as $admin) {
-                        Mail::to($admin->email)->send(new NewSiteNotification($site));
-                    }
-                } else {
-                    $defaultAdminEmail = config('mail.admin_email');
-                    if ($defaultAdminEmail) {
-                        Mail::to($defaultAdminEmail)->send(new NewSiteNotification($site));
-                    }
-                }
-            } catch (\Exception $e) {
-                Log::error('Failed to send email notification: '.$e->getMessage());
+                app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'create');
+            } catch (\Throwable $e) {
+                Log::error('Failed to send new-site admin notification: '.$e->getMessage());
             }
         }
 
@@ -624,6 +608,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        $this->normalizeOptionalCheckboxGroups($request);
+
         $validator = Validator::make($request->all(), [
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
@@ -750,23 +736,9 @@ class SiteController extends Controller
 
         if ($needsRereview) {
             try {
-                $admins = User::where('active_role_id', function ($query) {
-                    $query->select('id')
-                        ->from('roles')
-                        ->where('name', 'admin')
-                        ->limit(1);
-                })->get();
-
-                if ($admins->count() > 0) {
-                    foreach ($admins as $admin) {
-                        Mail::to($admin->email)->send(new NewSiteNotification($site, 'update'));
-                    }
-                } else {
-                    $defaultAdminEmail = config('mail.admin_email', 'admin@yourdomain.com');
-                    Mail::to($defaultAdminEmail)->send(new NewSiteNotification($site, 'update'));
-                }
-            } catch (\Exception $e) {
-                Log::error('Failed to send email notification: '.$e->getMessage());
+                app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'update');
+            } catch (\Throwable $e) {
+                Log::error('Failed to send site-update admin notification: '.$e->getMessage());
             }
         }
 
@@ -776,6 +748,13 @@ class SiteController extends Controller
 
         if ($needsRereview) {
             return redirect()->back()->with('success', 'Site updated and queued for review.');
+        }
+
+        // Bulk drafts return to the review sheet (PUT has no reliable referrer).
+        if ($site->fresh()->hasDetailsComplete()) {
+            return redirect()
+                ->route('publisher.bulk-sites.review')
+                ->with('success', 'Website details saved. Review your sites, then submit them for approval.');
         }
 
         return redirect()->back()->with('success', 'Site updated successfully.');
@@ -878,6 +857,39 @@ class SiteController extends Controller
         };
 
         return $normalize($oldCategories) !== $normalize($newCategories);
+    }
+
+    /**
+     * HTML checkboxes without value= submit "on"; Laravel's boolean rule rejects
+     * that. Normalize present keys to 1/0 before validate (Request::boolean
+     * already accepts on/1/true/yes).
+     */
+    private function normalizeOptionalCheckboxGroups(Request $request): void
+    {
+        $groups = [
+            'sensitive' => ['crypto', 'trading', 'CBD', 'forex'],
+            'homepage' => array_map('strval', config('site_placement.homepage_days', [1, 7, 30])),
+            'social' => config('site_placement.social_channels', ['facebook', 'instagram', 'x']),
+        ];
+
+        foreach ($groups as $group => $keys) {
+            $raw = $request->input($group);
+            if (! is_array($raw) || $raw === []) {
+                continue;
+            }
+
+            $normalized = [];
+            foreach ($keys as $key) {
+                if (! array_key_exists($key, $raw) && ! array_key_exists((string) $key, $raw)) {
+                    continue;
+                }
+                $normalized[(string) $key] = $request->boolean($group.'.'.$key) ? 1 : 0;
+            }
+
+            if ($normalized !== []) {
+                $request->merge([$group => $normalized]);
+            }
+        }
     }
 
     /**
@@ -1030,7 +1042,7 @@ class SiteController extends Controller
                 $dryRun
             );
         } catch (\InvalidArgumentException $e) {
-            return back()->with('error', $e->getMessage());
+            return back()->with('error', UserFacingError::message($e, 'We could not import that CSV. Please check the file and try again.'));
         }
 
         $created = (int) $result['created'];

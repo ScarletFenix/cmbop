@@ -19,6 +19,7 @@ class CheckoutSchemaService
     {
         $this->ensureOrdersColumns();
         $this->ensureOrderItemsColumns();
+        $this->ensureSitesColumns();
     }
 
     /**
@@ -113,6 +114,19 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'content_revision_resolved_at', 'timestamp NULL');
         $this->addColumn('order_items', 'auto_approve_triggered', 'tinyint(1) NOT NULL DEFAULT 0');
         $this->addColumn('order_items', 'auto_approve_at', 'timestamp NULL');
+    }
+
+    /**
+     * Site counters touched during Approve / auto-approve payouts.
+     */
+    private function ensureSitesColumns(): void
+    {
+        if (! $this->tableExists('sites')) {
+            return;
+        }
+
+        // Missing column previously aborted advertiser Approve mid-transaction.
+        $this->addColumn('sites', 'completed_orders_count', 'int unsigned NOT NULL DEFAULT 0');
     }
 
     private function tableExists(string $table): bool

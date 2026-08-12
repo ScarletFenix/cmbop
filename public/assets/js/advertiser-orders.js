@@ -1195,7 +1195,8 @@ function bootAdvertiserOrdersPage() {
                     'Accept': 'application/json',
                     'X-Requested-With': 'XMLHttpRequest'
                 },
-                credentials: 'same-origin'
+                credentials: 'same-origin',
+                body: JSON.stringify({ _token: csrf }),
             })
             .then(async (response) => {
                 let data = null;
@@ -1207,13 +1208,10 @@ function bootAdvertiserOrdersPage() {
                     }
                     throw new Error('Invalid response from server (' + response.status + ')');
                 }
-                if (!response.ok && !(data && data.message)) {
-                    throw new Error(
-                        response.status === 419
-                            ? 'Session expired. Refresh the page and try again.'
-                            : 'Request failed (' + response.status + ')'
-                    );
-                }
+                // Always keep server JSON so Swal can show data.message / data.debug.
+                data = data || {};
+                data.__httpStatus = response.status;
+                data.__ok = response.ok;
                 return data;
             })
             .then(data => {
@@ -1224,13 +1222,23 @@ function bootAdvertiserOrdersPage() {
                     } else {
                         Swal.fire('Approved!', data.message || 'Order approved successfully!', 'success');
                     }
-                } else {
-                    Swal.fire('Error!', (data && data.message) || 'Failed to approve order', 'error');
+                    return;
                 }
+
+                const serverMsg = (data && data.message) ? String(data.message) : '';
+                const debugMsg = (data && data.debug) ? String(data.debug) : '';
+                let text = serverMsg || 'Failed to approve order. Please try again.';
+                if (debugMsg && debugMsg !== serverMsg) {
+                    text += '\n\n' + debugMsg;
+                } else if (!serverMsg && data && data.__httpStatus) {
+                    text = 'Failed to approve order (HTTP ' + data.__httpStatus + '). Please try again.';
+                }
+                console.error('Approve failed', data);
+                Swal.fire('Error!', text, 'error');
             })
             .catch(error => {
                 console.error('Error:', error);
-                Swal.fire('Error!', error.message || 'Failed to approve order', 'error');
+                Swal.fire('Error!', error.message || 'Failed to approve order. Please try again.', 'error');
             });
         });
     };

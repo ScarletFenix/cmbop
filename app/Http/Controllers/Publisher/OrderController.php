@@ -879,7 +879,14 @@ class OrderController extends Controller
                     }
                 }
 
-                app(InAppNotificationService::class)->notifyLiveUrlSubmitted($order, $orderItem, $site, $request->live_url);
+                try {
+                    app(InAppNotificationService::class)->notifyLiveUrlSubmitted($order, $orderItem, $site, $request->live_url);
+                } catch (\Throwable $e) {
+                    Log::error('Live URL saved but advertiser notification failed: '.$e->getMessage(), [
+                        'order_id' => $order->id,
+                        'order_item_id' => $orderItem->id,
+                    ]);
+                }
             }
 
             Log::info('Live URL submitted by publisher', [
@@ -892,7 +899,12 @@ class OrderController extends Controller
                 'held_in_processing_for_sibling_revision' => $heldForSiblingRevision,
             ]);
 
-            $windowHours = OrderItem::autoApproveHours();
+            // Message copy must never turn a successful save into a 500.
+            try {
+                $windowHours = OrderItem::autoApproveHours();
+            } catch (\Throwable) {
+                $windowHours = 72;
+            }
             $windowDays = max(1, (int) ceil($windowHours / 24));
             $message = $heldForSiblingRevision
                 ? 'Live URL saved. This order stays in progress until the advertiser sends the revised article for the other placement.'
@@ -1008,6 +1020,107 @@ class OrderController extends Controller
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to resubmit. Please try again.'),
+            ], 500);
+        }
+    }
+
+    /**
+     * Add or update optional social post URLs after the live article URL exists.
+     *
+     * Publishers often share on social after the article is live — this path
+     * does not require resubmitting the live URL or an advertiser change request.
+     */
+    public function updateSocialPostUrls(Request $request, $id)
+    {
+        $request->validate([
+            'social_post_urls' => 'nullable|array',
+            'social_post_urls.facebook' => 'nullable|url',
+            'social_post_urls.instagram' => 'nullable|url',
+            'social_post_urls.x' => 'nullable|url',
+        ]);
+
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
+        try {
+            $orderItem = OrderItem::with('order')->findOrFail($id);
+            $userId = auth()->id();
+            $site = Site::where('id', $orderItem->site_id)->where('publisher_id', $userId)->first();
+
+            if (! $site) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized',
+                ], 403);
+            }
+
+            $channels = $orderItem->enabledSocialChannels();
+            if ($channels === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order does not include a social promotion.',
+                ], 422);
+            }
+
+            $liveUrl = trim((string) ($orderItem->live_url ?? ''));
+            if ($liveUrl === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Submit the live article URL first, then add social post links.',
+                ], 422);
+            }
+
+            $order = $orderItem->order;
+            if (! $order || ! in_array($order->status, ['processing', 'review'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Social post links can only be updated while the order is in progress or under review.',
+                ], 422);
+            }
+
+            if ($orderItem->isContentRevisionRequested()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Wait for the advertiser to send the revised article before updating social links.',
+                ], 422);
+            }
+
+            $social = app(SocialPostUrlValidator::class)->normalize(
+                $channels,
+                $request->input('social_post_urls')
+            );
+
+            if (! Schema::hasColumn('order_items', 'social_post_urls')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Social post links are not available yet. Please contact support.',
+                ], 422);
+            }
+
+            $orderItem->update([
+                'social_post_urls' => $social['urls'] === [] ? null : $social['urls'],
+            ]);
+
+            $message = $social['urls'] === []
+                ? 'Social post links cleared.'
+                : 'Social post links saved.';
+            foreach ($social['warnings'] as $warning) {
+                $message .= ' Note: '.$warning;
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'social_post_urls' => $social['urls'],
+                'social_warnings' => $social['warnings'],
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Exception $e) {
+            Log::error('Error updating social post URLs: '.$e->getMessage());
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Failed to save social post links. Please try again.'),
             ], 500);
         }
     }

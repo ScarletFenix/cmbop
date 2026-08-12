@@ -83,6 +83,29 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Turnaround', $html);
     }
 
+    public function test_expand_separates_link_type_from_tags(): void
+    {
+        $this->makeSite([
+            'sponsored' => true,
+            'partner_material' => true,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // Desktop expand: link attribute under its own heading, not under Tags.
+        $this->assertMatchesRegularExpression(
+            '/catalog-expand-meta[\s\S]*?<strong>Link type<\/strong>[\s\S]*?NoFollow[\s\S]*?<strong>Tags<\/strong>[\s\S]*?Sponsored[\s\S]*?Partner/u',
+            $html
+        );
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'Link type'));
+        $this->assertStringContainsString('NoFollow', $html);
+        $this->assertStringContainsString('Sponsored', $html);
+        $this->assertStringContainsString('Partner', $html);
+    }
+
     public function test_expand_layout_separates_pricing_and_empty_states(): void
     {
         $this->makeSite([
@@ -107,6 +130,36 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('Base guest post only', $html);
     }
 
+    public function test_expand_shows_homepage_and_social_in_site_details_meta(): void
+    {
+        $this->makeSite([
+            'sensitive_prices' => null,
+            'homepage_placement_prices' => ['7' => 25, '30' => 40],
+            'social_promotion' => ['facebook' => true, 'instagram' => true],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        // Placement offers live in Site Details meta — not only as closed-row chips.
+        $this->assertStringContainsString('Homepage promotions', $html);
+        $this->assertStringContainsString('homepage-placement-group', $html);
+        $this->assertMatchesRegularExpression(
+            '/catalog-expand-meta[\s\S]*?Homepage promotions[\s\S]*?<strong>Social<\/strong>/u',
+            $html
+        );
+        $this->assertStringContainsString('Facebook', $html);
+        $this->assertStringContainsString('Instagram', $html);
+        // No sensitive add-ons → pricing column stays collapsed.
+        $this->assertStringNotContainsString('catalog-expand-pricing', $html);
+        $this->assertStringNotContainsString('Base guest post only', $html);
+        // Mobile Details also lists the offers.
+        $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
+        $this->assertStringContainsString('<dt>Social</dt>', $html);
+    }
+
     public function test_expand_collapses_pricing_when_no_extras(): void
     {
         $this->makeSite([
@@ -128,9 +181,10 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Turnaround', $html);
     }
 
-    public function test_mobile_card_details_do_not_duplicate_social(): void
+    public function test_mobile_card_details_include_social_and_homepage(): void
     {
         $this->makeSite([
+            'homepage_placement_prices' => ['7' => 15],
             'social_promotion' => ['facebook' => true],
         ]);
 
@@ -139,14 +193,11 @@ class CatalogExpandCorrectnessTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Social promotion included', $html);
-        $this->assertStringContainsString('Facebook', $html);
         $this->assertStringContainsString('site-chip--social', $html);
-        $this->assertSame(
-            0,
-            substr_count($html, '<dt>Social promotion</dt>'),
-            'Social should stay above Buy on the card, not inside catalog-card-details'
-        );
+        $this->assertStringContainsString('Facebook', $html);
+        $this->assertStringContainsString('<dt>Social</dt>', $html);
+        $this->assertStringContainsString('<dt>Homepage promotions</dt>', $html);
+        $this->assertStringContainsString('Choose a duration above Buy.', $html);
     }
 
     public function test_you_pay_copy_is_aligned_across_desktop_and_mobile(): void

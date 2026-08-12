@@ -1595,7 +1595,10 @@ class CatalogController extends Controller
                     ! $hasHomepageInput
                 );
             } catch (\InvalidArgumentException $e) {
-                return response()->json(['success' => false, 'error' => $e->getMessage()], 422);
+                return response()->json([
+                    'success' => false,
+                    'error' => UserFacingError::message($e, 'That homepage promotion option is not available for this site.'),
+                ], 422);
             }
             $resolvedHomepageDays = $homepageResolved['days'];
 
@@ -3565,11 +3568,22 @@ class CatalogController extends Controller
                 ], 400);
             }
 
-            // Check if order is in review status (has live URL)
+            // Check if order is in review status (publisher submitted live URL)
             if ($order->status !== 'review') {
+                $hasLiveUrl = $order->items->contains(fn ($line) => filled($line->live_url));
+                $message = match ((string) $order->status) {
+                    'processing' => $hasLiveUrl
+                        ? 'This order is still in progress (another placement may still need a revised article). It cannot be approved until every placement is ready for review.'
+                        : 'The publisher has not submitted a live URL yet. Approve becomes available after they submit the live link.',
+                    'pending' => 'This order is not ready to approve yet. Wait until the publisher accepts and submits a live URL.',
+                    'cancelled' => 'This order was cancelled and cannot be approved.',
+                    'scheduled' => 'This scheduled order is not ready to approve yet.',
+                    default => 'Order must be under review to approve (current status: '.$order->status.').',
+                };
+
                 return response()->json([
                     'success' => false,
-                    'message' => 'Order must be under review to approve',
+                    'message' => $message,
                 ], 400);
             }
 
@@ -3578,6 +3592,13 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
                 ], 422);
+            }
+
+            if (! $order->items->contains(fn ($line) => filled($line->live_url))) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No live URL has been submitted for this order yet.',
+                ], 400);
             }
 
             DB::beginTransaction();
@@ -3600,7 +3621,7 @@ class CatalogController extends Controller
 
                 return response()->json([
                     'success' => false,
-                    'message' => 'Order must be under review to approve',
+                    'message' => 'Order must be under review to approve (current status: '.$order->status.').',
                 ], 400);
             }
 
@@ -3640,7 +3661,16 @@ class CatalogController extends Controller
                 }
 
                 if ($site) {
-                    Site::refreshCompletedOrdersCount((int) $site->id);
+                    try {
+                        Site::refreshCompletedOrdersCount((int) $site->id);
+                    } catch (\Throwable $e) {
+                        // Counter is cosmetic; never abort Approve / wallet payout.
+                        Log::warning('Approve skipped completed_orders_count refresh', [
+                            'order_id' => $order->id,
+                            'site_id' => $site->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                     $rateable[] = [
                         'order_item_id' => $orderItem->id,
                         'site_id' => $site->id,
@@ -3785,19 +3815,26 @@ class CatalogController extends Controller
                 'rateable' => $rateable,
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             DB::rollBack();
             Log::error('Error approving order: '.$e->getMessage(), [
                 'order_id' => $id,
                 'user_id' => auth()->id(),
                 'exception' => $e::class,
                 'file' => $e->getFile().':'.$e->getLine(),
+                'trace' => $e->getTraceAsString(),
             ]);
 
-            return response()->json([
+            $payload = [
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to approve order. Please try again.'),
-            ], 500);
+            ];
+            // Surface the real exception in local/debug so Swal is actionable.
+            if (config('app.debug')) {
+                $payload['debug'] = $e::class.': '.$e->getMessage();
+            }
+
+            return response()->json($payload, 500);
         }
     }
 
