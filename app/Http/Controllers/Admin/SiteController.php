@@ -16,6 +16,7 @@ use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\PublicStorageLink;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -262,6 +263,7 @@ class SiteController extends Controller
      */
     /**
      * Relative public URL for a path on the public disk (avoids APP_URL host mismatch).
+     * Always emits /storage/... — client onerror also walks /media/... fallbacks.
      */
     private function staffPublicStorageUrl(?string $path): ?string
     {
@@ -279,6 +281,35 @@ class SiteController extends Controller
         }
 
         return '/storage/'.$normalized;
+    }
+
+    /**
+     * Both /storage and /media URLs for client onerror fallback chains.
+     * /media streams from the public disk when the Hostinger symlink is broken.
+     *
+     * @return list<string>
+     */
+    private function staffPublicStorageUrlFallbacks(?string $path): array
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return [];
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $path), '/');
+        if ($normalized === '') {
+            return [];
+        }
+        if (str_starts_with($normalized, 'storage/')) {
+            $normalized = ltrim(substr($normalized, strlen('storage/')), '/');
+        }
+        if ($normalized === '') {
+            return [];
+        }
+
+        return array_values(array_unique([
+            '/storage/'.$normalized,
+            '/media/'.$normalized,
+        ]));
     }
 
     /**
@@ -331,9 +362,10 @@ class SiteController extends Controller
 
         $fallbacks = [];
         foreach ($ordered as $path) {
-            $url = $this->staffPublicStorageUrl($path);
-            if ($url && ! in_array($url, $fallbacks, true)) {
-                $fallbacks[] = $url;
+            foreach ($this->staffPublicStorageUrlFallbacks($path) as $url) {
+                if (! in_array($url, $fallbacks, true)) {
+                    $fallbacks[] = $url;
+                }
             }
         }
 
@@ -683,6 +715,7 @@ class SiteController extends Controller
                             'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                         ]);
                     }
+                    PublicStorageLink::ensure();
                     $imagePath = $stored;
                 }
 
@@ -930,29 +963,18 @@ class SiteController extends Controller
             throw ValidationException::withMessages(['site_image' => $message]);
         }
 
-        // File must be reachable via /storage/... or the admin UI shows a blank preview.
-        $publicLinked = $this->siteImageIsPubliclyReachable($path);
+        // Heal / verify public/storage. Hostinger open_basedir often makes is_file()
+        // fail even when the web server can serve the file — never roll back a good save.
+        $ensure = PublicStorageLink::ensure();
+        $publicLinked = PublicStorageLink::pathIsPubliclyReachable($path);
         if (! $publicLinked) {
-            Log::error('Site image stored but public/storage cannot serve it', [
+            Log::warning('Site image stored; public/storage probe failed (kept upload)', [
                 'path' => $path,
                 'disk_root' => config('filesystems.disks.public.root'),
                 'public_storage' => public_path('storage'),
                 'media_path' => config('filesystems.media_path'),
+                'ensure' => $ensure,
             ]);
-            $disk->delete($path);
-            $message = 'Image was saved on disk but is not reachable at /storage/. '
-                .'On Hostinger run: rm -f public/storage && php artisan storage:link '
-                .'(MEDIA_PATH must match the symlink target).';
-
-            if ($request->expectsJson() || $request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $message,
-                    'errors' => ['site_image' => [$message]],
-                ], 500);
-            }
-
-            throw ValidationException::withMessages(['site_image' => $message]);
         }
 
         $site->update(['site_image' => $path]);
@@ -970,54 +992,27 @@ class SiteController extends Controller
         );
 
         $imageUrl = $this->staffPublicStorageUrl($path);
+        if (! $publicLinked) {
+            // Symlink broken — point the admin preview at the disk-stream fallback.
+            $imageUrl = '/media/'.ltrim(str_replace('\\', '/', $path), '/');
+        }
         // Cache-bust so browsers do not keep a prior broken/blank response.
         $imageUrlWithBust = $imageUrl ? ($imageUrl.'?v='.time()) : null;
+
+        $message = 'Image uploaded successfully';
+        if (! $publicLinked) {
+            $message = 'Image saved. If the preview stays blank, run on the server: '
+                .'php artisan media:ensure-link '
+                .'(or: rm -f public/storage && php artisan storage:link).';
+        }
 
         return response()->json([
             'success' => true,
             'image_path' => $path,
             'image_url' => $imageUrlWithBust,
-            'message' => 'Image uploaded successfully',
+            'storage_ok' => $publicLinked,
+            'message' => $message,
         ]);
-    }
-
-    /**
-     * True when the public disk file is also visible through public/storage.
-     * Storage::fake() in tests does not mirror into public/storage — skip the
-     * symlink probe there so upload tests still exercise the happy path.
-     */
-    private function siteImageIsPubliclyReachable(string $path): bool
-    {
-        $normalized = ltrim(str_replace('\\', '/', $path), '/');
-        if ($normalized === '') {
-            return false;
-        }
-
-        $disk = Storage::disk('public');
-        if (! $disk->exists($normalized)) {
-            return false;
-        }
-
-        try {
-            if ((int) $disk->size($normalized) <= 0) {
-                return false;
-            }
-        } catch (\Throwable) {
-            return false;
-        }
-
-        if (app()->runningUnitTests()) {
-            return true;
-        }
-
-        $linkRoot = public_path('storage');
-        if (! is_dir($linkRoot) && ! is_link($linkRoot)) {
-            return false;
-        }
-
-        $publicFile = $linkRoot.DIRECTORY_SEPARATOR.str_replace('/', DIRECTORY_SEPARATOR, $normalized);
-
-        return is_file($publicFile) && filesize($publicFile) > 0;
     }
 
     // UPDATE (supports partial + full updates safely)
@@ -1120,14 +1115,11 @@ class SiteController extends Controller
                     ]);
                 }
 
-                if (! $this->siteImageIsPubliclyReachable($stored)) {
-                    $disk->delete($stored);
-                    throw ValidationException::withMessages([
-                        'site_image' => [
-                            'Image was saved on disk but is not reachable at /storage/. '
-                            .'On Hostinger run: rm -f public/storage && php artisan storage:link '
-                            .'(MEDIA_PATH must match the symlink target).',
-                        ],
+                PublicStorageLink::ensure();
+                if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                    Log::warning('Site image saved via update; public/storage probe failed (kept upload)', [
+                        'path' => $stored,
+                        'disk_root' => config('filesystems.disks.public.root'),
                     ]);
                 }
 
@@ -1322,20 +1314,12 @@ class SiteController extends Controller
                 return back()->withErrors(['site_image' => $message])->withInput();
             }
 
-            if (! $this->siteImageIsPubliclyReachable($stored)) {
-                $disk->delete($stored);
-                $message = 'Image was saved on disk but is not reachable at /storage/. '
-                    .'On Hostinger run: rm -f public/storage && php artisan storage:link '
-                    .'(MEDIA_PATH must match the symlink target).';
-                if ($request->expectsJson() || $request->ajax()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => $message,
-                        'errors' => ['site_image' => [$message]],
-                    ], 500);
-                }
-
-                return back()->withErrors(['site_image' => $message])->withInput();
+            PublicStorageLink::ensure();
+            if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                Log::warning('Site image saved via marketing update; public/storage probe failed (kept upload)', [
+                    'path' => $stored,
+                    'disk_root' => config('filesystems.disks.public.root'),
+                ]);
             }
 
             if ($previous && $previous !== $stored && $disk->exists($previous)) {

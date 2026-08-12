@@ -83,6 +83,7 @@ class MarketingSitesPreviewTest extends TestCase
         // Uploaded cover wins list thumb over stale/missing auto-screenshots.
         $this->assertSame('/storage/sites/cover-real.webp', $row['preview_thumb_url']);
         $this->assertContains('/storage/sites/cover-real.webp', $row['preview_fallback_urls']);
+        $this->assertContains('/media/sites/cover-real.webp', $row['preview_fallback_urls']);
         $this->assertSame('/storage/sites/cover-real.webp', $row['image_url']);
         $this->assertArrayNotHasKey('verify_token', $row);
     }
@@ -185,6 +186,7 @@ class MarketingSitesPreviewTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('function sitePreviewPaths', $html);
+        $this->assertStringContainsString('function siteMediaUrl', $html);
         $this->assertStringContainsString('preview_thumb_url', $html);
         $this->assertStringContainsString('preview_fallback_urls', $html);
         $this->assertStringContainsString('sitePreviewImgOnError', $html);

@@ -194,6 +194,8 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('name="site_image"', $marketingEdit);
         $this->assertStringContainsString('enctype="multipart/form-data"', $marketingEdit);
         $this->assertStringContainsString('desktop screenshot', strtolower($marketingEdit));
+        $this->assertStringContainsString('/media/sites/existing-cover.webp', $marketingEdit);
+        $this->assertStringContainsString('data-media-fallback', $marketingEdit);
 
         $adminEdit = $this->actingAs($this->admin)
             ->get(route('admin.sites.edit', $site->id))
@@ -222,6 +224,8 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('SITE_IMAGE_MAX_KB', $html);
         $this->assertStringContainsString("X-CSRF-TOKEN': CSRF_TOKEN", $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
+        $this->assertStringContainsString('data-media-fallback', $html);
+        $this->assertStringContainsString('function siteMediaUrl', $html);
 
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
@@ -234,5 +238,58 @@ class MarketingSiteImageUploadTest extends TestCase
             '/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s',
             $staffCss
         );
+    }
+
+    public function test_admin_upload_keeps_image_when_public_storage_probe_fails(): void
+    {
+        $site = $this->makeSite(['domain' => 'broken-link.example', 'site_url' => 'https://broken-link.example']);
+        $file = UploadedFile::fake()->image('kept.png', 180, 120);
+
+        $link = public_path('storage');
+        $previous = is_link($link) ? readlink($link) : null;
+        $backup = $link.'.audit-bak-'.uniqid('', true);
+        $wrong = sys_get_temp_dir().'/cmbop-wrong-storage-'.uniqid('', true);
+
+        try {
+            if (file_exists($link) || is_link($link)) {
+                rename($link, $backup);
+            }
+
+            mkdir($wrong, 0777, true);
+            symlink($wrong, $link);
+
+            $response = $this->actingAs($this->admin)
+                ->postJson(route('admin.sites.upload-image', $site->id), [
+                    'site_image' => $file,
+                ])
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $site->refresh();
+            $this->assertNotEmpty($site->site_image);
+            Storage::disk('public')->assertExists($site->site_image);
+
+            $imageUrl = (string) $response->json('image_url');
+            $this->assertNotSame('', $imageUrl);
+            $this->assertTrue(
+                str_contains($imageUrl, '/storage/') || str_contains($imageUrl, '/media/'),
+                'Expected /storage or /media image_url, got: '.$imageUrl
+            );
+        } finally {
+            if (is_link($link) || file_exists($link)) {
+                @unlink($link);
+            }
+            if (is_dir($wrong)) {
+                @rmdir($wrong);
+            }
+            if (is_string($previous) && $previous !== '' && ! file_exists($link) && ! is_link($link)) {
+                @symlink($previous, $link);
+            } elseif ((is_link($backup) || file_exists($backup)) && ! file_exists($link) && ! is_link($link)) {
+                @rename($backup, $link);
+            }
+            if (is_link($backup) || file_exists($backup)) {
+                @unlink($backup);
+            }
+        }
     }
 }

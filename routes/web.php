@@ -65,6 +65,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationPreferenceController;
 // BlogController for public blog pages
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicMediaController;
 use App\Http\Controllers\Publisher\BalanceController;
 use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
 use App\Http\Controllers\Publisher\BulkSiteRequestController as PublisherBulkSiteRequestController;
@@ -176,6 +177,15 @@ Route::get('/llms.txt', function () {
         'Cache-Control' => 'public, max-age=3600',
     ]);
 })->name('llms');
+
+/*
+| Public media fallback — when public/storage symlink is broken (Hostinger
+| MEDIA_PATH mismatch), /storage/... 404s. /media/... streams from the public
+| disk so admin/catalog previews still work until ops runs media:ensure-link.
+*/
+Route::get('/media/{path}', [PublicMediaController::class, 'show'])
+    ->where('path', '.*')
+    ->name('media.public');
 
 /*
 | Legacy /js and /css URLs — Hostinger production already serves /assets/*
