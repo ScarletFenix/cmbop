@@ -48,6 +48,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->assertConfiguredMediaPath();
+
         // App shells use Bootstrap, not Tailwind. Laravel's default Tailwind
         // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities
         // are missing — switch to Bootstrap 5 views sitewide (catalog + admin).
@@ -201,5 +203,31 @@ class AppServiceProvider extends ServiceProvider
 
             $view->with('footerRecentBlogs', $posts);
         });
+    }
+
+    /**
+     * When MEDIA_PATH is set (Hostinger durable media), fail loudly if the
+     * directory is missing or not writable so uploads do not silently die.
+     * Unset MEDIA_PATH keeps the default storage/app/public (local/CI).
+     */
+    private function assertConfiguredMediaPath(): void
+    {
+        $configured = config('filesystems.media_path');
+        if (! is_string($configured) || trim($configured) === '') {
+            return;
+        }
+
+        $path = rtrim($configured, DIRECTORY_SEPARATOR);
+        $ok = is_dir($path) && is_writable($path);
+        if ($ok) {
+            return;
+        }
+
+        $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
+            .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
+
+        Log::critical($message);
+
+        throw new \RuntimeException($message);
     }
 }

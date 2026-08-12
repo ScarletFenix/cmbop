@@ -112,3 +112,9 @@ Set `CATALOG_LIVE_SEARCH=false` in `.env` to force classic full-page navigation 
 See [`docs/ops-mail-reminders.md`](docs/ops-mail-reminders.md) for `APP_URL` /
 `PUBLIC_APP_URL`, `CRON_SECRET`, scheduler vs `/cron/run`, and queue worker vs
 `MAIL_QUEUE_AUTO_DRAIN`. Canonical schedule lives in `bootstrap/app.php`.
+
+### Durable media (Hostinger)
+Public uploads use the `public` disk (`/storage/...`). Leave `MEDIA_PATH` empty
+locally (defaults to `storage/app/public`). On Hostinger set an absolute path
+**outside** `public_html` so code deploys cannot wipe images. Full ops runbook:
+[`docs/hostinger-media.md`](docs/hostinger-media.md).
