@@ -1971,3 +1971,207 @@ $(document).on('click', '.btn-reject-assignment', async function () {
 });
 
 })(); // publisherWebsitesAlwaysOnActions
+
+/*
+ * Listing preview before submit — always-on so it works when Blade owns the form.
+ * Blade calls window.showSiteListingPreview() from the inline submit gate.
+ */
+(function publisherWebsitesListingPreview() {
+'use strict';
+
+window.sitePreviewConfirmed = false;
+
+function previewEscape(str) {
+    return String(str === null || str === undefined ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function previewValue(selector) {
+    const $el = $(selector);
+    if (!$el.length) return '';
+    if ($el.is('select')) {
+        const label = $el.find('option:selected').text();
+        return $.trim(label || $el.val() || '');
+    }
+    return $.trim($el.val() || '');
+}
+
+function previewLabelFor(hiddenSelector, optionsSelector) {
+    const value = $.trim($(hiddenSelector).val() || '');
+    if (!value) return '';
+
+    const $option = $(optionsSelector).find('[data-value="' + value.replace(/"/g, '\\"') + '"]').first();
+    return $.trim($option.data('label') || $option.text() || value);
+}
+
+function previewNiches() {
+    return $.trim($('#selectedCategories').val() || '')
+        .split('|')
+        .map(function (name) { return $.trim(name); })
+        .filter(Boolean)
+        .join(', ');
+}
+
+function previewRow(label, value, opts) {
+    opts = opts || {};
+    const missing = !value;
+    const shown = missing ? (opts.emptyLabel || 'Not set') : value;
+    const cls = missing ? (opts.optional ? 'text-muted' : 'text-danger fst-italic') : '';
+    return '<div class="row g-2 py-2 border-bottom">' +
+        '<div class="col-5 col-md-4 text-muted small">' + previewEscape(label) + '</div>' +
+        '<div class="col-7 col-md-8 ' + cls + '">' + previewEscape(shown) + '</div>' +
+        '</div>';
+}
+
+function previewDescriptionBlock(description) {
+    if (!description) {
+        return '<div class="border rounded-3 p-3 mb-3"><span class="text-danger fst-italic">Not set</span></div>';
+    }
+
+    return '<div class="border rounded-3 p-3 mb-3 site-preview-desc-wrap">' +
+        '<div class="site-preview-desc is-clamped">' + previewEscape(description) + '</div>' +
+        '<button type="button" class="btn btn-link btn-sm px-0 mt-1 site-preview-desc-toggle d-none" ' +
+            'aria-expanded="false">Show more</button>' +
+        '</div>';
+}
+
+function syncSitePreviewDescToggles(root) {
+    if (!root) return;
+    root.querySelectorAll('.site-preview-desc-wrap').forEach(function (wrap) {
+        const desc = wrap.querySelector('.site-preview-desc');
+        const btn = wrap.querySelector('.site-preview-desc-toggle');
+        if (!desc || !btn) return;
+
+        const wasExpanded = !desc.classList.contains('is-clamped');
+        desc.classList.add('is-clamped');
+        const needsToggle = desc.scrollHeight > desc.clientHeight + 1;
+        if (!needsToggle) {
+            desc.classList.remove('is-clamped');
+            btn.classList.add('d-none');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+            return;
+        }
+
+        btn.classList.remove('d-none');
+        if (wasExpanded) {
+            desc.classList.remove('is-clamped');
+            btn.setAttribute('aria-expanded', 'true');
+            btn.textContent = 'Show less';
+        } else {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+        }
+    });
+}
+
+function publisherQuill() {
+    if (typeof window.getPublisherQuill === 'function') {
+        return window.getPublisherQuill();
+    }
+    return null;
+}
+
+function buildSitePreview() {
+    const price = previewValue('#addSiteForm [name="price"]');
+    const q = publisherQuill();
+    const description = q
+        ? $.trim($(q.root).text())
+        : $.trim($('<div>').html($('#siteDescription').val() || '').text());
+
+    let html = '<div class="mb-3">' +
+        '<div class="fw-semibold fs-5">' + previewEscape(previewValue('#addSiteForm [name="siteName"]') || 'Untitled site') + '</div>' +
+        '<div class="text-muted small">' + previewEscape(previewValue('#addSiteForm [name="siteUrl"]')) + '</div>' +
+        '</div>';
+
+    html += '<div class="border rounded-3 p-3 mb-3">';
+    html += previewRow('Price advertisers pay', price ? '€' + price : '');
+    html += previewRow('Domain Authority (DA)', previewValue('#addSiteForm [name="da"]'));
+    html += previewRow('Domain Rating (DR)', previewValue('#addSiteForm [name="dr"]'));
+    html += previewRow('Monthly traffic', previewValue('#addSiteForm [name="traffic"]'));
+    html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
+    html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
+    html += previewRow('Niches', previewNiches());
+    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
+    html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
+    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += '</div>';
+
+    html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
+    html += previewDescriptionBlock(description);
+
+    const turnaround = previewValue('#addSiteForm [name="turnaround_time"]');
+    if (turnaround) {
+        html += '<div class="alert alert-light border small mb-0">' +
+            'Once you accept an order we will expect the article live within <strong>' +
+            previewEscape(turnaround) + '</strong>, and will remind you as that deadline approaches.' +
+            '</div>';
+    }
+
+    return html;
+}
+
+window.showSiteListingPreview = function showSiteListingPreview() {
+    const body = document.getElementById('sitePreviewBody');
+    const modalEl = document.getElementById('sitePreviewModal');
+    if (!body || !modalEl || !window.bootstrap) {
+        console.warn('Site listing preview modal is missing');
+        return;
+    }
+    body.innerHTML = buildSitePreview();
+    const previewModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    previewModal.show();
+    requestAnimationFrame(function () {
+        syncSitePreviewDescToggles(body);
+    });
+};
+
+function resetPublisherSubmitButton() {
+    const isEdit = $('#methodField').val() === 'PUT';
+    $('#submitBtn').prop('disabled', false).text(isEdit ? 'Review & update' : 'Review & submit');
+}
+
+$('#sitePreviewConfirmBtn').on('click', function () {
+    window.sitePreviewConfirmed = true;
+    const q = publisherQuill();
+    if (q) {
+        $('#siteDescription').val(q.root.innerHTML);
+    }
+    if ($('#methodField').val() !== 'PUT' && typeof window.clearSiteDraft === 'function') {
+        window.clearSiteDraft();
+    }
+    const modalEl = document.getElementById('sitePreviewModal');
+    const instance = modalEl && bootstrap.Modal.getInstance(modalEl);
+    if (instance) instance.hide();
+
+    const formEl = document.getElementById('addSiteForm');
+    $('#submitBtn').prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+    if (formEl) {
+        HTMLFormElement.prototype.submit.call(formEl);
+    }
+});
+
+$('#sitePreviewBody').on('click', '.site-preview-desc-toggle', function () {
+    const wrap = this.closest('.site-preview-desc-wrap');
+    const desc = wrap ? wrap.querySelector('.site-preview-desc') : null;
+    if (!desc) return;
+    const expanded = desc.classList.toggle('is-clamped') === false;
+    this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    this.textContent = expanded ? 'Show less' : 'Show more';
+});
+
+document.getElementById('sitePreviewModal')?.addEventListener('shown.bs.modal', function () {
+    syncSitePreviewDescToggles(document.getElementById('sitePreviewBody'));
+});
+
+window.addEventListener('pageshow', function () {
+    window.sitePreviewConfirmed = false;
+    resetPublisherSubmitButton();
+});
+
+})(); // publisherWebsitesListingPreview
