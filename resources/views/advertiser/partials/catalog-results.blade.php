@@ -75,6 +75,16 @@
         <caption class="visually-hidden">Publisher catalog results with metrics, pricing and buy actions</caption>
         <thead class="table-light">
             <tr>
+                <th scope="col" class="text-center catalog-th catalog-th-preview">
+                    <span class="catalog-th-label">
+                        Preview
+                        <x-glass-tip
+                            title="Homepage preview"
+                            body="Desktop screenshot of the publisher’s homepage. Hover to enlarge."
+                            label="About Preview column"
+                            placement="bottom" />
+                    </span>
+                </th>
                 <th scope="col" class="text-start catalog-th catalog-th-site">
                     <span class="catalog-th-label">
                         Site
@@ -229,7 +239,43 @@
                 $eyeHideLabel = 'Hide site name and URL';
             @endphp
             <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
-                
+                @php
+                    $rowPreviewPaths = $site->listingPreviewUrlChain();
+                    $rowPreviewUrl = $rowPreviewPaths[0] ?? null;
+                    $rowZoomPaths = $site->zoomPreviewUrlChain();
+                    if ($rowZoomPaths === [] && $rowPreviewPaths !== []) {
+                        $rowZoomPaths = $rowPreviewPaths;
+                    }
+                    $rowZoomUrl = $rowZoomPaths[0] ?? $rowPreviewUrl;
+                @endphp
+                <td class="text-center catalog-preview-cell">
+                    @if($rowPreviewUrl)
+                        <span class="site-row-preview"
+                              role="img"
+                              tabindex="0"
+                              aria-label="{{ $identityLabel }} preview"
+                              data-zoom-src="{{ $rowZoomUrl }}"
+                              data-zoom-chain="{{ json_encode($rowZoomPaths, JSON_UNESCAPED_SLASHES) }}">
+                            <img src="{{ $rowPreviewUrl }}"
+                                 alt="{{ $identityLabel }} preview"
+                                 loading="lazy"
+                                 decoding="async"
+                                 data-preview-chain="{{ json_encode($rowPreviewPaths, JSON_UNESCAPED_SLASHES) }}"
+                                 data-preview-i="0"
+                                 onerror="window.catalogRowPreviewOnError && window.catalogRowPreviewOnError(this)">
+                        </span>
+                    @else
+                        <span class="site-row-preview is-empty"
+                              data-glass-tip
+                              data-glass-tip-body="No preview yet"
+                              data-glass-tip-placement="top"
+                              data-glass-tip-hover-only="1"
+                              aria-label="No preview">
+                            <i class="fa fa-image" aria-hidden="true"></i>
+                        </span>
+                    @endif
+                </td>
+
                 <td class="catalog-site-cell">
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
@@ -567,7 +613,7 @@
             </tr>
 
             <tr class="expanded-row-{{ $site->id }}" id="site-details-{{ $site->id }}" style="display: none;">
-    <td colspan="7" class="catalog-expand-cell">
+    <td colspan="8" class="catalog-expand-cell">
         <div class="row">
             <div class="col-md-12">
                 <h6 class="mb-3">Site Details</h6>
@@ -898,7 +944,7 @@
 </tr>
             @empty
             <tr>
-                <td colspan="7" class="text-center py-5">
+                <td colspan="8" class="text-center py-5">
                     <div class="catalog-empty-state mx-auto">
                         @include('advertiser.partials.catalog-empty-art')
                         <h5 class="mb-2">
