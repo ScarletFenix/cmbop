@@ -150,6 +150,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        $this->normalizeOptionalCheckboxGroups($request);
+
         $validator = Validator::make($request->all(), [
             'siteName' => 'required|string|max:255',
             'siteUrl' => 'required|url|max:255',
@@ -624,6 +626,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
+        $this->normalizeOptionalCheckboxGroups($request);
+
         $validator = Validator::make($request->all(), [
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
@@ -878,6 +882,39 @@ class SiteController extends Controller
         };
 
         return $normalize($oldCategories) !== $normalize($newCategories);
+    }
+
+    /**
+     * HTML checkboxes without value= submit "on"; Laravel's boolean rule rejects
+     * that. Normalize present keys to 1/0 before validate (Request::boolean
+     * already accepts on/1/true/yes).
+     */
+    private function normalizeOptionalCheckboxGroups(Request $request): void
+    {
+        $groups = [
+            'sensitive' => ['crypto', 'trading', 'CBD', 'forex'],
+            'homepage' => array_map('strval', config('site_placement.homepage_days', [1, 7, 30])),
+            'social' => config('site_placement.social_channels', ['facebook', 'instagram', 'x']),
+        ];
+
+        foreach ($groups as $group => $keys) {
+            $raw = $request->input($group);
+            if (! is_array($raw) || $raw === []) {
+                continue;
+            }
+
+            $normalized = [];
+            foreach ($keys as $key) {
+                if (! array_key_exists($key, $raw) && ! array_key_exists((string) $key, $raw)) {
+                    continue;
+                }
+                $normalized[(string) $key] = $request->boolean($group.'.'.$key) ? 1 : 0;
+            }
+
+            if ($normalized !== []) {
+                $request->merge([$group => $normalized]);
+            }
+        }
     }
 
     /**
