@@ -1042,12 +1042,18 @@ class Site extends Model
             return null;
         }
 
-        $normalized = ltrim(str_replace('\\', '/', $path), '/');
-        if ($normalized === '') {
-            return null;
+        $trimmed = trim($path);
+        // Already an absolute / protocol-relative URL — leave it alone.
+        if (preg_match('#^(https?:)?//#i', $trimmed) === 1) {
+            return $trimmed;
         }
-        if (str_starts_with($normalized, 'storage/')) {
-            $normalized = ltrim(substr($normalized, strlen('storage/')), '/');
+
+        $normalized = ltrim(str_replace('\\', '/', $trimmed), '/');
+        // Strip accidental storage/ or media/ prefixes (avoid /media/media/...).
+        foreach (['storage/', 'media/'] as $prefix) {
+            if (str_starts_with($normalized, $prefix)) {
+                $normalized = ltrim(substr($normalized, strlen($prefix)), '/');
+            }
         }
         if ($normalized === '') {
             return null;
@@ -1063,12 +1069,17 @@ class Site extends Model
      */
     public static function publicDiskUrlFallbacks(?string $path): array
     {
-        $media = static::publicDiskUrl($path);
-        if ($media === null) {
+        $primary = static::publicDiskUrl($path);
+        if ($primary === null) {
             return [];
         }
 
-        $normalized = ltrim(substr($media, strlen('/media/')), '/');
+        // Absolute URLs have no /storage twin.
+        if (preg_match('#^(https?:)?//#i', $primary) === 1) {
+            return [$primary];
+        }
+
+        $normalized = ltrim(substr($primary, strlen('/media/')), '/');
 
         return array_values(array_unique([
             '/media/'.$normalized,
@@ -1077,23 +1088,44 @@ class Site extends Model
     }
 
     /**
-     * Catalog / My Sites homepage preview candidates.
-     * Full capture → thumb → uploaded cover; each as /media then /storage.
+     * Failed screenshot captures store gray *-placeholder.webp files that still
+     * HTTP 200 — prefer real uploads/captures over those when building chains.
+     */
+    public static function isPlaceholderPreviewPath(?string $path): bool
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return false;
+        }
+
+        return str_contains(strtolower($path), '-placeholder');
+    }
+
+    /**
+     * Build /media+/storage URL chain from ordered disk paths.
+     * Skips placeholder captures when any non-placeholder candidate exists.
      *
+     * @param  list<mixed>  $candidates
      * @return list<string>
      */
-    public function homepagePreviewUrlChain(): array
+    public function previewUrlChainFrom(array $candidates): array
     {
-        $urls = [];
-        foreach ([
-            $this->screenshot_path,
-            $this->screenshot_thumb_path,
-            $this->site_image,
-        ] as $candidate) {
+        $usable = [];
+        $placeholders = [];
+        foreach ($candidates as $candidate) {
             if (! is_string($candidate) || trim($candidate) === '') {
                 continue;
             }
-            foreach (static::publicDiskUrlFallbacks($candidate) as $url) {
+            if (static::isPlaceholderPreviewPath($candidate)) {
+                $placeholders[] = $candidate;
+            } else {
+                $usable[] = $candidate;
+            }
+        }
+
+        $ordered = $usable !== [] ? $usable : $placeholders;
+        $urls = [];
+        foreach ($ordered as $path) {
+            foreach (static::publicDiskUrlFallbacks($path) as $url) {
                 if (! in_array($url, $urls, true)) {
                     $urls[] = $url;
                 }
@@ -1101,6 +1133,50 @@ class Site extends Model
         }
 
         return $urls;
+    }
+
+    /**
+     * Catalog Site Details homepage preview: full → thumb → cover.
+     *
+     * @return list<string>
+     */
+    public function homepagePreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->screenshot_path,
+            $this->screenshot_thumb_path,
+            $this->site_image,
+        ]);
+    }
+
+    /**
+     * Publisher My Sites / staff list thumbs: uploaded cover first (matches admin),
+     * then screenshot thumb/full. Auto-screenshots and gray placeholders must not
+     * hide a real admin/marketing cover upload.
+     *
+     * @return list<string>
+     */
+    public function listingPreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->site_image,
+            $this->screenshot_thumb_path,
+            $this->screenshot_path,
+        ]);
+    }
+
+    /**
+     * Hover/detail zoom: full capture → cover → thumb.
+     *
+     * @return list<string>
+     */
+    public function zoomPreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->screenshot_path,
+            $this->site_image,
+            $this->screenshot_thumb_path,
+        ]);
     }
 
     /**

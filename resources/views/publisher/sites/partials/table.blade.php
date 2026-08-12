@@ -767,39 +767,10 @@
         @endforeach
         @foreach($sites as $index => $site)
         @php
-            // Prefer screenshot thumb → full capture → uploaded cover.
-            // Emit /media first (disk stream) with /storage fallback for Hostinger.
-            $previewPaths = [];
-            foreach ([
-                $site->screenshot_thumb_path,
-                $site->screenshot_path,
-                $site->site_image,
-            ] as $candidate) {
-                if (! is_string($candidate) || trim($candidate) === '') {
-                    continue;
-                }
-                foreach (\App\Models\Site::publicDiskUrlFallbacks($candidate) as $url) {
-                    if (! in_array($url, $previewPaths, true)) {
-                        $previewPaths[] = $url;
-                    }
-                }
-            }
+            // Cover first (admin parity), then screenshots. /media → /storage chain.
+            $previewPaths = $site->listingPreviewUrlChain();
             $previewUrl = $previewPaths[0] ?? null;
-            $zoomPaths = [];
-            foreach ([
-                $site->screenshot_path,
-                $site->site_image,
-                $site->screenshot_thumb_path,
-            ] as $fullCandidate) {
-                if (! is_string($fullCandidate) || trim($fullCandidate) === '') {
-                    continue;
-                }
-                foreach (\App\Models\Site::publicDiskUrlFallbacks($fullCandidate) as $url) {
-                    if (! in_array($url, $zoomPaths, true)) {
-                        $zoomPaths[] = $url;
-                    }
-                }
-            }
+            $zoomPaths = $site->zoomPreviewUrlChain();
             if ($zoomPaths === [] && $previewPaths !== []) {
                 $zoomPaths = $previewPaths;
             }
@@ -829,7 +800,7 @@
                              decoding="async"
                              data-preview-chain="{{ json_encode($previewPaths, JSON_UNESCAPED_SLASHES) }}"
                              data-preview-i="0"
-                             onerror="window.publisherSitePreviewOnError && window.publisherSitePreviewOnError(this)">
+                             onerror="if(window.publisherSitePreviewOnError){window.publisherSitePreviewOnError(this);}else{(function(img){var c=[];try{c=JSON.parse(img.getAttribute('data-preview-chain')||'[]');}catch(e){c=[];}if(!Array.isArray(c))c=[];var i=parseInt(img.getAttribute('data-preview-i')||'0',10)||0;var n=i+1;if(n&lt;c.length&amp;&amp;c[n]){img.setAttribute('data-preview-i',String(n));img.src=c[n];return;}img.onerror=null;img.removeAttribute('src');var w=img.closest('.site-row-preview');if(w){w.classList.add('is-empty');w.removeAttribute('data-zoom-src');w.removeAttribute('data-zoom-chain');w.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';}})(this);}">
                     </span>
                 @else
                     <span class="site-row-preview is-empty"
