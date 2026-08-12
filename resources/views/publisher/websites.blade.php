@@ -2399,7 +2399,6 @@ function prefillSiteForm(site) {
     $('html, body').animate({ scrollTop: $("#formCard").offset().top - 100 }, 500);
 }
 
-let delayTimer;
 $(document).ready(function(){
     @if(session('success'))
         clearSiteDraft();
