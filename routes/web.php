@@ -644,6 +644,10 @@ Route::middleware(['auth', 'verified'])->group(function () {
     Route::post('/profile/notifications', [NotificationPreferenceController::class, 'update'])
         ->name('profile.notifications.update');
 
+    // A claimer's own ownership claims (visible to advertisers and publishers alike).
+    Route::get('/site-claims', [SiteClaimController::class, 'index'])
+        ->name('site-claims.index');
+
     // Chat routes
     Route::prefix('chat')->group(function () {
         Route::get('/unread-summary', [ChatController::class, 'unreadSummary'])->name('chat.unread-summary');

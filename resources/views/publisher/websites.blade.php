@@ -671,6 +671,9 @@
     <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
         <i class="fa fa-user-check"></i> Claim a website
     </button>
+    <a href="{{ route('site-claims.index') }}" class="btn mb-3 shadow-sm btn-outline-secondary ms-1" id="myClaimsLink">
+        <i class="fa fa-list"></i> My claims
+    </a>
 
     @if(!empty($awaitingDetailsCount) && $awaitingDetailsCount > 0)
         <a href="{{ route('publisher.bulk-sites.complete') }}" class="btn mb-3 shadow-sm btn-upload ms-1" id="bulkCompleteDetailsBtn">
@@ -852,6 +855,66 @@
             </form>
         </div>
     </div>
+
+    @php
+        $myClaims = \App\Models\SiteClaim::query()
+            ->with('site:id,site_name,domain')
+            ->where('claimer_id', auth()->id())
+            ->latest('id')
+            ->limit(10)
+            ->get();
+    @endphp
+    @if($myClaims->isNotEmpty())
+    <div class="card shadow-sm border-0 mb-3" id="myClaimsPanel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0"><i class="fa fa-user-check me-1"></i> Your ownership claims</h5>
+                <span class="small text-muted">We email you after each review.</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Website</th>
+                            <th>Name match</th>
+                            <th>Status</th>
+                            <th>Reviewed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($myClaims as $claim)
+                            @php
+                                $statusClass = match($claim->status) {
+                                    'approved' => 'bg-success',
+                                    'rejected' => 'bg-danger',
+                                    default => 'bg-warning text-dark',
+                                };
+                            @endphp
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ $claim->site->site_name ?? $claim->website_name }}</div>
+                                    <div class="small text-muted">{{ $claim->domain }}</div>
+                                    @if($claim->status !== 'pending' && filled($claim->admin_notes))
+                                        <div class="small text-muted fst-italic">Note: {{ $claim->admin_notes }}</div>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($claim->name_matches)
+                                        <span class="badge bg-success-subtle text-success border">Matches</span>
+                                    @else
+                                        <span class="badge bg-warning-subtle text-dark border">Mismatch</span>
+                                    @endif
+                                </td>
+                                <td><span class="badge {{ $statusClass }}">{{ ucfirst($claim->status) }}</span></td>
+                                <td class="small text-muted">{{ optional($claim->reviewed_at)->diffForHumans() ?: '—' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    @endif
 
     @if(session('error') && !session('bulk_import_failures'))
         <div class="alert alert-danger alert-dismissible fade show">

@@ -209,6 +209,7 @@
                                         @if(auth()->user()->isAdmin())
                                             <button type="button" class="btn btn-sm btn-success btn-claim-action"
                                                     data-url="{{ route('admin.community.claims.approve', $item->id) }}"
+                                                    data-open-orders="{{ (int) ($claimOpenOrders[$item->id] ?? 0) }}"
                                                     data-mode="approve">Approve</button>
                                             <button type="button" class="btn btn-sm btn-outline-danger btn-claim-action"
                                                     data-url="{{ route('admin.community.claims.reject', $item->id) }}"
@@ -270,15 +271,22 @@ document.querySelectorAll('.btn-status').forEach(btn => {
 document.querySelectorAll('.btn-claim-action').forEach(btn => {
     btn.addEventListener('click', async () => {
         const approve = btn.dataset.mode === 'approve';
+        const openOrders = parseInt(btn.dataset.openOrders || '0', 10) || 0;
+        let warning = '';
+        if (approve && openOrders > 0) {
+            warning = `<div class="alert alert-warning small text-start mb-2">This site has <strong>${openOrders}</strong> open order(s). Approving is blocked until they are completed, cancelled, or resolved.</div>`;
+        }
         const { value: notes, isConfirmed } = await Swal.fire({
             title: approve ? 'Approve claim & transfer ownership?' : 'Reject claim?',
             input: 'textarea',
             inputLabel: 'Admin notes (optional)',
+            html: warning || undefined,
             showCancelButton: true,
+            showConfirmButton: !(approve && openOrders > 0),
             confirmButtonText: approve ? 'Approve & transfer' : 'Reject',
             customClass: { confirmButton: approve ? '' : 'slb-swal-danger' },
         });
-        if (!isConfirmed) return;
+        if (!isConfirmed || (approve && openOrders > 0)) return;
         const res = await fetch(btn.dataset.url, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },

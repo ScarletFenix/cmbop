@@ -6,12 +6,46 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Services\ActivityLogger;
+use App\Services\SiteClaimTransferService;
 use App\Support\NormalizesHttpUrls;
 use Illuminate\Http\Request;
 
 class SiteClaimController extends Controller
 {
     use NormalizesHttpUrls;
+
+    public function __construct(private SiteClaimTransferService $transfers) {}
+
+    /**
+     * The claimer's own ownership claims (any authenticated user).
+     */
+    public function index(Request $request)
+    {
+        $claims = SiteClaim::query()
+            ->with(['site:id,site_name,domain', 'reviewer:id,name'])
+            ->where('claimer_id', auth()->id())
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'claims' => $claims->getCollection()->map(fn (SiteClaim $c) => [
+                    'id' => $c->id,
+                    'site_name' => $c->site?->site_name ?: $c->website_name,
+                    'domain' => $c->domain,
+                    'name_matches' => (bool) $c->name_matches,
+                    'status' => $c->status,
+                    'admin_notes' => $c->admin_notes,
+                    'reviewed_at' => optional($c->reviewed_at)?->toIso8601String(),
+                    'created_at' => optional($c->created_at)?->toIso8601String(),
+                ])->all(),
+            ]);
+        }
+
+        return view('publisher.site-claims', compact('claims'));
+    }
 
     public function store(Request $request)
     {
@@ -109,6 +143,8 @@ class SiteClaimController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
+
+        $this->transfers->notifySubmitted($claim);
 
         return response()->json([
             'success' => true,
