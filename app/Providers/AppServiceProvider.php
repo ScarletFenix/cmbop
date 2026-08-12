@@ -219,31 +219,15 @@ class AppServiceProvider extends ServiceProvider
 
         $path = rtrim($configured, DIRECTORY_SEPARATOR);
         $ok = is_dir($path) && is_writable($path);
-        if (! $ok) {
-            $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
-                .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
-
-            Log::critical($message);
-
-            throw new \RuntimeException($message);
+        if ($ok) {
+            return;
         }
 
-        // Symlink must point at the durable media root or admin/marketing
-        // uploads succeed while /storage/... row previews 404.
-        $link = public_path('storage');
-        if (is_link($link) || is_dir($link)) {
-            $linkReal = realpath($link);
-            $mediaReal = realpath($path);
-            if ($linkReal && $mediaReal && $linkReal !== $mediaReal) {
-                Log::warning('public/storage does not point at MEDIA_PATH; site image previews will 404', [
-                    'public_storage' => $linkReal,
-                    'media_path' => $mediaReal,
-                ]);
-            }
-        } else {
-            Log::warning('public/storage link missing; run php artisan storage:link so admin site images are visible', [
-                'media_path' => $path,
-            ]);
-        }
+        $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
+            .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
+
+        Log::critical($message);
+
+        throw new \RuntimeException($message);
     }
 }
