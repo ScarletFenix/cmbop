@@ -780,7 +780,9 @@ class OrderController extends Controller
                 ], 422);
             }
 
-            if ($order->status !== 'processing') {
+            // processing = first submit; review = sibling line still publishing
+            // while the order is already waiting on the advertiser.
+            if (! in_array($order->status, ['processing', 'review'], true)) {
                 DB::rollBack();
                 if ($suppressedOrderId) {
                     $suppressor->forget($suppressedOrderId);
