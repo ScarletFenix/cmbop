@@ -14,9 +14,10 @@ Use this on **every** code update. Full media background:
 1. `grep '^MEDIA_PATH=' .env` — must be absolute path outside `public_html`
 2. `ls -la public/storage` — must symlink to that path; if not:
    `rm -f public/storage && php artisan storage:link`
-3. `php artisan config:clear` (and `config:cache` if you normally cache)
-4. Open 2 known image URLs (`/storage/sites/...`, `/storage/site-screenshots/...`)
-5. Confirm a new upload lands under `persistent/media`, not a wiped folder
+3. `php artisan migrate --force` (or run pending SQL under `database/sql/`, e.g. `add_homepage_social_placement.sql` so catalog Site Details can show Homepage promotions + Social)
+4. `php artisan config:clear` (and `config:cache` if you normally cache)
+5. Open 2 known image URLs (`/storage/sites/...`, `/storage/site-screenshots/...`)
+6. Confirm a new upload lands under `persistent/media`, not a wiped folder
 
 ## Weekly
 

@@ -1229,10 +1229,9 @@ class Site extends Model
      */
     public function homepagePlacementOptions(): array
     {
-        if (! static::hasSitesColumn('homepage_placement_prices')) {
-            return [];
-        }
-
+        // Read the cast attribute directly. Do not gate on Schema::hasColumn —
+        // Hostinger SQL patches can add columns before Schema cache refreshes,
+        // and a false-negative would hide offers in catalog Site Details.
         $raw = $this->homepage_placement_prices;
         if (! is_array($raw) || $raw === []) {
             return [];
@@ -1282,10 +1281,7 @@ class Site extends Model
      */
     public function enabledSocialChannels(): array
     {
-        if (! static::hasSitesColumn('social_promotion')) {
-            return [];
-        }
-
+        // Same as homepagePlacementOptions(): trust attributes over Schema::hasColumn.
         $raw = $this->social_promotion;
         if (! is_array($raw) || $raw === []) {
             return [];
