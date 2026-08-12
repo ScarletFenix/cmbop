@@ -93,35 +93,47 @@
 
 /* The Site column carries the domain, chips and meta lines; the rest of the
    table is numeric, so it gets the slack instead of a hard pixel floor. */
-/* Category — slightly wider so two niche chips fit; still clamped in-cell. */
-.catalog-page .catalog-table th:nth-child(2),
-.catalog-page .catalog-table td:nth-child(2) {
+/* Category — slightly wider so two niche chips fit; still clamped in-cell.
+   Column order: 1 Preview, 2 Site, 3 Category, 4 Traffic, 5 DR, 6 DA, 7 Country, 8 Buy */
+.catalog-page .catalog-table th:nth-child(1),
+.catalog-page .catalog-table td:nth-child(1) {
+    width: 148px;
+}
+
+.catalog-page .catalog-table th:nth-child(3),
+.catalog-page .catalog-table td:nth-child(3) {
     width: 15%;
 }
 
 /* Traffic / DR / DA carry a source mark + label + info tip — 7% clipped the
    Traffic tip (longest word) under a clipping table wrapper. */
-.catalog-page .catalog-table th:nth-child(3),
-.catalog-page .catalog-table td:nth-child(3) {
+.catalog-page .catalog-table th:nth-child(4),
+.catalog-page .catalog-table td:nth-child(4) {
     width: 10%;
 }
 
-.catalog-page .catalog-table th:nth-child(4),
-.catalog-page .catalog-table td:nth-child(4),
 .catalog-page .catalog-table th:nth-child(5),
-.catalog-page .catalog-table td:nth-child(5) {
+.catalog-page .catalog-table td:nth-child(5),
+.catalog-page .catalog-table th:nth-child(6),
+.catalog-page .catalog-table td:nth-child(6) {
     width: 8%;
 }
 
-.catalog-page .catalog-table th:nth-child(6),
-.catalog-page .catalog-table td:nth-child(6) {
+.catalog-page .catalog-table th:nth-child(7),
+.catalog-page .catalog-table td:nth-child(7) {
     width: 9%;
 }
 
 /* Site needs room for host + Verified + NEW + the action icons on one row.
    At 24% the row overflowed its cell and printed over Category. */
+.catalog-th-preview {
+    width: 148px;
+    min-width: 136px;
+    text-align: center;
+}
+
 .catalog-th-site {
-    width: 29%;
+    width: 26%;
     min-width: 12rem;
     text-align: start;
 }
@@ -1623,6 +1635,125 @@ body:has(.catalog-page) {
 
 .catalog-site-cell {
     position: relative;
+}
+
+.catalog-preview-cell {
+    text-align: center;
+    vertical-align: middle;
+    width: 148px;
+}
+
+/* Desktop 16:10 row thumbs (My Sites parity). Hover uses .site-preview-zoom-pop. */
+.catalog-page .site-row-preview {
+    position: relative;
+    display: inline-block;
+    width: 136px;
+    max-width: 100%;
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
+    flex-shrink: 0;
+    cursor: zoom-in;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+    vertical-align: middle;
+}
+
+.catalog-page .site-row-preview::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%; /* 10 / 16 desktop frame */
+}
+
+.catalog-page .site-row-preview:hover,
+.catalog-page .site-row-preview:focus-visible {
+    border-color: var(--brand-primary, #1a585e);
+    box-shadow: 0 0 0 1px var(--brand-primary, #1a585e);
+    outline: none;
+}
+
+.catalog-page .site-row-preview img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    max-width: none;
+    object-fit: contain;
+    object-position: center top;
+    display: block;
+    background: #f8fafc;
+}
+
+.catalog-page .site-row-preview.is-empty {
+    color: #94a3b8;
+    font-size: 18px;
+    cursor: default;
+}
+
+.catalog-page .site-row-preview.is-empty > i,
+.catalog-page .site-row-preview.is-empty > span {
+    position: absolute;
+    inset: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.site-preview-zoom-pop {
+    position: fixed;
+    z-index: 1200;
+    width: min(440px, calc(100vw - 24px));
+    max-height: min(300px, calc(100vh - 24px));
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 88, 94, 0.18);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+    transition: opacity .16s ease, transform .16s ease;
+    overflow: hidden;
+}
+
+.site-preview-zoom-pop.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.site-preview-zoom-pop::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
+}
+
+.site-preview-zoom-pop img {
+    position: absolute;
+    inset: 6px;
+    width: calc(100% - 12px);
+    height: calc(100% - 12px);
+    max-width: none;
+    object-fit: contain;
+    object-position: center top;
+    border-radius: 8px;
+    background: #f8fafc;
+    display: block;
+}
+
+@media (hover: none) {
+    .site-preview-zoom-pop { display: none !important; }
+    .catalog-page .site-row-preview { cursor: default; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-preview-zoom-pop {
+        transition: none;
+    }
 }
 
 .catalog-site-stack {
