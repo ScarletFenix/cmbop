@@ -3543,6 +3543,10 @@ function toggleCardDetails(toggle) {
     setCatalogDetailsToggleState(toggle, willOpen);
     if (willOpen) {
         hydrateExpandScreenshots(panel);
+        const siteId = (toggle.dataset.cardDetails || '').replace('card-details-', '');
+        if (siteId) {
+            syncSensitiveSelectionUi(siteId);
+        }
     }
 }
 
@@ -3644,6 +3648,16 @@ function showCatalogSite(siteId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     updateButtonStates();
+
+    // Default free homepage can be pre-checked in Blade; sync Buy totals before
+    // the first radio change so expand/header prices match the selection.
+    document.querySelectorAll('.homepage-placement-radio:checked').forEach(function (radio) {
+        const siteId = radio.dataset.siteId
+            || (radio.closest('.homepage-placement-group') || {}).dataset?.siteId;
+        if (!siteId) return;
+        if (String(radio.value) === 'none' || String(radio.dataset.days) === 'none') return;
+        syncSensitiveSelectionUi(siteId);
+    });
 
     // Sensitive topic + homepage radios: delegate so late/expanded markup still works.
     document.addEventListener('change', function (e) {
@@ -4065,6 +4079,7 @@ document.addEventListener('DOMContentLoaded', function() {
             expandedRow.style.display = 'table-row';
             hydrateExpandScreenshots(expandedRow);
             setCatalogDetailsToggleState(arrow, true);
+            syncSensitiveSelectionUi(id);
         } else {
             expandedRow.style.display = 'none';
             setCatalogDetailsToggleState(arrow, false);
