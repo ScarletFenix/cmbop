@@ -92,19 +92,6 @@
 
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
-                            <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
-                                <option value="">Select…</option>
-                                @foreach($languages as $language)
-                                    <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
-                                        {{ $language->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        </div>
-                        <div class="col-md-6">
                             <label class="form-label fw-semibold" for="country">Country <span class="text-danger">*</span></label>
                             <select id="country" name="country" class="form-select @error('country') is-invalid @enderror" required>
                                 <option value="">Select…</option>
@@ -115,7 +102,22 @@
                                     </option>
                                 @endforeach
                             </select>
+                            <div class="form-text">Pick country first.</div>
                             @error('country')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
+                            <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
+                                <option value="">Select country first</option>
+                                @foreach($languages as $language)
+                                    <option value="{{ strtolower($language->code) }}"
+                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        {{ $language->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="form-text">Only languages paired with that country.</div>
+                            @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="da">DA <span class="text-danger">*</span></label>
@@ -168,13 +170,13 @@
                             @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="10240">
-                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
@@ -182,7 +184,7 @@
                                 @if($site->site_image)
                                     <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
                                 @else
-                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                    <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
                         </div>
@@ -288,18 +290,6 @@
                                    value="{{ old_text('price', $site->price) }}">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold" for="language">Language</label>
-                            <select id="language" name="language" class="form-select">
-                                <option value="">Select…</option>
-                                @foreach($languages as $language)
-                                    <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
-                                        {{ $language->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-4">
                             <label class="form-label fw-semibold" for="country">Country</label>
                             <select id="country" name="country" class="form-select">
                                 <option value="">Select…</option>
@@ -307,6 +297,18 @@
                                     <option value="{{ strtolower($country->code) }}"
                                         @selected(old('country', strtolower((string) $site->country)) === strtolower($country->code))>
                                         {{ $country->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="language">Language</label>
+                            <select id="language" name="language" class="form-select">
+                                <option value="">Select country first</option>
+                                @foreach($languages as $language)
+                                    <option value="{{ strtolower($language->code) }}"
+                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        {{ $language->name }}
                                     </option>
                                 @endforeach
                             </select>
@@ -339,13 +341,13 @@
                             <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
                         </div>
 
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="10240">
-                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
@@ -353,7 +355,7 @@
                                 @if($site->site_image)
                                     <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
                                 @else
-                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                    <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
                         </div>
@@ -387,6 +389,47 @@
 
 <script>
 (function () {
+    const map = @json($countryLanguageMap ?? new \stdClass());
+    const countryEl = document.getElementById('country');
+    const langEl = document.getElementById('language');
+    const preferredLang = @json(old('language', strtolower((string) ($site->language ?? ''))));
+
+    function refreshLanguages() {
+        if (!countryEl || !langEl) return;
+        const code = (countryEl.value || '').toLowerCase();
+        const list = map[code] || [];
+        const keep = (langEl.value || preferredLang || '').toLowerCase();
+        langEl.innerHTML = '';
+        if (!code) {
+            langEl.disabled = true;
+            langEl.innerHTML = '<option value="">Select country first</option>';
+            return;
+        }
+        langEl.disabled = false;
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select…';
+        langEl.appendChild(placeholder);
+        list.forEach(function (row) {
+            const opt = document.createElement('option');
+            opt.value = row.code;
+            opt.textContent = row.name || String(row.code).toUpperCase();
+            if (keep && keep === String(row.code).toLowerCase()) opt.selected = true;
+            langEl.appendChild(opt);
+        });
+        if (list.length === 1 && !langEl.value) {
+            langEl.value = list[0].code;
+        }
+    }
+
+    if (countryEl) {
+        countryEl.addEventListener('change', refreshLanguages);
+        refreshLanguages();
+    }
+})();
+</script>
+<script>
+(function () {
     const imageInput = document.getElementById('site_image');
     const preview = document.getElementById('siteImagePreview');
     if (!imageInput || !preview) return;
@@ -399,7 +442,7 @@
             preview.innerHTML = '<img src="' + existingSrc + '" alt="Current site image">';
         } else {
             preview.classList.add('is-empty');
-            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot</span>';
+            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot (16:10)</span>';
         }
     }
 

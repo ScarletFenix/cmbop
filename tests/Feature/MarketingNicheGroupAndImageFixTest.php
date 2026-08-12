@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\SiteImageUpload;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -204,8 +205,10 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('data-max-kb="10240"', $html);
-        $this->assertStringContainsString('up to 10', $html);
+        $maxKb = SiteImageUpload::maxKilobytes();
+        $maxMb = SiteImageUpload::maxMegabytesLabel();
+        $this->assertStringContainsString('data-max-kb="'.$maxKb.'"', $html);
+        $this->assertStringContainsString('up to '.$maxMb, $html);
         // Prefill resolves legacy category "Technology" → Technology & Gadgets (Blade-escaped).
         $this->assertTrue(
             str_contains($html, 'Technology &amp; Gadgets') || str_contains($html, 'Technology & Gadgets'),

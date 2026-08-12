@@ -132,7 +132,7 @@
                                             <div class="site-summary-price text-end">
                                                 <div class="site-summary-price-label">{{ !empty($item['paying_now']) ? 'Charged now' : 'Not charged yet' }}</div>
                                                 @if(!empty($item['discount_amount']) && $item['discount_amount'] > 0)
-                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format($item['list_total'] ?? $item['price'], 2) }}</div>
+                                                    <div class="small text-muted text-decoration-line-through">€{{ number_format(($item['list_total'] ?? $item['price']) + (float) ($item['homepage_price'] ?? 0), 2) }}</div>
                                                 @endif
                                                 <div class="site-summary-price-value {{ empty($item['paying_now']) ? 'text-muted' : '' }}">€{{ number_format($item['price'], 2) }}</div>
                                                 @if(!empty($item['discount_labels']))
@@ -159,6 +159,30 @@
                                                         <strong>{{ ucfirst($item['sensitive_type']) }}</strong>
                                                     </span>
                                                     <span class="site-summary-amount site-summary-amount-accent">+€{{ number_format($item['additional_price'], 2) }}</span>
+                                                </div>
+                                            @endif
+                                            @if(!empty($item['homepage_days']))
+                                                <div class="site-summary-row">
+                                                    <span>
+                                                        Homepage placement
+                                                        <strong>{{ (int) $item['homepage_days'] }} day{{ (int) $item['homepage_days'] === 1 ? '' : 's' }}</strong>
+                                                    </span>
+                                                    <span class="site-summary-amount">
+                                                        @if(($item['homepage_price'] ?? 0) > 0)
+                                                            +€{{ number_format($item['homepage_price'], 2) }}
+                                                        @else
+                                                            Free
+                                                        @endif
+                                                    </span>
+                                                </div>
+                                            @endif
+                                            @if(!empty($item['social_channels']) && is_array($item['social_channels']))
+                                                <div class="site-summary-row">
+                                                    <span>Social promotion</span>
+                                                    <span class="site-summary-amount">
+                                                        {{ collect($item['social_channels'])->map(fn ($c) => $c === 'x' ? 'X' : ucfirst((string) $c))->implode(', ') }}
+                                                        · included
+                                                    </span>
                                                 </div>
                                             @endif
                                         </div>

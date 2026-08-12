@@ -164,11 +164,13 @@
     <tr>
         <td style="padding-right:8px;">
             <div class="box">
-                <h4>Bill to</h4>
+                <h4>{{ $isPayout ? 'Pay to' : 'Bill to' }}</h4>
                 <div><strong>{{ $invoice->customer_name }}</strong></div>
                 <div class="muted">{{ $invoice->customer_email }}</div>
                 @php $bill = $invoice->billing_snapshot ?? []; @endphp
-                @if(!empty($bill['company'])) <div><strong>{{ $bill['company'] }}</strong></div> @endif
+                @if(!empty($bill['company']) && trim((string) $bill['company']) !== trim((string) $invoice->customer_name))
+                    <div><strong>{{ $bill['company'] }}</strong></div>
+                @endif
                 @if(!empty($bill['address'])) <div class="muted">{{ $bill['address'] }}</div> @endif
                 @if(!empty($bill['city']) || !empty($bill['state']) || !empty($bill['postal_code']))
                     @php
@@ -188,20 +190,39 @@
         </td>
         <td style="padding-left:8px;">
             <div class="box">
-                <h4>{{ $isDeposit ? 'Payment details' : 'Payment & order' }}</h4>
-                @unless($isDeposit)
+                <h4>
+                    @if($isDeposit)
+                        Payment details
+                    @elseif($isPayout)
+                        Payout details
+                    @else
+                        Payment &amp; order
+                    @endif
+                </h4>
+                @unless($isDeposit || $isPayout)
                     <div>Order: <strong>#{{ $invoice->order_number }}</strong></div>
                 @endunless
                 @if($invoice->reference_code)
                     <div class="muted">Ref: {{ $invoice->reference_code }}</div>
                 @endif
-                <div style="margin-top:6px;">Method: <strong>{{ ucfirst((string) $invoice->payment_method) }}</strong></div>
+                <div style="margin-top:6px;">Method: <strong>{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</strong></div>
                 <div>Status: <strong>{{ ucfirst((string) $invoice->payment_status) }}</strong></div>
                 @if($invoice->transaction_id)
                     <div class="muted" style="margin-top:6px;">Txn: {{ $invoice->transaction_id }}</div>
                 @endif
                 <div style="margin-top:6px;">Currency: <strong>{{ $invoice->currency }}</strong></div>
                 <div>Amount: <strong>{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
+                @if($isPayout)
+                    @php
+                        $payoutDest = \App\Models\Invoice::maskedPayoutDestination(
+                            data_get($invoice->billing_snapshot, 'payment_details'),
+                            $invoice->payment_method
+                        );
+                    @endphp
+                    @if($payoutDest)
+                        <div class="muted" style="margin-top:6px;">Sent to: {{ $payoutDest }}</div>
+                    @endif
+                @endif
             </div>
         </td>
     </tr>
@@ -233,18 +254,49 @@
 <table class="items">
     <thead>
         <tr>
-            <th style="width:42%;">{{ $isDeposit ? 'Description' : 'Service' }}</th>
-            <th style="width:28%;">{{ $isDeposit ? 'Reference' : 'Publisher website' }}</th>
+            <th style="width:42%;">{{ ($isDeposit || $isPayout) ? 'Description' : 'Service' }}</th>
+            <th style="width:28%;">
+                @if($isDeposit || $isPayout)
+                    Reference
+                @else
+                    Publisher website
+                @endif
+            </th>
             <th class="num" style="width:10%;">Qty</th>
             <th class="num" style="width:10%;">Unit</th>
             <th class="num" style="width:10%;">Total</th>
         </tr>
     </thead>
     <tbody>
-        @forelse(($invoice->line_items ?? []) as $line)
+        @php
+            // Legacy payout payloads stored the fee as a negative line item AND in totals.
+            $displayLines = collect($invoice->line_items ?? [])
+                ->filter(function ($line) use ($isPayout) {
+                    if (! is_array($line)) {
+                        return false;
+                    }
+                    if (! $isPayout) {
+                        return true;
+                    }
+                    $total = (float) ($line['line_total'] ?? $line['unit_price'] ?? 0);
+                    $desc = strtolower((string) ($line['description'] ?? ''));
+
+                    return $total >= 0
+                        && ! str_contains($desc, 'withdrawal fee')
+                        && ! str_contains($desc, 'platform fee');
+                })
+                ->values();
+        @endphp
+        @forelse($displayLines as $line)
             <tr>
                 <td>{{ $line['description'] ?? 'Service' }}</td>
-                <td>{{ $isDeposit ? ($line['reference'] ?? '—') : ($line['publisher_website'] ?? ($line['site_url'] ?? '—')) }}</td>
+                <td>
+                    @if($isDeposit || $isPayout)
+                        {{ $line['reference'] ?? '—' }}
+                    @else
+                        {{ $line['publisher_website'] ?? ($line['site_url'] ?? '—') }}
+                    @endif
+                </td>
                 <td class="num">{{ $line['quantity'] ?? 1 }}</td>
                 <td class="num">{{ $symbol }}{{ number_format((float) ($line['unit_price'] ?? 0), 2) }}</td>
                 <td class="num">{{ $symbol }}{{ number_format((float) ($line['line_total'] ?? 0), 2) }}</td>
@@ -259,23 +311,29 @@
 
 <table class="totals">
     <tr>
-        <td class="label">Subtotal</td>
+        <td class="label">{{ $isPayout ? 'Gross' : 'Subtotal' }}</td>
         <td class="num">{{ $symbol }}{{ number_format((float) $invoice->subtotal, 2) }}</td>
     </tr>
     @if((float) $invoice->discount_amount > 0)
         <tr>
-            <td class="label">Discount @if($invoice->coupon_code) ({{ $invoice->coupon_code }}) @endif</td>
+            <td class="label">
+                @if($isPayout)
+                    Withdrawal fee
+                @else
+                    Discount @if($invoice->coupon_code) ({{ $invoice->coupon_code }}) @endif
+                @endif
+            </td>
             <td class="num">-{{ $symbol }}{{ number_format((float) $invoice->discount_amount, 2) }}</td>
         </tr>
     @endif
-    @if(! $isDeposit && ((float) $invoice->tax_amount > 0 || $invoice->tax_label))
+    @if(! $isDeposit && ! $isPayout && ((float) $invoice->tax_amount > 0 || $invoice->tax_label))
         <tr>
             <td class="label">{{ $invoice->tax_label ?: 'Tax' }} @if((float)$invoice->tax_rate > 0) ({{ rtrim(rtrim(number_format((float)$invoice->tax_rate, 2), '0'), '.') }}%) @endif</td>
             <td class="num">{{ $symbol }}{{ number_format((float) $invoice->tax_amount, 2) }}</td>
         </tr>
     @endif
     <tr class="grand">
-        <td>Total</td>
+        <td>{{ $isPayout ? 'Net payout' : 'Total' }}</td>
         <td class="num">{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</td>
     </tr>
 </table>
@@ -284,6 +342,13 @@
     <div class="box" style="margin-top:16px;">
         <h4>About this receipt</h4>
         <div class="muted">{{ $invoice->notes ?: config('billing.deposit_receipt_note') }}</div>
+    </div>
+@endif
+
+@if($isPayout)
+    <div class="box" style="margin-top:16px;">
+        <h4>About this statement</h4>
+        <div class="muted">{{ $invoice->notes ?: config('billing.withdrawal_payout_note') }}</div>
     </div>
 @endif
 

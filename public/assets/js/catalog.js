@@ -1108,6 +1108,10 @@ function filterMultiOptions(optionsId, searchTerm) {
 
     for (var i = 0; i < optionItems.length; i++) {
         var option = optionItems[i];
+        if (option.classList.contains('is-pair-hidden')) {
+            option.style.display = 'none';
+            continue;
+        }
         var text = (option.querySelector('span') ? option.querySelector('span').textContent : '').toLowerCase();
         var code = (option.querySelector('input') ? option.querySelector('input').value : '').toLowerCase();
         var inGroup = !groupCodeSet || !!groupCodeSet[code];
@@ -1523,6 +1527,9 @@ function updateMultiFilter(checkbox) {
         && typeof CatalogCountryPicker.syncActiveGroupWithSelection === 'function') {
         CatalogCountryPicker.syncActiveGroupWithSelection();
     }
+    if (type === 'country') {
+        applyCatalogLanguagePairFilter({ pruneInvalid: true });
+    }
     updateMultiDisplay(type);
     // Live-apply after a short pause so ticking several niches batches into one fetch.
     if (typeof scheduleCatalogFilterLive === 'function') {
@@ -1531,11 +1538,73 @@ function updateMultiFilter(checkbox) {
 }
 
 /*
+ * Country-first language pairs: when one or more countries are selected,
+ * only show languages allowed for those markets (union). Empty country
+ * keeps Option A — all languages available for language-only browse.
+ */
+function catalogAllowedLanguageCodesForCountries(countries) {
+    var map = (window.CatalogConfig && CatalogConfig.countryLanguageMap) || {};
+    var list = Array.isArray(countries) ? countries : [];
+    if (!list.length) return null;
+    var allowed = {};
+    var anyMapped = false;
+    for (var i = 0; i < list.length; i++) {
+        var code = String(list[i] || '').toLowerCase();
+        var rows = map[code] || [];
+        if (rows.length) anyMapped = true;
+        for (var r = 0; r < rows.length; r++) {
+            var lang = typeof rows[r] === 'string' ? rows[r] : (rows[r] && rows[r].code);
+            if (lang) allowed[String(lang).toLowerCase()] = true;
+        }
+    }
+    if (!anyMapped) return null;
+    return allowed;
+}
+
+function applyCatalogLanguagePairFilter(opts) {
+    opts = opts || {};
+    var list = document.getElementById('languageMultiOptions');
+    if (!list) return;
+    var allowed = catalogAllowedLanguageCodesForCountries(selectedMultiFilters.country || []);
+    var items = list.querySelectorAll('.option-item');
+    for (var i = 0; i < items.length; i++) {
+        var item = items[i];
+        var input = item.querySelector('input[data-type="language"]');
+        var code = input ? String(input.value || '').toLowerCase() : '';
+        var pairOk = !allowed || !!(allowed[code]);
+        item.classList.toggle('is-pair-hidden', !pairOk);
+        if (!pairOk) {
+            item.style.display = 'none';
+            if (input) input.checked = false;
+        }
+    }
+    if (opts.pruneInvalid && allowed) {
+        var kept = [];
+        var langs = selectedMultiFilters.language || [];
+        for (var j = 0; j < langs.length; j++) {
+            if (allowed[String(langs[j]).toLowerCase()]) kept.push(langs[j]);
+        }
+        if (kept.length !== langs.length) {
+            selectedMultiFilters.language = kept;
+        }
+    }
+    // Re-apply typeahead so search + pair constraints stay in sync.
+    var search = document.getElementById('languageSearch');
+    if (typeof filterMultiOptions === 'function') {
+        filterMultiOptions('languageMultiOptions', search ? search.value : '');
+    }
+    syncOptionSelectedState('language');
+    updateMultiDisplay('language');
+}
+
+/*
  * Phase 0 product rules (catalog multi-select):
  * - No visible checkboxes (CSS); whole row click toggles
  * - Selected look = brand tint + bold (no checkmark icon)
  * - Trigger: 0 → placeholder; fits → tags with ×; overflow → "N countries"
- * - Multi-select OR; do not auto-close on click
+ * - Multi-select OR within country / within language; country AND language when both set
+ * - Selecting a language never auto-sets country (Option A — language-only = all sites in that language)
+ * - Do not auto-close on click
  * - Recent is country-only; click toggles + pins on remember
  */
 /*
@@ -1810,6 +1879,9 @@ function clearMultiFilter(type) {
         }
     }
     syncOptionSelectedState(type);
+    if (type === 'country') {
+        applyCatalogLanguagePairFilter({ pruneInvalid: true });
+    }
     updateMultiDisplay(type);
     if (typeof scheduleCatalogFilterLive === 'function') {
         scheduleCatalogFilterLive({ replace: true });
@@ -1836,6 +1908,9 @@ function removeMultiFilter(type, value) {
     }
 
     syncOptionSelectedState(type);
+    if (type === 'country') {
+        applyCatalogLanguagePairFilter({ pruneInvalid: true });
+    }
     updateMultiDisplay(type);
     if (typeof scheduleCatalogFilterLive === 'function') {
         scheduleCatalogFilterLive({ replace: true });
@@ -1901,6 +1976,7 @@ function initializeMultiSelects() {
     updateMultiDisplay('category');
     updateMultiDisplay('country');
     updateMultiDisplay('language');
+    applyCatalogLanguagePairFilter({ pruneInvalid: true });
 }
 
 /**
@@ -2135,6 +2211,9 @@ const CatalogUrl = (function () {
                 }
                 if (typeof updateMultiDisplay === 'function') updateMultiDisplay(type);
             });
+            if (typeof applyCatalogLanguagePairFilter === 'function') {
+                applyCatalogLanguagePairFilter({ pruneInvalid: true });
+            }
         }
 
         if (typeof markActivePreset === 'function') {
@@ -2523,6 +2602,7 @@ const CatalogLive = (function () {
         syncMoreFiltersBadge(params);
         syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
+        if (typeof syncDefaultHomepagePrices === 'function') syncDefaultHomepagePrices();
         // Re-hide blacklisted rows on the main catalog after a fresh paint.
         if (!CatalogConfig.blacklistFilter && typeof hideCatalogSite === 'function') {
             document.querySelectorAll('.site-row[data-id], .catalog-mobile-card[data-id]').forEach(function (el) {
@@ -3175,6 +3255,31 @@ function getSelectedSensitiveForSite(siteId) {
     };
 }
 
+/**
+ * Read the checked homepage-placement radio for a catalog site.
+ * When no radios exist the site does not offer homepage — return explicit:false
+ * so Buy omits homepage_days and the server applies its default.
+ */
+function getSelectedHomepageForSite(siteId) {
+    const id = String(siteId);
+    const checked = catalogVisibleFirst(document.querySelectorAll(
+        'input.homepage-placement-radio[data-site-id="' + id + '"]:checked'
+    ));
+    if (!checked) {
+        return { days: null, price: 0, explicit: false };
+    }
+    const daysRaw = (checked.dataset.days || checked.value || '').trim();
+    if (!daysRaw || daysRaw === 'none') {
+        return { days: null, price: 0, explicit: true };
+    }
+    const fee = parseFloat(checked.dataset.price);
+    return {
+        days: parseInt(daysRaw, 10),
+        price: Number.isFinite(fee) ? catalogRoundMoney(fee) : 0,
+        explicit: true,
+    };
+}
+
 // Update UI for favorites and blacklist (quiet icon actions)
 function updateButtonStates() {
     document.querySelectorAll('.favorite-btn').forEach(btn => {
@@ -3250,17 +3355,22 @@ function catalogFormatPercentLabel(percent) {
     return String(catalogRoundMoney(n)).replace(/\.0+$/, '');
 }
 
-function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0) {
+function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveType = null, discountPercent = 0, homepageFee = 0) {
     const id = String(siteId);
     const base = parseFloat(basePrice);
     const addOn = parseFloat(additionalPrice);
     const safeBase = Number.isFinite(base) ? base : 0;
     const safeAdd = Number.isFinite(addOn) && addOn > 0 ? addOn : 0;
     const pct = Number.isFinite(parseFloat(discountPercent)) ? parseFloat(discountPercent) : 0;
+    const homeRaw = parseFloat(homepageFee);
+    const homeFee = Number.isFinite(homeRaw) && homeRaw > 0 ? catalogRoundMoney(homeRaw) : 0;
     const listTotal = catalogRoundMoney(safeBase + safeAdd);
     const floor = catalogPublisherPayoutFloor(id, safeAdd);
-    const totalPrice = catalogApplyDiscount(listTotal, pct, floor);
-    const effectivePct = catalogEffectiveDiscountPercent(listTotal, totalPrice);
+    const articlePay = catalogApplyDiscount(listTotal, pct, floor);
+    // Homepage fee is never discounted — added at full price after article math.
+    const totalPrice = catalogRoundMoney(articlePay + homeFee);
+    const displayList = catalogRoundMoney(listTotal + homeFee);
+    const effectivePct = catalogEffectiveDiscountPercent(listTotal, articlePay);
     const offerLabel = effectivePct > 0 ? (catalogFormatPercentLabel(effectivePct) + '% off') : '';
 
     document.querySelectorAll('.buy-now[data-id="' + id + '"]').forEach(function (buyButton) {
@@ -3272,7 +3382,7 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
 
         // Strike-through shows the pre-discount list total when a sale is active.
         if (price.list) {
-            price.list.textContent = '€' + listTotal.toFixed(2);
+            price.list.textContent = '€' + displayList.toFixed(2);
             price.list.hidden = !(pct > 0);
         }
 
@@ -3290,6 +3400,7 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
         }
 
         buyButton.dataset.currentAdditionalPrice = String(safeAdd);
+        buyButton.dataset.homepageFee = String(homeFee);
         if (sensitiveType) {
             buyButton.dataset.sensitiveType = sensitiveType;
             buyButton.setAttribute('aria-label',
@@ -3306,6 +3417,7 @@ function updateBuyButtonPrice(siteId, basePrice, additionalPrice = 0, sensitiveT
 
 function syncSensitiveSelectionUi(siteId) {
     const selected = getSelectedSensitiveForSite(siteId);
+    const homepage = getSelectedHomepageForSite(siteId);
     const basePrice = selected.basePrice != null
         ? selected.basePrice
         : (parseFloat((document.querySelector(
@@ -3314,25 +3426,32 @@ function syncSensitiveSelectionUi(siteId) {
     const discountPercent = selected.discountPercent != null
         ? selected.discountPercent
         : catalogDiscountPercentForSite(siteId);
-    const payTotal = selected.totalPrice != null
+    const articlePay = selected.totalPrice != null
         ? selected.totalPrice
         : catalogApplyDiscount(
             catalogRoundMoney(basePrice + (selected.additionalPrice || 0)),
             discountPercent,
             catalogPublisherPayoutFloor(siteId, selected.additionalPrice || 0)
         );
+    const homeFee = homepage.price || 0;
+    const payTotal = catalogRoundMoney(Number(articlePay) + homeFee);
 
     updateBuyButtonPrice(
         siteId,
         basePrice,
         selected.additionalPrice,
         selected.type,
-        discountPercent
+        discountPercent,
+        homeFee
     );
 
     let infoHtml;
     const listForLabel = Number(selected.listTotal != null ? selected.listTotal : (basePrice + (selected.additionalPrice || 0)));
-    const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, payTotal);
+    const effectiveOfferPct = catalogEffectiveDiscountPercent(listForLabel, articlePay);
+    const homeNote = homepage.days
+        ? (' · Homepage ' + homepage.days + 'd'
+            + (homeFee > 0 ? (' +€' + homeFee.toFixed(2)) : ' Free'))
+        : '';
 
     if (selected.type && selected.additionalPrice > 0) {
         infoHtml =
@@ -3347,15 +3466,23 @@ function syncSensitiveSelectionUi(siteId) {
                 + catalogFormatPercentLabel(effectiveOfferPct)
                 + '% offer';
         }
-        infoHtml += ')</small>';
-    } else if (discountPercent > 0) {
+        infoHtml += homeNote + ')</small>';
+            } else if (discountPercent > 0 || homeFee > 0 || homepage.days) {
         infoHtml =
-            '<small class="text-muted">Current price: <strong>€' + Number(payTotal).toFixed(2)
-            + '</strong> <span class="text-decoration-line-through">€'
-            + Number(basePrice).toFixed(2) + '</span> (offer price)</small>';
+            '<small class="text-muted">You pay: <strong>€' + Number(payTotal).toFixed(2)
+            + '</strong>';
+        if (discountPercent > 0) {
+            infoHtml += ' <span class="text-decoration-line-through">€'
+                + catalogRoundMoney(listForLabel + homeFee).toFixed(2) + '</span> (offer price)';
+        } else if (homepage.days) {
+            infoHtml += homeNote;
+        } else {
+            infoHtml += ' (Base price)';
+        }
+        infoHtml += '</small>';
     } else {
         infoHtml =
-            '<small class="text-muted">Current price: <strong>€' + Number(basePrice).toFixed(2)
+            '<small class="text-muted">You pay: <strong>€' + Number(basePrice).toFixed(2)
             + '</strong> (Base price)</small>';
     }
 
@@ -3380,12 +3507,28 @@ function hydrateExpandScreenshots(root) {
     root.querySelectorAll('img.catalog-deferred-preview[data-src]').forEach(function (img) {
         const deferred = img.getAttribute('data-src');
         if (!deferred) return;
-        if (!img.getAttribute('src')) {
-            img.setAttribute('src', deferred);
-        }
+        // Always promote data-src (Blade may use a 1x1 placeholder src).
+        img.setAttribute('src', deferred);
         img.setAttribute('loading', 'eager');
         img.setAttribute('decoding', 'async');
         img.removeAttribute('data-src');
+    });
+}
+
+/**
+ * Free homepage options can be pre-checked in Blade. Sync Buy totals for those
+ * sites so the header price matches before the first radio change — including
+ * after live results HTML swaps (DOMContentLoaded only runs once).
+ */
+function syncDefaultHomepagePrices() {
+    const seen = {};
+    document.querySelectorAll('.homepage-placement-radio:checked').forEach(function (radio) {
+        const siteId = radio.dataset.siteId
+            || (radio.closest('.homepage-placement-group') || {}).dataset?.siteId;
+        if (!siteId || seen[siteId]) return;
+        if (String(radio.value) === 'none' || String(radio.dataset.days) === 'none') return;
+        seen[siteId] = true;
+        syncSensitiveSelectionUi(siteId);
     });
 }
 
@@ -3417,6 +3560,10 @@ function toggleCardDetails(toggle) {
     setCatalogDetailsToggleState(toggle, willOpen);
     if (willOpen) {
         hydrateExpandScreenshots(panel);
+        const siteId = (toggle.dataset.cardDetails || '').replace('card-details-', '');
+        if (siteId) {
+            syncSensitiveSelectionUi(siteId);
+        }
     }
 }
 
@@ -3519,31 +3666,39 @@ function showCatalogSite(siteId) {
 document.addEventListener('DOMContentLoaded', function() {
     updateButtonStates();
 
-    // Sensitive topic radios: delegate so late/expanded markup still works.
+    // Default free homepage can be pre-checked in Blade; sync Buy totals before
+    // the first radio change so expand/header prices match the selection.
+    syncDefaultHomepagePrices();
+
+    // Sensitive topic + homepage radios: delegate so late/expanded markup still works.
     document.addEventListener('change', function (e) {
         const radio = e.target && e.target.closest
-            ? e.target.closest('.sensitive-price-checkbox')
+            ? e.target.closest('.sensitive-price-checkbox, .homepage-placement-radio')
             : null;
         if (!radio || !radio.checked) return;
 
         e.stopPropagation();
 
         const siteId = radio.dataset.siteId
-            || (radio.closest('.sensitive-prices-group') || {}).dataset?.siteId;
+            || (radio.closest('.sensitive-prices-group, .homepage-placement-group') || {}).dataset?.siteId;
         if (!siteId) return;
 
         syncSensitiveSelectionUi(siteId);
 
-        const selected = getSelectedSensitiveForSite(siteId);
-        if (selected.type && selected.additionalPrice > 0) {
-            const total = selected.totalPrice != null
-                ? selected.totalPrice
-                : (selected.basePrice + selected.additionalPrice);
-            catalogToast(
-                selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
-                + ' — Total: €' + Number(total).toFixed(2),
-                'success'
-            );
+        if (radio.classList.contains('sensitive-price-checkbox')) {
+            const selected = getSelectedSensitiveForSite(siteId);
+            const homepage = getSelectedHomepageForSite(siteId);
+            if (selected.type && selected.additionalPrice > 0) {
+                const article = selected.totalPrice != null
+                    ? selected.totalPrice
+                    : (selected.basePrice + selected.additionalPrice);
+                const total = catalogRoundMoney(Number(article) + (homepage.price || 0));
+                catalogToast(
+                    selected.type + ' selected: +€' + selected.additionalPrice.toFixed(2)
+                    + ' — Total: €' + Number(total).toFixed(2),
+                    'success'
+                );
+            }
         }
     });
 
@@ -3733,7 +3888,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Interactive chrome must not toggle Details — ↗, eye, Buy, favorite,
         // blacklist, claim, tip chips, Details itself (has its own handler), etc.
         return !!e.target.closest(
-            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
+            'button, a, input, label, select, textarea, .reveal-url, .hide-url, .toggle-url, .catalog-url-eye, .expand-arrow, .catalog-card-details-toggle, .btn-icon-quiet, .site-open-link, .buy-now, .favorite-btn, .blacklist-btn, .btn-claim-site, .copy-example-url, .sensitive-price-checkbox, .homepage-placement-radio, .form-check-label, .site-chip, .site-badge-new, .catalog-site-actions, .catalog-site-controls, .catalog-card-details'
         );
     }
 
@@ -3935,6 +4090,7 @@ document.addEventListener('DOMContentLoaded', function() {
             expandedRow.style.display = 'table-row';
             hydrateExpandScreenshots(expandedRow);
             setCatalogDetailsToggleState(arrow, true);
+            syncSensitiveSelectionUi(id);
         } else {
             expandedRow.style.display = 'none';
             setCatalogDetailsToggleState(arrow, false);
@@ -4019,18 +4175,20 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         const selected = getSelectedSensitiveForSite(id);
+        const homepage = getSelectedHomepageForSite(id);
         const sensitiveType = selected.type;
         const additionalPrice = selected.additionalPrice || 0;
         if (Number.isFinite(selected.basePrice)) {
             basePrice = selected.basePrice;
         }
-        const finalPrice = selected.totalPrice != null
+        const articlePrice = selected.totalPrice != null
             ? selected.totalPrice
             : catalogApplyDiscount(
                 catalogRoundMoney((Number.isFinite(basePrice) ? basePrice : 0) + additionalPrice),
                 selected.discountPercent || catalogDiscountPercentForSite(id),
                 catalogPublisherPayoutFloor(id, additionalPrice)
             );
+        const finalPrice = catalogRoundMoney(Number(articlePrice) + (homepage.price || 0));
 
         if (typeof window.addToCart !== 'function') {
             catalogToast('Cart is not ready. Refresh the page and try again.', 'error');
@@ -4044,6 +4202,11 @@ document.addEventListener('DOMContentLoaded', function() {
             cartOptions.bulk = true;
             cartOptions.quantity = Number.isFinite(packQty) && packQty > 0 ? packQty : 3;
             cartOptions.openCart = true;
+        }
+        // When homepage radios exist, always send the selection (incl. none).
+        // When absent, omit so the server auto-picks the longest free duration.
+        if (homepage.explicit) {
+            cartOptions.homepage_days = homepage.days == null ? 'none' : homepage.days;
         }
 
         const btn = button;
@@ -4258,7 +4421,16 @@ document.addEventListener('click', async function (e) {
             body: JSON.stringify(form),
         });
         const data = await res.json().catch(() => ({}));
-        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        const claimsUrl = (CatalogConfig.routes && CatalogConfig.routes.siteClaimsIndex) || '/site-claims';
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: data.message || 'Claim submitted',
+                html: `<p class="small text-muted mb-0">Track status anytime from <a href="${claimsUrl}">My Claims</a>.</p>`,
+            });
+        } else {
+            Swal.fire({ icon: 'error', title: data.message || 'Done' });
+        }
         return;
     }
 

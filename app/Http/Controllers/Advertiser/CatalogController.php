@@ -27,6 +27,7 @@ use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
+use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
@@ -37,6 +38,7 @@ use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
@@ -339,8 +341,8 @@ class CatalogController extends Controller
     /**
      * Active bulk-discount sites for the catalog rail.
      *
-     * When country= is set, uses the same legacy country / JSON countries OR
-     * as the listing filter. With no country, returns the global top packs.
+     * When country= / language= are set, uses the same constraints as the
+     * main listing (primary country; language offers that code).
      *
      * @param  array<int, int>  $blacklist
      * @return Collection<int, Site>
@@ -372,16 +374,16 @@ class CatalogController extends Controller
                 return strtolower(trim($c));
             }, explode(',', (string) $request->country))));
             if ($countries !== []) {
-                $hasCountriesJson = Schema::hasColumn('sites', 'countries');
-                $query->where(function ($q) use ($countries, $hasCountriesJson) {
-                    foreach ($countries as $code) {
-                        $q->orWhere('country', $code);
-                        if ($hasCountriesJson) {
-                            $q->orWhereJsonContains('countries', $code);
-                        }
-                    }
-                });
+                // Primary country only (scalar sites.country) — matches catalog flag.
+                app(CatalogCountryInventory::class)
+                    ->constrainQueryToPrimaryCountries($query, $countries);
             }
+        }
+
+        if ($request->filled('language') && ! empty($request->language)) {
+            // Option A: all sites offering these languages (AND with country above).
+            app(CatalogLanguageFilter::class)
+                ->constrainQuery($query, explode(',', (string) $request->language));
         }
 
         $bulkDeals = $query
@@ -558,30 +560,34 @@ class CatalogController extends Controller
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
             }, explode(',', $request->country))));
-            $hasCountriesJson = Schema::hasColumn('sites', 'countries');
-            $query->where(function ($q) use ($countries, $hasCountriesJson) {
-                foreach ($countries as $code) {
-                    $q->orWhere('country', $code);
-                    if ($hasCountriesJson) {
-                        $q->orWhereJsonContains('countries', $code);
-                    }
-                }
-            });
+            // Primary country only (scalar sites.country) — matches catalog flag /
+            // inventory counts. Do not match JSON countries "contains".
+            app(CatalogCountryInventory::class)
+                ->constrainQueryToPrimaryCountries($query, $countries);
         }
 
         if ($request->filled('language') && ! empty($request->language)) {
-            $languages = array_values(array_filter(array_map(function ($l) {
-                return strtolower(trim($l));
-            }, explode(',', $request->language))));
-            $hasLanguagesJson = Schema::hasColumn('sites', 'languages');
-            $query->where(function ($q) use ($languages, $hasLanguagesJson) {
-                foreach ($languages as $code) {
-                    $q->orWhere('language', $code);
-                    if ($hasLanguagesJson) {
-                        $q->orWhereJsonContains('languages', $code);
-                    }
+            // Option A: language-only → all sites offering these languages (any country).
+            // With country= also set, constraints AND. Never auto-sets country.
+            // When country is set, drop language codes that are not paired with those countries.
+            $languageCodes = explode(',', (string) $request->language);
+            if ($request->filled('country') && ! empty($request->country)) {
+                $countryCodes = array_values(array_filter(array_map(
+                    static fn ($c) => strtolower(trim((string) $c)),
+                    explode(',', (string) $request->country)
+                )));
+                $allowed = app(CountryLanguagePairs::class)
+                    ->languageCodesForCountries($countryCodes);
+                if ($allowed !== []) {
+                    $languageCodes = array_values(array_intersect(
+                        array_map(static fn ($l) => strtolower(trim((string) $l)), $languageCodes),
+                        $allowed
+                    ));
                 }
-            });
+            }
+            if ($languageCodes !== []) {
+                app(CatalogLanguageFilter::class)->constrainQuery($query, $languageCodes);
+            }
         }
 
         if ($request->filled('price_min')) {
@@ -817,6 +823,56 @@ class CatalogController extends Controller
     }
 
     /**
+     * Cart line identity: site + sensitive topic + homepage duration.
+     * Homepage days empty string means “no homepage placement”.
+     */
+    private function cartIdentityKey(array $row): string
+    {
+        $id = (int) ($row['id'] ?? 0);
+        $sensitive = (string) ($row['sensitive_type'] ?? '');
+        $homepage = $row['homepage_days'] ?? null;
+        $homepagePart = ($homepage === null || $homepage === '' || (int) $homepage === 0)
+            ? ''
+            : (string) (int) $homepage;
+
+        return $id.'|'.$sensitive.'|'.$homepagePart;
+    }
+
+    /**
+     * Normalize a requested homepage duration for matching (null = none).
+     */
+    private function normalizeHomepageDaysKey(int|string|null $homepageDays): ?int
+    {
+        if ($homepageDays === null || $homepageDays === '' || $homepageDays === 'none' || $homepageDays === '0' || $homepageDays === 0) {
+            return null;
+        }
+
+        return (int) $homepageDays;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function cartLineMatches(
+        array $item,
+        int $siteId,
+        ?string $sensitiveType,
+        int|string|null $homepageDays = null,
+    ): bool {
+        if ((int) ($item['id'] ?? 0) !== $siteId) {
+            return false;
+        }
+
+        $itemSensitive = $item['sensitive_type'] ?? null;
+        if (($itemSensitive ?: null) != ($sensitiveType ?: null)) {
+            return false;
+        }
+
+        return $this->normalizeHomepageDaysKey($item['homepage_days'] ?? null)
+            === $this->normalizeHomepageDaysKey($homepageDays);
+    }
+
+    /**
      * Clamp bulk-pack quantities to the configured 3–5 band, resize article slots,
      * and reprice from the live listing so the discount cannot vanish silently.
      *
@@ -851,18 +907,54 @@ class CatalogController extends Controller
             $sensitiveType = null;
         }
 
+        $hasHomepageKey = array_key_exists('homepage_days', $line);
+        $homepageInput = $hasHomepageKey
+            ? (($line['homepage_days'] === null || $line['homepage_days'] === '')
+                ? 'none'
+                : $line['homepage_days'])
+            : null;
+
         try {
-            $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $qty);
-        } catch (\InvalidArgumentException) {
-            $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty);
-            $line['additional_price'] = 0;
-            $sensitiveType = null;
+            $pricing = $this->cartPricing()->priceForAdvertiser(
+                $site,
+                $sensitiveType,
+                $qty,
+                $homepageInput,
+                ! $hasHomepageKey
+            );
+        } catch (\InvalidArgumentException $e) {
+            // Invalid sensitive and/or homepage — drop the bad choice and retry.
+            $message = $e->getMessage();
+            if (str_contains(strtolower($message), 'homepage')) {
+                $homepageInput = 'none';
+                $hasHomepageKey = true;
+            } else {
+                $sensitiveType = null;
+                $line['additional_price'] = 0;
+            }
+            try {
+                $pricing = $this->cartPricing()->priceForAdvertiser(
+                    $site,
+                    $sensitiveType,
+                    $qty,
+                    $homepageInput,
+                    ! $hasHomepageKey
+                );
+            } catch (\InvalidArgumentException) {
+                $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty, 'none', false);
+                $sensitiveType = null;
+                $line['additional_price'] = 0;
+            }
         }
 
         $line['price'] = $pricing['total'];
         $line['base_price'] = $pricing['base'];
         $line['additional_price'] = $pricing['additional'];
         $line['sensitive_type'] = $pricing['sensitive_type'] ?? $sensitiveType;
+        $line['homepage_days'] = $pricing['homepage_days'];
+        $line['homepage_price'] = $pricing['homepage_price'];
+        $line['social_channels'] = $pricing['social_channels'];
+        $line['article_total'] = $pricing['article_total'];
         $line['list_total'] = $pricing['list_total'];
         $line['discount_percent'] = $pricing['discount_percent'];
         $line['name'] = $line['name'] ?? $site->site_name;
@@ -1354,8 +1446,7 @@ class CatalogController extends Controller
                 if (! is_array($row)) {
                     continue;
                 }
-                $key = ((int) ($row['id'] ?? 0)).'|'.((string) ($row['sensitive_type'] ?? ''));
-                $existingByKey[$key] = $row;
+                $existingByKey[$this->cartIdentityKey($row)] = $row;
             }
 
             $siteIds = collect($incoming)->pluck('id')->filter()->unique()->values();
@@ -1372,7 +1463,7 @@ class CatalogController extends Controller
                 if (! $site) {
                     continue;
                 }
-                $key = ((int) $row['id']).'|'.((string) ($row['sensitive_type'] ?? ''));
+                $key = $this->cartIdentityKey($row);
                 $prev = $existingByKey[$key] ?? [];
                 if (empty($row['content_submission_ids']) && ! empty($prev['content_submission_ids'])) {
                     $row['content_submission_ids'] = $prev['content_submission_ids'];
@@ -1388,6 +1479,9 @@ class CatalogController extends Controller
                 }
                 if (empty($row['bulk_pack']) && ! empty($prev['bulk_pack'])) {
                     $row['bulk_pack'] = true;
+                }
+                if (! array_key_exists('homepage_days', $row) && array_key_exists('homepage_days', $prev)) {
+                    $row['homepage_days'] = $prev['homepage_days'];
                 }
                 $merged[] = $this->normalizeCartLineForSite($site, $row);
             }
@@ -1419,20 +1513,28 @@ class CatalogController extends Controller
         $data = $request->validate([
             'id' => ['required', 'integer'],
             'sensitive_type' => ['nullable', 'string', 'max:50'],
+            'homepage_days' => ['nullable'],
             'content_submission_id' => ['nullable', 'integer'],
             'copy_index' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $siteId = (int) $data['id'];
         $sensitiveType = $data['sensitive_type'] ?? null;
+        $hasHomepageInput = array_key_exists('homepage_days', $data) || $request->exists('homepage_days');
+        $homepageDays = $hasHomepageInput
+            ? ($data['homepage_days'] ?? $request->input('homepage_days'))
+            : null;
         $submissionId = isset($data['content_submission_id']) ? (int) $data['content_submission_id'] : 0;
         $copyIndex = max(0, (int) ($data['copy_index'] ?? 0));
 
         $cart = session()->get('cart', []);
         $lineKey = null;
         foreach ($cart as $key => $item) {
-            if ((int) ($item['id'] ?? 0) === $siteId
-                && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null))) {
+            $matches = $hasHomepageInput
+                ? $this->cartLineMatches($item, $siteId, $sensitiveType, $homepageDays)
+                : ((int) ($item['id'] ?? 0) === $siteId
+                    && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+            if ($matches) {
                 $lineKey = $key;
                 break;
             }
@@ -1537,6 +1639,9 @@ class CatalogController extends Controller
                 $sensitiveType = trim((string) $sensitiveType);
             }
 
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageInput = $hasHomepageInput ? $request->input('homepage_days') : null;
+
             $site = Site::query()->notArchived()->where('id', $id)->where('active', 1)->first();
             if (! $site) {
                 return response()->json([
@@ -1544,6 +1649,21 @@ class CatalogController extends Controller
                     'error' => 'Site not found or inactive.',
                 ], 404);
             }
+
+            // Resolve homepage up-front so re-adds merge onto the same identity key.
+            try {
+                $homepageResolved = $this->cartPricing()->resolveHomepageSelection(
+                    $site,
+                    $hasHomepageInput ? $homepageInput : null,
+                    ! $hasHomepageInput
+                );
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'success' => false,
+                    'error' => UserFacingError::message($e, 'That homepage promotion option is not available for this site.'),
+                ], 422);
+            }
+            $resolvedHomepageDays = $homepageResolved['days'];
 
             $cart = session()->get('cart', []);
             $attachArticleId = null;
@@ -1603,7 +1723,7 @@ class CatalogController extends Controller
             $existingItem = null;
             $currentQty = 0;
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)) {
+                if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
                     $existingItem = $key;
                     $currentQty = max(1, (int) ($item['quantity'] ?? 1));
                     break;
@@ -1634,6 +1754,7 @@ class CatalogController extends Controller
             if ($existingItem !== null) {
                 $line = $cart[$existingItem];
                 $line['quantity'] = $nextQty;
+                $line['homepage_days'] = $resolvedHomepageDays;
                 if ($isBulkPackAdd || ! empty($line['bulk_pack']) || ($site->joinsBulkDiscount() && $nextQty >= $minBulk)) {
                     $line['bulk_pack'] = true;
                 }
@@ -1663,6 +1784,7 @@ class CatalogController extends Controller
                     'url' => $site->site_url,
                     'quantity' => $nextQty,
                     'sensitive_type' => $sensitiveType,
+                    'homepage_days' => $resolvedHomepageDays,
                     'bulk_pack' => $isBulkPackAdd || ($site->joinsBulkDiscount() && $nextQty >= $minBulk),
                     'link_type' => $site->link_type,
                     'country' => $site->country,
@@ -1743,10 +1865,19 @@ class CatalogController extends Controller
         try {
             $id = $request->id;
             $sensitiveType = $request->sensitive_type;
+            if ($sensitiveType === '') {
+                $sensitiveType = null;
+            }
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
 
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
+                $matches = $hasHomepageInput
+                    ? $this->cartLineMatches($item, (int) $id, $sensitiveType, $homepageDays)
+                    : ((int) ($item['id'] ?? 0) === (int) $id
+                        && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+                if ($matches) {
                     unset($cart[$key]);
                     break;
                 }
@@ -1774,11 +1905,16 @@ class CatalogController extends Controller
             if ($sensitiveType === '') {
                 $sensitiveType = null;
             }
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
 
             foreach ($cart as $key => $item) {
-                if ((int) ($item['id'] ?? 0) !== $id
-                    || (($item['sensitive_type'] ?? null) != ($sensitiveType ?: null))) {
+                $matches = $hasHomepageInput
+                    ? $this->cartLineMatches($item, $id, $sensitiveType, $homepageDays)
+                    : ((int) ($item['id'] ?? 0) === $id
+                        && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+                if (! $matches) {
                     continue;
                 }
 
@@ -1861,12 +1997,12 @@ class CatalogController extends Controller
         $total = (float) ($payableCheckout['total'] ?? 0);
         $savings = (float) ($payableCheckout['savings'] ?? 0);
         $payableSiteKeys = collect($payableCart)->mapWithKeys(function ($row) {
-            $key = (int) ($row['id'] ?? 0).'|'.($row['sensitive_type'] ?? '');
+            $key = $this->cartIdentityKey($row);
 
             return [$key => true];
         })->all();
         $cartItems = collect($cartItems)->map(function (array $item) use ($payableSiteKeys) {
-            $key = (int) ($item['id'] ?? 0).'|'.($item['sensitive_type'] ?? '');
+            $key = $this->cartIdentityKey($item);
             $item['paying_now'] = isset($payableSiteKeys[$key]);
 
             return $item;
@@ -2234,6 +2370,9 @@ class CatalogController extends Controller
                 'price' => $orderItem['price'],
                 'sensitive_type' => $orderItem['sensitive_type'] ?? null,
                 'additional_price' => $orderItem['additional_price'] ?? 0,
+                'homepage_days' => $orderItem['homepage_days'] ?? null,
+                'homepage_price' => $orderItem['homepage_price'] ?? 0,
+                'social_channels' => $orderItem['social_channels'] ?? [],
                 'publisher_price' => $orderItem['publisher_price'] ?? null,
                 'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
                 'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -3896,15 +4035,16 @@ class CatalogController extends Controller
             $site = $orderItem['site'];
             $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
             $sensitiveType = $orderItem['sensitive_type'] ?? null;
+            $homepageDays = $orderItem['homepage_days'] ?? null;
 
             // Prefer per-cart content_submission_id, then request map, then library session
-            $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType) {
-                if ((int) ($row['id'] ?? 0) !== (int) $site->id) {
-                    return false;
-                }
-                $rowSensitive = $row['sensitive_type'] ?? null;
-
-                return $rowSensitive == $sensitiveType;
+            $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType, $homepageDays) {
+                return $this->cartLineMatches(
+                    is_array($row) ? $row : [],
+                    (int) $site->id,
+                    $sensitiveType,
+                    $homepageDays
+                );
             });
 
             // Each placement (copy) needs its own article — never reuse scalar/library ID for copyIndex > 0.
@@ -4046,6 +4186,9 @@ class CatalogController extends Controller
             'moderation_status' => $submission->moderation_status,
             'sensitive_type' => $orderItem['sensitive_type'],
             'additional_price' => $orderItem['additional_price'],
+            'homepage_days' => $orderItem['homepage_days'] ?? null,
+            'homepage_price' => $orderItem['homepage_price'] ?? 0,
+            'social_channels' => $orderItem['social_channels'] ?? [],
             'publisher_price' => $orderItem['publisher_price'] ?? null,
             'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
             'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -4280,12 +4423,15 @@ class CatalogController extends Controller
     {
         $paidKeys = [];
         foreach ($orders as $order) {
-            $sensitive = $order->sensitive_type ?? null;
             foreach ($order->items as $item) {
                 if (! $item->site_id) {
                     continue;
                 }
-                $paidKeys[(int) $item->site_id.'|'.($sensitive ?? '')] = true;
+                $paidKeys[$this->cartIdentityKey([
+                    'id' => $item->site_id,
+                    'sensitive_type' => $item->sensitive_type ?? $order->sensitive_type ?? null,
+                    'homepage_days' => $item->homepage_days ?? null,
+                ])] = true;
             }
         }
 
@@ -4307,7 +4453,7 @@ class CatalogController extends Controller
             if (! is_array($row)) {
                 continue;
             }
-            $key = (int) ($row['id'] ?? 0).'|'.($row['sensitive_type'] ?? '');
+            $key = $this->cartIdentityKey($row);
             if (! isset($paidKeys[$key])) {
                 $remaining[] = $row;
             }

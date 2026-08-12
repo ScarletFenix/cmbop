@@ -8,6 +8,7 @@ use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Support\OrderLifecycleMailSuppressor;
@@ -34,10 +35,18 @@ class ReviewHandoffService
     ) {}
 
     /**
+     * @param  array<string, string>|null  $socialPostUrls  Normalized optional post URLs
      * @return array{ok: bool, status: ?int, message: string, checked_at: Carbon}
      */
-    public function handBack(OrderItem $item, Site $site, string $liveUrl, ?string $chatMessage = null): array
-    {
+    public function handBack(
+        OrderItem $item,
+        Site $site,
+        string $liveUrl,
+        ?string $chatMessage = null,
+        ?array $socialPostUrls = null,
+    ): array {
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
         // Check before opening the transaction: the request can be slow and the
         // article may have been edited since it was last seen.
         $health = $this->healthChecker->check($liveUrl);
@@ -50,7 +59,7 @@ class ReviewHandoffService
         $this->lifecycleSuppressor->suppress($orderId, ['advertiser']);
 
         try {
-            DB::transaction(function () use ($item, $liveUrl, $health) {
+            DB::transaction(function () use ($item, $liveUrl, $health, $socialPostUrls) {
                 $lockedItem = OrderItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
                 $order = Order::query()->whereKey($lockedItem->order_id)->lockForUpdate()->firstOrFail();
 
@@ -60,13 +69,22 @@ class ReviewHandoffService
                     ]);
                 }
 
-                $lockedItem->update($this->itemPayload($liveUrl, $health));
+                $lockedItem->update($this->itemPayload($liveUrl, $health, $socialPostUrls));
 
                 // Do not flip the whole order into review while another line still
                 // waits on a publisher-requested content revision (multi-item).
-                if (! OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+                if (! OrderItem::orderHasOpenContentRevision((int) $order->id)
+                    && $order->status === 'processing') {
                     $order->update(['status' => 'review']);
-                    OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                    $siblingHadLiveUrl = OrderItem::query()
+                        ->where('order_id', $order->id)
+                        ->where('id', '!=', $lockedItem->id)
+                        ->whereNotNull('live_url')
+                        ->where('live_url', '!=', '')
+                        ->exists();
+                    if ($siblingHadLiveUrl) {
+                        OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+                    }
                 }
             });
 
@@ -95,9 +113,10 @@ class ReviewHandoffService
 
     /**
      * @param  array<string, mixed>  $health
+     * @param  array<string, string>|null  $socialPostUrls
      * @return array<string, mixed>
      */
-    private function itemPayload(string $liveUrl, array $health): array
+    private function itemPayload(string $liveUrl, array $health, ?array $socialPostUrls = null): array
     {
         $payload = [
             'live_url' => $liveUrl,
@@ -117,6 +136,10 @@ class ReviewHandoffService
             $payload['live_url_check_ok'] = $health['ok'];
             $payload['live_url_http_status'] = $health['status'];
             $payload['live_url_checked_at'] = $health['checked_at'];
+        }
+
+        if ($socialPostUrls !== null && Schema::hasColumn('order_items', 'social_post_urls')) {
+            $payload['social_post_urls'] = $socialPostUrls === [] ? null : $socialPostUrls;
         }
 
         return $payload;

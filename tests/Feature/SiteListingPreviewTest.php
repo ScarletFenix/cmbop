@@ -49,8 +49,12 @@ class SiteListingPreviewTest extends TestCase
         $js = $this->publisherJs();
 
         // A valid form opens the preview rather than posting; only the confirm
-        // button lets the second submit through. Logic lives in the extracted JS.
+        // button lets the second submit through.
         $this->assertStringContainsString('publisher-websites.js', $page);
+        $this->assertStringContainsString('window.showSiteListingPreview', $page);
+        $this->assertStringContainsString('!window.sitePreviewConfirmed', $page);
+        $this->assertStringContainsString('showSiteListingPreview', $js);
+        $this->assertStringContainsString('publisherWebsitesListingPreview', $js);
         $this->assertStringContainsString('} else if (!sitePreviewConfirmed) {', $js);
         $this->assertStringContainsString('sitePreviewConfirmed = true;', $js);
     }

@@ -316,6 +316,21 @@
                             @if(isset($item['sensitive_type']) && $item['sensitive_type'])
                                 <br><small style="color: #16a34a;"><i class="fa fa-plus-circle"></i> {{ ucfirst($item['sensitive_type']) }} price included</small>
                             @endif
+                            @if(!empty($item['homepage_days']))
+                                <br><small style="color: #0f766e;">
+                                    Homepage {{ (int) $item['homepage_days'] }} day{{ (int) $item['homepage_days'] === 1 ? '' : 's' }}
+                                    @if(($item['homepage_price'] ?? 0) > 0)
+                                        (+€{{ number_format($item['homepage_price'], 2) }})
+                                    @else
+                                        (Free)
+                                    @endif
+                                </small>
+                            @endif
+                            @if(!empty($item['social_channels']) && is_array($item['social_channels']))
+                                <br><small style="color: #6b7280;">
+                                    Social: {{ collect($item['social_channels'])->map(fn ($c) => $c === 'x' ? 'X' : ucfirst((string) $c))->implode(', ') }} included
+                                </small>
+                            @endif
                         </td>
                         <td>€{{ number_format($item['price'], 2) }}</td>
                     </tr>
@@ -325,7 +340,13 @@
             
             @if(isset($totalBaseAmount) && $totalBaseAmount > 0)
             <div style="font-size: 12px; color: #6b7280; margin-top: -10px; margin-bottom: 10px;">
-                <p>Base Amount: €{{ number_format($totalBaseAmount, 2) }} | Sensitive Add-ons: €{{ number_format($totalSensitiveAmount, 2) }}</p>
+                <p>
+                    Base Amount: €{{ number_format($totalBaseAmount, 2) }}
+                    | Sensitive Add-ons: €{{ number_format($totalSensitiveAmount, 2) }}
+                    @if(!empty($totalHomepageAmount) && $totalHomepageAmount > 0)
+                        | Homepage: €{{ number_format($totalHomepageAmount, 2) }}
+                    @endif
+                </p>
             </div>
             @endif
             @endif

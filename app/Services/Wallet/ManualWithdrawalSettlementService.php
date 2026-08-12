@@ -128,16 +128,16 @@ class ManualWithdrawalSettlementService
         });
 
         if (! $result['unchanged']) {
+            if ($result['new_status'] === 'completed') {
+                $this->issuePayoutStatement($result['withdrawal']);
+            }
+
             $this->notifyStatusChange(
                 $result['withdrawal'],
                 $result['old_status'],
                 $result['new_status'],
                 $notes
             );
-
-            if ($result['new_status'] === 'completed') {
-                $this->issuePayoutStatement($result['withdrawal']);
-            }
         }
 
         if (! $quiet && ! $result['unchanged']) {

@@ -282,11 +282,11 @@
                                     
                                     <div style="text-align: center; margin-bottom: 16px;">
                                         <p style="font-size: 12px; color: #6b7280; margin-bottom: 8px;">QR Code for Payment</p>
+                                        {{-- Relative path: absolute route() breaks when APP_URL host ≠ visit host (Hostinger). --}}
                                         <img id="wiseQRCode"
-                                             data-qr-base="{{ route('advertiser.add-funds.wise-qr') }}"
-                                             src=""
+                                             data-qr-base="{{ route('advertiser.add-funds.wise-qr', absolute: false) }}"
                                              alt="Scan to pay with Wise"
-                                             style="display: none;"
+                                             style="display: none; width: 150px; height: 150px; margin: 0 auto;"
                                              width="150"
                                              height="150">
                                         <p id="wiseQrHint" class="small text-muted">Select an amount (≥ €10) to generate your Wise QR.</p>
@@ -1472,6 +1472,8 @@ window.AddFundsBoot = {
         getBilling: @json(route('advertiser.get-billing-info')),
         paymentMethodsSetup: @json(route('advertiser.payment-methods.setup')),
         paymentMethodsBase: @json(url('/advertiser/payment-methods')),
+        // Relative so APP_URL host mismatches do not break the QR <img> request.
+        wiseQr: @json(route('advertiser.add-funds.wise-qr', absolute: false)),
     },
 };
 </script>

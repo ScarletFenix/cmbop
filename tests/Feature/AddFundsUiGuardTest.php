@@ -60,7 +60,9 @@ class AddFundsUiGuardTest extends TestCase
 
         $this->assertStringNotContainsString('api.qrserver.com', $view);
         $this->assertStringNotContainsString('api.qrserver.com', $js);
-        $this->assertStringContainsString("route('advertiser.add-funds.wise-qr')", $view);
+        $this->assertStringContainsString("route('advertiser.add-funds.wise-qr', absolute: false)", $view);
+        $this->assertStringContainsString('wiseQr:', $view);
+        $this->assertStringContainsString('function syncWiseQr', $js);
         $this->assertStringContainsString('AddFundsBoot', $view);
         $this->assertStringContainsString('assets/js/add-funds.js', $view);
         $this->assertStringContainsString('assets/css/add-funds.css', $view);

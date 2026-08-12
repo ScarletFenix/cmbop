@@ -6,11 +6,12 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
-use App\Models\Site;
-use App\Services\CartPricingService;
+use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
-use App\Services\ContentUpload\ScheduledOrderService;
+use App\Services\Marketplace\CountryLanguagePairs;
+use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
 class ContentLibraryController extends Controller
@@ -24,14 +25,64 @@ class ContentLibraryController extends Controller
     public function index(Request $request)
     {
         $cfg = $this->uploads->effectiveConfig();
-        $status = $request->query('status');
+        // Default to Approved (available) — the All chip was removed from the UI.
+        $status = strtolower(trim((string) $request->query('status', 'approved')));
+        $availability = strtolower(trim((string) $request->query('availability', 'available')));
         $languageFilter = strtolower(trim((string) $request->query('language', '')));
+        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        $search = trim((string) $request->query('q', ''));
+
+        if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
+            $status = 'approved';
+        }
+
+        if (! in_array($availability, ['all', 'available', 'in_progress', 'published', 'completed', 'expired', 'archived', 'needs_fix', 'ordered'], true)) {
+            $availability = 'available';
+        }
+
+        // Backward-compatible aliases from earlier UI.
+        if ($availability === 'ordered') {
+            $availability = 'in_progress';
+        }
+        // UI label is "Completed"; internal availability key remains "published".
+        if ($availability === 'completed') {
+            $availability = 'published';
+        }
+
+        // Legacy status=needs_improvement is dead as an evaluator outcome — fold it
+        // into the live “Needs corrections” availability (rejected / error / legacy).
+        if ($status === 'needs_improvement') {
+            $status = 'all';
+            if (! $request->has('availability')) {
+                $availability = 'needs_fix';
+            }
+        }
+
+        // Deep-links like ?status=rejected must not keep the default "available"
+        // availability (that forces moderation_status=approved and hides rejects).
+        if ($status === 'rejected' && ! $request->has('availability')) {
+            $availability = 'all';
+        }
+
+        // Approved chip = available for publication only (exclude in-progress + completed).
+        if ($status === 'approved' && $availability === 'all') {
+            $availability = 'available';
+        }
 
         $query = ContentSubmission::query()
+            ->with(['orderItem.site', 'orderItems.site'])
             ->where('user_id', auth()->id())
             ->latest('id');
 
-        if ($status && $status !== 'all') {
+        // Needs corrections / expired / archived chips must not keep the default
+        // status=approved filter (that would hide rejected rows).
+        if (in_array($availability, ['needs_fix', 'expired', 'archived', 'in_progress', 'published'], true)
+            && ! $request->has('status')) {
+            $status = 'all';
+        }
+
+        // Available-for-publication already constrains moderation_status = approved.
+        if ($status && $status !== 'all' && $availability !== 'available') {
             $query->where('moderation_status', $status);
         }
 
@@ -39,21 +90,200 @@ class ContentLibraryController extends Controller
             $query->where('language', $languageFilter);
         }
 
-        $submissions = $query->paginate(12)->withQueryString();
+        if ($countryFilter !== '' && $countryFilter !== 'all') {
+            $query->where('country', $countryFilter);
+        }
 
-        $groupedByLanguage = ContentSubmission::query()
-            ->where('user_id', auth()->id())
+        if ($search !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
+            $query->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)
+                    ->orWhere('original_filename', 'like', $like);
+            });
+        }
+
+        if ($availability === 'archived') {
+            $query->whereNotNull('archived_at');
+        } else {
+            $query->whereNull('archived_at');
+
+            if ($availability === 'available') {
+                // Approved chip: orderable articles + mid-eval uploads (Evaluating badge).
+                $query->where(function ($q) {
+                    $q->where(function ($ready) {
+                        $ready->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+                            ->whereNull('order_id')
+                            ->whereNotNull('path')->where('path', '!=', '')
+                            ->whereNotNull('country')->where('country', '!=', '')
+                            ->whereNotNull('language')->where('language', '!=', '')
+                            ->where(function ($exp) {
+                                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                            });
+                    })->orWhere(function ($eval) {
+                        $eval->whereIn('moderation_status', [
+                            ContentSubmission::STATUS_PENDING,
+                            ContentSubmission::STATUS_PROCESSING,
+                        ])->whereNull('order_id');
+                    });
+                });
+            } elseif ($availability === 'in_progress') {
+                $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
+                $query->whereNotNull('order_id')
+                    ->whereDoesntHave('orderItems', function ($item) use ($hasPublisherStatus) {
+                        $item->where(function ($q) use ($hasPublisherStatus) {
+                            $q->where(function ($live) {
+                                $live->whereNotNull('live_url')->where('live_url', '!=', '');
+                            });
+                            if ($hasPublisherStatus) {
+                                $q->orWhere('publisher_status', 'completed');
+                            }
+                        });
+                    });
+            } elseif ($availability === 'expired') {
+                $query->whereNull('order_id')
+                    ->whereNotNull('expires_at')
+                    ->where('expires_at', '<', now());
+            } elseif ($availability === 'needs_fix') {
+                $query->whereIn('moderation_status', [
+                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
+                    ContentSubmission::STATUS_REJECTED,
+                    ContentSubmission::STATUS_ERROR,
+                ]);
+            } elseif ($availability === 'published') {
+                $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
+                $query->whereNotNull('order_id')
+                    ->whereHas('orderItems', function ($item) use ($hasPublisherStatus) {
+                        $item->where(function ($q) use ($hasPublisherStatus) {
+                            $q->where(function ($live) {
+                                $live->whereNotNull('live_url')->where('live_url', '!=', '');
+                            });
+                            if ($hasPublisherStatus) {
+                                $q->orWhere('publisher_status', 'completed');
+                            }
+                        });
+                    });
+            }
+        }
+
+        $submissions = $query->paginate(20)->withQueryString();
+
+        $baseScope = ContentSubmission::query()->where('user_id', auth()->id());
+
+        $groupedByLanguage = (clone $baseScope)
+            ->whereNull('archived_at')
             ->whereNotNull('language')
             ->selectRaw('language, COUNT(*) as total')
             ->groupBy('language')
             ->pluck('total', 'language');
 
-        $sites = Site::query()
-            ->notArchived()
-            ->where('active', 1)
-            ->orderBy('site_name')
-            ->limit(500)
-            ->get(['id', 'site_name', 'site_url', 'price', 'sensitive_prices', 'link_type', 'country', 'countries', 'language', 'languages']);
+        $groupedByCountry = (clone $baseScope)
+            ->whereNull('archived_at')
+            ->whereNotNull('country')
+            ->selectRaw('country, COUNT(*) as total')
+            ->groupBy('country')
+            ->pluck('total', 'country');
+
+        // Counts for moderation boxes: respect search / country / language, ignore status.
+        $countScope = ContentSubmission::query()
+            ->where('user_id', auth()->id())
+            ->whereNull('archived_at');
+
+        if ($languageFilter !== '' && $languageFilter !== 'all') {
+            $countScope->where('language', $languageFilter);
+        }
+
+        if ($countryFilter !== '' && $countryFilter !== 'all') {
+            $countScope->where('country', $countryFilter);
+        }
+
+        if ($search !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
+            $countScope->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)
+                    ->orWhere('original_filename', 'like', $like);
+            });
+        }
+
+        $statusTotals = (clone $countScope)
+            ->selectRaw('moderation_status, COUNT(*) as total')
+            ->groupBy('moderation_status')
+            ->pluck('total', 'moderation_status');
+
+        $moderationCounts = [
+            'all' => (int) $statusTotals->sum(),
+            'approved' => (int) ($statusTotals[ContentSubmission::STATUS_APPROVED] ?? 0),
+            'rejected' => (int) ($statusTotals[ContentSubmission::STATUS_REJECTED] ?? 0),
+            // Single UX bucket — includes rejected, scan errors, and legacy needs_improvement.
+            'needs_fix' => (int) ($statusTotals[ContentSubmission::STATUS_NEEDS_IMPROVEMENT] ?? 0)
+                + (int) ($statusTotals[ContentSubmission::STATUS_REJECTED] ?? 0)
+                + (int) ($statusTotals[ContentSubmission::STATUS_ERROR] ?? 0),
+        ];
+
+        $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
+        $availabilityCounts = [
+            'all' => (int) (clone $countScope)->count(),
+            'available' => (int) (clone $countScope)->orderable()->count(),
+            'evaluating' => (int) (clone $countScope)
+                ->whereIn('moderation_status', [
+                    ContentSubmission::STATUS_PENDING,
+                    ContentSubmission::STATUS_PROCESSING,
+                ])
+                ->whereNull('order_id')
+                ->count(),
+            'in_progress' => (int) (clone $countScope)
+                ->whereNotNull('order_id')
+                ->whereDoesntHave('orderItems', function ($item) use ($hasPublisherStatus) {
+                    $item->where(function ($q) use ($hasPublisherStatus) {
+                        $q->where(function ($live) {
+                            $live->whereNotNull('live_url')->where('live_url', '!=', '');
+                        });
+                        if ($hasPublisherStatus) {
+                            $q->orWhere('publisher_status', 'completed');
+                        }
+                    });
+                })
+                ->count(),
+            'completed' => (int) (clone $countScope)
+                ->whereNotNull('order_id')
+                ->whereHas('orderItems', function ($item) use ($hasPublisherStatus) {
+                    $item->where(function ($q) use ($hasPublisherStatus) {
+                        $q->where(function ($live) {
+                            $live->whereNotNull('live_url')->where('live_url', '!=', '');
+                        });
+                        if ($hasPublisherStatus) {
+                            $q->orWhere('publisher_status', 'completed');
+                        }
+                    });
+                })
+                ->count(),
+            'expired' => (int) (clone $countScope)
+                ->whereNull('order_id')
+                ->whereNotNull('expires_at')
+                ->where('expires_at', '<', now())
+                ->count(),
+            'needs_fix' => (int) ($moderationCounts['needs_fix'] ?? 0),
+        ];
+
+        $archivedCountScope = ContentSubmission::query()
+            ->where('user_id', auth()->id())
+            ->whereNotNull('archived_at');
+        if ($languageFilter !== '' && $languageFilter !== 'all') {
+            $archivedCountScope->where('language', $languageFilter);
+        }
+        if ($countryFilter !== '' && $countryFilter !== 'all') {
+            $archivedCountScope->where('country', $countryFilter);
+        }
+        if ($search !== '') {
+            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
+            $archivedCountScope->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)
+                    ->orWhere('original_filename', 'like', $like);
+            });
+        }
+        $availabilityCounts['archived'] = (int) $archivedCountScope->count();
+
+        // UI filter key: "completed" covers internal "published".
+        $availabilityUi = $availability === 'published' ? 'completed' : $availability;
 
         $nearExpiryDays = 7;
         $nearExpiryCount = (int) (clone $countScope)
@@ -66,18 +296,40 @@ class ContentLibraryController extends Controller
 
         $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
+        $languageCountryMap = $this->languageCountryMap->map();
+        $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
+        $editSubmission = $this->resolveEditableSubmission($request->query('edit'));
 
         return view('advertiser.content-library', [
             'submissions' => $submissions,
-            'sites' => $sites,
             'uploadCfg' => $cfg,
-            'statusFilter' => $status ?: 'all',
+            'uploadsEnabled' => $this->uploads->uploadsEnabled(),
+            'statusFilter' => $status,
+            'availabilityFilter' => $availabilityUi,
             'languageFilter' => $languageFilter ?: 'all',
+            'countryFilter' => $countryFilter ?: 'all',
+            'searchQuery' => $search,
             'groupedByLanguage' => $groupedByLanguage,
+            'groupedByCountry' => $groupedByCountry,
+            'moderationCounts' => $moderationCounts,
+            'availabilityCounts' => $availabilityCounts,
+            'nearExpiryCount' => $nearExpiryCount,
+            'nearExpiryDays' => $nearExpiryDays,
+            'retentionMonths' => (int) ($cfg['retention_months'] ?? 6),
             'countries' => $countries,
             'languages' => $languages,
-            'openUpload' => $request->boolean('upload'),
-            'editSubmission' => $this->resolveEditableSubmission($request->query('edit')),
+            'languageCountryMap' => $languageCountryMap,
+            'countryLanguageMap' => $countryLanguageMap,
+            'openUpload' => $request->boolean('upload') && $this->uploads->uploadsEnabled(),
+            'editSubmission' => $editSubmission,
+            'editSubmissionBoot' => $this->serializeEditBoot($editSubmission),
+            'libraryFilterBase' => [
+                'status' => $status,
+                'availability' => $availabilityUi,
+                'language' => $languageFilter ?: 'all',
+                'country' => $countryFilter ?: 'all',
+                'q' => $search,
+            ],
         ]);
     }
 
@@ -102,7 +354,23 @@ class ContentLibraryController extends Controller
             'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
             'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
             'replace_id' => ['nullable', 'integer'],
+            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights_source' => [
+                'nullable', 'string', 'max:2000',
+                'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            ],
+        ], [
+            'image_rights.required' => 'Tell us where the images in this article came from.',
+            'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
+
+        if (! $this->countryLanguagePairs->isAllowedPair($data['country'], $data['language'])) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'language' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
+                ]);
+        }
 
         $replace = null;
         if (! empty($data['replace_id'])) {
@@ -110,6 +378,7 @@ class ContentLibraryController extends Controller
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
                 ->whereNull('order_id')
+                ->whereNull('archived_at')
                 ->first();
         }
 
@@ -123,6 +392,8 @@ class ContentLibraryController extends Controller
             title: $data['title'] ?? null,
             country: $data['country'],
             language: $data['language'],
+            imageRights: $data['image_rights'],
+            imageRightsSource: $data['image_rights_source'] ?? null,
         );
 
         if (! $result['ok']) {
@@ -147,9 +418,10 @@ class ContentLibraryController extends Controller
     }
 
     /**
-     * Build a cart from an approved article + selected websites, then go to checkout.
+     * Start ordering an approved article via the Catalog (no language pre-filter).
+     * Multiple websites are allowed; each website needs its own approved article.
      */
-    public function startOrder(Request $request)
+    public function orderInCatalog(Request $request, ?ContentSubmission $submission = null)
     {
         $data = $request->validate([
             'content_submission_id' => ['required', 'integer'],
@@ -177,9 +449,7 @@ class ContentLibraryController extends Controller
             return back()->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
-        $anchor = trim(preg_replace('/\s+/', ' ', (string) ($data['anchor_text'] ?? '')) ?? '');
-        $target = trim((string) ($data['target_url'] ?? ''));
-        $hasLink = $anchor !== '' || $target !== '';
+        abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if ($hasLink) {
             if ($anchor === '' || $target === '' || ! str_starts_with(strtolower($target), 'https://')) {
@@ -216,11 +486,11 @@ class ContentLibraryController extends Controller
             );
         }
 
-        $schedule = $this->scheduler->normalizeSchedule(
-            $data['publication_mode'] ?? 'immediate',
-            $data['scheduled_date'] ?? null,
-            $data['scheduled_time'] ?? null,
-            $data['timezone'] ?? null,
+        return redirect()->route('advertiser.catalog', [
+            'content_submission_id' => $submission->id,
+        ])->with(
+            'success',
+            'Ordering “'.$title.'”. Browse any publishers — this article can be assigned to any site. Each website still needs its own approved article.'
         );
 
         if (! $schedule['ok']) {
@@ -318,6 +588,7 @@ class ContentLibraryController extends Controller
             ->where('id', (int) $id)
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
+            ->whereNull('archived_at')
             ->whereIn('moderation_status', [
                 ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
                 ContentSubmission::STATUS_REJECTED,
@@ -366,12 +637,16 @@ class ContentLibraryController extends Controller
             'moderation_status' => $s->moderation_status,
             'evaluation_status' => $s->evaluation_status,
             'evaluation_report' => $s->evaluation_report,
-            'preview_html' => $s->preview_html,
+            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
+            'detected_links' => $s->detectedLinks(),
             'has_link' => $s->hasLink(),
             'can_order' => $s->canBeOrdered(),
             'needs_correction' => $s->needsCorrection(),
+            'archived' => $s->isArchived(),
+            'availability' => $s->libraryAvailability(),
+            'live_url' => $s->liveUrl(),
             'download_url' => route('advertiser.content-submissions.download', $s),
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];

@@ -170,6 +170,23 @@
                     ->map(fn ($amount) => round((float) $amount, 2))
                     ->all();
 
+                $homepageOptions = $site->homepagePlacementOptions();
+                $defaultHomepageDays = $site->longestFreeHomepageDays();
+                $socialChannels = $site->enabledSocialChannels();
+                $socialChannelLabels = [
+                    'facebook' => 'Facebook',
+                    'instagram' => 'Instagram',
+                    'x' => 'X',
+                ];
+                // Sensitive stays in the pricing column; homepage/social live in
+                // Site Details meta (chips say “in Details”).
+                $hasSensitiveExtras = $sensitivePrices !== [];
+                $hasPlacementExtras = $homepageOptions !== [] || $socialChannels !== [];
+                $hasListingExtras = $hasSensitiveExtras || $hasPlacementExtras;
+                $hasPricingExtras = $hasSensitiveExtras;
+                $expandDescriptionHtml = $site->safeDescriptionHtml();
+                $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
+
                 // List price is the advertiser-facing base (already fee-marked-up).
                 // data-discount-percent keeps the nominal configured sale so JS can
                 // re-apply (base + sensitive) × (1 − %) then floor — same as
@@ -347,8 +364,10 @@
                                     $showBulkChip = false;
                                 }
                             }
+                            $showPlacementChips = $homepageOptions !== [] || $socialChannels !== [];
+                            $showPaidHomepageHint = $homepageOptions !== [] && $defaultHomepageDays === null;
                         @endphp
-                        @if($site->isFeatured() || $showSaleChip || $showBulkChip)
+                        @if($site->isFeatured() || $showSaleChip || $showBulkChip || $showPlacementChips)
                         <div class="catalog-site-deals">
                             @if($site->isFeatured())
                                 <span class="site-chip site-chip--featured"
@@ -373,6 +392,13 @@
                                     <span>Bulk −{{ rtrim(rtrim(number_format((float) $dealBulkChipPct, 1), '0'), '.') }}%</span>
                                 </span>
                             @endif
+
+                            @include('advertiser.partials.catalog-placement-chips', [
+                                'homepageOptions' => $homepageOptions,
+                                'defaultHomepageDays' => $defaultHomepageDays,
+                                'socialChannels' => $socialChannels,
+                                'socialChannelLabels' => $socialChannelLabels,
+                            ])
                         </div>
                         @endif
 
@@ -392,8 +418,7 @@
                         @endif
 
                         @include('advertiser.partials.catalog-meta-chips', [
-                            'linkType' => $site->link_type,
-                            'turnaround' => $site->turnaround_time,
+                            'site' => $site,
                         ])
                         </div>
                     </div>
@@ -489,6 +514,10 @@
                             'align' => 'center',
                         ])
 
+                        @if(! empty($showPaidHomepageHint))
+                            <p class="small text-muted mb-1 catalog-homepage-hint">Homepage placement available in Details.</p>
+                        @endif
+
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
                                 data-base-price="{{ $catalogListPrice }}"
@@ -543,10 +572,10 @@
             <div class="col-md-12">
                 <h6 class="mb-3">Site Details</h6>
 
-                {{-- Expandable panel: screenshot + tags/DF links + sample only (no DR/DA/traffic/country) --}}
-                <div class="row align-items-start g-4">
+                {{-- Preview | Description | Pricing | Tags + sample --}}
+                <div class="row align-items-start g-4 catalog-expand-grid">
 
-                    <div class="col-md-3 text-center">
+                    <div class="col-lg-3 col-md-6 text-center catalog-expand-preview">
                         <p class="small text-muted mb-2"><strong>Homepage preview</strong></p>
                         @php
                             // Homepage capture first (full → thumb), then admin/marketing upload.
@@ -555,173 +584,236 @@
                         @endphp
                         @if($previewUrl)
                             <div class="site-preview-zoom">
-                                {{-- Eager: Safari often never loads loading=lazy images that start inside display:none expand rows. --}}
-                                <img src="{{ $previewUrl }}"
+                                {{-- Deferred until expand opens (hydrateExpandScreenshots). Avoids
+                                     Safari never loading lazy imgs that start inside display:none. --}}
+                                <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                                     data-src="{{ $previewUrl }}"
                                      alt="{{ $identityLabel }} homepage preview"
-                                     loading="eager"
                                      decoding="async"
-                                     class="site-image-thumbnail"
+                                     class="catalog-deferred-preview site-image-thumbnail"
                                      onerror="this.onerror=null;var z=this.closest('.site-preview-zoom');if(z){z.classList.add('is-broken');var f=z.nextElementSibling;if(f){f.classList.remove('d-none');f.classList.add('d-inline-flex');}}">
                             </div>
-                            <div class="site-preview-fallback bg-light border rounded d-none align-items-center justify-content-center" aria-hidden="true">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
+                            <div class="site-preview-fallback bg-light border rounded d-none flex-column align-items-center justify-content-center gap-2 px-3" aria-hidden="true">
+                                <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
+                                <span class="small text-muted">Screenshot not available yet</span>
                             </div>
                         @else
-                            <div class="site-preview-fallback bg-light border rounded d-inline-flex align-items-center justify-content-center" role="img" aria-label="Homepage preview unavailable">
-                                <i class="fa-solid fa-image text-muted" style="font-size: 32px;" aria-hidden="true"></i>
+                            <div class="site-preview-fallback bg-light border rounded d-inline-flex flex-column align-items-center justify-content-center gap-2 px-3" role="img" aria-label="Screenshot not available yet">
+                                <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
+                                <span class="small text-muted">Screenshot not available yet</span>
                             </div>
                         @endif
                     </div>
 
-                    <div class="col-md-5">
+                    <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-4' : 'col-lg-5') }} col-md-6 catalog-expand-description">
                         <p class="mb-1"><strong class="small">Description</strong></p>
                         <div class="text-muted small">
-                            {!! $site->safeDescriptionHtml() !!}
-                        </div>
-                        <div class="text-muted small mt-2">
-                            <strong>DoFollow links:</strong> Max 03 DoFollow links
+                            @if($hasExpandDescription)
+                                {!! $expandDescriptionHtml !!}
+                            @else
+                                <span>No description yet</span>
+                            @endif
                         </div>
                         @if($site->lastPublicationLabel())
                             <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
                                 {{ $site->lastPublicationLabel() }}
                             </p>
                         @endif
+                        @unless($hasListingExtras)
+                            <p class="text-muted small mb-0 mt-2">Base guest post only — no homepage, social, or sensitive add-ons.</p>
+                        @endunless
 
-                        @include('advertiser.partials.catalog-site-trust', ['site' => $site])
+                        <div class="catalog-expand-trust mt-3">
+                            <p class="mb-1"><strong class="small">Publisher trust</strong></p>
+                            @include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])
+                        </div>
                     </div>
 
-                    <div class="col-md-2">
-                        <p><strong>Tags:</strong></p>
-
+                    @if($hasPricingExtras)
+                    <div class="col-lg-3 col-md-6 catalog-expand-pricing">
                         <div class="d-flex flex-column gap-2">
-                            <div>
-                                @if($site->link_type)
-                                    <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Link Type">
-                                        <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->link_type }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">No link type specified</span>
-                                @endif
-                            </div>
+                                <p class="mb-0"><strong>Sensitive topics</strong></p>
+                                <p class="small text-muted mb-1">Additional charge on top of the base price.</p>
 
-                            <div class="d-flex flex-wrap gap-1">
-                                @if($site->sponsored)
-                                    <span class="badge bg-warning-subtle text-dark border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Sponsored placement">
-                                        <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
-                                    </span>
-                                @endif
+                                <div class="sensitive-prices-group"
+                                     data-site-id="{{ $site->id }}"
+                                     data-base-price="{{ $catalogListPrice }}"
+                                     data-publisher-price="{{ $catalogPublisherPrice }}"
+                                     data-discount-percent="{{ $catalogSalePct ?? 0 }}"
+                                     role="radiogroup"
+                                     aria-label="Sensitive topic pricing">
 
-                                @if($site->partner_material)
-                                    <span class="badge bg-success-subtle text-success border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Partner content allowed">
-                                        <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
-                                    </span>
-                                @endif
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input sensitive-price-checkbox"
+                                               type="radio"
+                                               name="sensitive_prices_{{ $site->id }}"
+                                               value="0"
+                                               data-type="none"
+                                               data-additional-price="0"
+                                               data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
+                                               data-site-id="{{ $site->id }}"
+                                               id="sensitive_{{ $site->id }}_none"
+                                               checked>
+                                        <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
+                                            <strong>No sensitive topic</strong>
+                                            <span class="text-muted">€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</span>
+                                        </label>
+                                    </div>
 
-                                @if($site->as_you_prefer ?? false)
-                                    <span class="badge bg-primary-subtle text-primary border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Flexible placement">
-                                        <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
-                                    </span>
-                                @endif
-
-                                @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
-                                    <span class="text-muted small">No additional tags</span>
-                                @endif
-                            </div>
-
-                            <div>
-                                @if(!empty($sensitivePrices))
-                                    <p><strong>Sensitive Prices (Additional Charges):</strong></p>
-
-                                    <div class="sensitive-prices-group"
-                                         data-site-id="{{ $site->id }}"
-                                         data-base-price="{{ $catalogListPrice }}"
-                                         data-publisher-price="{{ $catalogPublisherPrice }}"
-                                         data-discount-percent="{{ $catalogSalePct ?? 0 }}"
-                                         role="radiogroup"
-                                         aria-label="Sensitive topic pricing">
+                                    @foreach($sensitivePrices as $type => $additionalPrice)
+                                        @php
+                                            $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
+                                            $publisherFloor = round($catalogPublisherPrice + (float) $additionalPrice, 2);
+                                            $totalPrice = $listWithAddon;
+                                            if ($catalogSalePct) {
+                                                $raw = max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2));
+                                                $totalPrice = max($publisherFloor, $raw);
+                                            }
+                                        @endphp
 
                                         <div class="form-check mb-2">
                                             <input class="form-check-input sensitive-price-checkbox"
                                                    type="radio"
                                                    name="sensitive_prices_{{ $site->id }}"
-                                                   value="0"
-                                                   data-type="none"
-                                                   data-additional-price="0"
-                                                   data-total-price="{{ $catalogSalePrice ?? $catalogListPrice }}"
+                                                   value="{{ $additionalPrice }}"
+                                                   data-type="{{ $type }}"
+                                                   data-additional-price="{{ $additionalPrice }}"
+                                                   data-total-price="{{ $totalPrice }}"
                                                    data-site-id="{{ $site->id }}"
-                                                   id="sensitive_{{ $site->id }}_none"
-                                                   checked>
-                                            <label class="form-check-label" for="sensitive_{{ $site->id }}_none">
-                                                <strong>No sensitive topic</strong>
-                                                <span class="text-muted">Base price</span>
+                                                   id="sensitive_{{ $site->id }}_{{ $loop->index }}">
+
+                                            <label class="form-check-label"
+                                                   for="sensitive_{{ $site->id }}_{{ $loop->index }}">
+                                                <strong>{{ ucfirst($type) }}</strong>
+                                                <span class="text-danger">+€{{ number_format($additionalPrice, 2) }}</span>
+                                                <span class="text-muted">→ €{{ number_format($totalPrice, 2) }}</span>
                                             </label>
                                         </div>
+                                    @endforeach
+                                </div>
 
-                                        @foreach($sensitivePrices as $type => $additionalPrice)
-                                            @php
-                                                $listWithAddon = round($catalogListPrice + (float) $additionalPrice, 2);
-                                                $publisherFloor = round($catalogPublisherPrice + (float) $additionalPrice, 2);
-                                                $totalPrice = $listWithAddon;
-                                                if ($catalogSalePct) {
-                                                    $raw = max(0, round($listWithAddon - round($listWithAddon * ($catalogSalePct / 100), 2), 2));
-                                                    $totalPrice = max($publisherFloor, $raw);
-                                                }
-                                            @endphp
-
-                                            <div class="form-check mb-2">
-                                                <input class="form-check-input sensitive-price-checkbox"
-                                                       type="radio"
-                                                       name="sensitive_prices_{{ $site->id }}"
-                                                       value="{{ $additionalPrice }}"
-                                                       data-type="{{ $type }}"
-                                                       data-additional-price="{{ $additionalPrice }}"
-                                                       data-total-price="{{ $totalPrice }}"
-                                                       data-site-id="{{ $site->id }}"
-                                                       id="sensitive_{{ $site->id }}_{{ $loop->index }}">
-
-                                                <label class="form-check-label"
-                                                       for="sensitive_{{ $site->id }}_{{ $loop->index }}">
-                                                    <strong>{{ ucfirst($type) }}</strong>
-                                                    <span class="text-danger">
-                                                        €{{ number_format($additionalPrice, 2) }}
-                                                    </span>
-                                                </label>
-                                            </div>
-                                        @endforeach
-                                    </div>
-
-                                    <div class="selected-price-info mt-2"
-                                         id="price-info-{{ $site->id }}">
-                                        <small class="text-muted">
-                                            Current price:
-                                            <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
-                                            @if($catalogSalePrice !== null)
-                                                <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
-                                                (offer price)
-                                            @else
-                                                (Base price)
-                                            @endif
-                                        </small>
-                                    </div>
-                                @endif
-                            </div>
+                                <div class="selected-price-info mt-1"
+                                     id="price-info-{{ $site->id }}">
+                                    <small class="text-muted">
+                                        You pay:
+                                        <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
+                                        @if($catalogSalePrice !== null)
+                                            <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
+                                            (offer price)
+                                        @else
+                                            (base price)
+                                        @endif
+                                    </small>
+                                </div>
                         </div>
                     </div>
+                    @endif
 
-                    <div class="col-md-2">
-                        <p><strong>Sample article:</strong></p>
+                    <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-5' : 'col-lg-4') }} col-md-6 catalog-expand-meta">
+                        <p class="mb-1"><strong>Link type</strong></p>
+                        <div class="mb-3">
+                            @if($site->linkTypeLabel())
+                                <span class="badge bg-secondary-subtle text-secondary border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Link attribute on the published placement">
+                                    <i class="fa-solid fa-link me-1" aria-hidden="true"></i>{{ $site->linkTypeLabel() }}
+                                </span>
+                            @else
+                                <span class="text-muted small">No link type specified</span>
+                            @endif
+                        </div>
 
+                        <p class="mb-1"><strong>Tags</strong></p>
+                        <div class="d-flex flex-wrap gap-1 mb-3">
+                            @if($site->sponsored)
+                                <span class="badge bg-warning-subtle text-dark border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Sponsored placement">
+                                    <i class="fa-solid fa-star me-1" aria-hidden="true"></i>Sponsored
+                                </span>
+                            @endif
+
+                            @if($site->partner_material)
+                                <span class="badge bg-success-subtle text-success border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Partner content allowed">
+                                    <i class="fa-solid fa-handshake me-1" aria-hidden="true"></i>Partner
+                                </span>
+                            @endif
+
+                            @if($site->as_you_prefer ?? false)
+                                <span class="badge bg-primary-subtle text-primary border px-2 py-1"
+                                      style="font-size: 11px;"
+                                      title="Flexible placement">
+                                    <i class="fa-solid fa-sliders-h me-1" aria-hidden="true"></i>As You Prefer
+                                </span>
+                            @endif
+
+                            @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
+                                <span class="text-muted small">No additional tags</span>
+                            @endif
+                        </div>
+
+                        @if($homepageOptions !== [])
+                            <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
+                            <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
+                            <div class="homepage-placement-group mb-3"
+                                 data-site-id="{{ $site->id }}"
+                                 role="radiogroup"
+                                 aria-label="Homepage placement duration">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input homepage-placement-radio"
+                                           type="radio"
+                                           name="homepage_placement_{{ $site->id }}"
+                                           value="none"
+                                           data-days="none"
+                                           data-price="0"
+                                           data-site-id="{{ $site->id }}"
+                                           id="homepage_{{ $site->id }}_none"
+                                           {{ $defaultHomepageDays === null ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="homepage_{{ $site->id }}_none">
+                                        <strong>No homepage placement</strong>
+                                    </label>
+                                </div>
+                                @foreach($homepageOptions as $days => $fee)
+                                    @php $isFreeHome = (float) $fee <= 0; @endphp
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input homepage-placement-radio"
+                                               type="radio"
+                                               name="homepage_placement_{{ $site->id }}"
+                                               value="{{ $days }}"
+                                               data-days="{{ $days }}"
+                                               data-price="{{ $fee }}"
+                                               data-site-id="{{ $site->id }}"
+                                               id="homepage_{{ $site->id }}_{{ $days }}"
+                                               {{ (int) $defaultHomepageDays === (int) $days ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="homepage_{{ $site->id }}_{{ $days }}">
+                                            <strong>{{ $days }} day{{ $days > 1 ? 's' : '' }}</strong>
+                                            @if($isFreeHome)
+                                                <span class="text-success">Free</span>
+                                            @else
+                                                <span class="text-muted">+€{{ number_format($fee, 2) }}</span>
+                                            @endif
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if($socialChannels !== [])
+                            <p class="mb-1"><strong>Social</strong></p>
+                            <p class="small text-muted mb-2">Publisher will share the live post on these channels at no extra cost.</p>
+                            <div class="d-flex flex-wrap gap-1 mb-3" aria-label="Included social channels">
+                                @foreach($socialChannels as $channel)
+                                    <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        <p class="mb-1"><strong>Sample article</strong></p>
                         {{-- Sample URLs share the listing domain — only show when
                              identity is visible (always outside hide mode; after eye inside). --}}
-                        <div class="d-flex flex-column gap-2">
+                        <div class="d-flex flex-column gap-2 mb-3">
                             @if($inCatalogHideMode && ! $showsIdentity)
                                 <a href="{{ route('advertiser.catalog.visit', $site->id) }}"
                                    target="_blank" rel="noopener noreferrer"
@@ -734,20 +826,17 @@
                                 </span>
                             @else
                                 @php
-                                    // Publisher-supplied, so it cannot go straight into href:
-                                    // escaping stops injected markup but not a javascript: scheme.
                                     $sampleUrl = safe_external_url($site->example_url);
                                 @endphp
-                                <div class="d-flex align-items-center gap-2">
-                                    <a href="{{ $sampleUrl }}"
-                                       target="_blank"
-                                       rel="noopener noreferrer"
-                                       class="text-decoration-none"
-                                       style="word-break: break-all;">
-                                        {{ Str::limit($site->example_url ?? 'Not available', 50) }}
-                                    </a>
-
-                                    @if($sampleUrl !== '#')
+                                @if($sampleUrl !== '#')
+                                    <div class="d-flex align-items-center gap-2">
+                                        <a href="{{ $sampleUrl }}"
+                                           target="_blank"
+                                           rel="noopener noreferrer"
+                                           class="text-decoration-none"
+                                           style="word-break: break-all;">
+                                            {{ Str::limit($site->example_url, 50) }}
+                                        </a>
                                         <a href="{{ $sampleUrl }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
@@ -757,10 +846,7 @@
                                             <i class="fa-solid fa-arrow-up-right-from-square"
                                                style="font-size: 13px;" aria-hidden="true"></i>
                                         </a>
-                                    @endif
-                                </div>
-
-                                @if($site->example_url)
+                                    </div>
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary copy-example-url"
                                             data-url="{{ $site->example_url }}"
@@ -768,26 +854,35 @@
                                             style="width: fit-content;">
                                         <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL
                                     </button>
+                                @else
+                                    <span class="text-muted small">No sample article yet</span>
                                 @endif
                             @endif
-
-                            <div class="d-flex align-items-center gap-2">
-                                <strong>Publication Duration:</strong>
-
-                                @if($site->publication_time)
-                                    <span class="badge text-muted border px-2 py-1"
-                                          style="font-size: 11px;"
-                                          title="Publication Duration">
-                                        <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>
-                                        {{ $site->publication_time }}
-                                    </span>
-                                @else
-                                    <span class="text-muted small">
-                                        No publication duration specified
-                                    </span>
-                                @endif
-                            </div>
                         </div>
+
+                        <p class="mb-1"><strong title="Typical publisher turnaround once an order is accepted">Turnaround</strong></p>
+                        @if($site->turnaroundLabel())
+                            <span class="badge text-muted border px-2 py-1 mb-3"
+                                  style="font-size: 11px;"
+                                  title="Typical publisher turnaround once an order is accepted">
+                                <i class="fa-solid fa-hourglass-half me-1" aria-hidden="true"></i>
+                                {{ $site->turnaroundLabel() }}
+                            </span>
+                        @else
+                            <span class="text-muted small d-block mb-3">Not specified</span>
+                        @endif
+
+                        <p class="mb-1"><strong title="How long the published article stays live">Publication duration</strong></p>
+                        @if($site->publicationDurationLabel())
+                            <span class="badge text-muted border px-2 py-1"
+                                  style="font-size: 11px;"
+                                  title="How long the published article stays live">
+                                <i class="fa-solid fa-clock me-1" aria-hidden="true"></i>
+                                {{ $site->publicationDurationLabel() }}
+                            </span>
+                        @else
+                            <span class="text-muted small">Not specified</span>
+                        @endif
                     </div>
 
                 </div>
@@ -868,6 +963,14 @@
                     && is_numeric($amount) && (float) $amount > 0)
                 ->map(fn ($amount) => round((float) $amount, 2))
                 ->all();
+            $homepageOptions = $site->homepagePlacementOptions();
+            $defaultHomepageDays = $site->longestFreeHomepageDays();
+            $socialChannels = $site->enabledSocialChannels();
+            $socialChannelLabels = [
+                'facebook' => 'Facebook',
+                'instagram' => 'Instagram',
+                'x' => 'X',
+            ];
             $catalogListPrice = round((float) $site->price, 2);
             $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
             $catalogSalePctNominal = $site->activeCustomDiscountPercent();
@@ -958,11 +1061,16 @@
                                 <span>Bulk −{{ rtrim(rtrim(number_format((float) $mobileBulkChipPct, 1), '0'), '.') }}%</span>
                             </span>
                         @endif
+                        @include('advertiser.partials.catalog-placement-chips', [
+                            'homepageOptions' => $homepageOptions,
+                            'defaultHomepageDays' => $defaultHomepageDays,
+                            'socialChannels' => $socialChannels,
+                            'socialChannelLabels' => $socialChannelLabels,
+                        ])
                         <span class="category-badge">{{ $mobileCategory }}</span>
                     </div>
                     @include('advertiser.partials.catalog-meta-chips', [
-                        'linkType' => $site->link_type,
-                        'turnaround' => $site->turnaround_time,
+                        'site' => $site,
                     ])
                     </div>
                 </div>
@@ -1038,7 +1146,7 @@
                                checked>
                         <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_none">
                             <strong>No sensitive topic</strong>
-                            <span class="text-muted">Base price</span>
+                            <span class="text-muted">€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</span>
                         </label>
                     </div>
                     @foreach($mobileSensitivePrices as $type => $additionalPrice)
@@ -1063,7 +1171,8 @@
                                    id="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                             <label class="form-check-label" for="sensitive_mobile_{{ $site->id }}_{{ $loop->index }}">
                                 <strong>{{ ucfirst($type) }}</strong>
-                                <span class="text-danger">€{{ number_format($additionalPrice, 2) }}</span>
+                                <span class="text-danger">+€{{ number_format($additionalPrice, 2) }}</span>
+                                <span class="text-muted">→ €{{ number_format($totalPrice, 2) }}</span>
                             </label>
                         </div>
                     @endforeach
@@ -1071,7 +1180,7 @@
                          an empty div until the shopper touched a radio. --}}
                     <div class="selected-price-info mt-1" id="price-info-mobile-{{ $site->id }}">
                         <small class="text-muted">
-                            Current price:
+                            You pay:
                             <strong>€{{ number_format($catalogSalePrice ?? $catalogListPrice, 2) }}</strong>
                             @if($catalogSalePrice !== null)
                                 <span class="text-decoration-line-through">€{{ number_format($catalogListPrice, 2) }}</span>
@@ -1080,6 +1189,61 @@
                                 (Base price)
                             @endif
                         </small>
+                    </div>
+                </div>
+            @endif
+            @if($homepageOptions !== [])
+                <div class="homepage-placement-group mt-3"
+                     data-site-id="{{ $site->id }}"
+                     role="radiogroup"
+                     aria-label="Homepage placement duration">
+                    <div class="small fw-semibold mb-1">Homepage promotions (optional)</div>
+                    <p class="small text-muted mb-2">Sale/bulk discounts do not apply to this fee.</p>
+                    <div class="form-check mb-1">
+                        <input class="form-check-input homepage-placement-radio"
+                               type="radio"
+                               name="homepage_placement_card_{{ $site->id }}"
+                               value="none"
+                               data-days="none"
+                               data-price="0"
+                               data-site-id="{{ $site->id }}"
+                               id="homepage_mobile_{{ $site->id }}_none"
+                               {{ $defaultHomepageDays === null ? 'checked' : '' }}>
+                        <label class="form-check-label" for="homepage_mobile_{{ $site->id }}_none">
+                            <strong>No homepage placement</strong>
+                        </label>
+                    </div>
+                    @foreach($homepageOptions as $days => $fee)
+                        @php $isFreeHome = (float) $fee <= 0; @endphp
+                        <div class="form-check mb-1">
+                            <input class="form-check-input homepage-placement-radio"
+                                   type="radio"
+                                   name="homepage_placement_card_{{ $site->id }}"
+                                   value="{{ $days }}"
+                                   data-days="{{ $days }}"
+                                   data-price="{{ $fee }}"
+                                   data-site-id="{{ $site->id }}"
+                                   id="homepage_mobile_{{ $site->id }}_{{ $days }}"
+                                   {{ (int) $defaultHomepageDays === (int) $days ? 'checked' : '' }}>
+                            <label class="form-check-label" for="homepage_mobile_{{ $site->id }}_{{ $days }}">
+                                <strong>{{ $days }} day{{ $days > 1 ? 's' : '' }}</strong>
+                                @if($isFreeHome)
+                                    <span class="text-success">Free</span>
+                                @else
+                                    <span class="text-muted">+€{{ number_format($fee, 2) }}</span>
+                                @endif
+                            </label>
+                        </div>
+                    @endforeach
+                </div>
+            @endif
+            @if($socialChannels !== [])
+                <div class="mt-3">
+                    <div class="small fw-semibold mb-1">Social</div>
+                    <div class="d-flex flex-wrap gap-1" aria-label="Included social channels">
+                        @foreach($socialChannels as $channel)
+                            <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                        @endforeach
                     </div>
                 </div>
             @endif
@@ -1151,26 +1315,98 @@
             </button>
 
             <dl class="catalog-card-details" id="card-details-{{ $site->id }}" hidden>
+                @php
+                    $mobilePreviewUrl = $site->screenshot_url ?: $site->screenshot_thumb_url;
+                @endphp
+                <div class="catalog-card-details__row">
+                    <dt>Homepage preview</dt>
+                    <dd>
+                        @if($mobilePreviewUrl)
+                            <div class="site-preview-zoom catalog-card-preview">
+                                <img class="catalog-deferred-preview site-image-thumbnail"
+                                     src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+                                     data-src="{{ $mobilePreviewUrl }}"
+                                     alt="{{ $identityLabel }} homepage preview"
+                                     decoding="async"
+                                     onerror="this.onerror=null;var z=this.closest('.site-preview-zoom');if(z){z.classList.add('is-broken');var f=z.nextElementSibling;if(f){f.classList.remove('d-none');f.classList.add('d-inline-flex');}}">
+                            </div>
+                            <div class="site-preview-fallback bg-light border rounded d-none flex-column align-items-center justify-content-center gap-2 px-3" aria-hidden="true">
+                                <i class="fa-solid fa-image text-muted" style="font-size: 24px;" aria-hidden="true"></i>
+                                <span class="small text-muted">Screenshot not available yet</span>
+                            </div>
+                        @else
+                            <span class="text-muted small">Screenshot not available yet</span>
+                        @endif
+                    </dd>
+                </div>
                 <div class="catalog-card-details__row">
                     <dt>Trust</dt>
                     <dd>@include('advertiser.partials.catalog-site-trust', ['site' => $site, 'compactClass' => ''])</dd>
                 </div>
                 <div class="catalog-card-details__row">
                     <dt>Turnaround</dt>
-                    <dd>{{ $site->turnaround_time ?? 'Not specified' }}</dd>
+                    <dd>{{ $site->turnaroundLabel('Not specified') }}</dd>
                 </div>
                 <div class="catalog-card-details__row">
                     <dt>Publication duration</dt>
-                    <dd>{{ $site->publication_time ?: 'Not specified' }}</dd>
+                    <dd>{{ $site->publicationDurationLabel('Not specified') }}</dd>
                 </div>
                 <div class="catalog-card-details__row">
                     <dt>Link type</dt>
-                    <dd>Max 03 {{ $site->link_type ?: 'DoFollow' }} links</dd>
+                    <dd>{{ $site->linkTypeLabel('Not specified') }}</dd>
                 </div>
+                <div class="catalog-card-details__row">
+                    <dt>Tags</dt>
+                    <dd class="d-flex flex-wrap gap-1">
+                        @if($site->sponsored)
+                            <span class="badge bg-warning-subtle text-dark border">Sponsored</span>
+                        @endif
+                        @if($site->partner_material)
+                            <span class="badge bg-success-subtle text-success border">Partner</span>
+                        @endif
+                        @if($site->as_you_prefer ?? false)
+                            <span class="badge bg-primary-subtle text-primary border">As You Prefer</span>
+                        @endif
+                        @if(!$site->sponsored && !$site->partner_material && !($site->as_you_prefer ?? false))
+                            <span class="text-muted small">No additional tags</span>
+                        @endif
+                    </dd>
+                </div>
+                @if($homepageOptions !== [])
+                    <div class="catalog-card-details__row">
+                        <dt>Homepage promotions</dt>
+                        <dd>
+                            <ul class="list-unstyled mb-0 small">
+                                @foreach($homepageOptions as $days => $fee)
+                                    <li>
+                                        {{ $days }} day{{ $days > 1 ? 's' : '' }}
+                                        @if((float) $fee <= 0)
+                                            — <span class="text-success">Free</span>
+                                        @else
+                                            — +€{{ number_format((float) $fee, 2) }}
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                            <span class="text-muted small">Choose a duration above Buy.</span>
+                        </dd>
+                    </div>
+                @endif
+                @if($socialChannels !== [])
+                    <div class="catalog-card-details__row">
+                        <dt>Social</dt>
+                        <dd class="d-flex flex-wrap gap-1">
+                            @foreach($socialChannels as $channel)
+                                <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                            @endforeach
+                        </dd>
+                    </div>
+                @endif
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
-                        <dd>{{ site_description_excerpt($site->description) }}</dd>
+                        {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml(). --}}
+                        <dd class="catalog-card-details__description text-muted small">{{ site_description_excerpt($site->description) }}</dd>
                     </div>
                 @endif
                 <div class="catalog-card-details__row">
@@ -1179,13 +1415,12 @@
                         {{-- Sample shares the listing domain — gate on identity. --}}
                         @if($inCatalogHideMode && ! $showsIdentity)
                             Use the eye to show this listing’s name and URL, then the sample article link appears.
-                        @elseif($site->example_url)
-                            @php $mobileSampleUrl = safe_external_url($site->example_url); @endphp
+                        @elseif($site->example_url && ($mobileSampleUrl = safe_external_url($site->example_url)) !== '#')
                             <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">
                                 {{ Str::limit($site->example_url, 46) }}
                             </a>
                         @else
-                            Not available
+                            No sample article yet
                         @endif
                     </dd>
                 </div>

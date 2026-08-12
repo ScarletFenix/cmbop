@@ -256,4 +256,94 @@ class CartPricingServiceTest extends TestCase
 
         return $site;
     }
+
+    public function test_homepage_fee_added_after_discount_undiscounted(): void
+    {
+        $site = $this->siteWithHomepageOffers(100, [1 => 0.0, 7 => 25.0, 30 => 0.0], 20.0);
+
+        $result = $this->pricing->priceForAdvertiser($site, null, 1, 7, false);
+
+        // €100 → €113 list; 20% off → €90.40 article (above €100 publisher floor → €100)
+        $this->assertSame(7, $result['homepage_days']);
+        $this->assertSame(25.0, $result['homepage_price']);
+        $this->assertSame(100.0, $result['article_total']); // floored at publisher payout
+        $this->assertSame(125.0, $result['total']);
+    }
+
+    public function test_default_homepage_picks_longest_free(): void
+    {
+        $site = $this->siteWithHomepageOffers(100, [1 => 0.0, 7 => 25.0, 30 => 0.0]);
+
+        $result = $this->pricing->priceForAdvertiser($site, null, 1, null, true);
+
+        $this->assertSame(30, $result['homepage_days']);
+        $this->assertSame(0.0, $result['homepage_price']);
+        $this->assertSame(113.0, $result['total']);
+    }
+
+    public function test_paid_only_homepage_defaults_to_none(): void
+    {
+        $site = $this->siteWithHomepageOffers(100, [7 => 25.0, 30 => 60.0]);
+
+        $result = $this->pricing->priceForAdvertiser($site, null, 1, null, true);
+
+        $this->assertNull($result['homepage_days']);
+        $this->assertSame(0.0, $result['homepage_price']);
+        $this->assertSame(113.0, $result['total']);
+    }
+
+    /**
+     * @param  array<int, float>  $homepage
+     */
+    private function siteWithHomepageOffers(float $price, array $homepage, ?float $customDiscount = null): Site
+    {
+        $site = new class extends Site
+        {
+            /** @var array<int, float> */
+            public array $testHomepage = [];
+
+            public ?float $testDiscountPercent = null;
+
+            public function activeCustomDiscountPercent(): ?float
+            {
+                return $this->testDiscountPercent;
+            }
+
+            public function joinsBulkDiscount(): bool
+            {
+                return false;
+            }
+
+            public function homepagePlacementOptions(): array
+            {
+                return $this->testHomepage;
+            }
+
+            public function longestFreeHomepageDays(): ?int
+            {
+                $free = [];
+                foreach ($this->testHomepage as $days => $fee) {
+                    if ((float) $fee <= 0) {
+                        $free[] = (int) $days;
+                    }
+                }
+
+                return $free === [] ? null : max($free);
+            }
+
+            public function enabledSocialChannels(): array
+            {
+                return ['facebook'];
+            }
+        };
+
+        $site->testHomepage = $homepage;
+        $site->testDiscountPercent = $customDiscount;
+        $site->forceFill([
+            'site_name' => 'Example',
+            'price' => $price,
+        ]);
+
+        return $site;
+    }
 }

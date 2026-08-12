@@ -29,43 +29,44 @@
     </div>
 
     <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Orders</h6>
-                        <h3 class="mb-0" id="statTotalOrders">0</h3>
-                    </div>
-                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-tasks fa-2x text-primary"></i>
-                    </div>
+    <div class="row mb-4 g-3">
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">Total</h6>
+                    <h3 class="mb-0" id="statTotalOrders">0</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Pending</h6>
-                        <h3 class="mb-0" id="statPendingOrders">0</h3>
-                    </div>
-                    <div class="bg-warning bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-clock fa-2x text-warning"></i>
-                    </div>
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">Pending</h6>
+                    <h3 class="mb-0" id="statPendingOrders">0</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Earnings</h6>
-                        <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">€0</h3>
-                    </div>
-                    <div class="bg-success bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-euro-sign fa-2x text-success"></i>
-                    </div>
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">In progress</h6>
+                    <h3 class="mb-0" id="statProcessingOrders">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">In review</h6>
+                    <h3 class="mb-0" id="statReviewOrders">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">Earnings</h6>
+                    <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">€0</h3>
                 </div>
             </div>
         </div>
@@ -98,6 +99,7 @@
                     <!-- Order Status Filter -->
                     <div class="col-md-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
+                        <input type="hidden" id="needsActionFilter" value="">
                         <select id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
                             <option value="pending">New — needs accept</option>
@@ -160,7 +162,7 @@
                     </thead>
                     <tbody id="tasksTableBody">
                         <tr>
-                            <td colspan="9" class="text-center py-5">
+                            <td colspan="8" class="text-center py-5">
                                 <div class="text-muted">Loading tasks...</div>
                             </td>
                         </tr>
@@ -212,7 +214,10 @@
                 <input type="hidden" id="reject_order_item_id">
                 <div class="ui-callout ui-callout--attention mb-3">
                     <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
-                    <div class="ui-callout__body">The advertiser is refunded to their wallet. You can cancel after accepting if you cannot fulfill the order.</div>
+                    <div class="ui-callout__body">
+                        <span id="rejectModalBaseHint">The advertiser is refunded to their wallet. You can cancel after accepting if you cannot fulfill the order.</span>
+                        <span id="rejectModalMultiHint" class="d-none mt-1 fw-semibold">This cancels the <em>whole order</em> (all sites in the cart), not only this row.</span>
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label for="reject_reason" class="form-label">Reason <span class="text-danger">*</span></label>
@@ -267,10 +272,64 @@
                     <input type="url" id="live_url" class="form-control" placeholder="https://example.com/your-article">
                     <small class="text-muted">Enter the live URL where the content is published. After submission, the advertiser has {{ (int) ceil(\App\Models\OrderItem::autoApproveHours() / 24) }} days to approve or request changes.</small>
                 </div>
+                <div id="completeSocialFields" class="d-none">
+                    <p class="small fw-semibold mb-1">Social post URLs <span class="text-muted fw-normal">(optional)</span></p>
+                    <p class="small text-muted mb-2" id="completeSocialHint">
+                        This order includes a social share. You can paste post links now or add them later after you publish. Live URL alone is enough to submit.
+                    </p>
+                    <div class="mb-2 d-none" data-social-channel="facebook">
+                        <label for="social_facebook" class="form-label small mb-1">Facebook post URL</label>
+                        <input type="url" id="social_facebook" class="form-control form-control-sm social-post-url" data-channel="facebook" placeholder="https://facebook.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="instagram">
+                        <label for="social_instagram" class="form-label small mb-1">Instagram post URL</label>
+                        <input type="url" id="social_instagram" class="form-control form-control-sm social-post-url" data-channel="instagram" placeholder="https://instagram.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="x">
+                        <label for="social_x" class="form-label small mb-1">X post URL</label>
+                        <input type="url" id="social_x" class="form-control form-control-sm social-post-url" data-channel="x" placeholder="https://x.com/…">
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
                 <button type="button" class="btn btn-primary" id="confirmComplete">Submit Live URL</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add / update social post URLs after live URL is already submitted -->
+<div class="modal fade" id="socialPostsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="socialPostsModalTitle">Social post URLs</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="social_posts_order_item_id">
+                <p class="small text-muted mb-3" id="socialPostsHint">
+                    Optional. Paste links to the social posts for the channels included on this order. You can leave any field blank.
+                </p>
+                <div id="socialPostsFields">
+                    <div class="mb-2 d-none" data-social-channel="facebook">
+                        <label for="social_posts_facebook" class="form-label small mb-1">Facebook post URL</label>
+                        <input type="url" id="social_posts_facebook" class="form-control form-control-sm social-post-url" data-channel="facebook" placeholder="https://facebook.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="instagram">
+                        <label for="social_posts_instagram" class="form-label small mb-1">Instagram post URL</label>
+                        <input type="url" id="social_posts_instagram" class="form-control form-control-sm social-post-url" data-channel="instagram" placeholder="https://instagram.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="x">
+                        <label for="social_posts_x" class="form-label small mb-1">X post URL</label>
+                        <input type="url" id="social_posts_x" class="form-control form-control-sm social-post-url" data-channel="x" placeholder="https://x.com/…">
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="confirmSocialPosts">Save social links</button>
             </div>
         </div>
     </div>
@@ -293,170 +352,8 @@
 </div>
 
 @include('partials.order-chat-modal')
-    </div>
-</div>
 
-<style>
-.table td, .table th {
-    padding: 12px 15px;
-    vertical-align: middle;
-}
-
-.card-header {
-    border-bottom: 1px solid #eee;
-}
-
-.status-badge {
-    padding: 4px 10px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.status-pending {
-    /* uses app-shell status tokens */
-}
-
-.status-processing {
-    /* uses app-shell status tokens */
-}
-
-.status-review {
-    /* uses app-shell status tokens */
-}
-
-.status-completed {
-    /* uses app-shell status tokens */
-}
-
-.status-cancelled {
-    /* uses app-shell status tokens */
-}
-
-.chat-unread-dot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    margin-left: 4px;
-    border-radius: 999px;
-    background: #dc3545;
-    color: #fff;
-    font-size: 10px;
-    font-weight: 700;
-}
-
-.next-step-hint {
-    font-size: 11px;
-    color: #6b7280;
-    margin-top: 4px;
-    max-width: 160px;
-}
-
-.sensitive-badge {
-    background-color: #fef3c7;
-    color: #d97706;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.btn-action-sm {
-    padding: 4px 8px;
-    font-size: 11px;
-    min-width: 65px;
-}
-
-.link-cell {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.link-cell a {
-    font-size: 12px;
-}
-
-.action-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.total-price {
-    font-weight: bold;
-    font-size: 14px;
-}
-
-/* Dark mode styles */
-
-
-
-
-
-
-
-td a {
-    word-break: break-all;
-}
-
-#chatMessages::-webkit-scrollbar {
-    width: 6px;
-}
-#chatMessages::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-#chatMessages::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-#chatMessages::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-
-.publisher-article-preview {
-    border: 1px solid #dbe4ee;
-    background: #fff;
-    border-radius: 12px;
-    padding: 14px 16px;
-    max-height: 420px;
-    overflow: auto;
-    font-size: 0.92rem;
-    line-height: 1.55;
-    color: #334155;
-}
-.publisher-article-preview img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin: .5rem 0;
-    display: block;
-}
-.article-img-wrap {
-    position: relative;
-    display: inline-block;
-    max-width: 100%;
-}
-.article-img-wrap img { display: block; max-width: 100%; height: auto; }
-.article-img-download {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    opacity: 0;
-    transition: opacity .15s ease;
-    z-index: 2;
-}
-.article-img-wrap:hover .article-img-download,
-.article-img-wrap:focus-within .article-img-download {
-    opacity: 1;
-}
-</style>
+<link href="{{ asset('assets/css/publisher-tasks.css') }}?v={{ @filemtime(public_path('assets/css/publisher-tasks.css')) ?: '1' }}" rel="stylesheet">
 
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -469,16 +366,22 @@ let refreshInterval = null;
 
 // Get the base URL dynamically
 const baseUrl = window.location.origin;
+
+/** Bootstrap 5 modal helpers (jQuery .modal() is unavailable without the BS4 plugin). */
+function showTasksModal(id) {
+    var el = document.getElementById(id);
+    if (!el || !window.bootstrap || !bootstrap.Modal) return;
+    bootstrap.Modal.getOrCreateInstance(el).show();
+}
+function hideTasksModal(id) {
+    var el = document.getElementById(id);
+    if (!el || !window.bootstrap || !bootstrap.Modal) return;
+    var inst = bootstrap.Modal.getInstance(el) || bootstrap.Modal.getOrCreateInstance(el);
+    inst.hide();
+}
+
 const AUTO_APPROVE_HOURS = {{ (int) \App\Models\OrderItem::autoApproveHours() }};
 const AUTO_APPROVE_DAYS = {{ (int) max(1, (int) ceil(\App\Models\OrderItem::autoApproveHours() / 24)) }};
-
-function clearFocusMessagesParam() {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has('focus') && !url.searchParams.has('order')) return;
-    url.searchParams.delete('focus');
-    url.searchParams.delete('order');
-    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
-}
 
 function clearFocusMessagesParam() {
     const url = new URL(window.location.href);
@@ -496,6 +399,7 @@ $(document).ready(function() {
 
     $('#showNeedsActionBtn').on('click', function() {
         $('#statusFilter').val('');
+        $('#needsActionFilter').val('1');
         syncTasksFiltersToUrl(1);
         loadTasks(1);
         $('html, body').animate({ scrollTop: $('#tasksTableBody').offset().top - 120 }, 'fast');
@@ -506,13 +410,6 @@ $(document).ready(function() {
         loadTasks(currentPage, true); // silent refresh
         loadStatistics();
     }, 30000);
-
-    $('#filterForm').on('submit', function(e) {
-        e.preventDefault();
-        currentPage = 1;
-        syncTasksFiltersToUrl(1);
-        loadTasks(1);
-    });
 
     (function initTasksLiveSearch() {
         var input = document.getElementById('searchInput');
@@ -532,9 +429,25 @@ $(document).ready(function() {
     $('#resetFiltersBtn').on('click', function() {
         $('#searchInput').val('');
         $('#statusFilter').val('');
+        $('#needsActionFilter').val('');
         $('#dateFrom').val('');
         $('#dateTo').val('');
         currentPage = 1;
+        syncTasksFiltersToUrl(1);
+        loadTasks(1);
+    });
+
+    $('#statusFilter').on('change', function() {
+        // Manual status pick clears the needs-action mode.
+        $('#needsActionFilter').val('');
+    });
+
+    $('#filterForm').on('submit', function(e) {
+        e.preventDefault();
+        currentPage = 1;
+        if ($('#statusFilter').val()) {
+            $('#needsActionFilter').val('');
+        }
         syncTasksFiltersToUrl(1);
         loadTasks(1);
     });
@@ -543,6 +456,12 @@ $(document).ready(function() {
         const params = new URLSearchParams(window.location.search);
         if (params.has('search')) $('#searchInput').val(params.get('search') || '');
         if (params.has('status')) $('#statusFilter').val(params.get('status') || '');
+        if (params.get('needs_action') === '1') {
+            $('#needsActionFilter').val('1');
+            $('#statusFilter').val('');
+        } else {
+            $('#needsActionFilter').val('');
+        }
         if (params.has('date_from')) $('#dateFrom').val(params.get('date_from') || '');
         if (params.has('date_to')) $('#dateTo').val(params.get('date_to') || '');
         const page = parseInt(params.get('page') || '1', 10);
@@ -553,7 +472,8 @@ $(document).ready(function() {
         const url = new URL(window.location.href);
         const map = {
             search: $('#searchInput').val() || '',
-            status: $('#statusFilter').val() || '',
+            status: $('#needsActionFilter').val() === '1' ? '' : ($('#statusFilter').val() || ''),
+            needs_action: $('#needsActionFilter').val() === '1' ? '1' : '',
             date_from: $('#dateFrom').val() || '',
             date_to: $('#dateTo').val() || '',
         };
@@ -567,15 +487,29 @@ $(document).ready(function() {
     }
     window.syncTasksFiltersToUrl = syncTasksFiltersToUrl;
 
+    $(document).on('click', '.open-task-chat', function() {
+        var orderId = $(this).data('order-id');
+        var orderNumber = $(this).data('order-number') || '';
+        if (orderId) openChat(orderId, orderNumber);
+    });
+
     $(document).on('click', '.accept-task', function() {
         $('#accept_order_item_id').val($(this).data('id'));
-        $('#acceptModal').modal('show');
+        showTasksModal('acceptModal');
     });
 
     $(document).on('click', '.reject-task', function() {
-        $('#reject_order_item_id').val($(this).data('id'));
+        var $btn = $(this);
+        $('#reject_order_item_id').val($btn.data('id'));
         $('#reject_reason').val('');
-        $('#rejectModal').modal('show');
+        var itemsCount = parseInt($btn.data('order-items') || '1', 10);
+        var $multi = $('#rejectModalMultiHint');
+        if (itemsCount > 1) {
+            $multi.removeClass('d-none');
+        } else {
+            $multi.addClass('d-none');
+        }
+        showTasksModal('rejectModal');
     });
 
     $(document).on('click', '.request-content-revision', function() {
@@ -591,14 +525,123 @@ $(document).ready(function() {
         $('#contentRevisionModalHint').text(isUpdate
             ? 'Update what the advertiser should change. Live URL submit stays blocked until they send a revised article.'
             : 'Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it. One request at a time — you can update the reason while waiting.');
-        $('#contentRevisionModal').modal('show');
+        showTasksModal('contentRevisionModal');
     });
 
     $(document).on('click', '.submit-live-url', function() {
-        $('#complete_order_item_id').val($(this).data('id'));
+        var $btn = $(this);
+        $('#complete_order_item_id').val($btn.data('id'));
         $('#live_url').val('');
-        $('#completeModal').modal('show');
+        $('#completeModal .social-post-url').val('');
+        var channels = [];
+        try {
+            var raw = $btn.attr('data-social-channels') || '[]';
+            channels = JSON.parse(raw);
+        } catch (e) {
+            channels = [];
+        }
+        if (!Array.isArray(channels)) channels = [];
+        var $wrap = $('#completeSocialFields');
+        $wrap.find('[data-social-channel]').addClass('d-none');
+        if (channels.length) {
+            channels.forEach(function (ch) {
+                $wrap.find('[data-social-channel="' + ch + '"]').removeClass('d-none');
+            });
+            $('#completeSocialHint').text(
+                'This order includes a social share on '
+                + channels.map(socialChannelLabel).join(', ')
+                + '. Paste post links now or add them later — live URL alone is enough to submit.'
+            );
+            $wrap.removeClass('d-none');
+        } else {
+            $wrap.addClass('d-none');
+        }
+        showTasksModal('completeModal');
     });
+
+    $(document).on('click', '.update-social-posts', function() {
+        var $btn = $(this);
+        var id = $btn.data('id');
+        $('#social_posts_order_item_id').val(id);
+        $('#socialPostsModal .social-post-url').val('');
+        var channels = [];
+        try {
+            channels = JSON.parse($btn.attr('data-social-channels') || '[]');
+        } catch (e) {
+            channels = [];
+        }
+        if (!Array.isArray(channels)) channels = [];
+        var existing = {};
+        try {
+            existing = JSON.parse($btn.attr('data-social-post-urls') || '{}') || {};
+        } catch (e) {
+            existing = {};
+        }
+        if (typeof existing !== 'object' || existing === null) existing = {};
+
+        var $wrap = $('#socialPostsFields');
+        $wrap.find('[data-social-channel]').addClass('d-none');
+        channels.forEach(function (ch) {
+            var $row = $wrap.find('[data-social-channel="' + ch + '"]');
+            $row.removeClass('d-none');
+            var val = existing[ch] || '';
+            $row.find('.social-post-url').val(val);
+        });
+        var hasAny = Object.keys(existing).some(function (k) { return !!(existing[k]); });
+        $('#socialPostsModalTitle').text(hasAny ? 'Update social post URLs' : 'Add social post URLs');
+        $('#socialPostsHint').text(
+            'Optional. Channels on this order: '
+            + channels.map(socialChannelLabel).join(', ')
+            + '. Leave any field blank if you have not posted there yet.'
+        );
+        showTasksModal('socialPostsModal');
+    });
+
+    function collectSocialPostUrls($root) {
+        var urls = {};
+        ($root || $(document)).find('.social-post-url:visible').each(function () {
+            var ch = $(this).data('channel');
+            var val = ($(this).val() || '').trim();
+            if (ch && val) urls[ch] = val;
+        });
+        return urls;
+    }
+
+    function socialChannelLabel(ch) {
+        if (ch === 'x') return 'X';
+        if (!ch) return '';
+        return String(ch).charAt(0).toUpperCase() + String(ch).slice(1);
+    }
+
+    function formatPlacementExtrasHtml(item) {
+        var parts = [];
+        var homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
+        var homepageFee = parseFloat(item.homepage_price || 0) || 0;
+        if (homepageDays) {
+            parts.push('<p class="mb-1"><strong>Homepage placement:</strong></p><p class="mb-2">'
+                + homepageDays + ' day' + (homepageDays === 1 ? '' : 's')
+                + (homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)')
+                + '</p>');
+        }
+        var channels = Array.isArray(item.social_channels) ? item.social_channels : [];
+        var postUrls = item.social_post_urls && typeof item.social_post_urls === 'object' ? item.social_post_urls : {};
+        if (channels.length) {
+            parts.push('<p class="mb-1"><strong>Social promotion:</strong></p><p class="mb-2">'
+                + channels.map(socialChannelLabel).join(', ')
+                + ' <span class="text-muted">(included)</span></p>');
+            var linkBits = channels.map(function (ch) {
+                var url = postUrls[ch];
+                if (!url) {
+                    return '<li class="small text-muted">' + socialChannelLabel(ch) + ': not submitted yet</li>';
+                }
+                return '<li class="small"><strong>' + socialChannelLabel(ch) + ':</strong> <a href="'
+                    + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" class="live-url">'
+                    + escapeHtml(url) + '</a></li>';
+            }).join('');
+            parts.push('<ul class="mb-2 ps-3">' + linkBits + '</ul>');
+        }
+        return parts.join('');
+    }
 
     // Chat functionality (shared OrderChat module)
     function formatChatDate(value, withTime) {
@@ -687,6 +730,21 @@ $(document).ready(function() {
                         + '<button type="submit" class="btn btn-primary"><i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL</button>'
                         + '</div>'
                         + '<div class="form-text">Only if the address changed — add the URL here again so the advertiser can review.</div>'
+                        + (Array.isArray(details.social_channels) && details.social_channels.length
+                            ? '<div class="mt-2">'
+                                + '<div class="small fw-semibold mb-1">Update social post URLs (optional)</div>'
+                                + details.social_channels.map(function (ch) {
+                                    var existing = (details.social_post_urls && details.social_post_urls[ch]) ? details.social_post_urls[ch] : '';
+                                    return '<div class="mb-1">'
+                                        + '<label class="form-label small mb-0" for="chatSocial-' + escapeHtml(String(itemId)) + '-' + escapeHtml(ch) + '">'
+                                        + socialChannelLabel(ch) + '</label>'
+                                        + '<input type="url" class="form-control form-control-sm social-post-url" data-channel="'
+                                        + escapeHtml(ch) + '" id="chatSocial-' + escapeHtml(String(itemId)) + '-' + escapeHtml(ch)
+                                        + '" value="' + escapeHtml(existing) + '" placeholder="https://…">'
+                                        + '</div>';
+                                }).join('')
+                                + '</div>'
+                            : '')
                         + '</form>'
                     : '')
                 + '</div>';
@@ -714,7 +772,17 @@ $(document).ready(function() {
             }
             if (++attempts < 25) {
                 setTimeout(tryOpen, 200);
+                return;
             }
+            // Off-page deep link: resolve item id via locate endpoint.
+            $.getJSON(baseUrl + '/publisher/orders/locate', { order_id: orderId })
+                .done(function (res) {
+                    if (res && res.success && res.order_item_id) {
+                        if (!window._publisherTasksByOrderId) window._publisherTasksByOrderId = {};
+                        window._publisherTasksByOrderId[String(orderId)] = res.order_item_id;
+                        viewOrderDetails(res.order_item_id);
+                    }
+                });
         }
         tryOpen();
     }
@@ -749,6 +817,8 @@ $(document).ready(function() {
                 if (response.success) {
                     $('#statTotalOrders').text(response.data.total_orders || 0);
                     $('#statPendingOrders').text(response.data.pending_orders || 0);
+                    $('#statProcessingOrders').text(response.data.accepted_orders || 0);
+                    $('#statReviewOrders').text(response.data.review_orders || 0);
                     $('#statTotalEarnings').html('€' + (response.data.total_earnings || 0).toFixed(2));
                 }
             },
@@ -771,7 +841,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     Swal.fire('Success!', response.message, 'success');
-                    $('#acceptModal').modal('hide');
+                    hideTasksModal('acceptModal');
                     loadTasks();
                     loadStatistics();
                 } else {
@@ -807,7 +877,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     Swal.fire('Cancelled', response.message, 'success');
-                    $('#rejectModal').modal('hide');
+                    hideTasksModal('rejectModal');
                     loadTasks();
                     loadStatistics();
                 } else {
@@ -841,7 +911,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     Swal.fire('Request sent', response.message, 'success');
-                    $('#contentRevisionModal').modal('hide');
+                    hideTasksModal('contentRevisionModal');
                     loadTasks();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to send request', 'error');
@@ -859,6 +929,7 @@ $(document).ready(function() {
     $('#confirmComplete').on('click', function() {
         var id = $('#complete_order_item_id').val();
         var liveUrl = $('#live_url').val();
+        var socialPostUrls = collectSocialPostUrls($('#completeModal'));
         
         if (!liveUrl) {
             Swal.fire('Warning!', 'Please enter the live URL', 'warning');
@@ -868,7 +939,7 @@ $(document).ready(function() {
         $.ajax({
             url: baseUrl + '/publisher/orders/' + id + '/complete',
             method: 'POST',
-            data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
+            data: { live_url: liveUrl, social_post_urls: socialPostUrls, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
                 $('#confirmComplete').addClass('is-loading').prop('disabled', true);
@@ -880,7 +951,7 @@ $(document).ready(function() {
                         html: response.message + '<br><br><small>The advertiser now has ' + AUTO_APPROVE_DAYS + ' day(s) to review your submission. If no action is taken, the order will be approved.</small>',
                         icon: 'success'
                     });
-                    $('#completeModal').modal('hide');
+                    hideTasksModal('completeModal');
                     loadTasks();
                     loadStatistics();
                 } else {
@@ -896,12 +967,47 @@ $(document).ready(function() {
         });
     });
 
+    $('#confirmSocialPosts').on('click', function() {
+        var id = $('#social_posts_order_item_id').val();
+        var socialPostUrls = collectSocialPostUrls($('#socialPostsModal'));
+        if (!id) {
+            Swal.fire('Error!', 'Missing order item for social links.', 'error');
+            return;
+        }
+
+        $.ajax({
+            url: baseUrl + '/publisher/orders/' + id + '/social-posts',
+            method: 'POST',
+            data: { social_post_urls: socialPostUrls, _token: '{{ csrf_token() }}' },
+            dataType: 'json',
+            beforeSend: function() {
+                $('#confirmSocialPosts').addClass('is-loading').prop('disabled', true);
+            },
+            success: function(response) {
+                if (response.success) {
+                    Swal.fire('Saved!', response.message || 'Social post links saved.', 'success');
+                    hideTasksModal('socialPostsModal');
+                    loadTasks();
+                } else {
+                    Swal.fire('Error!', response.message || 'Failed to save social links', 'error');
+                }
+            },
+            error: function(xhr) {
+                slbHandleHttpError(xhr, { fallback: 'Failed to save social links' });
+            },
+            complete: function() {
+                $('#confirmSocialPosts').removeClass('is-loading').prop('disabled', false);
+            }
+        });
+    });
+
     $(document).on('submit', '.chat-resubmit-form', function(e) {
         e.preventDefault();
         var $form = $(this);
         var id = $form.data('item-id');
         var $input = $form.find('input[name="live_url"]');
         var liveUrl = ($input.val() || '').trim();
+        var socialPostUrls = collectSocialPostUrls($form);
         var $btn = $form.find('button[type="submit"]');
 
         if (!id) {
@@ -917,7 +1023,7 @@ $(document).ready(function() {
         $.ajax({
             url: baseUrl + '/publisher/orders/' + id + '/resubmit',
             method: 'POST',
-            data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
+            data: { live_url: liveUrl, social_post_urls: socialPostUrls, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
                 $btn.addClass('is-loading').prop('disabled', true);
@@ -1010,7 +1116,7 @@ $(document).ready(function() {
             window.syncTasksFiltersToUrl(page);
         }
         if (!silent) {
-            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
+            $('#tasksTableBody').html('<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
         }
         
         $.ajax({
@@ -1019,7 +1125,8 @@ $(document).ready(function() {
             data: {
                 page: page,
                 search: $('#searchInput').val(),
-                status: $('#statusFilter').val(),
+                status: $('#needsActionFilter').val() === '1' ? '' : $('#statusFilter').val(),
+                needs_action: $('#needsActionFilter').val() === '1' ? 1 : 0,
                 date_from: $('#dateFrom').val(),
                 date_to: $('#dateTo').val()
             },
@@ -1027,17 +1134,26 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     renderTasksTable(response.data);
-                    if (response.pagination) renderPagination(response.pagination);
+                    if (response.pagination) {
+                        renderPagination(response.pagination);
+                        var p = response.pagination;
+                        var from = p.from || 0;
+                        var to = p.to || 0;
+                        var total = p.total || 0;
+                        $('#resultsCount').text(total ? ('Showing ' + from + '–' + to + ' of ' + total) : 'No tasks');
+                    } else {
+                        $('#resultsCount').text('');
+                    }
                     refreshNeedsActionBanner();
                 } else if (!silent) {
-                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
+                    $('#tasksTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
                 }
             },
             error: function(xhr, status, error) {
                 console.error('AJAX Error:', status, error);
                 if (!silent) {
                     $('#tasksTableBody').html(
-                        '<tr><td colspan="9" class="text-center py-5">' +
+                        '<tr><td colspan="8" class="text-center py-5">' +
                         '<div class="text-danger mb-2">Error loading tasks.</div>' +
                         '<button type="button" class="btn btn-sm btn-outline-primary" id="retryTasksBtn">Retry</button>' +
                         '</td></tr>'
@@ -1051,7 +1167,7 @@ $(document).ready(function() {
     function renderTasksTable(orderItems) {
         if (!orderItems || orderItems.length === 0) {
             $('#tasksTableBody').html(
-                '<tr><td colspan="9" class="text-center py-5">' +
+                '<tr><td colspan="8" class="text-center py-5">' +
                 '<div class="mx-auto" style="max-width:420px">' +
                 '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)" aria-hidden="true"><i class="fa-solid fa-inbox"></i></div>' +
                 '<h5 class="mb-2">No tasks yet</h5>' +
@@ -1079,30 +1195,62 @@ $(document).ready(function() {
             var hasLiveUrl = !!(item.live_url && item.live_url !== '');
             var modificationRequested = item.modification_requested === 'yes';
             var contentRevisionRequested = item.content_revision_requested === 'yes';
-            var awaitingAdvertiser = orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl && !modificationRequested);
-            var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at, contentRevisionRequested);
+            var orderHeldForContentRevision = !!(item.order && item.order.has_open_content_revision);
+            // True advertiser review only — not a sibling live URL parked in processing
+            // while another line waits on a revised article.
+            var awaitingAdvertiser = orderStatus === 'review'
+                || (orderStatus === 'processing' && hasLiveUrl && !modificationRequested && !orderHeldForContentRevision);
+            var statusMeta = getPublisherStatusMeta(
+                orderStatus,
+                hasLiveUrl,
+                modificationRequested,
+                item.live_url_submitted_at,
+                contentRevisionRequested,
+                orderHeldForContentRevision
+            );
             var unreadBadge = item.unread_chat > 0
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
-            var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
-            var viewBtn = '<button class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
+            var chatBtn = '<button type="button" class="btn btn-primary btn-action-sm open-task-chat" data-order-id="' + item.order_id + '" data-order-number="' + escapeHtml(orderNumber) + '" aria-label="Open chat"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
+            var viewBtn = '<button type="button" class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '" aria-label="View order details"><i class="fa fa-eye"></i> View</button>';
             var liveBtn = hasLiveUrl
                 ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
+            var socialChannels = Array.isArray(item.social_channels) ? item.social_channels : [];
+            var socialPostUrls = (item.social_post_urls && typeof item.social_post_urls === 'object') ? item.social_post_urls : {};
+            var hasSocialPosts = socialChannels.some(function (ch) { return !!(socialPostUrls && socialPostUrls[ch]); });
+            var socialBtn = (hasLiveUrl && socialChannels.length && !contentRevisionRequested
+                && (orderStatus === 'processing' || orderStatus === 'review'))
+                ? '<button type="button" class="btn btn-outline-primary btn-action-sm update-social-posts" data-id="' + item.id
+                    + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels))
+                    + '" data-social-post-urls="' + escapeHtml(JSON.stringify(socialPostUrls))
+                    + '"><i class="fa fa-share-nodes"></i> '
+                    + (hasSocialPosts ? 'Update social' : 'Add social') + '</button>'
+                : '';
+            var orderItemsCount = parseInt(item.order_items_count || 1, 10);
+            var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Cancel order"><i class="fa fa-times"></i> Cancel</button>';
 
             var actions = '';
             if (orderStatus === 'pending') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '"><i class="fa fa-check"></i> Accept</button>' +
-                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Reject</button>' +
+                    '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '" aria-label="Accept order"><i class="fa fa-check"></i> Accept</button>' +
+                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Reject order"><i class="fa fa-times"></i> Reject</button>' +
                     viewBtn + chatBtn +
                     '</div>';
-            } else if (contentRevisionRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
+            } else if (contentRevisionRequested && orderStatus === 'processing') {
                 if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
                 window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
-                    '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
+                    cancelBtn +
+                    viewBtn + chatBtn +
+                    '</div>';
+            } else if (contentRevisionRequested && orderStatus === 'review') {
+                // Cancel/reject is only allowed while processing — update reason still helps.
+                if (!window._contentRevisionReasons) window._contentRevisionReasons = {};
+                window._contentRevisionReasons[String(item.id)] = item.content_revision_reason || '';
+                actions = '<div class="action-buttons">' +
+                    '<button class="btn btn-outline-warning btn-action-sm request-content-revision is-update" data-update="1" data-id="' + item.id + '"><i class="fa fa-pencil"></i> Update reason</button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (modificationRequested && (orderStatus === 'processing' || orderStatus === 'review')) {
@@ -1113,32 +1261,38 @@ $(document).ready(function() {
                 var fixedBtn = '<button class="btn btn-success btn-action-sm chat-revision-fixed-btn" data-item-id="' + item.id + '">' +
                     '<i class="fa fa-check"></i> I have fixed it</button>';
                 actions = '<div class="action-buttons">' +
-                    fixedBtn + viewBtn + chatBtn + liveBtn +
+                    fixedBtn + socialBtn + viewBtn + chatBtn + liveBtn +
+                    '</div>';
+            } else if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision) {
+                // Live URL saved, but order stays in processing until the sibling
+                // revised article arrives — keep Cancel available.
+                actions = '<div class="action-buttons">' +
+                    cancelBtn + socialBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (awaitingAdvertiser) {
                 actions = '<div class="action-buttons">' +
-                    viewBtn + chatBtn + liveBtn +
+                    socialBtn + viewBtn + chatBtn + liveBtn +
                     '</div>';
             } else if (orderStatus === 'processing') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
+                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '" data-social-channels="' + escapeHtml(JSON.stringify(socialChannels)) + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '"><i class="fa fa-file-text"></i> Request revised article</button>' +
-                    '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>' +
+                    cancelBtn +
                     viewBtn + chatBtn +
                     '</div>';
             } else {
                 actions = '<div class="action-buttons">' + viewBtn + chatBtn + liveBtn + '</div>';
             }
             
-            html += '<tr>' +
-                '<td><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
-                '<td><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank">' + escapeHtml(item.site_url) + '</a></div></td>' +
-                '<td class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
-                '<td>' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
-                '<td class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
-                '<td><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
-                '<td class="link-cell">' + ((item.content_download_url || item.content_link) ? '<a href="' + (item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
-                '<td>' + actions + '</td>' +
+            html += '<tr class="tasks-row">' +
+                '<td data-label="Order ID"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
+                '<td data-label="Site"><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.site_url) + '</a></div></td>' +
+                '<td data-label="Base" class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
+                '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
+                '<td data-label="Total" class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
+                '<td data-label="Status"><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
+                '<td class="link-cell" data-label="Content">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary" rel="noopener noreferrer"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
+                '<td data-label="Action">' + actions + '</td>' +
                 '</tr>';
         });
         
@@ -1159,7 +1313,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     renderDetailsModal(response.data);
-                    $('#detailsModal').modal('show');
+                    showTasksModal('detailsModal');
                     if (response.data && response.data.order_id) {
                         loadOrderActivityTimeline(response.data.order_id);
                     } else if (response.data && response.data.order && response.data.order.id) {
@@ -1180,8 +1334,9 @@ $(document).ready(function() {
         var orderStatus = order ? order.status : 'pending';
         var paymentStatus = order ? order.payment_status : 'pending';
         var additionalPrice = parseFloat(item.additional_price || 0);
-        var basePrice = parseFloat(item.price) - additionalPrice;
+        var homepagePrice = parseFloat(item.homepage_price || 0) || 0;
         var totalPrice = parseFloat(item.price);
+        var basePrice = Math.max(0, totalPrice - additionalPrice - homepagePrice);
         var sensitiveType = item.sensitive_type || null;
         
         var paymentStatusHtml = paymentStatus === 'paid' 
@@ -1191,18 +1346,35 @@ $(document).ready(function() {
         var hasLiveUrl = !!(item.live_url && item.live_url !== '');
         var modificationRequested = item.modification_requested === 'yes';
         var contentRevisionRequested = item.content_revision_requested === 'yes';
-        var statusMeta = getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, item.live_url_submitted_at, contentRevisionRequested);
+        var orderHeldForContentRevision = !!(order && order.has_open_content_revision);
+        var statusMeta = getPublisherStatusMeta(
+            orderStatus,
+            hasLiveUrl,
+            modificationRequested,
+            item.live_url_submitted_at,
+            contentRevisionRequested,
+            orderHeldForContentRevision
+        );
         var statusClass = statusMeta.statusClass;
         var statusText = statusMeta.statusText;
         
         var autoApproveInfo = '';
-        if (item.live_url_submitted_at && !modificationRequested && !contentRevisionRequested && !item.auto_approve_triggered) {
+        if (
+            orderStatus === 'review'
+            && item.live_url_submitted_at
+            && !modificationRequested
+            && !contentRevisionRequested
+            && !orderHeldForContentRevision
+            && !item.auto_approve_triggered
+        ) {
             const hoursRemaining = getAutoApproveHoursRemaining(item.live_url_submitted_at);
             if (hoursRemaining > 0) {
                 autoApproveInfo = '<div class="ui-callout ui-callout--info mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><div class="ui-callout__body"><strong>Waiting for advertiser:</strong> They can approve or request changes. ' + escapeHtml(formatAutoApproveCountdown(hoursRemaining)) + '.</div></div>';
             } else {
                 autoApproveInfo = '<div class="ui-callout ui-callout--success mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-check"></i></span><div class="ui-callout__body"><strong>Ready for approval:</strong> The advertiser review window has ended — this should auto-approve soon.</div></div>';
             }
+        } else if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision && !contentRevisionRequested) {
+            autoApproveInfo = '<div class="ui-callout ui-callout--info mt-3"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span><div class="ui-callout__body"><strong>Live URL saved:</strong> Advertiser review starts after the revised article is sent for the other placement on this order.</div></div>';
         }
         
         var liveUrlHtml = item.live_url 
@@ -1219,7 +1391,7 @@ $(document).ready(function() {
             liveUrlHtml = '<div class="ui-callout ui-callout--attention mb-2"><span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span><div class="ui-callout__body">The advertiser asked for changes. Make the corrections, then open <strong>Chat</strong> to paste and resubmit the live URL.' + reason + '</div></div>' + liveUrlHtml;
         }
 
-        var timelineHtml = buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested);
+        var timelineHtml = buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested, orderHeldForContentRevision);
         
         var createdAt = item.created_at ? new Date(item.created_at).toLocaleDateString() : 'N/A';
         
@@ -1240,6 +1412,11 @@ $(document).ready(function() {
                     '<p class="mb-1 text-muted small">' + statusMeta.nextStep + '</p>' +
                     '<p class="mb-1"><strong>Base Price:</strong> €' + basePrice.toFixed(2) + '</p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + additionalPrice.toFixed(2) + ' (' + escapeHtml(sensitiveType) + ')</span></p>' : '') +
+                    (homepagePrice > 0 || (item.homepage_days != null && parseInt(item.homepage_days, 10) > 0)
+                        ? '<p class="mb-1"><strong>Homepage:</strong> ' + (parseInt(item.homepage_days, 10) || '') + ' day(s)'
+                            + (homepagePrice > 0 ? ' <span class="text-muted">(+€' + homepagePrice.toFixed(2) + ')</span>' : ' <span class="text-success">(Free)</span>')
+                            + '</p>'
+                        : '') +
                     '<p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€' + totalPrice.toFixed(2) + '</span></p>' +
                 '</div>' +
             '</div>' +
@@ -1255,11 +1432,13 @@ $(document).ready(function() {
                     '<p class="mb-1"><strong>Site URL:</strong></p>' +
                     '<p class="mb-2"><a href="' + escapeHtml(item.site_url) + '" target="_blank" class="text-primary">' + escapeHtml(item.site_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Type:</strong></p><p class="mb-2 text-warning">' + escapeHtml(sensitiveType) + ' (+€' + additionalPrice.toFixed(2) + ')</p>' : '') +
+                    formatPlacementExtrasHtml(item) +
                 '</div>' +
                 '<div class="col-md-6">' +
                     '<p class="mb-1"><strong>Price Breakdown:</strong></p>' +
                     '<p class="mb-1"><small>Base Price: €' + basePrice.toFixed(2) + '</small></p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><small class="text-warning">+ ' + escapeHtml(sensitiveType) + ': €' + additionalPrice.toFixed(2) + '</small></p>' : '') +
+                    (homepagePrice > 0 ? '<p class="mb-1"><small>+ Homepage: €' + homepagePrice.toFixed(2) + '</small></p>' : '') +
                     '<p class="mb-2"><strong class="text-primary">Total: €' + totalPrice.toFixed(2) + '</strong></p>' +
                     '<p class="mb-1"><strong>Uploaded Document:</strong></p>' +
                     '<p class="mb-2">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="text-primary"><i class="fa fa-download me-1"></i>' + escapeHtml(item.content_original_name || 'Download article') + '</a>' : '—') + '</p>' +
@@ -1406,7 +1585,7 @@ $(document).ready(function() {
         return 'Auto-approve in ~' + Math.ceil(hoursRemaining) + 'h if they take no action';
     }
 
-    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested) {
+    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested, orderHeldForContentRevision) {
         if (orderStatus === 'pending') {
             return { statusClass: 'status-pending', statusText: 'New order', nextStep: 'Accept or reject this order' };
         }
@@ -1414,7 +1593,14 @@ $(document).ready(function() {
             return { statusClass: 'status-pending', statusText: 'Waiting for revised article', nextStep: 'Advertiser must upload or link an updated article' };
         }
         if (modificationRequested) {
-            return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then open Chat to resubmit the live URL' };
+            return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then use “I have fixed it” (or Chat) to send it back' };
+        }
+        if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision) {
+            return {
+                statusClass: 'status-processing',
+                statusText: 'In progress',
+                nextStep: 'Live URL saved — waiting for revised article on another placement before advertiser review'
+            };
         }
         if (orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl)) {
             const hoursRemaining = getAutoApproveHoursRemaining(liveUrlSubmittedAt);
@@ -1433,7 +1619,7 @@ $(document).ready(function() {
         return { statusClass: 'status-pending', statusText: orderStatus, nextStep: '' };
     }
 
-    function buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested) {
+    function buildPublisherTimeline(orderStatus, hasLiveUrl, modificationRequested, orderHeldForContentRevision) {
         const steps = [
             { key: 'pending', label: 'Accepted' },
             { key: 'processing', label: 'Publishing' },
@@ -1445,7 +1631,7 @@ $(document).ready(function() {
             return '<div class="alert alert-secondary mt-3 mb-3 py-2 small">This order was rejected.</div>';
         }
         if (orderStatus === 'pending') activeIndex = 0;
-        else if (orderStatus === 'processing' && !hasLiveUrl) activeIndex = 1;
+        else if (orderStatus === 'processing' && (!hasLiveUrl || orderHeldForContentRevision)) activeIndex = 1;
         else if (orderStatus === 'review' || (orderStatus === 'processing' && hasLiveUrl) || modificationRequested) activeIndex = 2;
         else if (orderStatus === 'completed') activeIndex = 3;
 
@@ -1490,7 +1676,7 @@ $(document).ready(function() {
         $.getJSON(baseUrl + '/chat/unread-summary')
             .done(function(res) {
                 if (res.success && res.needs_action > 0) {
-                    $('#needsActionText').text(res.needs_action + ' task' + (res.needs_action === 1 ? '' : 's') + ' need you (accept, publish, or open Chat to resubmit).');
+                    $('#needsActionText').text(res.needs_action + ' task' + (res.needs_action === 1 ? '' : 's') + ' need you (accept, publish, or use “I have fixed it” after a change request).');
                     $('#needsActionBanner').removeClass('d-none');
                 } else {
                     $('#needsActionBanner').addClass('d-none');

@@ -16,6 +16,7 @@ use App\Services\OrderChatContactGuard;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class ContentRevisionService
@@ -82,14 +83,14 @@ class ContentRevisionService
                 ]);
             }
 
-            $locked->update([
+            $locked->update(array_merge([
                 'content_revision_requested' => 'yes',
                 'content_revision_requested_at' => $updating
                     ? ($locked->content_revision_requested_at ?? now())
                     : now(),
                 'content_revision_reason' => $reason,
                 'content_revision_resolved_at' => null,
-            ]);
+            ], $this->liveUrlClearPayload()));
 
             $chatBody = $updating
                 ? "Revised article request updated: {$reason}"
@@ -213,7 +214,7 @@ class ContentRevisionService
                     ]);
                 }
 
-                $update = array_merge($update, $this->submissionFieldsForItem($existing));
+                $update = array_merge($update, $this->submissionFieldsForItem($existing), $this->liveUrlClearPayload());
                 $chatExtra = ' Confirmed the existing Content Library article was updated.';
             } elseif ($submissionId) {
                 $submission = ContentSubmission::query()
@@ -258,7 +259,7 @@ class ContentRevisionService
                     ? (int) $item->content_submission_id
                     : null;
 
-                $update = array_merge($update, $this->submissionFieldsForItem($submission));
+                $update = array_merge($update, $this->submissionFieldsForItem($submission), $this->liveUrlClearPayload());
                 $this->relinkSubmission($submission, $lockedOrder, $item, $previousSubmissionId);
                 $chatExtra = $sameAsCurrent
                     ? ' Confirmed the existing Content Library article was updated.'
@@ -270,12 +271,14 @@ class ContentRevisionService
                     ]);
                 }
 
-                $update['content_link'] = $contentLink;
-                $update['content_submission_id'] = null;
-                $update['content_disk'] = null;
-                $update['content_path'] = null;
-                $update['content_original_name'] = null;
-                $update['content_mime'] = null;
+                $update = array_merge($update, $this->liveUrlClearPayload(), [
+                    'content_link' => $contentLink,
+                    'content_submission_id' => null,
+                    'content_disk' => null,
+                    'content_path' => null,
+                    'content_original_name' => null,
+                    'content_mime' => null,
+                ]);
                 $chatExtra = ' New content link provided.';
             } else {
                 $message = $isLibraryItem
@@ -331,12 +334,13 @@ class ContentRevisionService
     }
 
     /**
-     * After a content revision is cleared, promote to review when every line has a
-     * live URL and nothing else is still waiting (sibling live URLs may already exist).
+     * After a content revision is cleared, promote to review only when every line
+     * has a fresh live URL (submitted after any revision resolve). Otherwise keep
+     * or return the order to processing so the publisher can re-publish.
      */
     private function maybePromoteOrderToReview(Order $order): void
     {
-        if ($order->status !== 'processing') {
+        if (! in_array($order->status, ['processing', 'review'], true)) {
             return;
         }
 
@@ -345,16 +349,87 @@ class ContentRevisionService
             return;
         }
 
+        $readyForReview = true;
         foreach ($items as $line) {
-            if ($line->isContentRevisionRequested() || $line->isModificationRequested() || ! filled($line->live_url)) {
-                return;
+            if ($line->isContentRevisionRequested() || $line->isModificationRequested() || ! $this->lineHasFreshLiveUrlForReview($line)) {
+                $readyForReview = false;
+                break;
             }
         }
 
-        $order->update(['status' => 'review']);
-        // Sibling live URLs may have been submitted while this order was held in
-        // processing for a content revision — restart the review window now.
-        OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+        if ($readyForReview) {
+            if ($order->status === 'processing') {
+                $order->update(['status' => 'review']);
+                // Sibling live URLs may have been submitted while this order was held
+                // in processing for a content revision — restart the review window.
+                OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+            } elseif ($order->status === 'review') {
+                OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
+            }
+
+            return;
+        }
+
+        // Fulfill clears the placement live URL so the publisher can re-publish the
+        // revised article. If admin had forced review while a revision was open,
+        // drop back to processing once the revision is cleared.
+        if ($order->status === 'review' && ! OrderItem::orderHasOpenContentRevision((int) $order->id)) {
+            $order->update(['status' => 'processing']);
+        }
+    }
+
+    /**
+     * A live URL submitted before a content revision was fulfilled is stale —
+     * the publisher must re-publish and submit again after the new article.
+     */
+    private function lineHasFreshLiveUrlForReview(OrderItem $line): bool
+    {
+        if (! filled($line->live_url)) {
+            return false;
+        }
+
+        if ($line->content_revision_resolved_at) {
+            $submittedAt = $line->live_url_submitted_at;
+            if (! $submittedAt || $submittedAt->lte($line->content_revision_resolved_at)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Drop any prior live URL so review cannot start on a pre-revision publish.
+     *
+     * @return array<string, mixed>
+     */
+    private function liveUrlClearPayload(): array
+    {
+        $table = (new OrderItem)->getTable();
+        $payload = [
+            'live_url' => null,
+        ];
+
+        if (Schema::hasColumn($table, 'live_url_submitted_at')) {
+            $payload['live_url_submitted_at'] = null;
+        }
+        if (Schema::hasColumn($table, 'live_url_check_ok')) {
+            $payload['live_url_check_ok'] = null;
+        }
+        if (Schema::hasColumn($table, 'live_url_http_status')) {
+            $payload['live_url_http_status'] = null;
+        }
+        if (Schema::hasColumn($table, 'live_url_checked_at')) {
+            $payload['live_url_checked_at'] = null;
+        }
+        if (Schema::hasColumn($table, 'auto_approve_triggered')) {
+            $payload['auto_approve_triggered'] = false;
+        }
+        if (Schema::hasColumn($table, 'auto_approve_reminder_sent_at')) {
+            $payload['auto_approve_reminder_sent_at'] = null;
+        }
+
+        return $payload;
     }
 
     /**

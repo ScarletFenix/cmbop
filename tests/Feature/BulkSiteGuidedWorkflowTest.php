@@ -60,6 +60,8 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertSee('Add New Website', false)
             ->assertSee('I want to add many sites', false)
             ->assertSee('bulkRequestModal', false)
+            ->assertSee('bulkUrlPriceBody', false)
+            ->assertSee('Bulk Import (Agency)', false)
             ->assertDontSee('liveBulkForm', false)
             ->assertDontSee('liveBulkFill25Btn', false);
     }

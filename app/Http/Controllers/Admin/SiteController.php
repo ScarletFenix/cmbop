@@ -14,7 +14,9 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -383,6 +385,10 @@ class SiteController extends Controller
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
+            'agency_site_import_id' => Site::hasSitesColumn('agency_site_import_id')
+                ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
+                : null,
+            'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
@@ -471,6 +477,8 @@ class SiteController extends Controller
             'site_image',
             'screenshot_path',
             'screenshot_thumb_path',
+            'agency_site_import_id',
+            'metrics_manual',
             'created_at',
             'updated_at',
         ];
@@ -514,6 +522,7 @@ class SiteController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
         $selectedPublisherId = (int) $request->query('publisher', 0);
 
         return view('admin.site-create', compact(
@@ -521,6 +530,7 @@ class SiteController extends Controller
             'languages',
             'countries',
             'categories',
+            'countryLanguageMap',
             'selectedPublisherId'
         ));
     }
@@ -599,7 +609,7 @@ class SiteController extends Controller
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
         ], $this->siteImageValidationMessages());
 
-        $validator->after(function ($validator) use ($request, $domain) {
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -612,6 +622,15 @@ class SiteController extends Controller
 
             if (Site::where('domain', $domain)->exists()) {
                 $validator->errors()->add('site_url', 'This website domain is already registered.');
+            }
+
+            $country = $countryCodes[0] ?? null;
+            $language = $languageCodes[0] ?? null;
+            if ($country && $language && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
             }
         });
 
@@ -638,7 +657,15 @@ class SiteController extends Controller
 
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
-                    $imagePath = $request->file('site_image')->store('sites', 'public');
+                    $disk = Storage::disk('public');
+                    $disk->makeDirectory('sites');
+                    $stored = $request->file('site_image')->store('sites', 'public');
+                    if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                        throw ValidationException::withMessages([
+                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                        ]);
+                    }
+                    $imagePath = $stored;
                 }
 
                 $da = (int) $request->input('da');
@@ -778,6 +805,7 @@ class SiteController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
 
         // Load by absolute path so a stale `view:cache` manifest cannot report
         // "View [admin.site-edit] not found" when the Blade file is on disk.
@@ -788,7 +816,8 @@ class SiteController extends Controller
                 'isMarketingEditor',
                 'languages',
                 'countries',
-                'categories'
+                'categories',
+                'countryLanguageMap'
             ));
         }
 
@@ -820,7 +849,7 @@ class SiteController extends Controller
         }
 
         if (! $file->isValid()) {
-            $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+            $mb = $this->siteImageMaxMegabytesLabel();
             $message = match ($file->getError()) {
                 UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The site image is too large. Use a file under '.$mb.' MB.',
                 UPLOAD_ERR_PARTIAL => 'The site image upload was interrupted. Try again.',
@@ -840,16 +869,33 @@ class SiteController extends Controller
         }
 
         $request->validate([
-            'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => 'required|file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
+        $disk = Storage::disk('public');
+        $disk->makeDirectory('sites');
+
         // Delete old image if exists
-        if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-            Storage::disk('public')->delete($site->site_image);
+        if ($site->site_image && $disk->exists($site->site_image)) {
+            $disk->delete($site->site_image);
         }
 
         // Store new image and persist on the site (admin + marketing).
         $path = $file->store('sites', 'public');
+        if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
+            $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
         $site->update(['site_image' => $path]);
 
         ActivityLogger::log(
@@ -859,6 +905,8 @@ class SiteController extends Controller
             ['image_path' => $path],
             $site->site_name
         );
+
+        $imageUrl = $this->staffPublicStorageUrl($path);
 
         return response()->json([
             'success' => true,
@@ -953,14 +1001,24 @@ class SiteController extends Controller
                 }
 
                 $request->validate([
-                    'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                    'site_image' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
                 ], $this->siteImageValidationMessages());
 
-                if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                    Storage::disk('public')->delete($site->site_image);
+                $disk = Storage::disk('public');
+                $disk->makeDirectory('sites');
+
+                if ($site->site_image && $disk->exists($site->site_image)) {
+                    $disk->delete($site->site_image);
                 }
 
-                $data['site_image'] = $upload->store('sites', 'public');
+                $stored = $upload->store('sites', 'public');
+                if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                    throw ValidationException::withMessages([
+                        'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
+                }
+
+                $data['site_image'] = $stored;
             } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
                 // JSON/AJAX path: image path already uploaded via upload-image.
                 $data['site_image'] = $request->site_image;
@@ -976,6 +1034,14 @@ class SiteController extends Controller
             if (isset($data['description']) && is_string($data['description'])) {
                 $data['description'] = app(SiteDescriptionSanitizer::class)
                     ->sanitize($data['description']);
+            }
+
+            $country = strtolower(trim((string) ($data['country'] ?? $site->country ?? '')));
+            $language = strtolower(trim((string) ($data['language'] ?? $site->language ?? '')));
+            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                throw ValidationException::withMessages([
+                    'language' => ['That language is not allowed for the selected country. Pick country first, then a paired language.'],
+                ]);
             }
         }
 
@@ -1062,6 +1128,12 @@ class SiteController extends Controller
             if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
                 $validator->errors()->add('country', 'Choose a valid marketplace country.');
             }
+            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
+            }
 
             foreach ($unknownNiches as $cat) {
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
@@ -1115,22 +1187,45 @@ class SiteController extends Controller
                 return back()->withErrors(['site_image' => $message])->withInput();
             }
 
-            if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                Storage::disk('public')->delete($site->site_image);
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
+
+            if ($site->site_image && $disk->exists($site->site_image)) {
+                $disk->delete($site->site_image);
             }
 
-            $payload['site_image'] = $upload->store('sites', 'public');
+            $stored = $upload->store('sites', 'public');
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 500);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
+            $payload['site_image'] = $stored;
         }
 
         return $payload;
     }
 
     /**
-     * Max upload size for site cover images (kilobytes). Matches public/.user.ini.
+     * Max upload size for site cover images (kilobytes).
+     * App cap 10 MB, also clamped to PHP upload_max_filesize / post_max_size.
      */
     private function siteImageMaxKilobytes(): int
     {
-        return 10240; // 10 MB
+        return SiteImageUpload::maxKilobytes();
+    }
+
+    private function siteImageMaxMegabytesLabel(): int
+    {
+        return SiteImageUpload::maxMegabytesLabel();
     }
 
     /**
@@ -1138,7 +1233,7 @@ class SiteController extends Controller
      */
     private function siteImageValidationMessages(): array
     {
-        $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+        $mb = $this->siteImageMaxMegabytesLabel();
 
         return [
             'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',

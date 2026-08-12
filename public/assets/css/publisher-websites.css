@@ -223,6 +223,64 @@
         overflow-x: auto;
     }
 
+    /*
+     * Desktop column alignment for My Sites table.
+     * Kept here (not only in the AJAX partial) so it always wins over
+     * page-level `th, td { text-align: left }` and any leftover text-end rules.
+     */
+    @media (min-width: 769px) {
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(1),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(3),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(4),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(5),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(6),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(7),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Preview"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Status"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Price"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] {
+            text-align: center !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(2),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Site"] {
+            text-align: left !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Price"] .site-row-price-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+            margin-inline: auto;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Price"] .site-row-price-meta {
+            margin-left: 0;
+            justify-content: center;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-actions {
+            justify-content: center;
+            width: 100%;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table .site-row-market {
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-status-stack {
+            align-items: center;
+        }
+    }
+
     .btn-primary {
         background-color: var(--brand-primary, #1a585e);
         border-color: var(--brand-primary, #1a585e);
@@ -565,7 +623,7 @@
             gap: 12px;
             border: 0;
             padding: 6px 0;
-            text-align: right;
+            text-align: right !important;
             white-space: normal;
             min-width: 0;
             max-width: 100%;
