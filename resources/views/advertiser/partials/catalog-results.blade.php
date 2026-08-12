@@ -178,9 +178,12 @@
                     'instagram' => 'Instagram',
                     'x' => 'X',
                 ];
-                $hasPricingExtras = $sensitivePrices !== []
-                    || $homepageOptions !== []
-                    || $socialChannels !== [];
+                // Sensitive stays in the pricing column; homepage/social live in
+                // Site Details meta (chips say “in Details”).
+                $hasSensitiveExtras = $sensitivePrices !== [];
+                $hasPlacementExtras = $homepageOptions !== [] || $socialChannels !== [];
+                $hasListingExtras = $hasSensitiveExtras || $hasPlacementExtras;
+                $hasPricingExtras = $hasSensitiveExtras;
                 $expandDescriptionHtml = $site->safeDescriptionHtml();
                 $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
 
@@ -602,7 +605,7 @@
                         @endif
                     </div>
 
-                    <div class="{{ $hasPricingExtras ? 'col-lg-4' : 'col-lg-5' }} col-md-6 catalog-expand-description">
+                    <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-4' : 'col-lg-5') }} col-md-6 catalog-expand-description">
                         <p class="mb-1"><strong class="small">Description</strong></p>
                         <div class="text-muted small">
                             @if($hasExpandDescription)
@@ -616,7 +619,7 @@
                                 {{ $site->lastPublicationLabel() }}
                             </p>
                         @endif
-                        @unless($hasPricingExtras)
+                        @unless($hasListingExtras)
                             <p class="text-muted small mb-0 mt-2">Base guest post only — no homepage, social, or sensitive add-ons.</p>
                         @endunless
 
@@ -629,7 +632,6 @@
                     @if($hasPricingExtras)
                     <div class="col-lg-3 col-md-6 catalog-expand-pricing">
                         <div class="d-flex flex-column gap-2">
-                            @if($sensitivePrices !== [])
                                 <p class="mb-0"><strong>Sensitive topics</strong></p>
                                 <p class="small text-muted mb-1">Additional charge on top of the base price.</p>
 
@@ -703,68 +705,11 @@
                                         @endif
                                     </small>
                                 </div>
-                            @endif
-
-                            @if($homepageOptions !== [])
-                                <p class="{{ $sensitivePrices !== [] ? 'mt-2' : '' }} mb-1"><strong>Homepage placement</strong> <span class="text-muted fw-normal">(optional)</span></p>
-                                <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
-                                <div class="homepage-placement-group"
-                                     data-site-id="{{ $site->id }}"
-                                     role="radiogroup"
-                                     aria-label="Homepage placement duration">
-                                    <div class="form-check mb-2">
-                                        <input class="form-check-input homepage-placement-radio"
-                                               type="radio"
-                                               name="homepage_placement_{{ $site->id }}"
-                                               value="none"
-                                               data-days="none"
-                                               data-price="0"
-                                               data-site-id="{{ $site->id }}"
-                                               id="homepage_{{ $site->id }}_none"
-                                               {{ $defaultHomepageDays === null ? 'checked' : '' }}>
-                                        <label class="form-check-label" for="homepage_{{ $site->id }}_none">
-                                            <strong>No homepage placement</strong>
-                                        </label>
-                                    </div>
-                                    @foreach($homepageOptions as $days => $fee)
-                                        @php $isFreeHome = (float) $fee <= 0; @endphp
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input homepage-placement-radio"
-                                                   type="radio"
-                                                   name="homepage_placement_{{ $site->id }}"
-                                                   value="{{ $days }}"
-                                                   data-days="{{ $days }}"
-                                                   data-price="{{ $fee }}"
-                                                   data-site-id="{{ $site->id }}"
-                                                   id="homepage_{{ $site->id }}_{{ $days }}"
-                                                   {{ (int) $defaultHomepageDays === (int) $days ? 'checked' : '' }}>
-                                            <label class="form-check-label" for="homepage_{{ $site->id }}_{{ $days }}">
-                                                <strong>{{ $days }} day{{ $days > 1 ? 's' : '' }}</strong>
-                                                @if($isFreeHome)
-                                                    <span class="text-success">Free</span>
-                                                @else
-                                                    <span class="text-muted">+€{{ number_format($fee, 2) }}</span>
-                                                @endif
-                                            </label>
-                                        </div>
-                                    @endforeach
-                                </div>
-                            @endif
-
-                            @if($socialChannels !== [])
-                                <p class="mt-2 mb-1"><strong>Social promotion included</strong></p>
-                                <p class="small text-muted mb-2">Publisher will share the live post on these channels at no extra cost.</p>
-                                <div class="d-flex flex-wrap gap-1" aria-label="Included social channels">
-                                    @foreach($socialChannels as $channel)
-                                        <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
-                                    @endforeach
-                                </div>
-                            @endif
                         </div>
                     </div>
                     @endif
 
-                    <div class="{{ $hasPricingExtras ? 'col-lg-2' : 'col-lg-4' }} col-md-6 catalog-expand-meta">
+                    <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-5' : 'col-lg-4') }} col-md-6 catalog-expand-meta">
                         <p class="mb-1"><strong>Tags</strong></p>
                         <div class="d-flex flex-column gap-2 mb-3">
                             <div>
@@ -809,6 +754,62 @@
                                 @endif
                             </div>
                         </div>
+
+                        @if($homepageOptions !== [])
+                            <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
+                            <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
+                            <div class="homepage-placement-group mb-3"
+                                 data-site-id="{{ $site->id }}"
+                                 role="radiogroup"
+                                 aria-label="Homepage placement duration">
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input homepage-placement-radio"
+                                           type="radio"
+                                           name="homepage_placement_{{ $site->id }}"
+                                           value="none"
+                                           data-days="none"
+                                           data-price="0"
+                                           data-site-id="{{ $site->id }}"
+                                           id="homepage_{{ $site->id }}_none"
+                                           {{ $defaultHomepageDays === null ? 'checked' : '' }}>
+                                    <label class="form-check-label" for="homepage_{{ $site->id }}_none">
+                                        <strong>No homepage placement</strong>
+                                    </label>
+                                </div>
+                                @foreach($homepageOptions as $days => $fee)
+                                    @php $isFreeHome = (float) $fee <= 0; @endphp
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input homepage-placement-radio"
+                                               type="radio"
+                                               name="homepage_placement_{{ $site->id }}"
+                                               value="{{ $days }}"
+                                               data-days="{{ $days }}"
+                                               data-price="{{ $fee }}"
+                                               data-site-id="{{ $site->id }}"
+                                               id="homepage_{{ $site->id }}_{{ $days }}"
+                                               {{ (int) $defaultHomepageDays === (int) $days ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="homepage_{{ $site->id }}_{{ $days }}">
+                                            <strong>{{ $days }} day{{ $days > 1 ? 's' : '' }}</strong>
+                                            @if($isFreeHome)
+                                                <span class="text-success">Free</span>
+                                            @else
+                                                <span class="text-muted">+€{{ number_format($fee, 2) }}</span>
+                                            @endif
+                                        </label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        @endif
+
+                        @if($socialChannels !== [])
+                            <p class="mb-1"><strong>Social</strong></p>
+                            <p class="small text-muted mb-2">Publisher will share the live post on these channels at no extra cost.</p>
+                            <div class="d-flex flex-wrap gap-1 mb-3" aria-label="Included social channels">
+                                @foreach($socialChannels as $channel)
+                                    <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                                @endforeach
+                            </div>
+                        @endif
 
                         <p class="mb-1"><strong>Sample article</strong></p>
                         {{-- Sample URLs share the listing domain — only show when
@@ -1197,7 +1198,7 @@
                      data-site-id="{{ $site->id }}"
                      role="radiogroup"
                      aria-label="Homepage placement duration">
-                    <div class="small fw-semibold mb-1">Homepage placement (optional)</div>
+                    <div class="small fw-semibold mb-1">Homepage promotions (optional)</div>
                     <p class="small text-muted mb-2">Sale/bulk discounts do not apply to this fee.</p>
                     <div class="form-check mb-1">
                         <input class="form-check-input homepage-placement-radio"
@@ -1239,7 +1240,7 @@
             @endif
             @if($socialChannels !== [])
                 <div class="mt-3">
-                    <div class="small fw-semibold mb-1">Social promotion included</div>
+                    <div class="small fw-semibold mb-1">Social</div>
                     <div class="d-flex flex-wrap gap-1" aria-label="Included social channels">
                         @foreach($socialChannels as $channel)
                             <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
@@ -1372,6 +1373,36 @@
                         @endif
                     </dd>
                 </div>
+                @if($homepageOptions !== [])
+                    <div class="catalog-card-details__row">
+                        <dt>Homepage promotions</dt>
+                        <dd>
+                            <ul class="list-unstyled mb-0 small">
+                                @foreach($homepageOptions as $days => $fee)
+                                    <li>
+                                        {{ $days }} day{{ $days > 1 ? 's' : '' }}
+                                        @if((float) $fee <= 0)
+                                            — <span class="text-success">Free</span>
+                                        @else
+                                            — +€{{ number_format((float) $fee, 2) }}
+                                        @endif
+                                    </li>
+                                @endforeach
+                            </ul>
+                            <span class="text-muted small">Choose a duration above Buy.</span>
+                        </dd>
+                    </div>
+                @endif
+                @if($socialChannels !== [])
+                    <div class="catalog-card-details__row">
+                        <dt>Social</dt>
+                        <dd class="d-flex flex-wrap gap-1">
+                            @foreach($socialChannels as $channel)
+                                <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                            @endforeach
+                        </dd>
+                    </div>
+                @endif
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
@@ -1380,7 +1411,6 @@
                         </dd>
                     </div>
                 @endif
-                {{-- Social stays above Buy on the card (not duplicated here). --}}
                 <div class="catalog-card-details__row">
                     <dt>Sample article</dt>
                     <dd>

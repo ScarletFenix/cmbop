@@ -835,6 +835,33 @@ function previewNiches() {
         .join(', ');
 }
 
+function previewHomepagePromotions() {
+    const parts = [];
+    [1, 7, 30].forEach(function (days) {
+        if (!$('#homepage' + days).is(':checked')) return;
+        const raw = $.trim($('input[name="price_homepage[' + days + ']"]').val() || '');
+        const fee = raw === '' ? 0 : parseFloat(raw);
+        const label = days + ' day' + (days > 1 ? 's' : '');
+        if (!Number.isFinite(fee) || fee <= 0) {
+            parts.push(label + ' — Free');
+        } else {
+            parts.push(label + ' — +€' + fee.toFixed(2));
+        }
+    });
+    return parts.join('; ');
+}
+
+function previewSocialChannels() {
+    const labels = { facebook: 'Facebook', instagram: 'Instagram', x: 'X' };
+    return ['facebook', 'instagram', 'x']
+        .filter(function (channel) {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            return $(id).is(':checked');
+        })
+        .map(function (channel) { return labels[channel] || channel; })
+        .join(', ');
+}
+
 function previewRow(label, value, opts) {
     opts = opts || {};
     const missing = !value;
@@ -916,6 +943,8 @@ function buildSitePreview() {
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
     html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
     html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Homepage promotions', previewHomepagePromotions(), { emptyLabel: 'None', optional: true });
+    html += previewRow('Social', previewSocialChannels(), { emptyLabel: 'None', optional: true });
     html += '</div>';
 
     html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
@@ -2107,6 +2136,33 @@ function previewNiches() {
         .join(', ');
 }
 
+function previewHomepagePromotions() {
+    const parts = [];
+    [1, 7, 30].forEach(function (days) {
+        if (!$('#homepage' + days).is(':checked')) return;
+        const raw = $.trim($('input[name="price_homepage[' + days + ']"]').val() || '');
+        const fee = raw === '' ? 0 : parseFloat(raw);
+        const label = days + ' day' + (days > 1 ? 's' : '');
+        if (!Number.isFinite(fee) || fee <= 0) {
+            parts.push(label + ' — Free');
+        } else {
+            parts.push(label + ' — +€' + fee.toFixed(2));
+        }
+    });
+    return parts.join('; ');
+}
+
+function previewSocialChannels() {
+    const labels = { facebook: 'Facebook', instagram: 'Instagram', x: 'X' };
+    return ['facebook', 'instagram', 'x']
+        .filter(function (channel) {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            return $(id).is(':checked');
+        })
+        .map(function (channel) { return labels[channel] || channel; })
+        .join(', ');
+}
+
 function previewRow(label, value, opts) {
     opts = opts || {};
     const missing = !value;
@@ -2192,6 +2248,8 @@ function buildSitePreview() {
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
     html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
     html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Homepage promotions', previewHomepagePromotions(), { emptyLabel: 'None', optional: true });
+    html += previewRow('Social', previewSocialChannels(), { emptyLabel: 'None', optional: true });
     html += '</div>';
 
     html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
