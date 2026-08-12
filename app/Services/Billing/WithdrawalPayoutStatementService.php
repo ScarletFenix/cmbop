@@ -45,11 +45,9 @@ class WithdrawalPayoutStatementService
                 }
 
                 if ($existing = $this->find($locked)) {
-                    $beforeItems = json_encode($existing->line_items ?? []);
                     $existing = $this->normalizeLegacyFeeLineItems($existing);
-                    $lineItemsChanged = $beforeItems !== json_encode($existing->line_items ?? []);
 
-                    if ($lineItemsChanged || ! $existing->hasPdf() || ! $existing->pdfExists()) {
+                    if (! $existing->hasPdf() || ! $existing->pdfExists()) {
                         try {
                             $this->pdfs->generateAndStore($existing);
                         } catch (\Throwable $e) {
@@ -316,7 +314,12 @@ class WithdrawalPayoutStatementService
             return $statement;
         }
 
-        $statement->update(['line_items' => $cleaned]);
+        // Drop the stored PDF path so download/view cannot keep serving a stale
+        // file that still shows the fee as both a line item and a total.
+        $statement->update([
+            'line_items' => $cleaned,
+            'pdf_path' => null,
+        ]);
 
         return $statement->fresh() ?? $statement;
     }

@@ -19,18 +19,20 @@ class BackfillPayoutStatements extends Command
     {
         $limit = (int) $this->option('limit');
 
+        $clampedLimit = max(1, min(200, $limit));
+
         if ($this->option('force-pdf')) {
             if ($this->option('dry-run')) {
                 $count = Invoice::query()
                     ->where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
                     ->where('status', '!=', Invoice::STATUS_CANCELLED)
                     ->count();
-                $this->info("Dry run: would regenerate PDFs for up to {$limit} of {$count} payout statement(s).");
+                $this->info("Dry run: would regenerate PDFs for up to {$clampedLimit} of {$count} payout statement(s).");
 
                 return self::SUCCESS;
             }
 
-            $result = $statements->regenerateExistingPdfs($limit);
+            $result = $statements->regenerateExistingPdfs($clampedLimit);
             $this->info(sprintf(
                 'Payout PDFs: regenerated=%d failed=%d',
                 $result['regenerated'],
@@ -42,7 +44,7 @@ class BackfillPayoutStatements extends Command
 
         if ($this->option('dry-run')) {
             $missing = $statements->missingCompletedWithdrawalsQuery()->count();
-            $wouldProcess = min(max(1, min(200, $limit)), $missing);
+            $wouldProcess = min($clampedLimit, $missing);
 
             $this->info("Dry run: {$missing} completed withdrawal(s) missing a payout statement (would process {$wouldProcess}).");
 

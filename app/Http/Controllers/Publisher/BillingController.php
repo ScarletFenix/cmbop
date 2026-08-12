@@ -71,11 +71,10 @@ class BillingController extends Controller
         abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
         abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
 
-        $beforeItems = json_encode($invoice->line_items ?? []);
+        // normalizeLegacyFeeLineItems() clears pdf_path when it strips legacy fee lines.
         $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
-        $lineItemsChanged = $beforeItems !== json_encode($invoice->line_items ?? []);
 
-        if ($lineItemsChanged || ! $invoice->hasPdf() || ! $invoice->pdfExists()) {
+        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
             try {
                 $pdfs->generateAndStore($invoice);
                 $invoice->refresh();
@@ -100,11 +99,9 @@ class BillingController extends Controller
         abort_unless($invoice->type === Invoice::TYPE_WITHDRAWAL_PAYOUT, 404);
         abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
 
-        $beforeItems = json_encode($invoice->line_items ?? []);
         $invoice = $statements->normalizeLegacyFeeLineItems($invoice);
-        $lineItemsChanged = $beforeItems !== json_encode($invoice->line_items ?? []);
 
-        if ($lineItemsChanged || ! $invoice->hasPdf() || ! $invoice->pdfExists()) {
+        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
             try {
                 $pdfs->generateAndStore($invoice);
                 $invoice->refresh();

@@ -268,16 +268,26 @@
         </tr>
     </thead>
     <tbody>
-        @forelse(($invoice->line_items ?? []) as $line)
-            @php
-                // Legacy payout payloads stored the fee as a negative line item AND in totals.
-                $payoutFeeLine = $isPayout && (
-                    (float) ($line['line_total'] ?? $line['unit_price'] ?? 0) < 0
-                    || str_contains(strtolower((string) ($line['description'] ?? '')), 'withdrawal fee')
-                    || str_contains(strtolower((string) ($line['description'] ?? '')), 'platform fee')
-                );
-            @endphp
-            @continue($payoutFeeLine)
+        @php
+            // Legacy payout payloads stored the fee as a negative line item AND in totals.
+            $displayLines = collect($invoice->line_items ?? [])
+                ->filter(function ($line) use ($isPayout) {
+                    if (! is_array($line)) {
+                        return false;
+                    }
+                    if (! $isPayout) {
+                        return true;
+                    }
+                    $total = (float) ($line['line_total'] ?? $line['unit_price'] ?? 0);
+                    $desc = strtolower((string) ($line['description'] ?? ''));
+
+                    return $total >= 0
+                        && ! str_contains($desc, 'withdrawal fee')
+                        && ! str_contains($desc, 'platform fee');
+                })
+                ->values();
+        @endphp
+        @forelse($displayLines as $line)
             <tr>
                 <td>{{ $line['description'] ?? 'Service' }}</td>
                 <td>
