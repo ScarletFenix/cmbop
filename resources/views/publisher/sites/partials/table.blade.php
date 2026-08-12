@@ -82,7 +82,8 @@
         padding-right: 18px;
     }
 
-    /* Column alignment: Site left; Preview / Metrics / Market / Status / Price / Actions centered */
+    /* Column alignment: Site left; Preview / Metrics / Market / Status / Price / Actions centered.
+       Use !important so AJAX-injected styles beat page-level th/td left rules. */
     .modern-table thead th:nth-child(1),
     .modern-table thead th:nth-child(3),
     .modern-table thead th:nth-child(4),
@@ -95,12 +96,21 @@
     .modern-table tbody tr.main-row td[data-label="Status"],
     .modern-table tbody tr.main-row td[data-label="Price"],
     .modern-table tbody tr.main-row td[data-label="Actions"] {
-        text-align: center;
+        text-align: center !important;
     }
 
     .modern-table thead th:nth-child(2),
     .modern-table tbody tr.main-row td[data-label="Site"] {
-        text-align: left;
+        text-align: left !important;
+    }
+
+    .site-row-price-wrap {
+        display: inline-flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+        max-width: 100%;
     }
 
     .modern-table tbody tr.main-row {
@@ -536,7 +546,7 @@
         justify-content: center;
         flex-wrap: wrap;
         gap: 4px;
-        margin-left: 6px;
+        margin-left: 0;
         vertical-align: middle;
     }
 
@@ -738,7 +748,9 @@
                 </span>
             </td>
             <td data-label="Price">
-                <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
+                <div class="site-row-price-wrap">
+                    <span class="site-row-price">€{{ number_format((float) $item->price, 2) }}</span>
+                </div>
             </td>
             <td data-label="Actions">
                 <span class="small text-muted">No edit yet</span>
@@ -911,6 +923,7 @@
             </td>
 
             <td data-label="Price">
+                <div class="site-row-price-wrap">
                 <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
                 <span class="site-row-price-meta">
                     @if($site->isFeatured())
@@ -971,6 +984,7 @@
                               data-glass-tip-hover-only="1">Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}%</span>
                     @endif
                 </span>
+                </div>
             </td>
 
             <td data-label="Actions">
