@@ -722,7 +722,14 @@ class OrderController extends Controller
                     }
                 }
 
-                app(InAppNotificationService::class)->notifyLiveUrlSubmitted($order, $orderItem, $site, $request->live_url);
+                try {
+                    app(InAppNotificationService::class)->notifyLiveUrlSubmitted($order, $orderItem, $site, $request->live_url);
+                } catch (\Throwable $e) {
+                    Log::error('Live URL saved but advertiser notification failed: '.$e->getMessage(), [
+                        'order_id' => $order->id,
+                        'order_item_id' => $orderItem->id,
+                    ]);
+                }
             }
 
             Log::info('Live URL submitted by publisher', [
@@ -734,7 +741,12 @@ class OrderController extends Controller
                 'held_in_processing_for_sibling_revision' => $heldForSiblingRevision,
             ]);
 
-            $windowHours = OrderItem::autoApproveHours();
+            // Message copy must never turn a successful save into a 500.
+            try {
+                $windowHours = OrderItem::autoApproveHours();
+            } catch (\Throwable) {
+                $windowHours = 72;
+            }
             $windowDays = max(1, (int) ceil($windowHours / 24));
             $message = $heldForSiblingRevision
                 ? 'Live URL saved. This order stays in progress until the advertiser sends the revised article for the other placement.'

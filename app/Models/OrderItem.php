@@ -36,8 +36,14 @@ class OrderItem extends Model
         'moderation_status',
         'live_url',
         'live_url_submitted_at',
+        'live_url_http_status',
+        'live_url_check_ok',
+        'live_url_checked_at',
         'sensitive_type',
         'additional_price',
+        'publisher_price',
+        'platform_fee_percent',
+        'platform_fee_amount',
         'publisher_status',
         'accepted_at',
         'rejected_at',
@@ -53,21 +59,40 @@ class OrderItem extends Model
         'content_revision_resolved_at',
         'auto_approve_triggered',
         'auto_approve_at',
+        'auto_approve_reminder_sent_at',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'additional_price' => 'decimal:2',
+        'publisher_price' => 'decimal:2',
+        'platform_fee_percent' => 'decimal:2',
+        'platform_fee_amount' => 'decimal:2',
         'accepted_at' => 'datetime',
         'rejected_at' => 'datetime',
         'completed_at' => 'datetime',
         'live_url_submitted_at' => 'datetime',
+        'live_url_checked_at' => 'datetime',
+        'live_url_check_ok' => 'boolean',
         'modification_requested_at' => 'datetime',
         'content_revision_requested_at' => 'datetime',
         'content_revision_resolved_at' => 'datetime',
         'auto_approve_at' => 'datetime',
+        'auto_approve_reminder_sent_at' => 'datetime',
         'auto_approve_triggered' => 'boolean',
     ];
+
+    /**
+     * Apply a live URL health-check result onto this item (not saved).
+     *
+     * @param  array{ok: bool, status: ?int, checked_at: \Illuminate\Support\Carbon}  $result
+     */
+    public function applyLiveUrlHealthCheck(array $result): void
+    {
+        $this->live_url_check_ok = (bool) ($result['ok'] ?? false);
+        $this->live_url_http_status = $result['status'] ?? null;
+        $this->live_url_checked_at = $result['checked_at'] ?? now();
+    }
 
     public function order()
     {
@@ -82,6 +107,16 @@ class OrderItem extends Model
     public function contentSubmission(): BelongsTo
     {
         return $this->belongsTo(ContentSubmission::class);
+    }
+
+    public function disputes()
+    {
+        return $this->hasMany(OrderItemDispute::class);
+    }
+
+    public function latestDispute()
+    {
+        return $this->hasOne(OrderItemDispute::class)->latestOfMany();
     }
 
     /**
@@ -142,16 +177,32 @@ class OrderItem extends Model
     }
 
     /**
-     * Publisher listing/base price before the platform markup.
+     * Publisher listing/base price (snapshotted at checkout when available).
      */
     public function publisherBasePrice(): float
     {
-        return round($this->markedUpBasePrice() / self::PLATFORM_MARKUP_RATE, 2);
+        if ($this->publisher_price !== null && $this->publisher_price !== '') {
+            return round((float) $this->publisher_price, 2);
+        }
+
+        $rate = self::PLATFORM_MARKUP_RATE;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $configured = config('pricing.legacy_markup_rate');
+                if ($configured) {
+                    $rate = (float) $configured;
+                }
+            }
+        } catch (\Throwable) {
+            // Pure unit tests without a bootstrapped container.
+        }
+
+        return round($this->markedUpBasePrice() / $rate, 2);
     }
 
     /**
      * Amount credited to the publisher on approval.
-     * Publisher gets original base + sensitive add-ons; platform keeps the 15% markup.
+     * Publisher gets their entered base + sensitive add-ons; platform keeps the hidden fee.
      */
     public function publisherPayoutAmount(): float
     {
@@ -166,6 +217,10 @@ class OrderItem extends Model
      */
     public function platformFeeAmount(): float
     {
+        if ($this->platform_fee_amount !== null && $this->platform_fee_amount !== '') {
+            return round((float) $this->platform_fee_amount, 2);
+        }
+
         return round($this->markedUpBasePrice() - $this->publisherBasePrice(), 2);
     }
 
@@ -182,6 +237,28 @@ class OrderItem extends Model
 
         return DB::raw(
             "({$qualified}price - COALESCE({$qualified}additional_price, 0)) / {$rate} + COALESCE({$qualified}additional_price, 0)"
+        );
+    }
+
+    /**
+     * SQL expression for platform fee retained on the base price.
+     */
+    public static function platformFeeSqlExpression()
+    {
+        $rate = self::PLATFORM_MARKUP_RATE;
+        try {
+            if (function_exists('app') && app()->bound('config')) {
+                $configured = config('pricing.legacy_markup_rate');
+                if ($configured) {
+                    $rate = (float) $configured;
+                }
+            }
+        } catch (\Throwable) {
+            // keep legacy constant
+        }
+
+        return DB::raw(
+            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0)) / '.$rate.'))'
         );
     }
 
@@ -286,6 +363,30 @@ class OrderItem extends Model
     }
 
     /**
+     * Configured auto-approve window in hours (default 72 = 3 days).
+     */
+    public static function autoApproveHours(): int
+    {
+        return max(1, (int) config('orders.auto_approve_hours', 72));
+    }
+
+    /**
+     * Hours before auto-approve when the reminder should fire.
+     */
+    public static function autoApproveReminderHoursBefore(): int
+    {
+        return max(0, (int) config('orders.auto_approve_reminder_hours_before', 24));
+    }
+
+    /**
+     * Whether a failed live URL health check blocks auto-approve.
+     */
+    public static function autoApproveRequiresLiveUrlOk(): bool
+    {
+        return (bool) config('orders.auto_approve_require_live_url_ok', true);
+    }
+
+    /**
      * Check if order is ready for auto-approve
      */
     public function isReadyForAutoApprove()
@@ -315,10 +416,14 @@ class OrderItem extends Model
             return false;
         }
 
-        // Must have 48 hours passed (absolute: Carbon 3 returns signed diffs by default)
+        // Optional hard gate: failed health check blocks auto-complete
+        if (self::autoApproveRequiresLiveUrlOk() && $this->live_url_check_ok === false) {
+            return false;
+        }
+
         $hoursPassed = $this->live_url_submitted_at->diffInHours(Carbon::now(), true);
 
-        return $hoursPassed >= 48;
+        return $hoursPassed >= self::autoApproveHours();
     }
 
     /**
@@ -334,9 +439,42 @@ class OrderItem extends Model
         }
 
         $hoursPassed = $this->live_url_submitted_at->diffInHours(Carbon::now(), true);
-        $remaining = 48 - $hoursPassed;
+        $remaining = self::autoApproveHours() - $hoursPassed;
 
-        return $remaining > 0 ? $remaining : 0;
+        return $remaining > 0 ? (int) ceil($remaining) : 0;
+    }
+
+    /**
+     * Whether this item is in the reminder window (~24h left) and not yet reminded.
+     */
+    public function isReadyForAutoApproveReminder(): bool
+    {
+        $reminderBefore = self::autoApproveReminderHoursBefore();
+        if ($reminderBefore <= 0) {
+            return false;
+        }
+
+        if (! $this->hasLiveUrl() || ! $this->live_url_submitted_at) {
+            return false;
+        }
+
+        if ($this->isModificationRequested()
+            || $this->isContentRevisionRequested()
+            || $this->isAutoApproved()) {
+            return false;
+        }
+
+        if ($this->auto_approve_reminder_sent_at) {
+            return false;
+        }
+
+        if (self::autoApproveRequiresLiveUrlOk() && $this->live_url_check_ok === false) {
+            return false;
+        }
+
+        $remaining = $this->getAutoApproveHoursRemaining();
+
+        return $remaining > 0 && $remaining <= $reminderBefore;
     }
 
     /**

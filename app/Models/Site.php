@@ -238,16 +238,31 @@ class Site extends Model
 
     public static function refreshCompletedOrdersCount(int $siteId): void
     {
-        $count = OrderItem::query()
-            ->where('site_id', $siteId)
-            ->whereHas('order', function ($q) {
-                $q->where('status', 'completed');
-            })
-            ->count();
+        // Hostinger / drifted deploys may lack this denormalized counter.
+        // Never throw here: advertiser Approve and auto-approve call this inside
+        // the payout transaction, and a missing column used to roll back approval
+        // with the generic Swal "Failed to approve order. Please try again."
+        if ($siteId < 1 || ! static::hasSitesColumn('completed_orders_count')) {
+            return;
+        }
 
-        static::query()->where('id', $siteId)->update([
-            'completed_orders_count' => $count,
-        ]);
+        try {
+            $count = OrderItem::query()
+                ->where('site_id', $siteId)
+                ->whereHas('order', function ($q) {
+                    $q->where('status', 'completed');
+                })
+                ->count();
+
+            static::query()->where('id', $siteId)->update([
+                'completed_orders_count' => $count,
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to refresh sites.completed_orders_count', [
+                'site_id' => $siteId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     public function isFeatured(): bool
