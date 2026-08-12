@@ -118,6 +118,11 @@
             <span class="nav-label">Saved Sites</span>
         </a>
 
+        <a href="{{ route('site-claims.index') }}" class="{{ request()->routeIs('site-claims.*') ? 'active' : '' }}">
+            <i class="fa fa-user-check" aria-hidden="true"></i>
+            <span class="nav-label">My Claims</span>
+        </a>
+
         <!-- Add Funds -->
         <a href="{{ route('advertiser.add-funds') }}" class="{{ request()->routeIs('advertiser.add-funds*') || request()->routeIs('advertiser.balance*') ? 'active' : '' }}">
             <i class="fa fa-coins" aria-hidden="true"></i> <span class="nav-label">Add Funds</span>

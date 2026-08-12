@@ -11,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\Orders\AdminOrderStatusOverride;
@@ -1996,6 +1997,127 @@ class InAppNotificationService
                 'meta' => [
                     'site_id' => $site->id,
                     'domain' => $domain,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Admin bell: a user submitted an ownership claim awaiting review.
+     */
+    public function notifyAdminsSiteClaimSubmitted(SiteClaim $claim): void
+    {
+        $claim->loadMissing(['site', 'claimer']);
+        $siteName = $claim->site?->site_name ?: ($claim->website_name ?: 'a website');
+        $who = $claim->claimer?->name ?: ($claim->contact_email ?: ($claim->claimer?->email ?: 'A user'));
+        $matchLabel = $claim->name_matches ? 'Name matches the listing.' : 'Name does not match — verify carefully.';
+
+        $this->notifyAdmins(
+            self::TYPE_SYSTEM,
+            'New site ownership claim',
+            "{$who} claimed ownership of {$siteName}. {$matchLabel}",
+            [
+                // Community review is admin-only (marketing is redirected away).
+                'roles' => ['admin'],
+                'category' => self::CATEGORY_SYSTEM,
+                'icon' => 'user-check',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $claim->site ?: $claim,
+                'action_label' => 'Review claims',
+                'action_url' => route('admin.community.index', ['tab' => 'claims', 'status' => 'pending'], false),
+                'meta' => [
+                    'claim_id' => $claim->id,
+                    'site_id' => $claim->site_id,
+                    'claimer_id' => $claim->claimer_id,
+                    'name_matches' => (bool) $claim->name_matches,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Claimer bell: their ownership claim was approved or rejected.
+     */
+    public function notifyClaimerSiteClaimReviewed(SiteClaim $claim): void
+    {
+        $claimerId = (int) ($claim->claimer_id ?? 0);
+        if ($claimerId <= 0) {
+            return;
+        }
+
+        $claim->loadMissing(['site']);
+        $approved = $claim->status === 'approved';
+        $siteName = $claim->site?->site_name ?: ($claim->website_name ?: 'the website');
+        $notes = trim((string) ($claim->admin_notes ?? ''));
+
+        if ($approved) {
+            $title = "Claim approved — {$siteName}";
+            $message = "Ownership of {$siteName} was transferred to your account. Manage it from My Sites.";
+            $actionLabel = 'Open My Sites';
+            $actionUrl = route('publisher.websites', [], false);
+        } else {
+            $title = "Claim not approved — {$siteName}";
+            $message = "We reviewed your ownership claim for {$siteName} and could not transfer it at this time.";
+            if ($notes !== '') {
+                $message .= ' Note: '.$notes;
+            }
+            $actionLabel = 'View my claims';
+            $actionUrl = route('site-claims.index', [], false);
+        }
+
+        $this->notify(
+            $claimerId,
+            self::TYPE_SITE_STATUS,
+            $title,
+            $message,
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => $approved ? 'check-circle' : 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $claim->site ?: $claim,
+                // Advertisers can claim before they ever switch to publisher; keep
+                // the approve bell visible on their current active role.
+                'audience' => InAppNotification::AUDIENCE_ALL,
+                'action_label' => $actionLabel,
+                'action_url' => $actionUrl,
+                'meta' => [
+                    'claim_id' => $claim->id,
+                    'site_id' => $claim->site_id,
+                    'status' => $claim->status,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * Previous publisher bell: an approved claim moved their listing away.
+     */
+    public function notifyPreviousPublisherOwnershipTransferred(SiteClaim $claim, User $previous): void
+    {
+        $previousId = (int) ($previous->id ?? 0);
+        if ($previousId <= 0) {
+            return;
+        }
+
+        $claim->loadMissing(['site']);
+        $siteName = $claim->site?->site_name ?: ($claim->website_name ?: 'a listing');
+
+        $this->notify(
+            $previousId,
+            self::TYPE_SITE_STATUS,
+            "Listing ownership transferred — {$siteName}",
+            "An approved ownership claim moved {$siteName} off your publisher account. Contact support if this looks wrong.",
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $claim->site ?: $claim,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'View sites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'claim_id' => $claim->id,
+                    'site_id' => $claim->site_id,
                 ],
             ]
         );

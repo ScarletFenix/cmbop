@@ -4337,7 +4337,16 @@ document.addEventListener('click', async function (e) {
             body: JSON.stringify(form),
         });
         const data = await res.json().catch(() => ({}));
-        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        const claimsUrl = (CatalogConfig.routes && CatalogConfig.routes.siteClaimsIndex) || '/site-claims';
+        if (data.success) {
+            Swal.fire({
+                icon: 'success',
+                title: data.message || 'Claim submitted',
+                html: `<p class="small text-muted mb-0">Track status anytime from <a href="${claimsUrl}">My Claims</a>.</p>`,
+            });
+        } else {
+            Swal.fire({ icon: 'error', title: data.message || 'Done' });
+        }
         return;
     }
 
