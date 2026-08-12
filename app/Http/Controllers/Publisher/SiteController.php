@@ -45,12 +45,34 @@ class SiteController extends Controller
         // Keep language→countries for any legacy UI that still reads it.
         $languageCountryMap = app(LanguageCountryMap::class)->map();
 
+        $openBulkRequest = BulkSiteRequest::query()
+            ->where('publisher_id', auth()->id())
+            ->whereNotIn('status', [
+                BulkSiteRequest::STATUS_COMPLETED,
+                BulkSiteRequest::STATUS_CANCELLED,
+            ])
+            ->latest()
+            ->first();
+
+        $awaitingDetailsCount = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
+            ->count();
+
+        $detailsCompleteCount = Site::query()
+            ->where('publisher_id', auth()->id())
+            ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
+            ->count();
+
         return view('publisher.websites', compact(
             'countries',
             'categories',
             'languages',
             'countryLanguageMap',
-            'languageCountryMap'
+            'languageCountryMap',
+            'openBulkRequest',
+            'awaitingDetailsCount',
+            'detailsCompleteCount'
         ));
     }
 
