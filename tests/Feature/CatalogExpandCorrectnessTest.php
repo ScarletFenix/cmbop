@@ -80,6 +80,7 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('1 year', $html);
         $this->assertStringContainsString('3 days', $html);
         $this->assertStringContainsString('Publication duration', $html);
+        $this->assertStringContainsString('Turnaround', $html);
     }
 
     public function test_expand_layout_separates_pricing_and_empty_states(): void
@@ -102,6 +103,49 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('Screenshot not available yet', $html);
         $this->assertStringContainsString('No sample article yet', $html);
         $this->assertStringNotContainsString('Not available</a>', $html);
+        $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
+        $this->assertStringNotContainsString('Base guest post only', $html);
+    }
+
+    public function test_expand_collapses_pricing_when_no_extras(): void
+    {
+        $this->makeSite([
+            'description' => '',
+            'sensitive_prices' => null,
+            'homepage_placement_prices' => null,
+            'social_promotion' => null,
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('catalog-expand-pricing', $html);
+        $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
+        $this->assertStringContainsString('Base guest post only — no homepage, social, or sensitive add-ons.', $html);
+        $this->assertStringContainsString('No description yet', $html);
+        $this->assertStringContainsString('Turnaround', $html);
+    }
+
+    public function test_mobile_card_details_do_not_duplicate_social(): void
+    {
+        $this->makeSite([
+            'social_promotion' => ['facebook' => true],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Social promotion included', $html);
+        $this->assertStringContainsString('Facebook', $html);
+        $this->assertSame(
+            0,
+            substr_count($html, '<dt>Social promotion</dt>'),
+            'Social should stay above Buy on the card, not inside catalog-card-details'
+        );
     }
 
     public function test_mobile_card_details_cover_desktop_decision_fields(): void

@@ -178,6 +178,11 @@
                     'instagram' => 'Instagram',
                     'x' => 'X',
                 ];
+                $hasPricingExtras = $sensitivePrices !== []
+                    || $homepageOptions !== []
+                    || $socialChannels !== [];
+                $expandDescriptionHtml = $site->safeDescriptionHtml();
+                $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
 
                 // List price is the advertiser-facing base (already fee-marked-up).
                 // data-discount-percent keeps the nominal configured sale so JS can
@@ -584,16 +589,23 @@
                         @endif
                     </div>
 
-                    <div class="col-lg-4 col-md-6 catalog-expand-description">
+                    <div class="{{ $hasPricingExtras ? 'col-lg-4' : 'col-lg-5' }} col-md-6 catalog-expand-description">
                         <p class="mb-1"><strong class="small">Description</strong></p>
                         <div class="text-muted small">
-                            {!! $site->safeDescriptionHtml() !!}
+                            @if($hasExpandDescription)
+                                {!! $expandDescriptionHtml !!}
+                            @else
+                                <span>No description yet</span>
+                            @endif
                         </div>
                         @if($site->lastPublicationLabel())
                             <p class="text-muted small mb-0 mt-1" style="color:#94a3b8 !important;">
                                 {{ $site->lastPublicationLabel() }}
                             </p>
                         @endif
+                        @unless($hasPricingExtras)
+                            <p class="text-muted small mb-0 mt-2">Base guest post only — no homepage, social, or sensitive add-ons.</p>
+                        @endunless
 
                         <div class="catalog-expand-trust mt-3">
                             <p class="mb-1"><strong class="small">Publisher trust</strong></p>
@@ -601,9 +613,10 @@
                         </div>
                     </div>
 
+                    @if($hasPricingExtras)
                     <div class="col-lg-3 col-md-6 catalog-expand-pricing">
                         <div class="d-flex flex-column gap-2">
-                            @if(!empty($sensitivePrices))
+                            @if($sensitivePrices !== [])
                                 <p class="mb-0"><strong>Sensitive topics</strong></p>
                                 <p class="small text-muted mb-1">Additional charge on top of the base price.</p>
 
@@ -680,7 +693,7 @@
                             @endif
 
                             @if($homepageOptions !== [])
-                                <p class="{{ !empty($sensitivePrices) ? 'mt-2' : '' }} mb-1"><strong>Homepage placement</strong> <span class="text-muted fw-normal">(optional)</span></p>
+                                <p class="{{ $sensitivePrices !== [] ? 'mt-2' : '' }} mb-1"><strong>Homepage placement</strong> <span class="text-muted fw-normal">(optional)</span></p>
                                 <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
                                 <div class="homepage-placement-group"
                                      data-site-id="{{ $site->id }}"
@@ -734,14 +747,11 @@
                                     @endforeach
                                 </div>
                             @endif
-
-                            @if(empty($sensitivePrices) && $homepageOptions === [] && $socialChannels === [])
-                                <p class="small text-muted mb-0">No extra pricing options for this listing.</p>
-                            @endif
                         </div>
                     </div>
+                    @endif
 
-                    <div class="col-lg-2 col-md-6 catalog-expand-meta">
+                    <div class="{{ $hasPricingExtras ? 'col-lg-2' : 'col-lg-4' }} col-md-6 catalog-expand-meta">
                         <p class="mb-1"><strong>Tags</strong></p>
                         <div class="d-flex flex-column gap-2 mb-3">
                             <div>
@@ -836,6 +846,18 @@
                                 @endif
                             @endif
                         </div>
+
+                        <p class="mb-1"><strong title="Typical publisher turnaround once an order is accepted">Turnaround</strong></p>
+                        @if($site->turnaroundLabel())
+                            <span class="badge text-muted border px-2 py-1 mb-3"
+                                  style="font-size: 11px;"
+                                  title="Typical publisher turnaround once an order is accepted">
+                                <i class="fa-solid fa-hourglass-half me-1" aria-hidden="true"></i>
+                                {{ $site->turnaroundLabel() }}
+                            </span>
+                        @else
+                            <span class="text-muted small d-block mb-3">Not specified</span>
+                        @endif
 
                         <p class="mb-1"><strong title="How long the published article stays live">Publication duration</strong></p>
                         @if($site->publicationDurationLabel())
@@ -1339,16 +1361,7 @@
                         </dd>
                     </div>
                 @endif
-                @if($socialChannels !== [])
-                    <div class="catalog-card-details__row">
-                        <dt>Social promotion</dt>
-                        <dd class="d-flex flex-wrap gap-1">
-                            @foreach($socialChannels as $channel)
-                                <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
-                            @endforeach
-                        </dd>
-                    </div>
-                @endif
+                {{-- Social stays above Buy on the card (not duplicated here). --}}
                 <div class="catalog-card-details__row">
                     <dt>Sample article</dt>
                     <dd>
