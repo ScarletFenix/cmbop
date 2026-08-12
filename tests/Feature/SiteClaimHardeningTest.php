@@ -80,6 +80,7 @@ class SiteClaimHardeningTest extends TestCase
         Mail::fake();
 
         $admin = $this->admin();
+        $adminB = $this->admin();
         $owner = $this->userWithRole('publisher');
         $claimer = $this->userWithRole('publisher');
         $site = $this->siteFor($owner);
@@ -91,10 +92,25 @@ class SiteClaimHardeningTest extends TestCase
             'contact_email' => $claimer->email,
         ])->assertOk()->assertJson(['success' => true]);
 
-        Mail::assertQueued(SiteClaimSubmitted::class);
+        // Each admin must get their own queued mail (shared dedupe keys used to
+        // suppress every admin after the first).
+        Mail::assertQueued(SiteClaimSubmitted::class, 2);
+        Mail::assertQueued(SiteClaimSubmitted::class, function (SiteClaimSubmitted $mail) use ($admin) {
+            return $mail->dedupeKey === 'site-claim-submitted-'.$mail->claim->id.':admin:'.$admin->id
+                && (int) $mail->recipientUser?->id === (int) $admin->id;
+        });
+        Mail::assertQueued(SiteClaimSubmitted::class, function (SiteClaimSubmitted $mail) use ($adminB) {
+            return $mail->dedupeKey === 'site-claim-submitted-'.$mail->claim->id.':admin:'.$adminB->id
+                && (int) $mail->recipientUser?->id === (int) $adminB->id;
+        });
 
         $this->assertDatabaseHas('in_app_notifications', [
             'user_id' => $admin->id,
+            'audience' => InAppNotification::AUDIENCE_ADMIN,
+            'title' => 'New site ownership claim',
+        ]);
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $adminB->id,
             'audience' => InAppNotification::AUDIENCE_ADMIN,
             'title' => 'New site ownership claim',
         ]);

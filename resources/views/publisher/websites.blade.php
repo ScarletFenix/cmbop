@@ -2922,7 +2922,7 @@ $('#claimWebsiteForm').on('submit', async function (e) {
         body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    await Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
     if (data.success) {
         this.reset();
         claimCard.addClass('d-none');

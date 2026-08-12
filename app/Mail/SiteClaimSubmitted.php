@@ -14,7 +14,8 @@ class SiteClaimSubmitted extends PlatformMailable
         $this->claim = $claim->loadMissing(['site', 'claimer']);
         $this->notificationType = 'site_claim_submitted';
         $this->skipUserPreference = true;
-        $this->dedupeKey = 'site-claim-submitted-'.$claim->id;
+        // Per-recipient dedupeKey is set by SiteClaimTransferService::notifySubmitted
+        // so every admin gets the mail (a shared claim-only key would suppress the rest).
     }
 
     public function build()

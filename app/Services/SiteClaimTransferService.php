@@ -261,9 +261,19 @@ class SiteClaimTransferService
                 : collect([(object) ['email' => config('mail.admin_email')]]);
 
             foreach ($recipients as $admin) {
-                if (! empty($admin->email)) {
-                    Mail::to($admin->email)->send(new SiteClaimSubmitted($claim));
+                if (empty($admin->email)) {
+                    continue;
                 }
+
+                $mailable = new SiteClaimSubmitted($claim);
+                if ($admin instanceof User) {
+                    $mailable->recipientUser = $admin;
+                    $mailable->dedupeKey = 'site-claim-submitted-'.$claim->id.':admin:'.$admin->id;
+                } else {
+                    $mailable->dedupeKey = 'site-claim-submitted-'.$claim->id.':fallback:'.strtolower((string) $admin->email);
+                }
+
+                Mail::to($admin->email)->send($mailable);
             }
         } catch (\Throwable $e) {
             Log::warning('Failed to email admins about site claim: '.$e->getMessage(), [
