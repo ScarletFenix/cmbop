@@ -36,6 +36,29 @@ class PublisherMySitesPageTest extends TestCase
         $this->publisher->roles()->attach($role->id);
     }
 
+    public function test_my_sites_inline_script_does_not_redeclare_delay_timer(): void
+    {
+        $blade = file_get_contents(resource_path('views/publisher/websites.blade.php'));
+        $this->assertSame(
+            1,
+            preg_match_all('/\blet\s+delayTimer\b/', $blade),
+            'Duplicate let delayTimer in websites.blade.php breaks the page script and leaves My Sites blank.'
+        );
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame(
+            1,
+            preg_match_all('/\blet\s+delayTimer\b/', $html),
+            'Rendered My Sites page must declare delayTimer only once.'
+        );
+        $this->assertStringContainsString('window.loadSites = fetchSites', $html);
+        $this->assertStringContainsString('id="sitesTableWrapper"', $html);
+    }
+
     private function makeSite(array $overrides = []): Site
     {
         return Site::create(array_merge([
