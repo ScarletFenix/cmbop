@@ -272,6 +272,22 @@
                     <input type="url" id="live_url" class="form-control" placeholder="https://example.com/your-article">
                     <small class="text-muted">Enter the live URL where the content is published. After submission, the advertiser has {{ (int) ceil(\App\Models\OrderItem::autoApproveHours() / 24) }} days to approve or request changes.</small>
                 </div>
+                <div id="completeSocialFields" class="d-none">
+                    <p class="small fw-semibold mb-1">Social post URLs <span class="text-muted fw-normal">(optional)</span></p>
+                    <p class="small text-muted mb-2">Only needed if this order includes a social share. Live URL alone is enough to submit.</p>
+                    <div class="mb-2 d-none" data-social-channel="facebook">
+                        <label for="social_facebook" class="form-label small mb-1">Facebook post URL</label>
+                        <input type="url" id="social_facebook" class="form-control form-control-sm social-post-url" data-channel="facebook" placeholder="https://facebook.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="instagram">
+                        <label for="social_instagram" class="form-label small mb-1">Instagram post URL</label>
+                        <input type="url" id="social_instagram" class="form-control form-control-sm social-post-url" data-channel="instagram" placeholder="https://instagram.com/…">
+                    </div>
+                    <div class="mb-2 d-none" data-social-channel="x">
+                        <label for="social_x" class="form-label small mb-1">X post URL</label>
+                        <input type="url" id="social_x" class="form-control form-control-sm social-post-url" data-channel="x" placeholder="https://x.com/…">
+                    </div>
+                </div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -475,10 +491,76 @@ $(document).ready(function() {
     });
 
     $(document).on('click', '.submit-live-url', function() {
-        $('#complete_order_item_id').val($(this).data('id'));
+        var $btn = $(this);
+        $('#complete_order_item_id').val($btn.data('id'));
         $('#live_url').val('');
+        $('.social-post-url').val('');
+        var channels = [];
+        try {
+            var raw = $btn.attr('data-social-channels') || '[]';
+            channels = JSON.parse(raw);
+        } catch (e) {
+            channels = [];
+        }
+        if (!Array.isArray(channels)) channels = [];
+        var $wrap = $('#completeSocialFields');
+        $wrap.find('[data-social-channel]').addClass('d-none');
+        if (channels.length) {
+            channels.forEach(function (ch) {
+                $wrap.find('[data-social-channel="' + ch + '"]').removeClass('d-none');
+            });
+            $wrap.removeClass('d-none');
+        } else {
+            $wrap.addClass('d-none');
+        }
         showTasksModal('completeModal');
     });
+
+    function collectSocialPostUrls($root) {
+        var urls = {};
+        ($root || $(document)).find('.social-post-url:visible').each(function () {
+            var ch = $(this).data('channel');
+            var val = ($(this).val() || '').trim();
+            if (ch && val) urls[ch] = val;
+        });
+        return urls;
+    }
+
+    function socialChannelLabel(ch) {
+        if (ch === 'x') return 'X';
+        if (!ch) return '';
+        return String(ch).charAt(0).toUpperCase() + String(ch).slice(1);
+    }
+
+    function formatPlacementExtrasHtml(item) {
+        var parts = [];
+        var homepageDays = item.homepage_days != null && item.homepage_days !== '' ? parseInt(item.homepage_days, 10) : null;
+        var homepageFee = parseFloat(item.homepage_price || 0) || 0;
+        if (homepageDays) {
+            parts.push('<p class="mb-1"><strong>Homepage placement:</strong></p><p class="mb-2">'
+                + homepageDays + ' day' + (homepageDays === 1 ? '' : 's')
+                + (homepageFee > 0 ? ' (+€' + homepageFee.toFixed(2) + ')' : ' (Free)')
+                + '</p>');
+        }
+        var channels = Array.isArray(item.social_channels) ? item.social_channels : [];
+        var postUrls = item.social_post_urls && typeof item.social_post_urls === 'object' ? item.social_post_urls : {};
+        if (channels.length) {
+            parts.push('<p class="mb-1"><strong>Social promotion:</strong></p><p class="mb-2">'
+                + channels.map(socialChannelLabel).join(', ')
+                + ' <span class="text-muted">(included)</span></p>');
+            var linkBits = channels.map(function (ch) {
+                var url = postUrls[ch];
+                if (!url) {
+                    return '<li class="small text-muted">' + socialChannelLabel(ch) + ': not submitted yet</li>';
+                }
+                return '<li class="small"><strong>' + socialChannelLabel(ch) + ':</strong> <a href="'
+                    + escapeHtml(url) + '" target="_blank" rel="noopener noreferrer" class="live-url">'
+                    + escapeHtml(url) + '</a></li>';
+            }).join('');
+            parts.push('<ul class="mb-2 ps-3">' + linkBits + '</ul>');
+        }
+        return parts.join('');
+    }
 
     // Chat functionality (shared OrderChat module)
     function formatChatDate(value, withTime) {
@@ -567,6 +649,21 @@ $(document).ready(function() {
                         + '<button type="submit" class="btn btn-primary"><i class="fa fa-paper-plane me-1" aria-hidden="true"></i>Resubmit URL</button>'
                         + '</div>'
                         + '<div class="form-text">Only if the address changed — add the URL here again so the advertiser can review.</div>'
+                        + (Array.isArray(details.social_channels) && details.social_channels.length
+                            ? '<div class="mt-2">'
+                                + '<div class="small fw-semibold mb-1">Update social post URLs (optional)</div>'
+                                + details.social_channels.map(function (ch) {
+                                    var existing = (details.social_post_urls && details.social_post_urls[ch]) ? details.social_post_urls[ch] : '';
+                                    return '<div class="mb-1">'
+                                        + '<label class="form-label small mb-0" for="chatSocial-' + escapeHtml(String(itemId)) + '-' + escapeHtml(ch) + '">'
+                                        + socialChannelLabel(ch) + '</label>'
+                                        + '<input type="url" class="form-control form-control-sm social-post-url" data-channel="'
+                                        + escapeHtml(ch) + '" id="chatSocial-' + escapeHtml(String(itemId)) + '-' + escapeHtml(ch)
+                                        + '" value="' + escapeHtml(existing) + '" placeholder="https://…">'
+                                        + '</div>';
+                                }).join('')
+                                + '</div>'
+                            : '')
                         + '</form>'
                     : '')
                 + '</div>';
@@ -751,6 +848,7 @@ $(document).ready(function() {
     $('#confirmComplete').on('click', function() {
         var id = $('#complete_order_item_id').val();
         var liveUrl = $('#live_url').val();
+        var socialPostUrls = collectSocialPostUrls($('#completeModal'));
         
         if (!liveUrl) {
             Swal.fire('Warning!', 'Please enter the live URL', 'warning');
@@ -760,7 +858,7 @@ $(document).ready(function() {
         $.ajax({
             url: baseUrl + '/publisher/orders/' + id + '/complete',
             method: 'POST',
-            data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
+            data: { live_url: liveUrl, social_post_urls: socialPostUrls, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
                 $('#confirmComplete').addClass('is-loading').prop('disabled', true);
@@ -794,6 +892,7 @@ $(document).ready(function() {
         var id = $form.data('item-id');
         var $input = $form.find('input[name="live_url"]');
         var liveUrl = ($input.val() || '').trim();
+        var socialPostUrls = collectSocialPostUrls($form);
         var $btn = $form.find('button[type="submit"]');
 
         if (!id) {
@@ -809,7 +908,7 @@ $(document).ready(function() {
         $.ajax({
             url: baseUrl + '/publisher/orders/' + id + '/resubmit',
             method: 'POST',
-            data: { live_url: liveUrl, _token: '{{ csrf_token() }}' },
+            data: { live_url: liveUrl, social_post_urls: socialPostUrls, _token: '{{ csrf_token() }}' },
             dataType: 'json',
             beforeSend: function() {
                 $btn.addClass('is-loading').prop('disabled', true);
@@ -1050,7 +1149,7 @@ $(document).ready(function() {
                     '</div>';
             } else if (orderStatus === 'processing') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
+                    '<button class="btn btn-primary btn-action-sm submit-live-url" data-id="' + item.id + '" data-social-channels="' + escapeHtml(JSON.stringify(Array.isArray(item.social_channels) ? item.social_channels : [])) + '"><i class="fa fa-link"></i> Submit Live URL</button>' +
                     '<button class="btn btn-outline-warning btn-action-sm request-content-revision" data-id="' + item.id + '"><i class="fa fa-file-text"></i> Request revised article</button>' +
                     cancelBtn +
                     viewBtn + chatBtn +
@@ -1109,8 +1208,9 @@ $(document).ready(function() {
         var orderStatus = order ? order.status : 'pending';
         var paymentStatus = order ? order.payment_status : 'pending';
         var additionalPrice = parseFloat(item.additional_price || 0);
-        var basePrice = parseFloat(item.price) - additionalPrice;
+        var homepagePrice = parseFloat(item.homepage_price || 0) || 0;
         var totalPrice = parseFloat(item.price);
+        var basePrice = Math.max(0, totalPrice - additionalPrice - homepagePrice);
         var sensitiveType = item.sensitive_type || null;
         
         var paymentStatusHtml = paymentStatus === 'paid' 
@@ -1186,6 +1286,11 @@ $(document).ready(function() {
                     '<p class="mb-1 text-muted small">' + statusMeta.nextStep + '</p>' +
                     '<p class="mb-1"><strong>Base Price:</strong> €' + basePrice.toFixed(2) + '</p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Price:</strong> <span class="text-warning">+ €' + additionalPrice.toFixed(2) + ' (' + escapeHtml(sensitiveType) + ')</span></p>' : '') +
+                    (homepagePrice > 0 || (item.homepage_days != null && parseInt(item.homepage_days, 10) > 0)
+                        ? '<p class="mb-1"><strong>Homepage:</strong> ' + (parseInt(item.homepage_days, 10) || '') + ' day(s)'
+                            + (homepagePrice > 0 ? ' <span class="text-muted">(+€' + homepagePrice.toFixed(2) + ')</span>' : ' <span class="text-success">(Free)</span>')
+                            + '</p>'
+                        : '') +
                     '<p class="mb-1"><strong>Total Amount:</strong> <span class="fw-bold text-primary fs-5">€' + totalPrice.toFixed(2) + '</span></p>' +
                 '</div>' +
             '</div>' +
@@ -1201,11 +1306,13 @@ $(document).ready(function() {
                     '<p class="mb-1"><strong>Site URL:</strong></p>' +
                     '<p class="mb-2"><a href="' + escapeHtml(item.site_url) + '" target="_blank" class="text-primary">' + escapeHtml(item.site_url) + ' <i class="fa fa-external-link fa-xs"></i></a></p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><strong>Sensitive Type:</strong></p><p class="mb-2 text-warning">' + escapeHtml(sensitiveType) + ' (+€' + additionalPrice.toFixed(2) + ')</p>' : '') +
+                    formatPlacementExtrasHtml(item) +
                 '</div>' +
                 '<div class="col-md-6">' +
                     '<p class="mb-1"><strong>Price Breakdown:</strong></p>' +
                     '<p class="mb-1"><small>Base Price: €' + basePrice.toFixed(2) + '</small></p>' +
                     (additionalPrice > 0 ? '<p class="mb-1"><small class="text-warning">+ ' + escapeHtml(sensitiveType) + ': €' + additionalPrice.toFixed(2) + '</small></p>' : '') +
+                    (homepagePrice > 0 ? '<p class="mb-1"><small>+ Homepage: €' + homepagePrice.toFixed(2) + '</small></p>' : '') +
                     '<p class="mb-2"><strong class="text-primary">Total: €' + totalPrice.toFixed(2) + '</strong></p>' +
                     '<p class="mb-1"><strong>Uploaded Document:</strong></p>' +
                     '<p class="mb-2">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="text-primary"><i class="fa fa-download me-1"></i>' + escapeHtml(item.content_original_name || 'Download article') + '</a>' : '—') + '</p>' +

@@ -22,7 +22,12 @@ class OrderAccepted extends PlatformMailable
         $this->order = $order;
         $this->orderItem = $orderItem;
         $this->site = $site;
-        $this->basePrice = $orderItem->price - ($orderItem->additional_price ?? 0);
+        $this->basePrice = round(
+            (float) $orderItem->price
+            - (float) ($orderItem->additional_price ?? 0)
+            - (float) ($orderItem->homepage_price ?? 0),
+            2
+        );
     }
 
     public function build()

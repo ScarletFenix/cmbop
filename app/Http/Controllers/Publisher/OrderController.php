@@ -22,6 +22,7 @@ use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Orders\ReviewHandoffService;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\SocialPostUrlValidator;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -196,6 +197,10 @@ class OrderController extends Controller
                     'price' => $item->publisherPayoutAmount(),
                     'additional_price' => (float) ($item->additional_price ?? 0),
                     'sensitive_type' => $item->sensitive_type ?? null,
+                    'homepage_days' => $item->homepage_days !== null ? (int) $item->homepage_days : null,
+                    'homepage_price' => (float) ($item->homepage_price ?? 0),
+                    'social_channels' => $item->enabledSocialChannels(),
+                    'social_post_urls' => $item->socialPostUrls(),
                     'content_link' => $item->content_link,
                     'content_download_url' => $item->content_submission_id
                         ? route('publisher.content.download', $item->content_submission_id)
@@ -342,6 +347,10 @@ class OrderController extends Controller
                 'price' => $orderItem->publisherPayoutAmount(),
                 'additional_price' => (float) ($orderItem->additional_price ?? 0),
                 'sensitive_type' => $orderItem->sensitive_type ?? null,
+                'homepage_days' => $orderItem->homepage_days !== null ? (int) $orderItem->homepage_days : null,
+                'homepage_price' => (float) ($orderItem->homepage_price ?? 0),
+                'social_channels' => $orderItem->enabledSocialChannels(),
+                'social_post_urls' => $orderItem->socialPostUrls(),
                 'content_link' => $orderItem->content_link,
                 'content_download_url' => $orderItem->content_submission_id
                     ? route('publisher.content.download', $orderItem->content_submission_id)
@@ -727,6 +736,10 @@ class OrderController extends Controller
         // into a 500 and hide the field errors from the UI.
         $request->validate([
             'live_url' => 'required|url',
+            'social_post_urls' => 'nullable|array',
+            'social_post_urls.facebook' => 'nullable|url',
+            'social_post_urls.instagram' => 'nullable|url',
+            'social_post_urls.x' => 'nullable|url',
         ]);
 
         app(CheckoutSchemaService::class)->ensureCheckoutTables();
@@ -754,6 +767,11 @@ class OrderController extends Controller
                     'message' => 'Wait for the advertiser to send the revised article before submitting a live URL.',
                 ], 422);
             }
+
+            $social = app(SocialPostUrlValidator::class)->normalize(
+                $orderItem->enabledSocialChannels(),
+                $request->input('social_post_urls')
+            );
 
             $health = app(LiveUrlHealthChecker::class)->check((string) $request->live_url);
 
@@ -816,6 +834,9 @@ class OrderController extends Controller
                     $payload['live_url_http_status'] = $health['status'];
                     $payload['live_url_checked_at'] = $health['checked_at'];
                 }
+                if (Schema::hasColumn('order_items', 'social_post_urls')) {
+                    $payload['social_post_urls'] = $social['urls'] === [] ? null : $social['urls'];
+                }
                 $orderItem->update($payload);
             } else {
                 Log::warning('live_url column does not exist in order_items table');
@@ -867,6 +888,7 @@ class OrderController extends Controller
                 'site_id' => $site->id,
                 'publisher_id' => $userId,
                 'live_url' => $request->live_url,
+                'social_post_urls' => $social['urls'],
                 'held_in_processing_for_sibling_revision' => $heldForSiblingRevision,
             ]);
 
@@ -878,6 +900,9 @@ class OrderController extends Controller
             if (! $health['ok']) {
                 $message .= ' Note: '.$health['message'];
             }
+            foreach ($social['warnings'] as $warning) {
+                $message .= ' Note: '.$warning;
+            }
 
             return response()->json([
                 'success' => true,
@@ -887,6 +912,8 @@ class OrderController extends Controller
                     'status' => $health['status'],
                     'message' => $health['message'],
                 ],
+                'social_post_urls' => $social['urls'],
+                'social_warnings' => $social['warnings'],
             ]);
 
         } catch (\Exception $e) {
@@ -913,6 +940,10 @@ class OrderController extends Controller
         // into a 500 and hide the field errors from the UI.
         $request->validate([
             'live_url' => 'required|url',
+            'social_post_urls' => 'nullable|array',
+            'social_post_urls.facebook' => 'nullable|url',
+            'social_post_urls.instagram' => 'nullable|url',
+            'social_post_urls.x' => 'nullable|url',
         ]);
 
         try {
@@ -936,17 +967,26 @@ class OrderController extends Controller
             }
 
             $liveUrl = (string) $request->live_url;
+            $social = app(SocialPostUrlValidator::class)->normalize(
+                $orderItem->enabledSocialChannels(),
+                $request->input('social_post_urls')
+            );
 
             $health = app(ReviewHandoffService::class)->handBack(
                 $orderItem,
                 $site,
                 $liveUrl,
-                'Live URL resubmitted: '.$liveUrl
+                'Live URL resubmitted: '.$liveUrl,
+                // Always pass the map (even empty) so resubmit can clear stale URLs.
+                $social['urls']
             );
 
             $message = 'Live URL resubmitted successfully!';
             if (! $health['ok']) {
                 $message .= ' Note: '.$health['message'];
+            }
+            foreach ($social['warnings'] as $warning) {
+                $message .= ' Note: '.$warning;
             }
 
             return response()->json([
@@ -957,6 +997,8 @@ class OrderController extends Controller
                     'status' => $health['status'],
                     'message' => $health['message'],
                 ],
+                'social_post_urls' => $social['urls'],
+                'social_warnings' => $social['warnings'],
             ]);
         } catch (ValidationException $e) {
             throw $e;
