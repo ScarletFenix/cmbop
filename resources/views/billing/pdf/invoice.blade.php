@@ -212,7 +212,10 @@
                 <div>Amount: <strong>{{ $symbol }}{{ number_format((float) $invoice->total_amount, 2) }}</strong></div>
                 @if($isPayout)
                     @php
-                        $payoutDest = \App\Models\Invoice::maskedPayoutDestination($invoice->billing_snapshot['payment_details'] ?? null, $invoice->payment_method);
+                        $payoutDest = \App\Models\Invoice::maskedPayoutDestination(
+                            data_get($invoice->billing_snapshot, 'payment_details'),
+                            $invoice->payment_method
+                        );
                     @endphp
                     @if($payoutDest)
                         <div class="muted" style="margin-top:6px;">Sent to: {{ $payoutDest }}</div>

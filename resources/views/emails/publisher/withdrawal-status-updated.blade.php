@@ -15,8 +15,6 @@ Your withdrawal request has been **{{ ucfirst($newStatus) }}**.
 @endif
 - **Payment Method:** {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }}
 
-## Status Updated:
-
 @if($notes)
 ## Admin Notes:
 

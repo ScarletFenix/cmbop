@@ -33,7 +33,19 @@ class WithdrawalPayoutStatementService
         }
 
         if ($existing = $this->find($withdrawal)) {
-            return $existing;
+            if (! $existing->hasPdf() || ! $existing->pdfExists()) {
+                try {
+                    $this->pdfs->generateAndStore($existing);
+                } catch (\Throwable $e) {
+                    Log::warning('Failed to regenerate missing payout statement PDF', [
+                        'withdrawal_id' => $withdrawal->id,
+                        'invoice_id' => $existing->id,
+                        'error' => $e->getMessage(),
+                    ]);
+                }
+            }
+
+            return $existing->fresh();
         }
 
         try {
@@ -190,5 +202,38 @@ class WithdrawalPayoutStatementService
         }
 
         return compact('created', 'skipped', 'failed') + ['invoice_ids' => $ids];
+    }
+
+    /**
+     * Ops: rewrite stored PDFs for existing payout statements (template updates).
+     *
+     * @return array{regenerated: int, failed: int}
+     */
+    public function regenerateExistingPdfs(int $limit = 50): array
+    {
+        $docs = Invoice::query()
+            ->where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->orderByDesc('id')
+            ->limit(max(1, min(200, $limit)))
+            ->get();
+
+        $regenerated = 0;
+        $failed = 0;
+
+        foreach ($docs as $doc) {
+            try {
+                $this->pdfs->generateAndStore($doc);
+                $regenerated++;
+            } catch (\Throwable $e) {
+                $failed++;
+                Log::error('Failed to regenerate payout statement PDF', [
+                    'invoice_id' => $doc->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
+        }
+
+        return compact('regenerated', 'failed');
     }
 }

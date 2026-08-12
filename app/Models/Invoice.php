@@ -171,12 +171,7 @@ class Invoice extends Model
         };
     }
 
-    /**
-     * Masked destination for payout PDFs / UI (never full IBAN/wallet).
-     *
-     * @param  array<string, mixed>|null  $details
-     */
-    public static function maskedPayoutDestination(?array $details, ?string $method): ?string
+    public static function maskedPayoutDestination(mixed $details, ?string $method): ?string
     {
         if (! is_array($details) || $details === []) {
             return null;

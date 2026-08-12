@@ -31,7 +31,10 @@
                 <dt class="col-sm-4 text-muted">Method</dt>
                 <dd class="col-sm-8">{{ \App\Models\Invoice::paymentMethodLabel($invoice->payment_method) }}</dd>
                 @php
-                    $dest = \App\Models\Invoice::maskedPayoutDestination($invoice->billing_snapshot['payment_details'] ?? null, $invoice->payment_method);
+                    $dest = \App\Models\Invoice::maskedPayoutDestination(
+                        data_get($invoice->billing_snapshot, 'payment_details'),
+                        $invoice->payment_method
+                    );
                 @endphp
                 @if($dest)
                     <dt class="col-sm-4 text-muted">Sent to</dt>
