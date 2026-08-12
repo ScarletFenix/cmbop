@@ -293,8 +293,6 @@
 </div>
 
 @include('partials.order-chat-modal')
-    </div>
-</div>
 
 <style>
 .table td, .table th {
@@ -469,6 +467,20 @@ let refreshInterval = null;
 
 // Get the base URL dynamically
 const baseUrl = window.location.origin;
+
+/** Bootstrap 5 modal helpers (jQuery .modal() is unavailable without the BS4 plugin). */
+function showTasksModal(id) {
+    var el = document.getElementById(id);
+    if (!el || !window.bootstrap || !bootstrap.Modal) return;
+    bootstrap.Modal.getOrCreateInstance(el).show();
+}
+function hideTasksModal(id) {
+    var el = document.getElementById(id);
+    if (!el || !window.bootstrap || !bootstrap.Modal) return;
+    var inst = bootstrap.Modal.getInstance(el) || bootstrap.Modal.getOrCreateInstance(el);
+    inst.hide();
+}
+
 const AUTO_APPROVE_HOURS = {{ (int) \App\Models\OrderItem::autoApproveHours() }};
 const AUTO_APPROVE_DAYS = {{ (int) max(1, (int) ceil(\App\Models\OrderItem::autoApproveHours() / 24)) }};
 
@@ -569,13 +581,13 @@ $(document).ready(function() {
 
     $(document).on('click', '.accept-task', function() {
         $('#accept_order_item_id').val($(this).data('id'));
-        $('#acceptModal').modal('show');
+        showTasksModal('acceptModal');
     });
 
     $(document).on('click', '.reject-task', function() {
         $('#reject_order_item_id').val($(this).data('id'));
         $('#reject_reason').val('');
-        $('#rejectModal').modal('show');
+        showTasksModal('rejectModal');
     });
 
     $(document).on('click', '.request-content-revision', function() {
@@ -591,13 +603,13 @@ $(document).ready(function() {
         $('#contentRevisionModalHint').text(isUpdate
             ? 'Update what the advertiser should change. Live URL submit stays blocked until they send a revised article.'
             : 'Ask the advertiser to upload or link an updated article. Live URL submit stays blocked until they send it. One request at a time — you can update the reason while waiting.');
-        $('#contentRevisionModal').modal('show');
+        showTasksModal('contentRevisionModal');
     });
 
     $(document).on('click', '.submit-live-url', function() {
         $('#complete_order_item_id').val($(this).data('id'));
         $('#live_url').val('');
-        $('#completeModal').modal('show');
+        showTasksModal('completeModal');
     });
 
     // Chat functionality (shared OrderChat module)
@@ -771,7 +783,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     Swal.fire('Success!', response.message, 'success');
-                    $('#acceptModal').modal('hide');
+                    hideTasksModal('acceptModal');
                     loadTasks();
                     loadStatistics();
                 } else {
@@ -807,7 +819,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     Swal.fire('Cancelled', response.message, 'success');
-                    $('#rejectModal').modal('hide');
+                    hideTasksModal('rejectModal');
                     loadTasks();
                     loadStatistics();
                 } else {
@@ -841,7 +853,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     Swal.fire('Request sent', response.message, 'success');
-                    $('#contentRevisionModal').modal('hide');
+                    hideTasksModal('contentRevisionModal');
                     loadTasks();
                 } else {
                     Swal.fire('Error!', response.message || 'Failed to send request', 'error');
@@ -880,7 +892,7 @@ $(document).ready(function() {
                         html: response.message + '<br><br><small>The advertiser now has ' + AUTO_APPROVE_DAYS + ' day(s) to review your submission. If no action is taken, the order will be approved.</small>',
                         icon: 'success'
                     });
-                    $('#completeModal').modal('hide');
+                    hideTasksModal('completeModal');
                     loadTasks();
                     loadStatistics();
                 } else {
@@ -1185,7 +1197,7 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     renderDetailsModal(response.data);
-                    $('#detailsModal').modal('show');
+                    showTasksModal('detailsModal');
                     if (response.data && response.data.order_id) {
                         loadOrderActivityTimeline(response.data.order_id);
                     } else if (response.data && response.data.order && response.data.order.id) {
