@@ -274,6 +274,48 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
     }
 
+    public function test_ajax_row_prefers_uploaded_cover_over_screenshot(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'site_image' => 'sites/admin-cover.webp',
+            'screenshot_thumb_path' => 'site-screenshots/auto-thumb.webp',
+            'screenshot_path' => 'site-screenshots/auto-full.webp',
+        ]);
+
+        $ajaxHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/class="site-row-preview"[^>]*>\s*<img[^>]+src="[^"]*\/media\/sites\/admin-cover\.webp"/',
+            $ajaxHtml
+        );
+        $this->assertStringContainsString('/media/sites/admin-cover.webp', $ajaxHtml);
+        $this->assertStringContainsString('/storage/sites/admin-cover.webp', $ajaxHtml);
+    }
+
+    public function test_ajax_row_skips_placeholder_screenshot_when_cover_exists(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'site_image' => 'sites/real-cover.webp',
+            'screenshot_thumb_path' => 'site-screenshots/home-placeholder.webp',
+            'screenshot_path' => 'site-screenshots/home-placeholder-full.webp',
+        ]);
+
+        $ajaxHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('/media/sites/real-cover.webp', $ajaxHtml);
+        $this->assertStringNotContainsString('placeholder', $ajaxHtml);
+    }
+
     public function test_ajax_filters_pending_active_and_invites_sites(): void
     {
         $pending = $this->makeSite([
