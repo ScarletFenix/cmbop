@@ -81,4 +81,51 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringContainsString('3 days', $html);
         $this->assertStringContainsString('Publication duration', $html);
     }
+
+    public function test_expand_layout_separates_pricing_and_empty_states(): void
+    {
+        $this->makeSite([
+            'example_url' => null,
+            'sensitive_prices' => ['crypto' => 23],
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('catalog-expand-grid', $html);
+        $this->assertStringContainsString('catalog-expand-pricing', $html);
+        $this->assertStringContainsString('Sensitive topics', $html);
+        $this->assertStringContainsString('+€23.00', $html);
+        $this->assertMatchesRegularExpression('/→\s*€\d+\.\d{2}/u', $html);
+        $this->assertStringContainsString('Screenshot not available yet', $html);
+        $this->assertStringContainsString('No sample article yet', $html);
+        $this->assertStringNotContainsString('Not available</a>', $html);
+    }
+
+    public function test_mobile_card_details_cover_desktop_decision_fields(): void
+    {
+        $this->makeSite([
+            'example_url' => null,
+            'sponsored' => true,
+            'partner_material' => true,
+            'description' => '<p>Full mobile description for parity.</p>',
+            'screenshot_path' => 'site-screenshots/mobile-parity.webp',
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('catalog-card-details', $html);
+        $this->assertStringContainsString('Homepage preview', $html);
+        $this->assertStringContainsString('Full mobile description for parity.', $html);
+        $this->assertStringContainsString('Sponsored', $html);
+        $this->assertStringContainsString('Partner', $html);
+        $this->assertStringContainsString('No sample article yet', $html);
+        $this->assertStringContainsString('catalog-deferred-preview', $html);
+        $this->assertStringContainsString('Publisher trust', $html);
+    }
 }
