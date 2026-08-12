@@ -1209,6 +1209,12 @@ class SiteController extends Controller
             }
 
             $payload['site_image'] = $stored;
+        } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
+            // JSON/AJAX path: image already persisted via upload-image.
+            $path = (string) $request->input('site_image');
+            if ($path !== '' && ! str_contains($path, '..')) {
+                $payload['site_image'] = ltrim(str_replace('\\', '/', $path), '/');
+            }
         }
 
         return $payload;

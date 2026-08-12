@@ -433,7 +433,7 @@ function editSiteWithImage(siteId) {
 
     Swal.fire({
         title: 'Edit Site',
-        width: 840,
+        width: 960,
         showCancelButton: true,
         confirmButtonText: 'Update',
         showLoaderOnConfirm: true,
@@ -441,20 +441,20 @@ function editSiteWithImage(siteId) {
         allowEscapeKey: () => !Swal.isLoading(),
         html: `
             <div style="text-align: left;">
-                <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
-                <input id="swal-site_name" class="swal2-input" value="${escapeHtml(site.site_name ?? '')}" placeholder="Site Name">
-                
-                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site URL</label>
-                <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
-                
-                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
+                <label style="font-weight:600; margin-bottom:5px; display:block;">Site Image (Upload)</label>
                 <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
                 <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
                     ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
                         ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" onerror="this.parentElement.classList.add('is-empty'); this.remove();">`
                         : '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>'}
                 </div>
-                <small class="text-muted" style="display:block; margin-top:5px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
+                <small class="text-muted" style="display:block; margin-top:5px; margin-bottom:12px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
+
+                <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
+                <input id="swal-site_name" class="swal2-input" value="${escapeHtml(site.site_name ?? '')}" placeholder="Site Name">
+                
+                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site URL</label>
+                <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DA (Domain Authority)</label>
                 <input id="swal-da" class="swal2-input" type="number" value="${site.da ?? ''}" placeholder="0-100" min="0" max="100" step="1">
