@@ -170,13 +170,13 @@
                             @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="10240">
-                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
@@ -184,7 +184,7 @@
                                 @if($site->site_image)
                                     <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
                                 @else
-                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                    <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
                         </div>
@@ -341,13 +341,13 @@
                             <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
                         </div>
 
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="10240">
-                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
@@ -355,7 +355,7 @@
                                 @if($site->site_image)
                                     <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
                                 @else
-                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                    <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
                         </div>
@@ -442,7 +442,7 @@
             preview.innerHTML = '<img src="' + existingSrc + '" alt="Current site image">';
         } else {
             preview.classList.add('is-empty');
-            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot</span>';
+            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot (16:10)</span>';
         }
     }
 

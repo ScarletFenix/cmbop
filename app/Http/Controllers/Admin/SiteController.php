@@ -16,6 +16,7 @@ use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -656,7 +657,15 @@ class SiteController extends Controller
 
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
-                    $imagePath = $request->file('site_image')->store('sites', 'public');
+                    $disk = Storage::disk('public');
+                    $disk->makeDirectory('sites');
+                    $stored = $request->file('site_image')->store('sites', 'public');
+                    if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                        throw ValidationException::withMessages([
+                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                        ]);
+                    }
+                    $imagePath = $stored;
                 }
 
                 $da = (int) $request->input('da');
@@ -840,7 +849,7 @@ class SiteController extends Controller
         }
 
         if (! $file->isValid()) {
-            $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+            $mb = $this->siteImageMaxMegabytesLabel();
             $message = match ($file->getError()) {
                 UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The site image is too large. Use a file under '.$mb.' MB.',
                 UPLOAD_ERR_PARTIAL => 'The site image upload was interrupted. Try again.',
@@ -860,16 +869,33 @@ class SiteController extends Controller
         }
 
         $request->validate([
-            'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => 'required|file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
+        $disk = Storage::disk('public');
+        $disk->makeDirectory('sites');
+
         // Delete old image if exists
-        if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-            Storage::disk('public')->delete($site->site_image);
+        if ($site->site_image && $disk->exists($site->site_image)) {
+            $disk->delete($site->site_image);
         }
 
         // Store new image and persist on the site (admin + marketing).
         $path = $file->store('sites', 'public');
+        if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
+            $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
         $site->update(['site_image' => $path]);
 
         ActivityLogger::log(
@@ -880,9 +906,12 @@ class SiteController extends Controller
             $site->site_name
         );
 
+        $imageUrl = $this->staffPublicStorageUrl($path);
+
         return response()->json([
             'success' => true,
             'image_path' => $path,
+            'image_url' => $imageUrl,
             'message' => 'Image uploaded successfully',
         ]);
     }
@@ -972,14 +1001,24 @@ class SiteController extends Controller
                 }
 
                 $request->validate([
-                    'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+                    'site_image' => 'file|image|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
                 ], $this->siteImageValidationMessages());
 
-                if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                    Storage::disk('public')->delete($site->site_image);
+                $disk = Storage::disk('public');
+                $disk->makeDirectory('sites');
+
+                if ($site->site_image && $disk->exists($site->site_image)) {
+                    $disk->delete($site->site_image);
                 }
 
-                $data['site_image'] = $upload->store('sites', 'public');
+                $stored = $upload->store('sites', 'public');
+                if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                    throw ValidationException::withMessages([
+                        'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
+                }
+
+                $data['site_image'] = $stored;
             } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
                 // JSON/AJAX path: image path already uploaded via upload-image.
                 $data['site_image'] = $request->site_image;
@@ -1148,22 +1187,45 @@ class SiteController extends Controller
                 return back()->withErrors(['site_image' => $message])->withInput();
             }
 
-            if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                Storage::disk('public')->delete($site->site_image);
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
+
+            if ($site->site_image && $disk->exists($site->site_image)) {
+                $disk->delete($site->site_image);
             }
 
-            $payload['site_image'] = $upload->store('sites', 'public');
+            $stored = $upload->store('sites', 'public');
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 500);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
+            $payload['site_image'] = $stored;
         }
 
         return $payload;
     }
 
     /**
-     * Max upload size for site cover images (kilobytes). Matches public/.user.ini.
+     * Max upload size for site cover images (kilobytes).
+     * App cap 10 MB, also clamped to PHP upload_max_filesize / post_max_size.
      */
     private function siteImageMaxKilobytes(): int
     {
-        return 10240; // 10 MB
+        return SiteImageUpload::maxKilobytes();
+    }
+
+    private function siteImageMaxMegabytesLabel(): int
+    {
+        return SiteImageUpload::maxMegabytesLabel();
     }
 
     /**
@@ -1171,7 +1233,7 @@ class SiteController extends Controller
      */
     private function siteImageValidationMessages(): array
     {
-        $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+        $mb = $this->siteImageMaxMegabytesLabel();
 
         return [
             'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',
