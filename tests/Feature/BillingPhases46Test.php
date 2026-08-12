@@ -211,10 +211,13 @@ class BillingPhases46Test extends TestCase
         $this->assertStringContainsString('Withdrawal fee', $html);
         $this->assertStringContainsString('WD-'.$withdrawal->id, $html);
         $this->assertStringContainsString('Net payout', $html);
+        $this->assertStringContainsString('Pay to', $html);
         $this->assertStringContainsString('About this statement', $html);
         $this->assertStringNotContainsString('Publisher website', $html);
         $this->assertStringNotContainsString('Order: <strong>#</strong>', $html);
         $this->assertStringNotContainsString('>Discount', $html);
+        $this->assertSame(1, substr_count($html, 'Withdrawal fee'));
+        $this->assertStringNotContainsString('Bill to', $html);
     }
 
     public function test_publisher_cannot_access_another_publishers_payout_doc(): void
@@ -368,7 +371,8 @@ class BillingPhases46Test extends TestCase
             $built = $mail->build();
             $data = $built->viewData;
 
-            return ($data['statementUrl'] ?? null) === route('publisher.billing.download', $statement)
+            return ($data['hasStatement'] ?? false) === true
+                && ($data['statementUrl'] ?? null) === route('publisher.billing.download', $statement)
                 && (float) $data['withdrawal']->net_amount === 50.0;
         });
 

@@ -42,19 +42,18 @@ class BackfillPayoutStatements extends Command
         }
 
         if ($this->option('dry-run')) {
-            $count = Withdrawal::query()
+            $missing = 0;
+            Withdrawal::query()
                 ->where('status', 'completed')
-                ->whereNotExists(function ($q) {
-                    $q->selectRaw('1')
-                        ->from('invoices')
-                        ->whereColumn('invoices.user_id', 'withdrawals.user_id')
-                        ->where('invoices.type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
-                        ->where('invoices.status', '!=', Invoice::STATUS_CANCELLED)
-                        ->whereRaw("invoices.reference_code = CONCAT('WD-', withdrawals.id)");
-                })
-                ->count();
+                ->orderBy('id')
+                ->lazyById(100)
+                ->each(function (Withdrawal $withdrawal) use ($statements, &$missing) {
+                    if (! $statements->find($withdrawal)) {
+                        $missing++;
+                    }
+                });
 
-            $this->info("Dry run: {$count} completed withdrawal(s) missing a payout statement (limit {$limit}).");
+            $this->info("Dry run: {$missing} completed withdrawal(s) missing a payout statement (limit {$limit}).");
 
             return self::SUCCESS;
         }

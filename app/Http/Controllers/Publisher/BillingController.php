@@ -67,8 +67,13 @@ class BillingController extends Controller
         abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
 
         if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
-            $pdfs->generateAndStore($invoice);
-            $invoice->refresh();
+            try {
+                $pdfs->generateAndStore($invoice);
+                $invoice->refresh();
+            } catch (\Throwable $e) {
+                report($e);
+                // Fall through — download() can still render a live PDF.
+            }
         }
 
         $billing->recordDownload($invoice);
@@ -83,8 +88,13 @@ class BillingController extends Controller
         abort_if($invoice->status === Invoice::STATUS_CANCELLED, 404);
 
         if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
-            $pdfs->generateAndStore($invoice);
-            $invoice->refresh();
+            try {
+                $pdfs->generateAndStore($invoice);
+                $invoice->refresh();
+            } catch (\Throwable $e) {
+                report($e);
+                // Fall through — stream() can still render a live PDF.
+            }
         }
 
         $billing->recordDownload($invoice);

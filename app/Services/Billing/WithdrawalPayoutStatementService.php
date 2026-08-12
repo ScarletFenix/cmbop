@@ -4,6 +4,7 @@ namespace App\Services\Billing;
 
 use App\Models\Invoice;
 use App\Models\Withdrawal;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -26,60 +27,71 @@ class WithdrawalPayoutStatementService
             return null;
         }
 
-        $withdrawal->loadMissing('user');
-
-        if (! $withdrawal->user) {
+        $withdrawalId = (int) $withdrawal->id;
+        if ($withdrawalId <= 0) {
             return null;
         }
 
-        if ($existing = $this->find($withdrawal)) {
-            if (! $existing->hasPdf() || ! $existing->pdfExists()) {
-                try {
-                    $this->pdfs->generateAndStore($existing);
-                } catch (\Throwable $e) {
-                    Log::warning('Failed to regenerate missing payout statement PDF', [
-                        'withdrawal_id' => $withdrawal->id,
-                        'invoice_id' => $existing->id,
-                        'error' => $e->getMessage(),
-                    ]);
-                }
-            }
-
-            return $existing->fresh();
-        }
-
         try {
-            $statement = Invoice::create($this->payload($withdrawal));
-            try {
-                $this->pdfs->generateAndStore($statement);
-            } catch (\Throwable $pdfError) {
-                // Keep the statement row so the publisher can see it in Payout docs;
-                // download/view regenerate the PDF on demand.
-                Log::error('Payout statement created but PDF generation failed', [
-                    'withdrawal_id' => $withdrawal->id,
-                    'invoice_id' => $statement->id,
-                    'error' => $pdfError->getMessage(),
-                ]);
-                $this->events->log('withdrawal_payout_statement_pdf_failed', $statement, null, $withdrawal->user_id, [
-                    'withdrawal_id' => $withdrawal->id,
-                    'error' => $pdfError->getMessage(),
+            return DB::transaction(function () use ($withdrawalId) {
+                $locked = Withdrawal::query()
+                    ->with('user')
+                    ->whereKey($withdrawalId)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (! $locked || $locked->status !== 'completed' || ! $locked->user) {
+                    return null;
+                }
+
+                if ($existing = $this->find($locked)) {
+                    if (! $existing->hasPdf() || ! $existing->pdfExists()) {
+                        try {
+                            $this->pdfs->generateAndStore($existing);
+                        } catch (\Throwable $e) {
+                            Log::warning('Failed to regenerate missing payout statement PDF', [
+                                'withdrawal_id' => $locked->id,
+                                'invoice_id' => $existing->id,
+                                'error' => $e->getMessage(),
+                            ]);
+                        }
+                    }
+
+                    return $existing->fresh();
+                }
+
+                $statement = Invoice::create($this->payload($locked));
+                try {
+                    $this->pdfs->generateAndStore($statement);
+                } catch (\Throwable $pdfError) {
+                    // Keep the statement row so the publisher can see it in Payout docs;
+                    // download/view regenerate the PDF on demand.
+                    Log::error('Payout statement created but PDF generation failed', [
+                        'withdrawal_id' => $locked->id,
+                        'invoice_id' => $statement->id,
+                        'error' => $pdfError->getMessage(),
+                    ]);
+                    $this->events->log('withdrawal_payout_statement_pdf_failed', $statement, null, $locked->user_id, [
+                        'withdrawal_id' => $locked->id,
+                        'error' => $pdfError->getMessage(),
+                    ]);
+
+                    return $statement->fresh();
+                }
+
+                $this->events->log('withdrawal_payout_statement_generated', $statement, null, $locked->user_id, [
+                    'withdrawal_id' => $locked->id,
                 ]);
 
                 return $statement->fresh();
-            }
-
-            $this->events->log('withdrawal_payout_statement_generated', $statement, null, $withdrawal->user_id, [
-                'withdrawal_id' => $withdrawal->id,
-            ]);
-
-            return $statement->fresh();
+            });
         } catch (\Throwable $e) {
             Log::error('Failed to generate withdrawal payout statement', [
-                'withdrawal_id' => $withdrawal->id,
+                'withdrawal_id' => $withdrawalId,
                 'error' => $e->getMessage(),
             ]);
             $this->events->log('withdrawal_payout_statement_failed', null, null, $withdrawal->user_id, [
-                'withdrawal_id' => $withdrawal->id,
+                'withdrawal_id' => $withdrawalId,
                 'error' => $e->getMessage(),
             ]);
 
@@ -118,15 +130,13 @@ class WithdrawalPayoutStatementService
             ],
         ];
 
-        if ($fee > 0) {
-            $lineItems[] = [
-                'description' => 'Withdrawal fee',
-                'reference' => 'WD-'.$withdrawal->id.'-fee',
-                'quantity' => 1,
-                'unit_price' => -$fee,
-                'line_total' => -$fee,
-            ];
-        }
+        // Fee is shown once in totals as "Withdrawal fee" (discount_amount),
+        // not also as a negative line item.
+
+        $details = is_array($withdrawal->payment_details) ? $withdrawal->payment_details : [];
+        $payeeName = $user->payout_business_name
+            ?: ($details['account_holder'] ?? null)
+            ?: ($user->billing_name ?? $user->name);
 
         return [
             'invoice_number' => $this->numbers->nextPayoutStatement(),
@@ -147,18 +157,18 @@ class WithdrawalPayoutStatementService
             'transaction_id' => 'WD-'.$withdrawal->id,
             'invoice_date' => $paidAt,
             'paid_at' => $paidAt,
-            'customer_name' => $user->billing_name ?? $user->name,
+            'customer_name' => $payeeName,
             'customer_email' => $user->email,
             'billing_snapshot' => [
-                'name' => $user->billing_name ?? $user->name,
+                'name' => $payeeName,
                 'email' => $user->email,
-                'company' => $user->company_name ?? null,
+                'company' => $user->payout_business_name ?: ($user->company_name ?? null),
                 'address' => $user->address ?? null,
                 'city' => $user->city ?? null,
                 'state' => $user->state ?? null,
                 'postal_code' => $user->postal_code ?? null,
                 'country' => $user->country ?? null,
-                'payment_details' => $withdrawal->payment_details,
+                'payment_details' => $details,
             ],
             'line_items' => $lineItems,
             'pdf_disk' => config('billing.storage.disk', 'local'),
@@ -182,27 +192,28 @@ class WithdrawalPayoutStatementService
     {
         $limit = max(1, min(200, $limit));
 
-        $withdrawals = Withdrawal::query()
-            ->with('user')
-            ->where('status', 'completed')
-            ->whereNotExists(function ($q) {
-                $q->selectRaw('1')
-                    ->from('invoices')
-                    ->whereColumn('invoices.user_id', 'withdrawals.user_id')
-                    ->where('invoices.type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
-                    ->where('invoices.status', '!=', Invoice::STATUS_CANCELLED)
-                    ->whereRaw("invoices.reference_code = CONCAT('WD-', withdrawals.id)");
-            })
-            ->orderBy('id')
-            ->limit($limit)
-            ->get();
-
         $created = 0;
         $skipped = 0;
         $failed = 0;
         $ids = [];
 
+        $withdrawals = Withdrawal::query()
+            ->with('user')
+            ->where('status', 'completed')
+            ->orderBy('id')
+            ->lazyById(100);
+
         foreach ($withdrawals as $withdrawal) {
+            if ($created + $failed >= $limit) {
+                break;
+            }
+
+            if ($this->find($withdrawal)) {
+                $skipped++;
+
+                continue;
+            }
+
             if (! $withdrawal->user) {
                 $skipped++;
 

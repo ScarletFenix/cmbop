@@ -33,15 +33,19 @@ class WithdrawalStatusUpdated extends PlatformMailable
     public function build()
     {
         $statementUrl = null;
+        $hasStatement = false;
+
         if ($this->newStatus === 'completed') {
             try {
                 $statement = app(WithdrawalPayoutStatementService::class)
                     ->find($this->withdrawal);
-                $statementUrl = $statement
-                    ? route('publisher.billing.download', $statement)
-                    : route('publisher.billing.index');
+                if ($statement) {
+                    $hasStatement = true;
+                    $statementUrl = route('publisher.billing.download', $statement);
+                }
             } catch (\Throwable) {
-                $statementUrl = route('publisher.billing.index');
+                $hasStatement = false;
+                $statementUrl = null;
             }
         }
 
@@ -53,6 +57,7 @@ class WithdrawalStatusUpdated extends PlatformMailable
                 'newStatus' => $this->newStatus,
                 'notes' => $this->notes,
                 'statementUrl' => $statementUrl,
+                'hasStatement' => $hasStatement,
             ]);
     }
 }

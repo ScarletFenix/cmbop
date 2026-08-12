@@ -27,7 +27,7 @@ Your withdrawal request has been **{{ ucfirst($newStatus) }}**.
 @endphp
 The amount of **€{{ number_format($netPaid, 2) }}** has been sent to your {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }} account.
 
-@if(!empty($statementUrl))
+@if(!empty($hasStatement) && !empty($statementUrl))
 @component('mail::button', ['url' => $statementUrl])
 Download payout statement
 @endcomponent

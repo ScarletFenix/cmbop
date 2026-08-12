@@ -164,7 +164,7 @@
     <tr>
         <td style="padding-right:8px;">
             <div class="box">
-                <h4>Bill to</h4>
+                <h4>{{ $isPayout ? 'Pay to' : 'Bill to' }}</h4>
                 <div><strong>{{ $invoice->customer_name }}</strong></div>
                 <div class="muted">{{ $invoice->customer_email }}</div>
                 @php $bill = $invoice->billing_snapshot ?? []; @endphp
