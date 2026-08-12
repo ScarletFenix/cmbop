@@ -140,6 +140,117 @@ class Site extends Model
         return $this->awaitsPublisherDetails() || $this->hasDetailsComplete();
     }
 
+    /**
+     * Whether required listing details look complete (used to heal stale awaiting_details).
+     * example_url is optional — publishers often leave it blank.
+     */
+    public function hasCompletedPublisherDetails(): bool
+    {
+        $description = trim((string) ($this->description ?? ''));
+        $niches = collect($this->categories_array ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
+            ->values()
+            ->all();
+
+        if (strlen($description) < 50) {
+            return false;
+        }
+
+        if (str_starts_with($description, 'Please replace')) {
+            return false;
+        }
+
+        if ($niches === []) {
+            return false;
+        }
+
+        if (trim((string) ($this->turnaround_time ?? '')) === '') {
+            return false;
+        }
+
+        if (trim((string) ($this->publication_time ?? '')) === '') {
+            return false;
+        }
+
+        if (trim((string) ($this->link_type ?? '')) === '') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Promote stale bulk drafts to ready_for_review when details are already filled.
+     */
+    public function promoteFromAwaitingDetailsIfComplete(): bool
+    {
+        if (! $this->awaitsPublisherDetails()) {
+            return false;
+        }
+
+        if (! $this->hasCompletedPublisherDetails()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    /**
+     * Admin explicit approve/activate: drop the awaiting_details lock.
+     */
+    public function clearAwaitingDetailsForAdmin(): bool
+    {
+        if (! $this->awaitsPublisherDetails()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    private function clearAwaitingDetailsOnboarding(): bool
+    {
+        $ok = $this->markReadyForAdminReview();
+
+        if ($ok && $this->bulk_site_request_id) {
+            $this->bulkSiteRequest?->refreshProgressStatus();
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Move a bulk draft into the admin review queue.
+     * Hostinger may still have a narrow ENUM/VARCHAR that rejects ready_for_review;
+     * NULL is treated as queue-eligible by needsAdminReview().
+     */
+    public function markReadyForAdminReview(): bool
+    {
+        self::ensureOnboardingStatusColumnAcceptsValues();
+
+        $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
+
+        try {
+            $this->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            if (! str_contains($e->getMessage(), 'onboarding_status')) {
+                throw $e;
+            }
+
+            Log::warning('Could not set onboarding_status=ready_for_review; falling back to null', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->onboarding_status = null;
+            $this->save();
+
+            return true;
+        }
+    }
+
     public function markDetailsComplete(): bool
     {
         self::ensureOnboardingStatusColumnAcceptsValues();
@@ -203,6 +314,63 @@ class Site extends Model
                 'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
             ]);
         }
+    }
+
+    /**
+     * Marketing may delete pending / not-live sites only (never verified or active portal listings).
+     */
+    public function canBeDeletedByMarketing(): bool
+    {
+        return ! (bool) $this->verified && ! (bool) $this->active;
+    }
+
+    public function isReadyForAdminReview(): bool
+    {
+        // details_complete = publisher preview stage; not admin-queueable yet.
+        return $this->onboarding_status === null
+            || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
+    }
+
+    /**
+     * Open admin review queue: not verified, not live, details ready
+     * (excludes awaiting_details and details_complete publisher drafts).
+     * Cleared from the queue when admin verifies and/or activates (or deletes).
+     */
+    public function needsAdminReview(): bool
+    {
+        return ! (bool) $this->verified
+            && ! (bool) $this->active
+            && $this->isReadyForAdminReview()
+            && $this->isAcceptedByPublisher();
+    }
+
+    /**
+     * @param  Builder<\App\Models\Site>  $query
+     * @return Builder<\App\Models\Site>
+     */
+    public function scopeNeedsAdminReview($query)
+    {
+        $query = $query
+            ->where(function ($q) {
+                $q->where('verified', 0)->orWhereNull('verified');
+            })
+            ->where(function ($q) {
+                $q->where('active', 0)->orWhereNull('active');
+            })
+            ->where(function ($q) {
+                $q->whereNull('onboarding_status')
+                    ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
+            });
+
+        // Staff-assigned listings wait on publisher accept before the review queue.
+        if (static::hasSitesColumn('publisher_accepted_at')) {
+            $query->where(function ($q) {
+                $q->whereNotNull('publisher_accepted_at')
+                    ->orWhereNull('assigned_by_user_id');
+            });
+        }
+
+        return $query;
     }
 
     public function enrichmentRuns()
