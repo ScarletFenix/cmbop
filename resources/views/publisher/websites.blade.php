@@ -2552,7 +2552,12 @@ closeBtn.on('click', function(){
 
 // Edit via lean JSON endpoint
 $(document).on('click', '.btn-edit', async function() {
-    const id = $(this).data('id');
+    const siteHint = $(this).data('site') || {};
+    const id = $(this).data('id') || siteHint.id;
+    if (!id) {
+        Swal.fire({ icon: 'error', title: 'Could not load site for editing' });
+        return;
+    }
     try {
         const res = await fetch(`/publisher/sites/${id}/edit-data`, { headers: { 'Accept': 'application/json' } });
         const data = await res.json();

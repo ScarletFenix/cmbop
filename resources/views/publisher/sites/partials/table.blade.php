@@ -913,7 +913,9 @@
                         'categories', 'category', 'description',
                     ]);
                 @endphp
-                <button type="button" class="btn btn-sm btn-primary btn-edit" data-site='@json($editPayload)'
+                <button type="button" class="btn btn-sm btn-primary btn-edit"
+                        data-id="{{ $site->id }}"
+                        data-site='@json($editPayload)'
                         aria-label="Edit"
                         data-glass-tip
                         data-glass-tip-body="Edit"

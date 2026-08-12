@@ -57,6 +57,11 @@ class PublisherMySitesPageTest extends TestCase
         );
         $this->assertStringContainsString('window.loadSites = fetchSites', $html);
         $this->assertStringContainsString('id="sitesTableWrapper"', $html);
+        $this->assertStringContainsString(
+            'const id = $(this).data(\'id\') || siteHint.id;',
+            $html,
+            'Edit click handler must resolve the site id from data-id or data-site.'
+        );
     }
 
     private function makeSite(array $overrides = []): Site
@@ -176,6 +181,11 @@ class PublisherMySitesPageTest extends TestCase
             'Ajax table should include the site name'
         );
         $this->assertStringContainsString('btn-edit', $ajaxHtml);
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*btn-edit[^"]*"[^>]*data-id="\d+"/s',
+            $ajaxHtml,
+            'Edit buttons must expose data-id so the inline edit handler can call edit-data.'
+        );
         $this->assertStringNotContainsString('<script', $ajaxHtml);
         $this->assertStringContainsString('🇺🇸', $ajaxHtml);
         $this->assertStringContainsString('sitesStatusMeta', $ajaxHtml);
