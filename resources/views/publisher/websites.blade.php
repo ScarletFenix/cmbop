@@ -2482,9 +2482,10 @@ $(document).ready(function(){
             text: 'This site will be deleted permanently!',
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, delete it!'
+            confirmButtonText: 'Yes, delete it!',
+            customClass: { confirmButton: 'slb-swal-danger' },
+            reverseButtons: true,
+            focusCancel: true,
         }).then((result) => {
             if (result.isConfirmed) form.submit();
         });
@@ -2650,8 +2651,6 @@ $(document).on('click', '.btn-feature-site', async function () {
         showCancelButton: true,
         confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
         denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
-        confirmButtonColor: '#0b6266',
-        denyButtonColor: '#635bff',
     });
 
     if (result.isDenied) {
@@ -2711,7 +2710,6 @@ $(document).on('click', '.btn-discount-site', async function () {
                <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
         showCancelButton: true,
         confirmButtonText: 'Publish discount',
-        confirmButtonColor: '#0b6266',
         preConfirm: () => ({
             percent: document.getElementById('swal-pct').value,
             days: document.getElementById('swal-days').value,
@@ -2730,7 +2728,14 @@ $(document).on('click', '.btn-discount-site', async function () {
 
 $(document).on('click', '.btn-discount-clear', async function () {
     const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'End this discount now?', showCancelButton: true, confirmButtonText: 'End discount', confirmButtonColor: '#b91c1c' });
+    const ok = await Swal.fire({
+        title: 'End this discount now?',
+        showCancelButton: true,
+        confirmButtonText: 'End discount',
+        customClass: { confirmButton: 'slb-swal-danger' },
+        reverseButtons: true,
+        focusCancel: true,
+    });
     if (!ok.isConfirmed) return;
     const res = await fetch(`/publisher/sites/${id}/discount`, {
         method: 'DELETE',
@@ -2751,7 +2756,6 @@ $(document).on('click', '.btn-bulk-join', async function () {
         inputAttributes: { min: 10, max: 15, step: 1 },
         showCancelButton: true,
         confirmButtonText: 'Join',
-        confirmButtonColor: '#0b6266',
     });
     if (percent === undefined || percent === null || percent === '') return;
     const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
