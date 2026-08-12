@@ -1542,9 +1542,9 @@ applyLanguageCountryFilter('', { clearCountry: false });
     $pwOldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
     $pwOldCategories = old('categories', []);
 @endphp
-@if($oldLanguage)
+@if($pwOldLanguage)
     (function() {
-        const code = @json(strtolower((string) $oldLanguage));
+        const code = @json(strtolower((string) $pwOldLanguage));
         const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
         if (opt.length) {
             syncingLanguageCountry = true;
@@ -1554,9 +1554,9 @@ applyLanguageCountryFilter('', { clearCountry: false });
         }
     })();
 @endif
-@if($oldCountry)
+@if($pwOldCountry)
     (function() {
-        const code = @json(strtolower((string) $oldCountry));
+        const code = @json(strtolower((string) $pwOldCountry));
         const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
         if (opt.length) {
             countrySingleSelect.setSelectedValue(code, opt.data('label'));

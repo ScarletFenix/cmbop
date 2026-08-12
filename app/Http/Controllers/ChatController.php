@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\User;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
 use App\Support\AdvertiserOrderStatus;
@@ -16,6 +17,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class ChatController extends Controller
@@ -26,6 +28,8 @@ class ChatController extends Controller
     public function unreadSummary()
     {
         try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
             $user = auth()->user();
             $activeRole = $user->activeRole()
                 ?? optional($user->roles()->first())->name;
@@ -78,21 +82,27 @@ class ChatController extends Controller
                     $q->whereIn('status', ['pending', 'processing', 'review']);
                 });
 
-                $needsAction = (clone $publisherItems)->whereHas('order', function ($q) {
-                    $q->where('status', 'pending');
-                })->count()
-                + (clone $publisherItems)->where('modification_requested', 'yes')->count()
-                + (clone $publisherItems)->whereHas('order', function ($q) {
+                $needsActionQuery = (clone $publisherItems)->whereHas('order', function ($q) {
                     $q->where('status', 'processing');
                 })->where(function ($q) {
                     $q->whereNull('live_url')->orWhere('live_url', '');
                 })->where(function ($q) {
                     $q->whereNull('modification_requested')
                         ->orWhere('modification_requested', '!=', 'yes');
-                })->where(function ($q) {
-                    $q->whereNull('content_revision_requested')
-                        ->orWhere('content_revision_requested', '!=', 'yes');
-                })->count();
+                });
+
+                if (Schema::hasColumn('order_items', 'content_revision_requested')) {
+                    $needsActionQuery->where(function ($q) {
+                        $q->whereNull('content_revision_requested')
+                            ->orWhere('content_revision_requested', '!=', 'yes');
+                    });
+                }
+
+                $needsAction = (clone $publisherItems)->whereHas('order', function ($q) {
+                    $q->where('status', 'pending');
+                })->count()
+                + (clone $publisherItems)->where('modification_requested', 'yes')->count()
+                + $needsActionQuery->count();
             }
 
             return response()->json([
@@ -407,7 +417,11 @@ class ChatController extends Controller
         $startedAt = $order->paid_at ?? $order->created_at;
 
         $meta = AdvertiserOrderStatus::meta($order, $item);
-        $canReview = $isAdvertiser && $order->status === 'review' && filled($item?->live_url);
+        $openContentRevision = OrderItem::orderHasOpenContentRevision((int) $order->id);
+        $canReview = $isAdvertiser
+            && $order->status === 'review'
+            && filled($item?->live_url)
+            && ! $openContentRevision;
         $canSend = $order->status !== 'cancelled';
         $composerNote = null;
         if ($order->status === 'cancelled') {
@@ -420,7 +434,8 @@ class ChatController extends Controller
         $canResubmit = ! $isAdvertiser
             && $modificationRequested
             && in_array($order->status, ['processing', 'review'], true)
-            && filled($item?->id);
+            && filled($item?->id)
+            && ! ($item?->isContentRevisionRequested());
 
         return [
             'order_id' => $order->id,
@@ -448,6 +463,8 @@ class ChatController extends Controller
             'live_url_http_status' => $item?->live_url_http_status,
             'completion_notes' => $item?->completion_notes,
             'modification_requested' => $item?->modification_requested,
+            'content_revision_requested' => $item?->content_revision_requested,
+            'has_open_content_revision' => $openContentRevision,
         ];
     }
 }
