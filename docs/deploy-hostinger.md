@@ -17,6 +17,8 @@ Use this on **every** code update. Full media background:
 3. `php artisan config:clear` (and `config:cache` if you normally cache)
 4. Open 2 known image URLs (`/storage/sites/...`, `/storage/site-screenshots/...`)
 5. Confirm a new upload lands under `persistent/media`, not a wiped folder
+6. Admin Sites → pick a publisher → row preview + Edit → Upload image must work.
+   If upload succeeds but the row stays blank, fix step 2 (symlink ≠ MEDIA_PATH).
 
 ## Weekly
 
