@@ -29,43 +29,44 @@
     </div>
 
     <!-- Statistics Cards -->
-    <div class="row mb-4">
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Orders</h6>
-                        <h3 class="mb-0" id="statTotalOrders">0</h3>
-                    </div>
-                    <div class="bg-primary bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-tasks fa-2x text-primary"></i>
-                    </div>
+    <div class="row mb-4 g-3">
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">Total</h6>
+                    <h3 class="mb-0" id="statTotalOrders">0</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Pending</h6>
-                        <h3 class="mb-0" id="statPendingOrders">0</h3>
-                    </div>
-                    <div class="bg-warning bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-clock fa-2x text-warning"></i>
-                    </div>
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">Pending</h6>
+                    <h3 class="mb-0" id="statPendingOrders">0</h3>
                 </div>
             </div>
         </div>
-        <div class="col-md-4 mb-3">
-            <div class="card border-0 shadow-sm">
-                <div class="card-body d-flex justify-content-between align-items-center">
-                    <div>
-                        <h6 class="text-muted mb-1">Total Earnings</h6>
-                        <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">€0</h3>
-                    </div>
-                    <div class="bg-success bg-opacity-10 p-3 rounded-circle">
-                        <i class="fa fa-euro-sign fa-2x text-success"></i>
-                    </div>
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">In progress</h6>
+                    <h3 class="mb-0" id="statProcessingOrders">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">In review</h6>
+                    <h3 class="mb-0" id="statReviewOrders">0</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-12 col-lg">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <h6 class="text-muted mb-1 small">Earnings</h6>
+                    <h3 class="mb-0" id="statTotalEarnings" style="color: #10b981;">€0</h3>
                 </div>
             </div>
         </div>
@@ -98,6 +99,7 @@
                     <!-- Order Status Filter -->
                     <div class="col-md-2">
                         <label class="form-label fw-semibold small text-muted mb-1">Order Status</label>
+                        <input type="hidden" id="needsActionFilter" value="">
                         <select id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
                             <option value="pending">New — needs accept</option>
@@ -160,7 +162,7 @@
                     </thead>
                     <tbody id="tasksTableBody">
                         <tr>
-                            <td colspan="9" class="text-center py-5">
+                            <td colspan="8" class="text-center py-5">
                                 <div class="text-muted">Loading tasks...</div>
                             </td>
                         </tr>
@@ -212,7 +214,10 @@
                 <input type="hidden" id="reject_order_item_id">
                 <div class="ui-callout ui-callout--attention mb-3">
                     <span class="ui-callout__icon" aria-hidden="true"><i class="fa-solid fa-circle-info"></i></span>
-                    <div class="ui-callout__body">The advertiser is refunded to their wallet. You can cancel after accepting if you cannot fulfill the order.</div>
+                    <div class="ui-callout__body">
+                        <span id="rejectModalBaseHint">The advertiser is refunded to their wallet. You can cancel after accepting if you cannot fulfill the order.</span>
+                        <span id="rejectModalMultiHint" class="d-none mt-1 fw-semibold">This cancels the <em>whole order</em> (all sites in the cart), not only this row.</span>
+                    </div>
                 </div>
                 <div class="mb-3">
                     <label for="reject_reason" class="form-label">Reason <span class="text-danger">*</span></label>
@@ -294,167 +299,7 @@
 
 @include('partials.order-chat-modal')
 
-<style>
-.table td, .table th {
-    padding: 12px 15px;
-    vertical-align: middle;
-}
-
-.card-header {
-    border-bottom: 1px solid #eee;
-}
-
-.status-badge {
-    padding: 4px 10px;
-    border-radius: 5px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.status-pending {
-    /* uses app-shell status tokens */
-}
-
-.status-processing {
-    /* uses app-shell status tokens */
-}
-
-.status-review {
-    /* uses app-shell status tokens */
-}
-
-.status-completed {
-    /* uses app-shell status tokens */
-}
-
-.status-cancelled {
-    /* uses app-shell status tokens */
-}
-
-.chat-unread-dot {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    min-width: 16px;
-    height: 16px;
-    padding: 0 4px;
-    margin-left: 4px;
-    border-radius: 999px;
-    background: #dc3545;
-    color: #fff;
-    font-size: 10px;
-    font-weight: 700;
-}
-
-.next-step-hint {
-    font-size: 11px;
-    color: #6b7280;
-    margin-top: 4px;
-    max-width: 160px;
-}
-
-.sensitive-badge {
-    background-color: #fef3c7;
-    color: #d97706;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 10px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.btn-action-sm {
-    padding: 4px 8px;
-    font-size: 11px;
-    min-width: 65px;
-}
-
-.link-cell {
-    max-width: 150px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.link-cell a {
-    font-size: 12px;
-}
-
-.action-buttons {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.total-price {
-    font-weight: bold;
-    font-size: 14px;
-}
-
-/* Dark mode styles */
-
-
-
-
-
-
-
-td a {
-    word-break: break-all;
-}
-
-#chatMessages::-webkit-scrollbar {
-    width: 6px;
-}
-#chatMessages::-webkit-scrollbar-track {
-    background: #f1f1f1;
-}
-#chatMessages::-webkit-scrollbar-thumb {
-    background: #c1c1c1;
-    border-radius: 3px;
-}
-#chatMessages::-webkit-scrollbar-thumb:hover {
-    background: #a8a8a8;
-}
-
-.publisher-article-preview {
-    border: 1px solid #dbe4ee;
-    background: #fff;
-    border-radius: 12px;
-    padding: 14px 16px;
-    max-height: 420px;
-    overflow: auto;
-    font-size: 0.92rem;
-    line-height: 1.55;
-    color: #334155;
-}
-.publisher-article-preview img {
-    max-width: 100%;
-    height: auto;
-    border-radius: 8px;
-    margin: .5rem 0;
-    display: block;
-}
-.article-img-wrap {
-    position: relative;
-    display: inline-block;
-    max-width: 100%;
-}
-.article-img-wrap img { display: block; max-width: 100%; height: auto; }
-.article-img-download {
-    position: absolute;
-    right: 8px;
-    bottom: 8px;
-    opacity: 0;
-    transition: opacity .15s ease;
-    z-index: 2;
-}
-.article-img-wrap:hover .article-img-download,
-.article-img-wrap:focus-within .article-img-download {
-    opacity: 1;
-}
-</style>
+<link href="{{ asset('assets/css/publisher-tasks.css') }}?v={{ @filemtime(public_path('assets/css/publisher-tasks.css')) ?: '1' }}" rel="stylesheet">
 
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
@@ -492,14 +337,6 @@ function clearFocusMessagesParam() {
     window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
 }
 
-function clearFocusMessagesParam() {
-    const url = new URL(window.location.href);
-    if (!url.searchParams.has('focus') && !url.searchParams.has('order')) return;
-    url.searchParams.delete('focus');
-    url.searchParams.delete('order');
-    window.history.replaceState({}, '', url.pathname + (url.search ? url.search : '') + url.hash);
-}
-
 $(document).ready(function() {
     hydrateTasksFiltersFromUrl();
     loadTasks(currentPage);
@@ -508,6 +345,7 @@ $(document).ready(function() {
 
     $('#showNeedsActionBtn').on('click', function() {
         $('#statusFilter').val('');
+        $('#needsActionFilter').val('1');
         syncTasksFiltersToUrl(1);
         loadTasks(1);
         $('html, body').animate({ scrollTop: $('#tasksTableBody').offset().top - 120 }, 'fast');
@@ -518,13 +356,6 @@ $(document).ready(function() {
         loadTasks(currentPage, true); // silent refresh
         loadStatistics();
     }, 30000);
-
-    $('#filterForm').on('submit', function(e) {
-        e.preventDefault();
-        currentPage = 1;
-        syncTasksFiltersToUrl(1);
-        loadTasks(1);
-    });
 
     (function initTasksLiveSearch() {
         var input = document.getElementById('searchInput');
@@ -544,9 +375,25 @@ $(document).ready(function() {
     $('#resetFiltersBtn').on('click', function() {
         $('#searchInput').val('');
         $('#statusFilter').val('');
+        $('#needsActionFilter').val('');
         $('#dateFrom').val('');
         $('#dateTo').val('');
         currentPage = 1;
+        syncTasksFiltersToUrl(1);
+        loadTasks(1);
+    });
+
+    $('#statusFilter').on('change', function() {
+        // Manual status pick clears the needs-action mode.
+        $('#needsActionFilter').val('');
+    });
+
+    $('#filterForm').on('submit', function(e) {
+        e.preventDefault();
+        currentPage = 1;
+        if ($('#statusFilter').val()) {
+            $('#needsActionFilter').val('');
+        }
         syncTasksFiltersToUrl(1);
         loadTasks(1);
     });
@@ -555,6 +402,12 @@ $(document).ready(function() {
         const params = new URLSearchParams(window.location.search);
         if (params.has('search')) $('#searchInput').val(params.get('search') || '');
         if (params.has('status')) $('#statusFilter').val(params.get('status') || '');
+        if (params.get('needs_action') === '1') {
+            $('#needsActionFilter').val('1');
+            $('#statusFilter').val('');
+        } else {
+            $('#needsActionFilter').val('');
+        }
         if (params.has('date_from')) $('#dateFrom').val(params.get('date_from') || '');
         if (params.has('date_to')) $('#dateTo').val(params.get('date_to') || '');
         const page = parseInt(params.get('page') || '1', 10);
@@ -565,7 +418,8 @@ $(document).ready(function() {
         const url = new URL(window.location.href);
         const map = {
             search: $('#searchInput').val() || '',
-            status: $('#statusFilter').val() || '',
+            status: $('#needsActionFilter').val() === '1' ? '' : ($('#statusFilter').val() || ''),
+            needs_action: $('#needsActionFilter').val() === '1' ? '1' : '',
             date_from: $('#dateFrom').val() || '',
             date_to: $('#dateTo').val() || '',
         };
@@ -579,14 +433,28 @@ $(document).ready(function() {
     }
     window.syncTasksFiltersToUrl = syncTasksFiltersToUrl;
 
+    $(document).on('click', '.open-task-chat', function() {
+        var orderId = $(this).data('order-id');
+        var orderNumber = $(this).data('order-number') || '';
+        if (orderId) openChat(orderId, orderNumber);
+    });
+
     $(document).on('click', '.accept-task', function() {
         $('#accept_order_item_id').val($(this).data('id'));
         showTasksModal('acceptModal');
     });
 
     $(document).on('click', '.reject-task', function() {
-        $('#reject_order_item_id').val($(this).data('id'));
+        var $btn = $(this);
+        $('#reject_order_item_id').val($btn.data('id'));
         $('#reject_reason').val('');
+        var itemsCount = parseInt($btn.data('order-items') || '1', 10);
+        var $multi = $('#rejectModalMultiHint');
+        if (itemsCount > 1) {
+            $multi.removeClass('d-none');
+        } else {
+            $multi.addClass('d-none');
+        }
         showTasksModal('rejectModal');
     });
 
@@ -726,7 +594,17 @@ $(document).ready(function() {
             }
             if (++attempts < 25) {
                 setTimeout(tryOpen, 200);
+                return;
             }
+            // Off-page deep link: resolve item id via locate endpoint.
+            $.getJSON(baseUrl + '/publisher/orders/locate', { order_id: orderId })
+                .done(function (res) {
+                    if (res && res.success && res.order_item_id) {
+                        if (!window._publisherTasksByOrderId) window._publisherTasksByOrderId = {};
+                        window._publisherTasksByOrderId[String(orderId)] = res.order_item_id;
+                        viewOrderDetails(res.order_item_id);
+                    }
+                });
         }
         tryOpen();
     }
@@ -761,6 +639,8 @@ $(document).ready(function() {
                 if (response.success) {
                     $('#statTotalOrders').text(response.data.total_orders || 0);
                     $('#statPendingOrders').text(response.data.pending_orders || 0);
+                    $('#statProcessingOrders').text(response.data.accepted_orders || 0);
+                    $('#statReviewOrders').text(response.data.review_orders || 0);
                     $('#statTotalEarnings').html('€' + (response.data.total_earnings || 0).toFixed(2));
                 }
             },
@@ -1022,7 +902,7 @@ $(document).ready(function() {
             window.syncTasksFiltersToUrl(page);
         }
         if (!silent) {
-            $('#tasksTableBody').html('<tr><td colspan="9" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
+            $('#tasksTableBody').html('<tr><td colspan="8" class="text-center py-5"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p class="mt-2 text-muted">Loading tasks...</p></td></tr>');
         }
         
         $.ajax({
@@ -1031,7 +911,8 @@ $(document).ready(function() {
             data: {
                 page: page,
                 search: $('#searchInput').val(),
-                status: $('#statusFilter').val(),
+                status: $('#needsActionFilter').val() === '1' ? '' : $('#statusFilter').val(),
+                needs_action: $('#needsActionFilter').val() === '1' ? 1 : 0,
                 date_from: $('#dateFrom').val(),
                 date_to: $('#dateTo').val()
             },
@@ -1039,17 +920,26 @@ $(document).ready(function() {
             success: function(response) {
                 if (response.success) {
                     renderTasksTable(response.data);
-                    if (response.pagination) renderPagination(response.pagination);
+                    if (response.pagination) {
+                        renderPagination(response.pagination);
+                        var p = response.pagination;
+                        var from = p.from || 0;
+                        var to = p.to || 0;
+                        var total = p.total || 0;
+                        $('#resultsCount').text(total ? ('Showing ' + from + '–' + to + ' of ' + total) : 'No tasks');
+                    } else {
+                        $('#resultsCount').text('');
+                    }
                     refreshNeedsActionBanner();
                 } else if (!silent) {
-                    $('#tasksTableBody').html('<tr><td colspan="9" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
+                    $('#tasksTableBody').html('<tr><td colspan="8" class="text-center text-danger py-5">' + (response.message || 'Failed to load tasks') + '</td></tr>');
                 }
             },
             error: function(xhr, status, error) {
                 console.error('AJAX Error:', status, error);
                 if (!silent) {
                     $('#tasksTableBody').html(
-                        '<tr><td colspan="9" class="text-center py-5">' +
+                        '<tr><td colspan="8" class="text-center py-5">' +
                         '<div class="text-danger mb-2">Error loading tasks.</div>' +
                         '<button type="button" class="btn btn-sm btn-outline-primary" id="retryTasksBtn">Retry</button>' +
                         '</td></tr>'
@@ -1063,7 +953,7 @@ $(document).ready(function() {
     function renderTasksTable(orderItems) {
         if (!orderItems || orderItems.length === 0) {
             $('#tasksTableBody').html(
-                '<tr><td colspan="9" class="text-center py-5">' +
+                '<tr><td colspan="8" class="text-center py-5">' +
                 '<div class="mx-auto" style="max-width:420px">' +
                 '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,#1a585e)" aria-hidden="true"><i class="fa-solid fa-inbox"></i></div>' +
                 '<h5 class="mb-2">No tasks yet</h5>' +
@@ -1107,18 +997,19 @@ $(document).ready(function() {
             var unreadBadge = item.unread_chat > 0
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
                 : '';
-            var chatBtn = '<button class="btn btn-primary btn-action-sm" onclick="openChat(' + item.order_id + ', \'' + orderNumber + '\')"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
-            var viewBtn = '<button class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '"><i class="fa fa-eye"></i> View</button>';
+            var chatBtn = '<button type="button" class="btn btn-primary btn-action-sm open-task-chat" data-order-id="' + item.order_id + '" data-order-number="' + escapeHtml(orderNumber) + '" aria-label="Open chat"><i class="fa fa-comments"></i> Chat' + unreadBadge + '</button>';
+            var viewBtn = '<button type="button" class="btn btn-outline-secondary btn-action-sm view-details" data-id="' + item.id + '" aria-label="View order details"><i class="fa fa-eye"></i> View</button>';
             var liveBtn = hasLiveUrl
                 ? '<a href="' + escapeHtml(item.live_url) + '" target="_blank" class="btn btn-live-url btn-action-sm"><i class="fa fa-external-link"></i> Live</a>'
                 : '';
-            var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Cancel</button>';
+            var orderItemsCount = parseInt(item.order_items_count || 1, 10);
+            var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Cancel order"><i class="fa fa-times"></i> Cancel</button>';
 
             var actions = '';
             if (orderStatus === 'pending') {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '"><i class="fa fa-check"></i> Accept</button>' +
-                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '"><i class="fa fa-times"></i> Reject</button>' +
+                    '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '" aria-label="Accept order"><i class="fa fa-check"></i> Accept</button>' +
+                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Reject order"><i class="fa fa-times"></i> Reject</button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (contentRevisionRequested && orderStatus === 'processing') {
@@ -1168,15 +1059,15 @@ $(document).ready(function() {
                 actions = '<div class="action-buttons">' + viewBtn + chatBtn + liveBtn + '</div>';
             }
             
-            html += '<tr>' +
-                '<td><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
-                '<td><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank">' + escapeHtml(item.site_url) + '</a></div></td>' +
-                '<td class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
-                '<td>' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
-                '<td class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
-                '<td><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
-                '<td class="link-cell">' + ((item.content_download_url || item.content_link) ? '<a href="' + (item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
-                '<td>' + actions + '</td>' +
+            html += '<tr class="tasks-row">' +
+                '<td data-label="Order ID"><strong>#' + escapeHtml(orderNumber) + '</strong></td>' +
+                '<td data-label="Site"><div class="fw-semibold">' + escapeHtml(item.site_name) + '</div><div class="text-muted small"><a href="' + escapeHtml(item.site_url) + '" target="_blank" rel="noopener noreferrer">' + escapeHtml(item.site_url) + '</a></div></td>' +
+                '<td data-label="Base" class="text-primary">€' + basePrice.toFixed(2) + '</td>' +
+                '<td data-label="Sensitive">' + (additionalPrice > 0 ? '<span class="sensitive-badge"><i class="fa fa-plus-circle"></i> ' + escapeHtml(sensitiveType || 'Extra') + ' (+€' + additionalPrice.toFixed(2) + ')</span>' : '<span class="text-muted">—</span>') + '</td>' +
+                '<td data-label="Total" class="fw-semibold total-price" style="color: #10b981;">€' + totalPrice.toFixed(2) + '</td>' +
+                '<td data-label="Status"><span class="status-badge ' + statusMeta.statusClass + '">' + statusMeta.statusText + '</span><div class="next-step-hint">' + statusMeta.nextStep + '</div></td>' +
+                '<td class="link-cell" data-label="Content">' + ((item.content_download_url || item.content_link) ? '<a href="' + escapeHtml(item.content_download_url || item.content_link) + '" class="btn btn-sm btn-outline-primary" rel="noopener noreferrer"><i class="fa fa-download me-1"></i> ' + (item.content_original_name ? 'Document' : 'View') + '</a>' : '<span class="text-muted">Not submitted</span>') + '</td>' +
+                '<td data-label="Action">' + actions + '</td>' +
                 '</tr>';
         });
         
@@ -1469,7 +1360,7 @@ $(document).ready(function() {
             return { statusClass: 'status-pending', statusText: 'Waiting for revised article', nextStep: 'Advertiser must upload or link an updated article' };
         }
         if (modificationRequested) {
-            return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then open Chat to resubmit the live URL' };
+            return { statusClass: 'status-pending', statusText: 'Changes requested', nextStep: 'Make corrections, then use “I have fixed it” (or Chat) to send it back' };
         }
         if (orderStatus === 'processing' && hasLiveUrl && orderHeldForContentRevision) {
             return {
@@ -1552,7 +1443,7 @@ $(document).ready(function() {
         $.getJSON(baseUrl + '/chat/unread-summary')
             .done(function(res) {
                 if (res.success && res.needs_action > 0) {
-                    $('#needsActionText').text(res.needs_action + ' task' + (res.needs_action === 1 ? '' : 's') + ' need you (accept, publish, or open Chat to resubmit).');
+                    $('#needsActionText').text(res.needs_action + ' task' + (res.needs_action === 1 ? '' : 's') + ' need you (accept, publish, or use “I have fixed it” after a change request).');
                     $('#needsActionBanner').removeClass('d-none');
                 } else {
                     $('#needsActionBanner').addClass('d-none');
