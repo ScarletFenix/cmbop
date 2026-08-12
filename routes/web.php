@@ -1054,12 +1054,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         // Withdraw
         Route::get('/withdraw', [WithdrawalController::class, 'index'])->name('withdraw');
         Route::post('/withdraw/request', [WithdrawalController::class, 'requestWithdrawal'])
-            ->middleware('throttle:10,1')
+            ->middleware('throttle:5,1')
             ->name('withdraw.request');
         Route::get('/withdrawals/history', [WithdrawalController::class, 'getHistory'])->name('withdrawals.history');
         Route::get('/withdrawals/statistics', [WithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
         Route::post('/withdrawals/{id}/cancel', [WithdrawalController::class, 'cancelWithdrawal'])
-            ->middleware('throttle:20,1')
+            ->middleware('throttle:10,1')
             ->name('withdrawals.cancel');
 
         // Payout documents (completed withdrawal statements)

@@ -50,6 +50,7 @@ use App\Mail\SiteStatusNotification;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
+use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
 
@@ -310,6 +311,13 @@ return [
             'audience' => 'publisher',
             'preference' => 'payment_emails',
             'mailable' => WithdrawalStatusUpdated::class,
+            'default_enabled' => true,
+        ],
+        'withdrawal_requested_confirmation' => [
+            'name' => 'Withdrawal Request Confirmation',
+            'audience' => 'publisher',
+            'preference' => 'payment_emails',
+            'mailable' => WithdrawalRequestedConfirmation::class,
             'default_enabled' => true,
         ],
         'payout_profile_updated' => [
