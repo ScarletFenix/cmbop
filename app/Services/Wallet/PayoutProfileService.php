@@ -221,12 +221,58 @@ class PayoutProfileService
             'details_confirmed.accepted' => 'Please confirm you have double-checked your payout details.',
         ]);
 
+        $account = strtoupper(preg_replace('/\s+/', '', (string) $request->account_number) ?: '');
+        if (! $this->looksLikeValidIbanOrAccount($account)) {
+            throw ValidationException::withMessages([
+                'account_number' => 'Enter a valid IBAN (e.g. DE89…) or account number (15–34 letters/digits).',
+            ]);
+        }
+
         return [
             'bank_name' => $request->bank_name,
             'account_holder' => $request->account_holder,
-            'account_number' => $request->account_number,
+            'account_number' => $account,
             'swift_code' => $request->swift_code,
         ];
+    }
+
+    /**
+     * Accept IBAN (with MOD-97) or a conservative alphanumeric account number.
+     */
+    private function looksLikeValidIbanOrAccount(string $account): bool
+    {
+        if ($account === '' || strlen($account) < 8 || strlen($account) > 34) {
+            return false;
+        }
+
+        if (! preg_match('/^[A-Z0-9]+$/', $account)) {
+            return false;
+        }
+
+        // IBAN shape (country + check digits): always validate as IBAN.
+        if (preg_match('/^[A-Z]{2}[0-9]{2}[A-Z0-9]+$/', $account)) {
+            return strlen($account) >= 15 && strlen($account) <= 34 && $this->ibanMod97Valid($account);
+        }
+
+        // Non-IBAN domestic account: digits (optional letters), length 8–34
+        return (bool) preg_match('/^[0-9A-Z]{8,34}$/', $account);
+    }
+
+    private function ibanMod97Valid(string $iban): bool
+    {
+        $rearranged = substr($iban, 4).substr($iban, 0, 4);
+        $numeric = '';
+        foreach (str_split($rearranged) as $ch) {
+            $numeric .= ctype_alpha($ch) ? (string) (ord($ch) - 55) : $ch;
+        }
+
+        // Chunked mod 97 for large numbers without BCMath dependency.
+        $checksum = 0;
+        foreach (str_split($numeric, 7) as $chunk) {
+            $checksum = (int) (($checksum.$chunk) % 97);
+        }
+
+        return $checksum === 1;
     }
 
     /**
@@ -290,9 +336,35 @@ class PayoutProfileService
             'details_confirmed.accepted' => 'Please confirm you have double-checked your payout details.',
         ]);
 
+        $type = strtoupper((string) $request->crypto_type);
+        $address = trim((string) $request->wallet_address);
+        if (! $this->looksLikeValidCryptoAddress($type, $address)) {
+            throw ValidationException::withMessages([
+                'wallet_address' => 'Enter a valid '.$type.' wallet address for the selected coin.',
+            ]);
+        }
+
         return [
-            'crypto_type' => $request->crypto_type,
-            'wallet_address' => $request->wallet_address,
+            'crypto_type' => $type,
+            'wallet_address' => $address,
         ];
+    }
+
+    private function looksLikeValidCryptoAddress(string $type, string $address): bool
+    {
+        if ($address === '' || preg_match('/\s/', $address)) {
+            return false;
+        }
+
+        return match ($type) {
+            'BTC' => (bool) preg_match('/^(bc1|[13])[a-zA-HJ-NP-Z0-9]{25,62}$/', $address),
+            'ETH', 'BNB' => (bool) preg_match('/^0x[a-fA-F0-9]{40}$/', $address),
+            // USDT commonly TRC20 (T…) or ERC20 (0x…)
+            'USDT' => (bool) (
+                preg_match('/^0x[a-fA-F0-9]{40}$/', $address)
+                || preg_match('/^T[1-9A-HJ-NP-Za-km-z]{33}$/', $address)
+            ),
+            default => false,
+        };
     }
 }
