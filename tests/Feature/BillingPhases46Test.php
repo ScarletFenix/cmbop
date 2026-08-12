@@ -352,6 +352,147 @@ class BillingPhases46Test extends TestCase
         $this->assertSame(Invoice::TYPE_WITHDRAWAL_PAYOUT, $statement->type);
     }
 
+    public function test_legacy_fee_line_item_is_stripped_from_payout_pdf(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $publisher = $this->makeUser('publisher');
+        $publisher->forceFill([
+            'payout_business_name' => 'Acme Media GmbH',
+            'name' => 'Jane Publisher',
+        ])->save();
+
+        $statement = Invoice::create([
+            'invoice_number' => 'PAY-2026-999001',
+            'type' => Invoice::TYPE_WITHDRAWAL_PAYOUT,
+            'status' => Invoice::STATUS_PAID,
+            'user_id' => $publisher->id,
+            'reference_code' => 'WD-999001',
+            'currency' => 'EUR',
+            'subtotal' => 100,
+            'tax_amount' => 0,
+            'discount_amount' => 5,
+            'total_amount' => 95,
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'invoice_date' => now(),
+            'paid_at' => now(),
+            'customer_name' => 'Acme Media GmbH',
+            'customer_email' => $publisher->email,
+            'billing_snapshot' => [
+                'name' => 'Acme Media GmbH',
+                'company' => 'Acme Media GmbH',
+                'email' => $publisher->email,
+                'payment_details' => ['email' => 'pay@example.com'],
+            ],
+            'line_items' => [
+                [
+                    'description' => 'Publisher withdrawal payout',
+                    'reference' => 'WD-999001',
+                    'quantity' => 1,
+                    'unit_price' => 100,
+                    'line_total' => 100,
+                ],
+                [
+                    'description' => 'Withdrawal fee',
+                    'reference' => 'WD-999001-fee',
+                    'quantity' => 1,
+                    'unit_price' => -5,
+                    'line_total' => -5,
+                ],
+            ],
+            'pdf_disk' => 'local',
+            'pdf_path' => 'invoices/2026/01/stale-double-fee.pdf',
+            'notes' => 'Payout statement',
+        ]);
+
+        Storage::disk('local')->put('invoices/2026/01/stale-double-fee.pdf', '%PDF-stale-double-fee');
+
+        $normalized = app(WithdrawalPayoutStatementService::class)
+            ->normalizeLegacyFeeLineItems($statement->fresh());
+
+        $this->assertCount(1, $normalized->line_items);
+        $this->assertSame('Publisher withdrawal payout', $normalized->line_items[0]['description']);
+        $this->assertNull($normalized->pdf_path);
+
+        $html = view('billing.pdf.invoice', [
+            'invoice' => $normalized,
+            'company' => config('billing.company'),
+            'colors' => config('billing.colors'),
+            'currencySymbol' => '€',
+        ])->render();
+
+        $this->assertSame(1, substr_count($html, 'Withdrawal fee'));
+        $this->assertStringContainsString('Pay to', $html);
+        // Company must not duplicate the payee name.
+        $this->assertSame(1, substr_count($html, 'Acme Media GmbH'));
+    }
+
+    public function test_download_live_renders_when_legacy_pdf_regen_fails(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $publisher = $this->makeUser('publisher');
+        $statement = Invoice::create([
+            'invoice_number' => 'PAY-2026-999002',
+            'type' => Invoice::TYPE_WITHDRAWAL_PAYOUT,
+            'status' => Invoice::STATUS_PAID,
+            'user_id' => $publisher->id,
+            'reference_code' => 'WD-999002',
+            'currency' => 'EUR',
+            'subtotal' => 50,
+            'tax_amount' => 0,
+            'discount_amount' => 5,
+            'total_amount' => 45,
+            'payment_method' => 'paypal',
+            'payment_status' => 'paid',
+            'invoice_date' => now(),
+            'paid_at' => now(),
+            'customer_name' => $publisher->name,
+            'customer_email' => $publisher->email,
+            'billing_snapshot' => [
+                'payment_details' => ['email' => 'pay@example.com'],
+            ],
+            'line_items' => [
+                [
+                    'description' => 'Publisher withdrawal payout',
+                    'reference' => 'WD-999002',
+                    'quantity' => 1,
+                    'unit_price' => 50,
+                    'line_total' => 50,
+                ],
+                [
+                    'description' => 'Withdrawal fee',
+                    'reference' => 'WD-999002-fee',
+                    'quantity' => 1,
+                    'unit_price' => -5,
+                    'line_total' => -5,
+                ],
+            ],
+            'pdf_disk' => 'local',
+            'pdf_path' => 'invoices/2026/01/stale.pdf',
+        ]);
+
+        Storage::disk('local')->put('invoices/2026/01/stale.pdf', '%PDF-stale');
+
+        $pdfs = \Mockery::mock(InvoicePdfGenerator::class)->makePartial();
+        $pdfs->shouldReceive('generateAndStore')->once()->andThrow(new \RuntimeException('disk full'));
+        $pdfs->shouldReceive('download')->once()->andReturn(response('live-pdf', 200, [
+            'Content-Type' => 'application/pdf',
+        ]));
+        $this->app->instance(InvoicePdfGenerator::class, $pdfs);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.download', $statement))
+            ->assertOk()
+            ->assertSee('live-pdf', false);
+
+        $this->assertNull($statement->fresh()->pdf_path);
+        $this->assertCount(1, $statement->fresh()->line_items);
+    }
+
     public function test_mark_paid_email_and_bell_point_at_payout_docs(): void
     {
         Mail::fake();

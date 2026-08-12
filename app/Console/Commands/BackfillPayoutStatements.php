@@ -3,7 +3,6 @@
 namespace App\Console\Commands;
 
 use App\Models\Invoice;
-use App\Models\Withdrawal;
 use App\Services\Billing\WithdrawalPayoutStatementService;
 use Illuminate\Console\Command;
 
@@ -20,18 +19,20 @@ class BackfillPayoutStatements extends Command
     {
         $limit = (int) $this->option('limit');
 
+        $clampedLimit = max(1, min(200, $limit));
+
         if ($this->option('force-pdf')) {
             if ($this->option('dry-run')) {
                 $count = Invoice::query()
                     ->where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
                     ->where('status', '!=', Invoice::STATUS_CANCELLED)
                     ->count();
-                $this->info("Dry run: would regenerate PDFs for up to {$limit} of {$count} payout statement(s).");
+                $this->info("Dry run: would regenerate PDFs for up to {$clampedLimit} of {$count} payout statement(s).");
 
                 return self::SUCCESS;
             }
 
-            $result = $statements->regenerateExistingPdfs($limit);
+            $result = $statements->regenerateExistingPdfs($clampedLimit);
             $this->info(sprintf(
                 'Payout PDFs: regenerated=%d failed=%d',
                 $result['regenerated'],
@@ -42,18 +43,10 @@ class BackfillPayoutStatements extends Command
         }
 
         if ($this->option('dry-run')) {
-            $missing = 0;
-            Withdrawal::query()
-                ->where('status', 'completed')
-                ->orderBy('id')
-                ->lazyById(100)
-                ->each(function (Withdrawal $withdrawal) use ($statements, &$missing) {
-                    if (! $statements->find($withdrawal)) {
-                        $missing++;
-                    }
-                });
+            $missing = $statements->missingCompletedWithdrawalsQuery()->count();
+            $wouldProcess = min($clampedLimit, $missing);
 
-            $this->info("Dry run: {$missing} completed withdrawal(s) missing a payout statement (limit {$limit}).");
+            $this->info("Dry run: {$missing} completed withdrawal(s) missing a payout statement (would process {$wouldProcess}).");
 
             return self::SUCCESS;
         }
