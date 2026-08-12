@@ -148,7 +148,8 @@ class MarketingSiteImageUploadTest extends TestCase
                 'site_image' => $file,
             ])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['image_path', 'image_url']);
 
         $site->refresh();
         $this->assertNotEmpty($site->site_image);
@@ -202,6 +203,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
+        $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
     }
 
@@ -211,10 +213,15 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertIsString($html);
         $this->assertStringContainsString('site-image-desktop-preview', $html);
         $this->assertStringContainsString('Desktop-size preview (16:10)', $html);
+        $this->assertStringContainsString('width: 840', $html);
+        $this->assertStringContainsString('SITE_IMAGE_MAX_KB', $html);
+        $this->assertStringContainsString("X-CSRF-TOKEN': CSRF_TOKEN", $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
 
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
+        $this->assertStringContainsString('.swal2-popup .site-image-desktop-preview', $staffCss);
     }
 }

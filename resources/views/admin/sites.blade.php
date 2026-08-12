@@ -196,6 +196,8 @@
 
 <script>
 const STAFF_BASE = @json(staff_base_path());
+const SITE_IMAGE_MAX_KB = {{ (int) \App\Support\SiteImageUpload::maxKilobytes() }};
+const CSRF_TOKEN = @json(csrf_token());
 const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
 const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
 const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
@@ -431,7 +433,7 @@ function editSiteWithImage(siteId) {
 
     Swal.fire({
         title: 'Edit Site',
-        width: 640,
+        width: 840,
         showCancelButton: true,
         confirmButtonText: 'Update',
         showLoaderOnConfirm: true,
@@ -446,11 +448,11 @@ function editSiteWithImage(siteId) {
                 <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
-                <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
+                <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
                 <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
                     ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
                         ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" onerror="this.parentElement.classList.add('is-empty'); this.remove();">`
-                        : '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>'}
+                        : '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>'}
                 </div>
                 <small class="text-muted" style="display:block; margin-top:5px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
                 
@@ -474,8 +476,8 @@ function editSiteWithImage(siteId) {
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
                     if (file) {
-                        if (file.size > 10 * 1024 * 1024) {
-                            Swal.showValidationMessage('Site image must be under 10 MB');
+                        if (file.size > SITE_IMAGE_MAX_KB * 1024) {
+                            Swal.showValidationMessage('Site image must be under ' + Math.floor(SITE_IMAGE_MAX_KB / 1024) + ' MB');
                             this.value = '';
                             return;
                         }
@@ -493,7 +495,7 @@ function editSiteWithImage(siteId) {
                         previewContainer.innerHTML = `<img src="${existingSrc}" alt="Current site image">`;
                     } else {
                         previewContainer.classList.add('is-empty');
-                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>';
+                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>';
                     }
                 });
             }
@@ -519,12 +521,18 @@ function editSiteWithImage(siteId) {
             const fileInput = document.getElementById('swal-site_image');
             const file = fileInput?.files?.[0];
             let imagePath = null;
+            let imageUrl = null;
 
             // Upload first when a new file is chosen (persists even before metrics update).
             if (file) {
+                if (file.size > SITE_IMAGE_MAX_KB * 1024) {
+                    Swal.showValidationMessage('Site image must be under ' + Math.floor(SITE_IMAGE_MAX_KB / 1024) + ' MB');
+                    return false;
+                }
+
                 const uploadFormData = new FormData();
                 uploadFormData.append('site_image', file);
-                uploadFormData.append('_token', '{{ csrf_token() }}');
+                uploadFormData.append('_token', CSRF_TOKEN);
 
                 try {
                     const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
@@ -533,6 +541,7 @@ function editSiteWithImage(siteId) {
                         headers: {
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': CSRF_TOKEN,
                         },
                         credentials: 'same-origin',
                     });
@@ -552,6 +561,11 @@ function editSiteWithImage(siteId) {
                     }
 
                     imagePath = uploadResult.image_path || null;
+                    imageUrl = uploadResult.image_url || null;
+                    if (imageUrl) {
+                        site.image_url = imageUrl;
+                        site.site_image = imagePath;
+                    }
                 } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
                     return false;
@@ -587,7 +601,7 @@ async function submitSiteUpdate(siteId, updateData) {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
                 'X-HTTP-Method-Override': 'PUT',
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',

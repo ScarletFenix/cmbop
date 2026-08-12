@@ -204,8 +204,8 @@
                         <input type="file" id="site_image" name="site_image"
                                class="form-control @error('site_image') is-invalid @enderror"
                                accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                               data-max-kb="10240">
-                        <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB).</div>
+                               data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                        <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB).</div>
                         @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
 
