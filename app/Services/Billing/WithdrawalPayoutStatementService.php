@@ -133,7 +133,7 @@ class WithdrawalPayoutStatementService
             ],
             'line_items' => $lineItems,
             'pdf_disk' => config('billing.storage.disk', 'local'),
-            'notes' => 'Payout statement for a completed withdrawal. This is not a tax invoice.',
+            'notes' => (string) config('billing.withdrawal_payout_note'),
             'meta' => [
                 'withdrawal_id' => $withdrawal->id,
                 'document' => 'withdrawal_payout',
@@ -142,5 +142,53 @@ class WithdrawalPayoutStatementService
                 'net_amount' => $net,
             ],
         ];
+    }
+
+    /**
+     * Ops: create missing PAY statements for completed withdrawals.
+     *
+     * @return array{created: int, skipped: int, failed: int, invoice_ids: list<int>}
+     */
+    public function backfillMissing(int $limit = 50): array
+    {
+        $limit = max(1, min(200, $limit));
+
+        $withdrawals = Withdrawal::query()
+            ->with('user')
+            ->where('status', 'completed')
+            ->whereNotExists(function ($q) {
+                $q->selectRaw('1')
+                    ->from('invoices')
+                    ->whereColumn('invoices.user_id', 'withdrawals.user_id')
+                    ->where('invoices.type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
+                    ->where('invoices.status', '!=', Invoice::STATUS_CANCELLED)
+                    ->whereRaw("invoices.reference_code = CONCAT('WD-', withdrawals.id)");
+            })
+            ->orderBy('id')
+            ->limit($limit)
+            ->get();
+
+        $created = 0;
+        $skipped = 0;
+        $failed = 0;
+        $ids = [];
+
+        foreach ($withdrawals as $withdrawal) {
+            if (! $withdrawal->user) {
+                $skipped++;
+
+                continue;
+            }
+
+            $statement = $this->issue($withdrawal);
+            if ($statement) {
+                $created++;
+                $ids[] = (int) $statement->id;
+            } else {
+                $failed++;
+            }
+        }
+
+        return compact('created', 'skipped', 'failed') + ['invoice_ids' => $ids];
     }
 }

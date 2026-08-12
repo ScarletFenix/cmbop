@@ -7,9 +7,13 @@ Your withdrawal request has been **{{ ucfirst($newStatus) }}**.
 
 ## Request Details:
 
-- **Request Date:** {{ $withdrawal->created_at->format('F j, Y,') }}
-- **Requested Amount:** €{{ number_format($withdrawal->amount, 2) }}
-- **Payment Method:** {{ strtoupper($withdrawal->payment_method) }}
+- **Request Date:** {{ $withdrawal->created_at->format('F j, Y') }}
+- **Requested Amount:** €{{ number_format((float) $withdrawal->amount, 2) }}
+@if((float) ($withdrawal->fee ?? 0) > 0)
+- **Platform Fee:** -€{{ number_format((float) $withdrawal->fee, 2) }}
+- **Net Payout:** €{{ number_format((float) ($withdrawal->net_amount ?? ((float) $withdrawal->amount - (float) $withdrawal->fee)), 2) }}
+@endif
+- **Payment Method:** {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }}
 
 ## Status Updated:
 
@@ -20,10 +24,19 @@ Your withdrawal request has been **{{ ucfirst($newStatus) }}**.
 @endif
 
 @if($newStatus == 'completed')
-The amount of **€{{ number_format($withdrawal->amount, 2) }}** has been sent to your {{ strtoupper($withdrawal->payment_method) }} account.
+@php
+    $netPaid = (float) ($withdrawal->net_amount ?? ((float) $withdrawal->amount - (float) ($withdrawal->fee ?? 0)));
+@endphp
+The amount of **€{{ number_format($netPaid, 2) }}** has been sent to your {{ \App\Models\Invoice::paymentMethodLabel($withdrawal->payment_method) }} account.
+
+@if(!empty($statementUrl))
+@component('mail::button', ['url' => $statementUrl])
+Download payout statement
+@endcomponent
+@endif
 
 @elseif($newStatus == 'cancelled')
-The amount of **€{{ number_format($withdrawal->amount, 2) }}** has been refunded to your wallet balance.
+The amount of **€{{ number_format((float) $withdrawal->amount, 2) }}** has been refunded to your wallet balance.
 
 @elseif($newStatus == 'processing')
 Your withdrawal request is now being processed. You will be notified once it's completed.

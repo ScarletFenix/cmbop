@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\WithdrawalStatusUpdated;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -168,11 +169,162 @@ class BillingPhases46Test extends TestCase
         $this->actingAs($publisher)
             ->get(route('publisher.billing.index'))
             ->assertOk()
-            ->assertSee($statement->invoice_number, false);
+            ->assertSee($statement->invoice_number, false)
+            ->assertSee('Wise', false);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.show', $statement))
+            ->assertOk()
+            ->assertSee('View PDF', false);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.view', $statement))
+            ->assertOk();
 
         $this->actingAs($publisher)
             ->get(route('publisher.billing.download', $statement))
             ->assertOk();
+    }
+
+    public function test_payout_pdf_html_uses_payout_labels_not_invoice_ones(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 80);
+        app(ManualWithdrawalSettlementService::class)->markPaid($withdrawal, $admin);
+        $statement = app(WithdrawalPayoutStatementService::class)->find($withdrawal->fresh());
+        $this->assertNotNull($statement);
+
+        $html = view('billing.pdf.invoice', [
+            'invoice' => $statement,
+            'company' => config('billing.company'),
+            'colors' => config('billing.colors'),
+            'currencySymbol' => '€',
+        ])->render();
+
+        $this->assertStringContainsString('Payout Statement', $html);
+        $this->assertStringContainsString('Withdrawal fee', $html);
+        $this->assertStringContainsString('WD-'.$withdrawal->id, $html);
+        $this->assertStringContainsString('Net payout', $html);
+        $this->assertStringContainsString('About this statement', $html);
+        $this->assertStringNotContainsString('Publisher website', $html);
+        $this->assertStringNotContainsString('Order: <strong>#</strong>', $html);
+        $this->assertStringNotContainsString('>Discount', $html);
+    }
+
+    public function test_publisher_cannot_access_another_publishers_payout_doc(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $admin = $this->makeUser('admin');
+        $owner = $this->makeUser('publisher');
+        $other = $this->makeUser('publisher');
+        $this->publisherWallet($owner);
+        $withdrawal = $this->pendingWithdrawal($owner, 50);
+        app(ManualWithdrawalSettlementService::class)->markPaid($withdrawal, $admin);
+        $statement = app(WithdrawalPayoutStatementService::class)->find($withdrawal->fresh());
+
+        $this->actingAs($other)
+            ->get(route('publisher.billing.show', $statement))
+            ->assertForbidden();
+
+        $this->actingAs($other)
+            ->get(route('publisher.billing.download', $statement))
+            ->assertForbidden();
+    }
+
+    public function test_billing_index_ignores_invalid_dates_and_swaps_reversed_range(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 40);
+        app(ManualWithdrawalSettlementService::class)->markPaid($withdrawal, $admin);
+        $statement = app(WithdrawalPayoutStatementService::class)->find($withdrawal->fresh());
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.index', ['from' => 'not-a-date', 'to' => 'also-bad']))
+            ->assertOk()
+            ->assertSee($statement->invoice_number, false);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.billing.index', [
+                'from' => now()->addDay()->toDateString(),
+                'to' => now()->subDay()->toDateString(),
+            ]))
+            ->assertOk();
+    }
+
+    public function test_backfill_creates_missing_payout_statement(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 70);
+        $withdrawal->update([
+            'status' => 'completed',
+            'processed_at' => now(),
+        ]);
+
+        $this->assertNull(app(WithdrawalPayoutStatementService::class)->find($withdrawal->fresh()));
+
+        $result = app(WithdrawalPayoutStatementService::class)->backfillMissing(10);
+
+        $this->assertSame(1, $result['created']);
+        $statement = app(WithdrawalPayoutStatementService::class)->find($withdrawal->fresh());
+        $this->assertNotNull($statement);
+        $this->assertSame(Invoice::TYPE_WITHDRAWAL_PAYOUT, $statement->type);
+    }
+
+    public function test_mark_paid_email_and_bell_point_at_payout_docs(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+        $withdrawal = $this->pendingWithdrawal($publisher, 55);
+
+        app(ManualWithdrawalSettlementService::class)->markPaid($withdrawal, $admin);
+
+        $statement = app(WithdrawalPayoutStatementService::class)->find($withdrawal->fresh());
+        $this->assertNotNull($statement);
+
+        Mail::assertQueued(WithdrawalStatusUpdated::class, function ($mail) use ($statement) {
+            $built = $mail->build();
+            $data = $built->viewData;
+
+            return ($data['statementUrl'] ?? null) === route('publisher.billing.download', $statement)
+                && (float) $data['withdrawal']->net_amount === 50.0;
+        });
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $publisher->id,
+            'action_label' => 'View payout document',
+        ]);
+    }
+
+    public function test_withdraw_page_links_to_payout_documents(): void
+    {
+        $publisher = $this->makeUser('publisher');
+        $this->publisherWallet($publisher);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.withdraw'))
+            ->assertOk()
+            ->assertSee(route('publisher.billing.index'), false)
+            ->assertSee('Payout documents', false);
     }
 
     public function test_line_refund_amount_uses_order_total_for_single_item(): void
