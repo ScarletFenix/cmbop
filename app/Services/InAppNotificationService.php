@@ -14,6 +14,7 @@ use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\Withdrawal;
+use App\Services\Billing\WithdrawalPayoutStatementService;
 use App\Services\Orders\AdminOrderStatusOverride;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Database\Eloquent\Model;
@@ -745,18 +746,31 @@ class InAppNotificationService
             ? '€'.number_format((float) $withdrawal->net_amount, 2)
             : $amount;
 
+        $actionUrl = route('publisher.billing.index', [], false);
+        $actionLabel = 'View payout documents';
+        try {
+            $statement = app(WithdrawalPayoutStatementService::class)
+                ->find($withdrawal);
+            if ($statement) {
+                $actionUrl = route('publisher.billing.show', $statement, false);
+                $actionLabel = 'View payout document';
+            }
+        } catch (\Throwable) {
+            // keep billing index fallback
+        }
+
         $this->notify(
             (int) $withdrawal->user_id,
             self::TYPE_PAYMENT_RECEIVED,
             "Withdrawal paid — {$net}",
-            "Your withdrawal of {$amount} has been marked as paid.",
+            "Your withdrawal of {$amount} has been marked as paid. Net sent: {$net}.",
             [
                 'category' => self::CATEGORY_PAYMENTS,
                 'icon' => 'wallet',
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $withdrawal,
-                'action_label' => 'View withdrawals',
-                'action_url' => route('publisher.withdraw', [], false),
+                'action_label' => $actionLabel,
+                'action_url' => $actionUrl,
                 'meta' => [
                     'amount' => (float) $withdrawal->amount,
                     'net_amount' => (float) ($withdrawal->net_amount ?? $withdrawal->amount),
