@@ -637,6 +637,12 @@
         <i class="fa fa-plus"></i> Add New Website
     </button>
 
+    <button id="showBulkRequestBtn" type="button" class="btn mb-3 shadow-sm btn-outline-secondary ms-1"
+            data-bs-toggle="modal" data-bs-target="#bulkRequestModal"
+            @if(!empty($openBulkRequest)) disabled title="You already have an open bulk request" @endif>
+        <i class="fa fa-layer-group"></i> I want to add many sites
+    </button>
+
     <button id="showBulkBtn" type="button" class="btn mb-3 shadow-sm btn-outline-primary ms-1">
         <i class="fa fa-file-csv"></i> Bulk Import (Agency)
     </button>
@@ -644,6 +650,150 @@
     <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
         <i class="fa fa-user-check"></i> Claim a website
     </button>
+
+    @if(!empty($awaitingDetailsCount) && $awaitingDetailsCount > 0)
+        <a href="{{ route('publisher.bulk-sites.complete') }}" class="btn mb-3 shadow-sm btn-upload ms-1" id="bulkCompleteDetailsBtn">
+            <i class="fa fa-pen-to-square"></i> Complete details ({{ $awaitingDetailsCount }})
+        </a>
+    @endif
+    @if(!empty($detailsCompleteCount) && $detailsCompleteCount > 0)
+        <a href="{{ route('publisher.bulk-sites.review') }}" class="btn mb-3 shadow-sm btn-outline-primary ms-1" id="bulkReviewSubmitBtn">
+            <i class="fa fa-clipboard-check"></i> Review &amp; submit ({{ $detailsCompleteCount }})
+        </a>
+    @endif
+
+    @if(!empty($openBulkRequest))
+        <div class="alert alert-light border mb-3">
+            <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
+            — status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span>.
+            You submitted <strong>URL + price</strong> only — track progress under
+            <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="fw-semibold">Pending</a>.
+            Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions &amp; listing details → we approve.
+            @if(($openBulkRequest->estimated_count ?? 0) > 0)
+                <span class="d-block small text-muted mt-1">{{ $openBulkRequest->estimated_count }} site(s) in this request.</span>
+            @endif
+        </div>
+    @endif
+
+    {{-- Guided bulk: publisher submits URL + price only (marketing fills metrics) --}}
+    <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title">Add many websites</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="border rounded-3 p-3 mb-3" style="background:#f7fafb;">
+                        <div class="fw-semibold mb-2">How bulk onboarding works</div>
+                        <ol class="small text-muted mb-0 ps-3">
+                            <li class="mb-1"><strong>You</strong> add only <strong>Website URL</strong> + <strong>Price</strong> (type, paste, or upload a 2-column sheet).</li>
+                            <li class="mb-1"><strong>Our marketer</strong> adds stats and niches (DA, DR, traffic, language, country, niches).</li>
+                            <li class="mb-1"><strong>You</strong> finish descriptions, link type, and timing, then review &amp; submit.</li>
+                            <li><strong>We</strong> review and approve — sites stay hidden until then.</li>
+                        </ol>
+                    </div>
+
+                    @error('sites')
+                        <div class="alert alert-danger py-2 small">{{ $message }}</div>
+                    @enderror
+
+                    <div class="mb-3 border rounded-3 p-3">
+                        <div class="fw-semibold mb-2">Import URL + price</div>
+                        <p class="small text-muted mb-3 mb-md-2">
+                            Upload a CSV/TSV with <strong>two columns</strong> (Website URL, Price), or paste the same from Excel/Sheets.
+                            Header row optional. Excel: <em>File → Save As → CSV</em>, or copy both columns and paste below.
+                        </p>
+
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                            <label class="btn btn-sm btn-outline-primary mb-0" for="bulkSheetFile">
+                                <i class="fa fa-file-csv me-1"></i> Upload sheet (CSV / TSV)
+                            </label>
+                            <input type="file" id="bulkSheetFile" class="d-none"
+                                   accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain">
+                            <a href="#" id="bulkSheetTemplateBtn" class="btn btn-sm btn-outline-secondary">
+                                <i class="fa fa-download me-1"></i> Sample CSV
+                            </a>
+                            <span class="form-text mb-0" id="bulkSheetFileName"></span>
+                        </div>
+
+                        <label class="form-label mb-1" for="bulkPasteUrls">Paste into the box, then click Fill rows</label>
+                        <textarea id="bulkPasteUrls" class="form-control form-control-sm font-monospace" rows="5"
+                                  placeholder="https://site-one.com,99&#10;https://site-two.com,150&#10;&#10;# Excel: copy two columns (URL + Price) and paste here&#10;# URLs only (one per line) also work — add prices in the table"></textarea>
+                        <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                            <button type="button" class="btn btn-sm btn-primary" id="bulkPasteUrlsBtn">
+                                <i class="fa fa-clipboard-list me-1"></i> Fill rows from paste
+                            </button>
+                            <span class="form-text mb-0">Formats: <code>url,price</code> · tab from Excel · <code>url price</code> · URLs only</span>
+                        </div>
+                        <div class="small text-success mt-1 d-none" id="bulkPasteUrlsSuccess" role="status"></div>
+                        <div class="small text-danger mt-1 d-none" id="bulkPasteUrlsError" role="alert"></div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Your sites (URL + price only)</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkAddRowBtn">
+                            <i class="fa fa-plus"></i> Add row
+                        </button>
+                    </div>
+
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle mb-0" id="bulkUrlPriceTable">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:14rem;">Website URL</th>
+                                    <th style="width:8.5rem;">Price (€)</th>
+                                    <th style="width:2.5rem;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="bulkUrlPriceBody">
+                                @php
+                                    $oldSites = old('sites');
+                                    if (!is_array($oldSites) || count($oldSites) < 2) {
+                                        $oldSites = [['url' => '', 'price' => ''], ['url' => '', 'price' => '']];
+                                    }
+                                @endphp
+                                @foreach($oldSites as $i => $row)
+                                    <tr class="bulk-url-price-row">
+                                        <td>
+                                            <input type="url" name="sites[{{ $i }}][url]"
+                                                   class="form-control form-control-sm @error('sites.'.$i.'.url') is-invalid @enderror"
+                                                   placeholder="https://example.com"
+                                                   value="{{ $row['url'] ?? '' }}" required>
+                                            @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        </td>
+                                        <td>
+                                            <input type="number" name="sites[{{ $i }}][price]" step="0.01" min="0"
+                                                   class="form-control form-control-sm @error('sites.'.$i.'.price') is-invalid @enderror"
+                                                   placeholder="99"
+                                                   value="{{ $row['price'] ?? '' }}" required>
+                                            @error('sites.'.$i.'.price')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        </td>
+                                        <td class="text-end">
+                                            <button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="form-text mb-3">Minimum 2 sites. One open bulk request at a time. For a single site, use <strong>Add New Website</strong>. Agencies with full CSV data can use <strong>Bulk Import (Agency)</strong>.</div>
+
+                    <div class="mb-0">
+                        <label class="form-label">Note for our team (optional)</label>
+                        <textarea name="publisher_note" class="form-control @error('publisher_note') is-invalid @enderror"
+                                  rows="2" maxlength="2000" placeholder="Niches, languages, or anything we should know…">{{ old_text('publisher_note') }}</textarea>
+                        @error('publisher_note')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Submit URL + prices</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="card shadow-sm border-0 d-none mb-3" id="claimCard">
         <div class="card-body">
@@ -1159,10 +1309,21 @@ window.PublisherWebsitesConfig = {
     },
 };
 </script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (!(window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.openBulkRequestModal)) return;
+    var el = document.getElementById('bulkRequestModal');
+    if (el && window.bootstrap && typeof window.bootstrap.Modal === 'function') {
+        window.bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+});
+</script>
 
 <script>
 const addBtn = $('#showFormBtn');
 const bulkBtn = $('#showBulkBtn');
+const bulkRequestBtn = $('#showBulkRequestBtn');
+const claimBtn = $('#showClaimBtn');
 const bulkCard = $('#bulkCard');
 const claimCard = $('#claimCard');
 const closeBulkBtn = $('#closeBulkBtn');
@@ -1866,6 +2027,8 @@ addBtn.on('click', function() {
 
     addBtn.toggleClass('d-none', isOpen);
     bulkBtn.toggleClass('d-none', isOpen);
+    bulkRequestBtn.toggleClass('d-none', isOpen);
+    claimBtn.toggleClass('d-none', isOpen);
     formHeaderSpan.text('Add New Website');
 
     if(isOpen){
@@ -1903,8 +2066,11 @@ addBtn.on('click', function() {
 
 bulkBtn.on('click', function() {
     formCard.addClass('d-none');
+    claimCard.addClass('d-none');
     closeBtn.addClass('d-none');
     addBtn.removeClass('d-none');
+    bulkRequestBtn.removeClass('d-none');
+    claimBtn.removeClass('d-none');
     bulkCard.toggleClass('d-none');
     bulkBtn.toggleClass('d-none', !bulkCard.hasClass('d-none'));
     formHeaderSpan.text(bulkCard.hasClass('d-none') ? 'Add New Website' : 'Bulk Import');
@@ -2310,6 +2476,8 @@ function prefillSiteForm(site) {
     $('#bulkCard').addClass('d-none');
     $('#showFormBtn').addClass('d-none');
     $('#showBulkBtn').addClass('d-none');
+    $('#showBulkRequestBtn').addClass('d-none');
+    $('#showClaimBtn').addClass('d-none');
     closeBtn.removeClass('d-none');
     $('#formHeader').text('Edit Site: ' + site.site_name);
     setWizardStep(1);
@@ -2411,6 +2579,8 @@ $(document).ready(function(){
             bulkCard.addClass('d-none');
             addBtn.addClass('d-none');
             bulkBtn.addClass('d-none');
+            bulkRequestBtn.addClass('d-none');
+            claimBtn.addClass('d-none');
             closeBtn.removeClass('d-none');
 
             const editingSiteId = @json(session('editing_site_id'));
@@ -2529,6 +2699,8 @@ closeBtn.on('click', function(){
     formCard.addClass('d-none');
     addBtn.removeClass('d-none');
     bulkBtn.removeClass('d-none');
+    bulkRequestBtn.removeClass('d-none');
+    claimBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
     if (quill) quill.root.innerHTML = '';
@@ -2585,6 +2757,7 @@ $(document).on('click', '.btn-edit', async function() {
 $('#showClaimBtn').on('click', function () {
     formCard.addClass('d-none');
     bulkCard.addClass('d-none');
+    bulkBtn.removeClass('d-none');
     claimCard.toggleClass('d-none');
     formHeaderSpan.text(claimCard.hasClass('d-none') ? 'Add New Website' : 'Claim a website');
 });
