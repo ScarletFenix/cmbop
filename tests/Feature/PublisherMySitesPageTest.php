@@ -112,6 +112,28 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringNotContainsString('Bulk −15%', $html);
     }
 
+    public function test_ajax_metrics_keep_traffic_out_of_market_column(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'traffic' => 1250000,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/\.modern-table col\.col-metrics \{ width: 188px; \}/', $html);
+        $this->assertStringContainsString('formattedTraffic', file_get_contents(resource_path('views/publisher/sites/partials/table.blade.php')));
+        $this->assertStringContainsString('Tr <strong>1.3M</strong>', $html);
+        $this->assertStringContainsString('Traffic 1,250,000', $html);
+        $this->assertStringContainsString('data-label="Market"', $html);
+        $this->assertStringContainsString('country-flag', $html);
+        $this->assertStringContainsString('padding-left: 14px', $html);
+    }
+
     public function test_my_sites_page_and_ajax_table_render(): void
     {
         $this->makeSite([

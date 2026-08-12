@@ -46,8 +46,8 @@
 
     .modern-table col.col-preview { width: 148px; }
     .modern-table col.col-site { width: auto; }
-    .modern-table col.col-metrics { width: 132px; }
-    .modern-table col.col-market { width: 120px; }
+    .modern-table col.col-metrics { width: 188px; }
+    .modern-table col.col-market { width: 128px; }
     .modern-table col.col-status { width: 118px; }
     .modern-table col.col-price { width: 100px; }
     .modern-table col.col-actions { width: 250px; }
@@ -242,9 +242,18 @@
     .site-row-metrics {
         display: inline-flex;
         align-items: center;
-        gap: 10px;
+        flex-wrap: nowrap;
+        gap: 8px;
+        max-width: 100%;
         font-size: 12px;
         color: #475569;
+        padding-right: 4px;
+        box-sizing: border-box;
+    }
+
+    .site-row-metrics > span {
+        flex: 0 0 auto;
+        white-space: nowrap;
     }
 
     .site-row-metrics strong {
@@ -252,10 +261,18 @@
         font-weight: 700;
     }
 
+    .modern-table td[data-label="Metrics"] {
+        overflow: hidden;
+    }
+
+    .modern-table td[data-label="Market"] {
+        padding-left: 14px;
+    }
+
     .site-row-market {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
+        gap: 8px;
         font-size: 12px;
         color: var(--brand-ink-muted, #75787B);
         max-width: 100%;
@@ -271,8 +288,10 @@
     }
 
     .site-row-market .country-flag {
+        flex: 0 0 auto;
         font-size: 16px;
         line-height: 1;
+        margin-right: 2px;
     }
 
     .site-row-actions {
@@ -764,12 +783,12 @@
                 <div class="site-row-metrics"
                      data-glass-tip
                      data-glass-tip-title="Metrics"
-                     data-glass-tip-body="DA / DR / Traffic"
+                     data-glass-tip-body="DA {{ (int) $site->da }} · DR {{ (int) $site->dr }} · Traffic {{ number_format((int) $site->traffic) }}"
                      data-glass-tip-placement="top"
                      data-glass-tip-hover-only="1">
                     <span>DA <strong>{{ $site->da }}</strong></span>
                     <span>DR <strong>{{ $site->dr }}</strong></span>
-                    <span>Tr <strong>{{ number_format((int) $site->traffic) }}</strong></span>
+                    <span title="Traffic {{ number_format((int) $site->traffic) }}">Tr <strong>{{ $site->formattedTraffic() }}</strong></span>
                 </div>
             </td>
 

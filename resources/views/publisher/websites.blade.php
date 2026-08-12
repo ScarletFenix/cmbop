@@ -206,7 +206,7 @@
     }
 
     #sitesTableWrapper .sites-responsive-table {
-        min-width: 1080px;
+        min-width: 1140px;
     }
 
     #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
