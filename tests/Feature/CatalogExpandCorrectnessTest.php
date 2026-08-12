@@ -177,6 +177,11 @@ class CatalogExpandCorrectnessTest extends TestCase
         $this->assertStringNotContainsString('catalog-expand-pricing', $html);
         $this->assertStringNotContainsString('No extra pricing options for this listing.', $html);
         $this->assertStringContainsString('Base guest post only — no homepage, social, or sensitive add-ons.', $html);
+        // Site Details always lists Homepage / Social (empty state when not offered).
+        $this->assertStringContainsString('Homepage promotions', $html);
+        $this->assertStringContainsString('Not offered on this listing.', $html);
+        $this->assertStringContainsString('<strong>Social</strong>', $html);
+        $this->assertStringContainsString('No social sharing included on this listing.', $html);
         $this->assertStringContainsString('No description yet', $html);
         $this->assertStringContainsString('Turnaround', $html);
     }

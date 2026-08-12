@@ -426,6 +426,14 @@ class CatalogController extends Controller
      */
     private function buildCatalogListing(Request $request): array
     {
+        // Hostinger often deploys without migrate — ensure placement JSON columns exist
+        // so Site Details can show Homepage promotions + Social when publishers offer them.
+        try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog schema ensure failed', ['error' => $e->getMessage()]);
+        }
+
         $userId = auth()->id();
         $currentUser = auth()->user();
 

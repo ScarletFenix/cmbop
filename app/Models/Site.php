@@ -1233,6 +1233,10 @@ class Site extends Model
         // Hostinger SQL patches can add columns before Schema cache refreshes,
         // and a false-negative would hide offers in catalog Site Details.
         $raw = $this->homepage_placement_prices;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
         if (! is_array($raw) || $raw === []) {
             return [];
         }
@@ -1283,6 +1287,10 @@ class Site extends Model
     {
         // Same as homepagePlacementOptions(): trust attributes over Schema::hasColumn.
         $raw = $this->social_promotion;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
         if (! is_array($raw) || $raw === []) {
             return [];
         }

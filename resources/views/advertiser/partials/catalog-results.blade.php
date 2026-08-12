@@ -754,8 +754,8 @@
                             @endif
                         </div>
 
+                        <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
                         @if($homepageOptions !== [])
-                            <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
                             <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
                             <div class="homepage-placement-group mb-3"
                                  data-site-id="{{ $site->id }}"
@@ -798,16 +798,20 @@
                                     </div>
                                 @endforeach
                             </div>
+                        @else
+                            <p class="small text-muted mb-3">Not offered on this listing.</p>
                         @endif
 
+                        <p class="mb-1"><strong>Social</strong></p>
                         @if($socialChannels !== [])
-                            <p class="mb-1"><strong>Social</strong></p>
                             <p class="small text-muted mb-2">Publisher will share the live post on these channels at no extra cost.</p>
                             <div class="d-flex flex-wrap gap-1 mb-3" aria-label="Included social channels">
                                 @foreach($socialChannels as $channel)
                                     <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
                                 @endforeach
                             </div>
+                        @else
+                            <p class="small text-muted mb-3">No social sharing included on this listing.</p>
                         @endif
 
                         <p class="mb-1"><strong>Sample article</strong></p>
@@ -1372,10 +1376,10 @@
                         @endif
                     </dd>
                 </div>
-                @if($homepageOptions !== [])
-                    <div class="catalog-card-details__row">
-                        <dt>Homepage promotions</dt>
-                        <dd>
+                <div class="catalog-card-details__row">
+                    <dt>Homepage promotions</dt>
+                    <dd>
+                        @if($homepageOptions !== [])
                             <ul class="list-unstyled mb-0 small">
                                 @foreach($homepageOptions as $days => $fee)
                                     <li>
@@ -1389,19 +1393,25 @@
                                 @endforeach
                             </ul>
                             <span class="text-muted small">Choose a duration above Buy.</span>
-                        </dd>
-                    </div>
-                @endif
-                @if($socialChannels !== [])
-                    <div class="catalog-card-details__row">
-                        <dt>Social</dt>
-                        <dd class="d-flex flex-wrap gap-1">
-                            @foreach($socialChannels as $channel)
-                                <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
-                            @endforeach
-                        </dd>
-                    </div>
-                @endif
+                        @else
+                            <span class="text-muted small">Not offered on this listing.</span>
+                        @endif
+                    </dd>
+                </div>
+                <div class="catalog-card-details__row">
+                    <dt>Social</dt>
+                    <dd>
+                        @if($socialChannels !== [])
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach($socialChannels as $channel)
+                                    <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                                @endforeach
+                            </div>
+                        @else
+                            <span class="text-muted small">No social sharing included on this listing.</span>
+                        @endif
+                    </dd>
+                </div>
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>

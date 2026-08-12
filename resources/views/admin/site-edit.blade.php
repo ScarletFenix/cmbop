@@ -340,9 +340,53 @@
                                    value="{{ old_text('link_type', $site->link_type) }}" placeholder="dofollow">
                         </div>
 
-                        <div class="col-12">
+                            <div class="col-12">
                             <label class="form-label fw-semibold" for="description">Description</label>
                             <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
+                        </div>
+
+                        @php
+                            $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
+                            $existingHomepage = is_array($site->homepage_placement_prices) ? $site->homepage_placement_prices : [];
+                            $existingSocial = is_array($site->social_promotion) ? $site->social_promotion : [];
+                        @endphp
+                        <div class="col-12">
+                            <input type="hidden" name="placement_offers_form" value="1">
+                            <div class="border rounded p-3 bg-light">
+                                <p class="fw-semibold mb-1">Homepage &amp; social promotions (optional)</p>
+                                <p class="small text-muted mb-3">Advertisers see these in catalog Site Details. Leave unchecked to hide the offer.</p>
+                                <p class="fw-semibold small mb-2">Homepage placement</p>
+                                <div class="d-flex flex-wrap gap-3 mb-3">
+                                    @foreach($homepageDays as $days)
+                                        @php
+                                            $checked = old("homepage.$days", array_key_exists((string) $days, $existingHomepage) || array_key_exists($days, $existingHomepage));
+                                            $priceVal = old("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
+                                        @endphp
+                                        <div style="min-width:140px;">
+                                            <div class="form-check">
+                                                <input type="checkbox" name="homepage[{{ $days }}]" value="1"
+                                                       class="form-check-input" id="adminHomepage{{ $days }}"
+                                                       {{ $checked ? 'checked' : '' }}>
+                                                <label class="form-check-label" for="adminHomepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
+                                            </div>
+                                            <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
+                                                   placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
+                                                   value="{{ $priceVal }}">
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <p class="fw-semibold small mb-2">Social media sharing (always free)</p>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach(['facebook' => 'Facebook', 'instagram' => 'Instagram', 'x' => 'X'] as $channel => $label)
+                                        <div class="form-check">
+                                            <input type="checkbox" name="social[{{ $channel }}]" value="1"
+                                                   class="form-check-input" id="adminSocial{{ ucfirst($channel) }}"
+                                                   {{ old("social.$channel", !empty($existingSocial[$channel])) ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="adminSocial{{ ucfirst($channel) }}">{{ $label }}</label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
                         </div>
 
                         <div class="col-12">
