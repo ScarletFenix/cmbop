@@ -1405,9 +1405,8 @@
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
-                        <dd class="catalog-card-details__description text-muted small">
-                            {!! $site->safeDescriptionHtml() !!}
-                        </dd>
+                        {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml(). --}}
+                        <dd class="catalog-card-details__description text-muted small">{{ site_description_excerpt($site->description) }}</dd>
                     </div>
                 @endif
                 <div class="catalog-card-details__row">
