@@ -14,6 +14,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -383,6 +384,10 @@ class SiteController extends Controller
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
+            'agency_site_import_id' => Site::hasSitesColumn('agency_site_import_id')
+                ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
+                : null,
+            'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
@@ -471,6 +476,8 @@ class SiteController extends Controller
             'site_image',
             'screenshot_path',
             'screenshot_thumb_path',
+            'agency_site_import_id',
+            'metrics_manual',
             'created_at',
             'updated_at',
         ];
@@ -514,6 +521,7 @@ class SiteController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
         $selectedPublisherId = (int) $request->query('publisher', 0);
 
         return view('admin.site-create', compact(
@@ -521,6 +529,7 @@ class SiteController extends Controller
             'languages',
             'countries',
             'categories',
+            'countryLanguageMap',
             'selectedPublisherId'
         ));
     }
@@ -599,7 +608,7 @@ class SiteController extends Controller
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
         ], $this->siteImageValidationMessages());
 
-        $validator->after(function ($validator) use ($request, $domain) {
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -612,6 +621,15 @@ class SiteController extends Controller
 
             if (Site::where('domain', $domain)->exists()) {
                 $validator->errors()->add('site_url', 'This website domain is already registered.');
+            }
+
+            $country = $countryCodes[0] ?? null;
+            $language = $languageCodes[0] ?? null;
+            if ($country && $language && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
             }
         });
 
@@ -778,6 +796,7 @@ class SiteController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
 
         // Load by absolute path so a stale `view:cache` manifest cannot report
         // "View [admin.site-edit] not found" when the Blade file is on disk.
@@ -788,7 +807,8 @@ class SiteController extends Controller
                 'isMarketingEditor',
                 'languages',
                 'countries',
-                'categories'
+                'categories',
+                'countryLanguageMap'
             ));
         }
 
@@ -976,6 +996,14 @@ class SiteController extends Controller
                 $data['description'] = app(SiteDescriptionSanitizer::class)
                     ->sanitize($data['description']);
             }
+
+            $country = strtolower(trim((string) ($data['country'] ?? $site->country ?? '')));
+            $language = strtolower(trim((string) ($data['language'] ?? $site->language ?? '')));
+            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                throw ValidationException::withMessages([
+                    'language' => ['That language is not allowed for the selected country. Pick country first, then a paired language.'],
+                ]);
+            }
         }
 
         $site->update($data);
@@ -1060,6 +1088,12 @@ class SiteController extends Controller
             }
             if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
                 $validator->errors()->add('country', 'Choose a valid marketplace country.');
+            }
+            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
             }
 
             foreach ($unknownNiches as $cat) {

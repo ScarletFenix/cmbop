@@ -1,22 +1,27 @@
 {{--
-    The two facts every listing repeats: how many dofollow links, and how fast.
+    The two facts every listing repeats: link attribute, and typical turnaround.
 
-    They were two lines of grey prose under the domain ("Max 03 DoFollow links" /
-    "Turnaround: 48h"), which added height to every row and read slowly. As icon
-    chips they take one line and scan as data.
-
-    @param string|null $linkType
-    @param string|null $turnaround
+    @param \App\Models\Site|null $site  Preferred — uses Site label helpers.
+    @param string|null $linkType        Fallback when $site is not passed.
+    @param string|null $turnaround      Fallback raw turnaround code.
 --}}
 @php
-    $chipLinkType = trim((string) ($linkType ?? '')) ?: 'DoFollow';
-    $chipTurnaround = trim((string) ($turnaround ?? ''));
+    $chipLinkType = $site?->linkTypeLabel()
+        ?: (trim((string) ($linkType ?? '')) !== ''
+            ? (match (strtolower(trim((string) $linkType))) {
+                'dofollow' => 'DoFollow',
+                'nofollow' => 'NoFollow',
+                default => ucfirst(trim((string) $linkType)),
+            })
+            : 'DoFollow');
+    $chipTurnaround = $site?->turnaroundLabel()
+        ?: trim((string) ($turnaround ?? ''));
 @endphp
 
 <div class="catalog-meta-chips">
-    <span class="catalog-meta-chip" title="Up to 3 {{ $chipLinkType }} links per placement">
+    <span class="catalog-meta-chip" title="{{ $chipLinkType }} links on this placement">
         <i class="fa-solid fa-link" aria-hidden="true"></i>
-        <span>3 {{ $chipLinkType }}</span>
+        <span>{{ $chipLinkType }}</span>
     </span>
     @if($chipTurnaround !== '')
         <span class="catalog-meta-chip" title="Typical turnaround once the publisher accepts">

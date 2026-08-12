@@ -36,8 +36,18 @@ class OrderItem extends Model
         'moderation_status',
         'live_url',
         'live_url_submitted_at',
+        'live_url_http_status',
+        'live_url_check_ok',
+        'live_url_checked_at',
         'sensitive_type',
         'additional_price',
+        'homepage_days',
+        'homepage_price',
+        'social_channels',
+        'social_post_urls',
+        'publisher_price',
+        'platform_fee_percent',
+        'platform_fee_amount',
         'publisher_status',
         'accepted_at',
         'rejected_at',
@@ -53,20 +63,41 @@ class OrderItem extends Model
         'content_revision_resolved_at',
         'auto_approve_triggered',
         'auto_approve_at',
+        'auto_approve_reminder_sent_at',
+        'accept_nudge_stage',
+        'accept_nudge_sent_at',
+        'publish_nudge_stage',
+        'publish_nudge_sent_at',
+        'review_nudge_sent_at',
+        'stalled_notice_sent_at',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'additional_price' => 'decimal:2',
+        'homepage_price' => 'decimal:2',
+        'homepage_days' => 'integer',
+        'social_channels' => 'array',
+        'social_post_urls' => 'array',
+        'publisher_price' => 'decimal:2',
+        'platform_fee_percent' => 'decimal:2',
+        'platform_fee_amount' => 'decimal:2',
         'accepted_at' => 'datetime',
         'rejected_at' => 'datetime',
         'completed_at' => 'datetime',
         'live_url_submitted_at' => 'datetime',
+        'live_url_checked_at' => 'datetime',
+        'live_url_check_ok' => 'boolean',
         'modification_requested_at' => 'datetime',
         'content_revision_requested_at' => 'datetime',
         'content_revision_resolved_at' => 'datetime',
         'auto_approve_at' => 'datetime',
         'auto_approve_triggered' => 'boolean',
+        'auto_approve_reminder_sent_at' => 'datetime',
+        'accept_nudge_sent_at' => 'datetime',
+        'publish_nudge_sent_at' => 'datetime',
+        'review_nudge_sent_at' => 'datetime',
+        'stalled_notice_sent_at' => 'datetime',
     ];
 
     /**
@@ -152,15 +183,20 @@ class OrderItem extends Model
      */
     public function getBasePriceAttribute()
     {
-        return $this->price - $this->additional_price;
+        return $this->markedUpBasePrice();
     }
 
     /**
-     * Marked-up base paid by the advertiser (excludes sensitive add-ons).
+     * Marked-up base paid by the advertiser (excludes sensitive / homepage add-ons).
      */
     public function markedUpBasePrice(): float
     {
-        return round((float) $this->price - (float) ($this->additional_price ?? 0), 2);
+        return round(
+            (float) $this->price
+            - (float) ($this->additional_price ?? 0)
+            - (float) ($this->homepage_price ?? 0),
+            2
+        );
     }
 
     /**
@@ -168,17 +204,23 @@ class OrderItem extends Model
      */
     public function publisherBasePrice(): float
     {
+        if ($this->publisher_price !== null && $this->publisher_price !== '') {
+            return round((float) $this->publisher_price, 2);
+        }
+
         return round($this->markedUpBasePrice() / self::PLATFORM_MARKUP_RATE, 2);
     }
 
     /**
      * Amount credited to the publisher on approval.
-     * Publisher gets original base + sensitive add-ons; platform keeps the 15% markup.
+     * Publisher gets original base + sensitive + homepage fees; platform keeps markup on the article base.
      */
     public function publisherPayoutAmount(): float
     {
         return round(
-            $this->publisherBasePrice() + (float) ($this->additional_price ?? 0),
+            $this->publisherBasePrice()
+            + (float) ($this->additional_price ?? 0)
+            + (float) ($this->homepage_price ?? 0),
             2
         );
     }
@@ -203,7 +245,8 @@ class OrderItem extends Model
         $qualified = $table === '' ? '' : rtrim($table, '.').'.';
 
         return DB::raw(
-            "({$qualified}price - COALESCE({$qualified}additional_price, 0)) / {$rate} + COALESCE({$qualified}additional_price, 0)"
+            "({$qualified}price - COALESCE({$qualified}additional_price, 0) - COALESCE({$qualified}homepage_price, 0)) / {$rate}"
+            ." + COALESCE({$qualified}additional_price, 0) + COALESCE({$qualified}homepage_price, 0)"
         );
     }
 
@@ -225,7 +268,7 @@ class OrderItem extends Model
         }
 
         return DB::raw(
-            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0)) / '.$rate.'))'
+            'COALESCE(platform_fee_amount, (price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0)) - COALESCE(publisher_price, (price - COALESCE(additional_price, 0) - COALESCE(homepage_price, 0)) / '.$rate.'))'
         );
     }
 
@@ -238,24 +281,95 @@ class OrderItem extends Model
     }
 
     /**
+     * Whether this placement includes homepage placement days.
+     */
+    public function hasHomepagePlacement(): bool
+    {
+        return $this->homepage_days !== null && (int) $this->homepage_days > 0;
+    }
+
+    /**
+     * Snapshotted social channels the publisher offered on this order (always €0).
+     *
+     * @return list<string>
+     */
+    public function enabledSocialChannels(): array
+    {
+        $raw = $this->social_channels;
+        if (! is_array($raw) || $raw === []) {
+            return [];
+        }
+
+        $allowed = config('site_placement.social_channels', ['facebook', 'instagram', 'x']);
+        $normalized = array_map(
+            static fn ($c) => strtolower(trim((string) $c)),
+            $raw
+        );
+        $out = [];
+        foreach ($allowed as $channel) {
+            if (in_array($channel, $normalized, true)) {
+                $out[] = $channel;
+            }
+        }
+
+        return $out;
+    }
+
+    public function offersSocialPromotion(): bool
+    {
+        return $this->enabledSocialChannels() !== [];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function socialPostUrls(): array
+    {
+        $raw = $this->social_post_urls;
+        if (! is_array($raw) || $raw === []) {
+            return [];
+        }
+
+        $out = [];
+        foreach ($this->enabledSocialChannels() as $channel) {
+            $url = $raw[$channel] ?? null;
+            if (is_string($url) && trim($url) !== '') {
+                $out[$channel] = trim($url);
+            }
+        }
+
+        return $out;
+    }
+
+    public function hasSocialPostUrls(): bool
+    {
+        return $this->socialPostUrls() !== [];
+    }
+
+    public function socialChannelLabel(string $channel): string
+    {
+        return match (strtolower($channel)) {
+            'facebook' => 'Facebook',
+            'instagram' => 'Instagram',
+            'x' => 'X',
+            default => ucfirst($channel),
+        };
+    }
+
+    /**
      * Helper method to get formatted price breakdown
      */
     public function getPriceBreakdownAttribute()
     {
-        if ($this->hasSensitivePricing()) {
-            return [
-                'base_price' => $this->base_price,
-                'additional_price' => $this->additional_price,
-                'sensitive_type' => $this->sensitive_type,
-                'total_price' => $this->price,
-            ];
-        }
+        $homepagePrice = (float) ($this->homepage_price ?? 0);
 
         return [
-            'base_price' => $this->price,
-            'additional_price' => 0,
-            'sensitive_type' => null,
-            'total_price' => $this->price,
+            'base_price' => $this->markedUpBasePrice(),
+            'additional_price' => (float) ($this->additional_price ?? 0),
+            'sensitive_type' => $this->hasSensitivePricing() ? $this->sensitive_type : null,
+            'homepage_days' => $this->hasHomepagePlacement() ? (int) $this->homepage_days : null,
+            'homepage_price' => $homepagePrice,
+            'total_price' => (float) $this->price,
         ];
     }
 

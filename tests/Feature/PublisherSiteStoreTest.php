@@ -205,6 +205,12 @@ class PublisherSiteStoreTest extends TestCase
         $this->assertIsArray($map);
         $this->assertArrayHasKey('en', $map);
 
+        $countryMap = $response->viewData('countryLanguageMap');
+        $this->assertIsArray($countryMap);
+        $this->assertArrayHasKey('de', $countryMap);
+        $deLangs = collect($countryMap['de'])->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $this->assertSame(['de'], $deLangs);
+
         $codes = collect($map['en'])->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
 
         foreach (['us', 'uk', 'au', 'nz', 'za', 'sg', 'cn', 'tw', 'hk', 'mo', 'ae', 'sa', 'qa', 'kw', 'bh', 'om'] as $code) {

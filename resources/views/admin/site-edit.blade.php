@@ -92,19 +92,6 @@
 
                     <div class="row g-3">
                         <div class="col-md-6">
-                            <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
-                            <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
-                                <option value="">Select…</option>
-                                @foreach($languages as $language)
-                                    <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
-                                        {{ $language->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                            @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                        </div>
-                        <div class="col-md-6">
                             <label class="form-label fw-semibold" for="country">Country <span class="text-danger">*</span></label>
                             <select id="country" name="country" class="form-select @error('country') is-invalid @enderror" required>
                                 <option value="">Select…</option>
@@ -115,7 +102,22 @@
                                     </option>
                                 @endforeach
                             </select>
+                            <div class="form-text">Pick country first.</div>
                             @error('country')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
+                            <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
+                                <option value="">Select country first</option>
+                                @foreach($languages as $language)
+                                    <option value="{{ strtolower($language->code) }}"
+                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        {{ $language->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                            <div class="form-text">Only languages paired with that country.</div>
+                            @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="da">DA <span class="text-danger">*</span></label>
@@ -288,18 +290,6 @@
                                    value="{{ old_text('price', $site->price) }}">
                         </div>
                         <div class="col-md-4">
-                            <label class="form-label fw-semibold" for="language">Language</label>
-                            <select id="language" name="language" class="form-select">
-                                <option value="">Select…</option>
-                                @foreach($languages as $language)
-                                    <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
-                                        {{ $language->name }}
-                                    </option>
-                                @endforeach
-                            </select>
-                        </div>
-                        <div class="col-md-4">
                             <label class="form-label fw-semibold" for="country">Country</label>
                             <select id="country" name="country" class="form-select">
                                 <option value="">Select…</option>
@@ -307,6 +297,18 @@
                                     <option value="{{ strtolower($country->code) }}"
                                         @selected(old('country', strtolower((string) $site->country)) === strtolower($country->code))>
                                         {{ $country->name }}
+                                    </option>
+                                @endforeach
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label fw-semibold" for="language">Language</label>
+                            <select id="language" name="language" class="form-select">
+                                <option value="">Select country first</option>
+                                @foreach($languages as $language)
+                                    <option value="{{ strtolower($language->code) }}"
+                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        {{ $language->name }}
                                     </option>
                                 @endforeach
                             </select>
@@ -385,6 +387,47 @@
 
 </div>
 
+<script>
+(function () {
+    const map = @json($countryLanguageMap ?? new \stdClass());
+    const countryEl = document.getElementById('country');
+    const langEl = document.getElementById('language');
+    const preferredLang = @json(old('language', strtolower((string) ($site->language ?? ''))));
+
+    function refreshLanguages() {
+        if (!countryEl || !langEl) return;
+        const code = (countryEl.value || '').toLowerCase();
+        const list = map[code] || [];
+        const keep = (langEl.value || preferredLang || '').toLowerCase();
+        langEl.innerHTML = '';
+        if (!code) {
+            langEl.disabled = true;
+            langEl.innerHTML = '<option value="">Select country first</option>';
+            return;
+        }
+        langEl.disabled = false;
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select…';
+        langEl.appendChild(placeholder);
+        list.forEach(function (row) {
+            const opt = document.createElement('option');
+            opt.value = row.code;
+            opt.textContent = row.name || String(row.code).toUpperCase();
+            if (keep && keep === String(row.code).toLowerCase()) opt.selected = true;
+            langEl.appendChild(opt);
+        });
+        if (list.length === 1 && !langEl.value) {
+            langEl.value = list[0].code;
+        }
+    }
+
+    if (countryEl) {
+        countryEl.addEventListener('change', refreshLanguages);
+        refreshLanguages();
+    }
+})();
+</script>
 <script>
 (function () {
     const imageInput = document.getElementById('site_image');

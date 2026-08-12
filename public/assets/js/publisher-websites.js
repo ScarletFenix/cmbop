@@ -1,9 +1,27 @@
 /* Publisher My Sites — expects window.PublisherWebsitesConfig */
 (function () {
     if (!window.PublisherWebsitesConfig) {
-        window.PublisherWebsitesConfig = { csrfToken: '', maxBulkRows: 200, routes: {}, old: {}, languageCountryMap: {} };
+        window.PublisherWebsitesConfig = {
+            csrfToken: '',
+            maxBulkRows: 200,
+            routes: {},
+            old: {},
+            countryLanguageMap: {},
+            languageCountryMap: {},
+        };
     }
 })();
+
+/*
+ * Legacy dual-load: websites.blade.php still ships a full inline script.
+ * When that flag is set, skip this file's form/table boot to avoid
+ * re-binding selects and double-fetching the sites table.
+ * Accept / Decline / Get Verified always bind below (outside this gate).
+ */
+if (window.__publisherWebsitesInlineLoaded) {
+    // no-op — Blade inline owns form/table behaviour.
+} else {
+(function publisherWebsitesExternalBoot() {
 
 const addBtn = $('#showFormBtn');
 const bulkBtn = $('#showBulkRequestBtn');
@@ -109,6 +127,65 @@ $('#sensitiveDisclosureBtn').on('click', function () {
     $(this).attr('aria-expanded', open ? 'true' : 'false');
     $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
 });
+
+$('#placementDisclosureBtn').on('click', function () {
+    const panel = $('#placementDisclosurePanel');
+    const open = panel.prop('hidden');
+    panel.prop('hidden', !open);
+    $(this).attr('aria-expanded', open ? 'true' : 'false');
+    $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+});
+
+function setPlacementDisclosureOpen(open) {
+    const panel = $('#placementDisclosurePanel');
+    const btn = $('#placementDisclosureBtn');
+    if (!panel.length || !btn.length) return;
+    panel.prop('hidden', !open);
+    btn.attr('aria-expanded', open ? 'true' : 'false');
+    btn.find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+}
+
+function clearHomepageSocialFields() {
+    $('.homepage-checkbox').prop('checked', false);
+    $('.homepage-price').val('');
+    $('.social-checkbox').prop('checked', false);
+}
+
+function fillHomepageSocialFromSite(site) {
+    clearHomepageSocialFields();
+    let hasPlacement = false;
+
+    let homepage = site.homepage_placement_prices || null;
+    if (typeof homepage === 'string') {
+        try { homepage = JSON.parse(homepage); } catch (e) { homepage = null; }
+    }
+    if (homepage && typeof homepage === 'object') {
+        Object.keys(homepage).forEach(function (days) {
+            const $cb = $(`#homepage${days}`);
+            if (!$cb.length) return;
+            $cb.prop('checked', true);
+            $(`input[name="price_homepage[${days}]"]`).val(homepage[days]);
+            hasPlacement = true;
+        });
+    }
+
+    let social = site.social_promotion || null;
+    if (typeof social === 'string') {
+        try { social = JSON.parse(social); } catch (e) { social = null; }
+    }
+    if (social && typeof social === 'object') {
+        ['facebook', 'instagram', 'x'].forEach(function (channel) {
+            if (!social[channel]) return;
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', true);
+            hasPlacement = true;
+        });
+    }
+
+    if (hasPlacement) {
+        setPlacementDisclosureOpen(true);
+    }
+}
 
 // FR3 — inline validation on blur
 function markFieldValidity(el) {
@@ -290,94 +367,98 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
 // Categories use shared Catalog-parity multi-select (public/js/multi-select.js):
 // Enter adds sole/focused match, Backspace peels last chip, empty state, max 7.
 
-window.languageCountryMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.languageCountryMap) || {};
-const languageCountryMap = window.languageCountryMap;
+window.countryLanguageMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.countryLanguageMap)
+    || window.countryLanguageMap
+    || {};
+const countryLanguageMap = window.countryLanguageMap;
 
-// Single language + single country (country list filtered by language)
-let languageSingleSelect = initSingleSelect(
-    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
-    'selectedLanguage', 'languageSearch', 'languageValue', 'Select language...'
-);
+// Country first → language list filtered by allowed pairs
 let countrySingleSelect = initSingleSelect(
     'countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions',
-    'selectedCountry', 'countrySearch', 'countryValue', 'Select language first...'
+    'selectedCountry', 'countrySearch', 'countryValue', 'Select country...'
+);
+let languageSingleSelect = initSingleSelect(
+    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
+    'selectedLanguage', 'languageSearch', 'languageValue', 'Select country first...'
 );
 
-function relatedCountryCodesForLanguage(langCode) {
+function relatedLanguageCodesForCountry(countryCode) {
     const related = [];
-    (languageCountryMap[langCode] || []).forEach(item => {
+    (countryLanguageMap[countryCode] || []).forEach(item => {
         const code = typeof item === 'string' ? item : (item.code || '');
         if (code) related.push(String(code).toLowerCase());
     });
     return Array.from(new Set(related));
 }
 
-function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
-    const hint = $('#relatedCountriesHint');
-    if (!langCode) {
-        // No language yet: all countries visible but not selectable
-        countrySingleSelect.setAllowedValues([]);
-        countrySingleSelect.setPlaceholder('Select language first...');
-        if (clearCountry) countrySingleSelect.clearSelection();
-        hint.text('Select a language first.');
+function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferLanguage = null } = {}) {
+    const hint = $('#relatedLanguagesHint');
+    if (!countryCode) {
+        languageSingleSelect.setAllowedValues([]);
+        languageSingleSelect.setPlaceholder('Select country first...');
+        if (clearLanguage) languageSingleSelect.clearSelection();
+        if (hint.length) hint.text('Select a country first.');
         return;
     }
 
-    const relatedCodes = relatedCountryCodesForLanguage(langCode);
-    // Fade non-matching countries (keep them visible, non-selectable)
-    countrySingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
-    countrySingleSelect.setPlaceholder('Select country...');
-    if (clearCountry) countrySingleSelect.clearSelection();
+    const relatedCodes = relatedLanguageCodesForCountry(countryCode);
+    languageSingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
+    languageSingleSelect.setPlaceholder('Select language...');
+    if (clearLanguage) languageSingleSelect.clearSelection();
 
-    if (relatedCodes.length) {
+    if (relatedCodes.length === 1) {
+        const only = relatedCodes[0];
+        const opt = $(`#languageOptions .single-select-option[data-value="${only}"]`);
+        if (opt.length) {
+            languageSingleSelect.setSelectedValue(only, opt.data('label'));
+        }
+        if (hint.length) hint.text('Language locked to ' + (opt.data('label') || only.toUpperCase()) + ' for this country.');
+    } else if (relatedCodes.length) {
+        if (preferLanguage && relatedCodes.indexOf(String(preferLanguage).toLowerCase()) !== -1) {
+            const code = String(preferLanguage).toLowerCase();
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
+            if (opt.length) languageSingleSelect.setSelectedValue(code, opt.data('label'));
+        }
         const labels = relatedCodes.map(code => {
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
             return opt.length ? opt.data('label') : code.toUpperCase();
         });
-        hint.text('Suggested: ' + labels.join(', '));
-    } else {
-        hint.text('All markets selectable for this language.');
+        if (hint.length) hint.text('Allowed: ' + labels.join(', '));
+    } else if (hint.length) {
+        hint.text('No paired languages for this country.');
     }
 }
 
-let syncingLanguageCountry = false;
-$('#selectedLanguage').on('change', function() {
-    if (syncingLanguageCountry) return;
-    applyLanguageCountryFilter($(this).val() || '', { clearCountry: true });
+let syncingCountryLanguage = false;
+$('#selectedCountry').on('change', function() {
+    if (syncingCountryLanguage) return;
+    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
 });
 
-// Start with countries locked until language is chosen
-applyLanguageCountryFilter('', { clearCountry: false });
+// Start with languages locked until country is chosen
+applyCountryLanguageFilter('', { clearLanguage: false });
 
 
 // Restore validation-old values from Blade config (if any)
 (function hydratePublisherSiteFormOld() {
     const old = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.old) || {};
-    if (old.language) {
-        (function() {
-            const code = String(old.language).toLowerCase();
-            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                syncingLanguageCountry = true;
-                languageSingleSelect.setSelectedValue(code, opt.data('label'));
-                applyLanguageCountryFilter(code, { clearCountry: false });
-                syncingLanguageCountry = false;
-            }
-        })();
-    }
     if (old.country) {
-        (function() {
-            const code = String(old.country).toLowerCase();
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                countrySingleSelect.setSelectedValue(code, opt.data('label'));
-            }
-        })();
+        const code = String(old.country).toLowerCase();
+        const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+        if (opt.length) {
+            syncingCountryLanguage = true;
+            countrySingleSelect.setSelectedValue(code, opt.data('label'));
+            applyCountryLanguageFilter(code, {
+                clearLanguage: false,
+                preferLanguage: old.language ? String(old.language).toLowerCase() : null
+            });
+            syncingCountryLanguage = false;
+        }
     }
 })();
 
 // Initialize Category Multi Select (max 7) — guard so a missing multi-select.js
-// cannot abort this file before Get Verified / feature handlers register.
+// never throws and breaks country/language selects further down this file.
 let categoryMultiSelect = null;
 try {
     if (typeof window.initMultiSelect === 'function') {
@@ -463,12 +544,23 @@ function saveSiteDraft() {
             siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
+            homepage: {},
+            price_homepage: {},
+            social: {},
             step: wizardStep,
             savedAt: Date.now()
         };
         ['crypto','trading','CBD','forex'].forEach(topic => {
             draft.sensitive[topic] = $(`#sensitive${topic}`).is(':checked');
             draft.price_sensitive[topic] = $(`input[name="price_sensitive[${topic}]"]`).val();
+        });
+        [1, 7, 30].forEach(days => {
+            draft.homepage[days] = $(`#homepage${days}`).is(':checked');
+            draft.price_homepage[days] = $(`input[name="price_homepage[${days}]"]`).val();
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            draft.social[channel] = $(id).is(':checked');
         });
         localStorage.setItem(SITE_DRAFT_KEY, JSON.stringify(draft));
         $('#wizardDraftHint').text('Draft saved');
@@ -518,18 +610,36 @@ function loadSiteDraft() {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
             $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
         });
-
-        if (draft.language) {
-            const langOpt = $(`#languageOptions .single-select-option[data-value="${draft.language}"]`);
-            if (langOpt.length) {
-                languageSingleSelect.setSelectedValue(draft.language, langOpt.data('label'));
-            }
+        let hasPlacementDraft = false;
+        [1, 7, 30].forEach(days => {
+            const on = !!(draft.homepage && draft.homepage[days]);
+            $(`#homepage${days}`).prop('checked', on);
+            $(`input[name="price_homepage[${days}]"]`).val((draft.price_homepage && draft.price_homepage[days]) || '');
+            if (on) hasPlacementDraft = true;
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const on = !!(draft.social && draft.social[channel]);
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', on);
+            if (on) hasPlacementDraft = true;
+        });
+        if (hasPlacementDraft) {
+            setPlacementDisclosureOpen(true);
         }
+
         if (draft.country) {
             const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
             if (countryOpt.length) {
+                syncingCountryLanguage = true;
                 countrySingleSelect.setSelectedValue(draft.country, countryOpt.data('label'));
+                applyCountryLanguageFilter(draft.country, {
+                    clearLanguage: false,
+                    preferLanguage: draft.language || null
+                });
+                syncingCountryLanguage = false;
             }
+        } else {
+            applyCountryLanguageFilter('', { clearLanguage: true });
         }
         if (draft.categories) {
             const raw = String(draft.categories);
@@ -585,13 +695,13 @@ function validateWizardStep(step) {
     }
 
     if (step === 2) {
-        if (!languageSingleSelect.getSelectedValue()) {
-            ok = false;
-            message = message || 'Please select a language.';
-        }
         if (!countrySingleSelect.getSelectedValue()) {
             ok = false;
             message = message || 'Please select a country / market.';
+        }
+        if (!languageSingleSelect.getSelectedValue()) {
+            ok = false;
+            message = message || 'Please select a language.';
         }
         if (categoryMultiSelect.getSelectedItems().length === 0) {
             ok = false;
@@ -658,7 +768,7 @@ addBtn.on('click', function() {
         // Reset selects
         languageSingleSelect.clearSelection();
         countrySingleSelect.clearSelection();
-        applyLanguageCountryFilter('', { clearCountry: false });
+        applyCountryLanguageFilter('', { clearLanguage: true });
         categoryMultiSelect.clearSelections();
         
         // Enable site name and URL for create
@@ -1304,11 +1414,13 @@ closeBtn.on('click', function(){
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     
     // Reset selects
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    applyLanguageCountryFilter('', { clearCountry: false });
+    applyCountryLanguageFilter('', { clearLanguage: true });
     categoryMultiSelect.clearSelections();
     
     $('#siteName').prop('disabled', false);
@@ -1412,6 +1524,8 @@ $(document).on('click', '.btn-edit', function() {
     // Sensitive topics
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     
     if (site.sensitive_prices) {
         let prices = typeof site.sensitive_prices === 'string' ? JSON.parse(site.sensitive_prices) : site.sensitive_prices;
@@ -1420,30 +1534,29 @@ $(document).on('click', '.btn-edit', function() {
             $(`input[name="price_sensitive[${key}]"]`).val(prices[key]);
         }
     }
+
+    fillHomepageSocialFromSite(site);
     
-    // Set Language (1) then Country (1) filtered by that language
+    // Country first, then paired language
     const langCode = (site.language || site.language_code || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();
     const countryCode = (site.country || site.country_code || (Array.isArray(site.countries) ? site.countries[0] : null) || '').toString().toLowerCase();
 
-    syncingLanguageCountry = true;
+    syncingCountryLanguage = true;
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    if (langCode) {
-        const langOpt = $(`#languageOptions .single-select-option[data-value="${langCode}"]`);
-        if (langOpt.length) {
-            languageSingleSelect.setSelectedValue(langCode, langOpt.data('label'));
-            applyLanguageCountryFilter(langCode, { clearCountry: false });
-        }
-    } else {
-        applyLanguageCountryFilter('', { clearCountry: false });
-    }
     if (countryCode) {
         const countryOpt = $(`#countryOptions .single-select-option[data-value="${countryCode}"]`);
         if (countryOpt.length) {
             countrySingleSelect.setSelectedValue(countryCode, countryOpt.data('label'));
+            applyCountryLanguageFilter(countryCode, {
+                clearLanguage: false,
+                preferLanguage: langCode || null
+            });
         }
+    } else {
+        applyCountryLanguageFilter('', { clearLanguage: true });
     }
-    syncingLanguageCountry = false;
+    syncingCountryLanguage = false;
     
     // Set Categories
     categoryMultiSelect.clearSelections();
@@ -1477,288 +1590,6 @@ $(document).on('click', '.btn-edit', function() {
     $('html, body').animate({
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
-});
-
-/* —— File-based site verification —— */
-function verificationCsrfToken() {
-    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
-        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
-        || '';
-}
-
-async function postSiteVerification(url, body) {
-    const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'X-CSRF-TOKEN': verificationCsrfToken(),
-            'Accept': 'application/json',
-            'Content-Type': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-        },
-        body: JSON.stringify(body || {}),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (res.status === 419) {
-        return {
-            success: false,
-            message: 'Your session expired. Refresh the page and try Get Verified again.',
-            error_code: 'csrf',
-        };
-    }
-    if (res.status === 401 || res.status === 403) {
-        return {
-            success: false,
-            message: data.message || 'Please sign in again to verify this website.',
-            error_code: 'auth',
-        };
-    }
-    return data;
-}
-
-async function startSiteVerification(siteId, regenerate = false) {
-    return postSiteVerification(`/publisher/sites/${siteId}/verification/start`, {
-        regenerate: !!regenerate,
-    });
-}
-
-async function checkSiteVerification(siteId) {
-    return postSiteVerification(`/publisher/sites/${siteId}/verification/check`, {});
-}
-
-function verificationErrorTitle(errorCode) {
-    switch (errorCode) {
-        case 'not_found':
-            return 'File not found';
-        case 'mismatch':
-            return 'Wrong content';
-        case 'unreachable':
-            return 'Site not reachable';
-        case 'not_public':
-            return 'File not publicly accessible';
-        case 'rate_limited':
-            return 'Too many checks';
-        case 'incomplete':
-            return 'Finish site details';
-        case 'pending_acceptance':
-            return 'Accept this site first';
-        case 'csrf':
-            return 'Session expired';
-        case 'auth':
-            return 'Sign in required';
-        default:
-            return 'Not verified yet';
-    }
-}
-
-function verificationInstructionsHtml(data, siteName) {
-    const esc = (value) => String(value == null ? '' : value)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-    const token = esc(data.token || '');
-    const fileName = esc(data.file_name || 'seolinkbuildings-verify.txt');
-    const fileUrl = esc(data.file_url || '');
-    return `
-        <div class="text-start">
-            <p class="mb-2">Upload a small file to prove you control this domain. After we find it, your site gets the Verified badge automatically.</p>
-            <ol class="mb-3 ps-3">
-                <li class="mb-2">Create a file named <code>${fileName}</code></li>
-                <li class="mb-2">Paste this code into the file:<br>
-                    <code id="verifyTokenCode" style="display:inline-block;margin-top:6px;padding:6px 8px;background:#f1f5f5;border-radius:6px;word-break:break-all;">${token}</code>
-                </li>
-                <li class="mb-2">Upload it to your site root so it opens at:<br>
-                    <a href="${fileUrl}" target="_blank" rel="noopener noreferrer"><code>${fileUrl}</code></a>
-                </li>
-                <li>Click <strong>Check verification</strong></li>
-            </ol>
-            <p class="small text-muted mb-0">Keep the file live until verification succeeds. You can regenerate a new code if needed.</p>
-        </div>
-    `;
-}
-
-async function openSiteVerificationDialog(siteId, siteName) {
-    Swal.fire({
-        title: 'Preparing verification…',
-        allowOutsideClick: false,
-        didOpen: () => Swal.showLoading(),
-    });
-
-    let data;
-    try {
-        data = await startSiteVerification(siteId, false);
-    } catch (e) {
-        await Swal.fire({
-            icon: 'error',
-            title: 'Network error',
-            text: 'Could not start verification. Check your connection and try again.',
-        });
-        return;
-    }
-
-    if (data.verified) {
-        await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
-        if (typeof window.loadSites === 'function') window.loadSites();
-        else if (typeof fetchSites === 'function') fetchSites();
-        return;
-    }
-    if (!data.success || !data.token) {
-        await Swal.fire({
-            icon: 'error',
-            title: verificationErrorTitle(data.error_code),
-            text: data.message || 'Unable to start verification.',
-        });
-        return;
-    }
-
-    while (true) {
-        const choice = await Swal.fire({
-            title: 'Verify this website',
-            html: verificationInstructionsHtml(data, siteName),
-            showDenyButton: true,
-            showCancelButton: true,
-            confirmButtonText: 'Check verification',
-            denyButtonText: 'Regenerate code',
-            cancelButtonText: 'Close',
-            width: 560,
-        });
-
-        if (choice.isDismissed) {
-            break;
-        }
-
-        if (choice.isDenied) {
-            Swal.fire({
-                title: 'Generating new code…',
-                allowOutsideClick: false,
-                didOpen: () => Swal.showLoading(),
-            });
-            let regen;
-            try {
-                regen = await startSiteVerification(siteId, true);
-            } catch (e) {
-                await Swal.fire({
-                    icon: 'error',
-                    title: 'Network error',
-                    text: 'Could not regenerate the code. Try again.',
-                });
-                break;
-            }
-            if (!regen.success || !regen.token) {
-                await Swal.fire({
-                    icon: 'error',
-                    title: verificationErrorTitle(regen.error_code),
-                    text: regen.message || 'Try again.',
-                });
-                break;
-            }
-            Object.assign(data, regen);
-            continue;
-        }
-
-        Swal.fire({
-            title: 'Checking file…',
-            allowOutsideClick: false,
-            didOpen: () => Swal.showLoading(),
-        });
-        let result;
-        try {
-            result = await checkSiteVerification(siteId);
-        } catch (e) {
-            await Swal.fire({
-                icon: 'error',
-                title: 'Network error',
-                text: 'Could not check the verification file. Try again.',
-                confirmButtonText: 'Back to instructions',
-            });
-            continue;
-        }
-        if (result.success && result.verified) {
-            await Swal.fire({
-                icon: 'success',
-                title: 'Verified!',
-                text: result.message || 'Your Verified badge is now live.',
-            });
-            if (typeof window.loadSites === 'function') window.loadSites();
-            else if (typeof fetchSites === 'function') fetchSites();
-            break;
-        }
-
-        await Swal.fire({
-            icon: 'error',
-            title: verificationErrorTitle(result.error_code),
-            text: result.message || 'Upload the file, then try again.',
-            confirmButtonText: 'Back to instructions',
-        });
-    }
-}
-
-$(document).on('click', '.btn-verify-site', function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    openSiteVerificationDialog(id, name);
-});
-
-async function postSiteAssignment(url) {
-    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-    const res = await fetch(url, {
-        method: 'POST',
-        credentials: 'same-origin',
-        headers: {
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest',
-            'X-CSRF-TOKEN': token,
-        },
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.success) {
-        throw new Error(data.message || 'Request failed');
-    }
-    return data;
-}
-
-$(document).on('click', '.btn-accept-assignment', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    const confirm = await Swal.fire({
-        icon: 'question',
-        title: 'Accept this site?',
-        text: name + ' will appear in My Sites (Pending) until staff activate it.',
-        showCancelButton: true,
-        confirmButtonText: 'Accept',
-    });
-    if (!confirm.isConfirmed) return;
-    try {
-        const data = await postSiteAssignment(`/publisher/sites/${id}/accept-assignment`);
-        Swal.fire({ icon: 'success', title: data.message || 'Accepted', timer: 2200, showConfirmButton: false });
-        sitesStatusFilter = 'pending';
-        fetchSites(1, $('#siteSearch').val());
-    } catch (e) {
-        Swal.fire({ icon: 'error', title: e.message || 'Could not accept' });
-    }
-});
-
-$(document).on('click', '.btn-reject-assignment', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name') || 'this website';
-    const confirm = await Swal.fire({
-        icon: 'warning',
-        title: 'Decline this invite?',
-        text: name + ' will be removed from your account.',
-        showCancelButton: true,
-        confirmButtonText: 'Decline',
-        customClass: { confirmButton: 'slb-swal-danger' },
-    });
-    if (!confirm.isConfirmed) return;
-    try {
-        const data = await postSiteAssignment(`/publisher/sites/${id}/reject-assignment`);
-        Swal.fire({ icon: 'success', title: data.message || 'Declined', timer: 2200, showConfirmButton: false });
-        fetchSites(1, $('#siteSearch').val());
-    } catch (e) {
-        Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
-    }
 });
 
 /* —— Site promotions: Feature / Discount / Bulk —— */
@@ -1925,3 +1756,514 @@ $(document).on('click', '.btn-bulk-leave', async function () {
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
     if (data.success) { fetchSites(); }
 });
+})(); // publisherWebsitesExternalBoot
+}
+
+/*
+ * Always-on row actions: Blade sets __publisherWebsitesInlineLoaded and skips the
+ * form/table boot above, but Accept / Decline / Get Verified still need handlers.
+ */
+(function publisherWebsitesAlwaysOnActions() {
+'use strict';
+
+function reloadPublisherSitesTable(page) {
+    const q = (window.jQuery && $('#siteSearch').length) ? $('#siteSearch').val() : '';
+    if (typeof window.loadSites === 'function') {
+        window.loadSites(page || 1, q);
+        return;
+    }
+}
+
+function setPublisherSitesFilter(status) {
+    if (typeof window.setSitesStatusFilter === 'function') {
+        window.setSitesStatusFilter(status);
+    }
+}
+
+/* —— File-based site verification —— */
+function verificationCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
+        || '';
+}
+
+async function postSiteVerification(url, body) {
+    const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'X-CSRF-TOKEN': verificationCsrfToken(),
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+        },
+        body: JSON.stringify(body || {}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.status === 419) {
+        return {
+            success: false,
+            message: 'Your session expired. Refresh the page and try Get Verified again.',
+            error_code: 'csrf',
+        };
+    }
+    if (res.status === 401 || res.status === 403) {
+        return {
+            success: false,
+            message: data.message || 'Please sign in again to verify this website.',
+            error_code: 'auth',
+        };
+    }
+    return data;
+}
+
+async function startSiteVerification(siteId, regenerate = false) {
+    return postSiteVerification(`/publisher/sites/${siteId}/verification/start`, {
+        regenerate: !!regenerate,
+    });
+}
+
+async function checkSiteVerification(siteId) {
+    return postSiteVerification(`/publisher/sites/${siteId}/verification/check`, {});
+}
+
+function verificationErrorTitle(errorCode) {
+    switch (errorCode) {
+        case 'not_found':
+            return 'File not found';
+        case 'mismatch':
+            return 'Wrong content';
+        case 'unreachable':
+            return 'Site not reachable';
+        case 'not_public':
+            return 'File not publicly accessible';
+        case 'rate_limited':
+            return 'Too many checks';
+        case 'incomplete':
+            return 'Finish site details';
+        case 'pending_acceptance':
+            return 'Accept this site first';
+        case 'csrf':
+            return 'Session expired';
+        case 'auth':
+            return 'Sign in required';
+        default:
+            return 'Not verified yet';
+    }
+}
+
+function verificationInstructionsHtml(data, siteName) {
+    const esc = (value) => String(value == null ? '' : value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    const token = esc(data.token || '');
+    const fileName = esc(data.file_name || 'seolinkbuildings-verify.txt');
+    const fileUrl = esc(data.file_url || '');
+    return `
+        <div class="text-start">
+            <p class="mb-2">Upload a small file to prove you control this domain. After we find it, your site gets the Verified badge automatically.</p>
+            <ol class="mb-3 ps-3">
+                <li class="mb-2">Create a file named <code>${fileName}</code></li>
+                <li class="mb-2">Paste this code into the file:<br>
+                    <code id="verifyTokenCode" style="display:inline-block;margin-top:6px;padding:6px 8px;background:#f1f5f5;border-radius:6px;word-break:break-all;">${token}</code>
+                </li>
+                <li class="mb-2">Upload it to your site root so it opens at:<br>
+                    <a href="${fileUrl}" target="_blank" rel="noopener noreferrer"><code>${fileUrl}</code></a>
+                </li>
+                <li>Click <strong>Check verification</strong></li>
+            </ol>
+            <p class="small text-muted mb-0">Keep the file live until verification succeeds. You can regenerate a new code if needed.</p>
+        </div>
+    `;
+}
+
+async function openSiteVerificationDialog(siteId, siteName) {
+    Swal.fire({
+        title: 'Preparing verification…',
+        allowOutsideClick: false,
+        didOpen: () => Swal.showLoading(),
+    });
+
+    let data;
+    try {
+        data = await startSiteVerification(siteId, false);
+    } catch (e) {
+        await Swal.fire({
+            icon: 'error',
+            title: 'Network error',
+            text: 'Could not start verification. Check your connection and try again.',
+        });
+        return;
+    }
+
+    if (data.verified) {
+        await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
+        reloadPublisherSitesTable();
+        return;
+    }
+    if (!data.success || !data.token) {
+        await Swal.fire({
+            icon: 'error',
+            title: verificationErrorTitle(data.error_code),
+            text: data.message || 'Unable to start verification.',
+        });
+        return;
+    }
+
+    while (true) {
+        const choice = await Swal.fire({
+            title: 'Verify this website',
+            html: verificationInstructionsHtml(data, siteName),
+            showDenyButton: true,
+            showCancelButton: true,
+            confirmButtonText: 'Check verification',
+            denyButtonText: 'Regenerate code',
+            cancelButtonText: 'Close',
+            width: 560,
+        });
+
+        if (choice.isDismissed) {
+            break;
+        }
+
+        if (choice.isDenied) {
+            Swal.fire({
+                title: 'Generating new code…',
+                allowOutsideClick: false,
+                didOpen: () => Swal.showLoading(),
+            });
+            let regen;
+            try {
+                regen = await startSiteVerification(siteId, true);
+            } catch (e) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: 'Network error',
+                    text: 'Could not regenerate the code. Try again.',
+                });
+                break;
+            }
+            if (!regen.success || !regen.token) {
+                await Swal.fire({
+                    icon: 'error',
+                    title: verificationErrorTitle(regen.error_code),
+                    text: regen.message || 'Try again.',
+                });
+                break;
+            }
+            Object.assign(data, regen);
+            continue;
+        }
+
+        Swal.fire({
+            title: 'Checking file…',
+            allowOutsideClick: false,
+            didOpen: () => Swal.showLoading(),
+        });
+        let result;
+        try {
+            result = await checkSiteVerification(siteId);
+        } catch (e) {
+            await Swal.fire({
+                icon: 'error',
+                title: 'Network error',
+                text: 'Could not check the verification file. Try again.',
+                confirmButtonText: 'Back to instructions',
+            });
+            continue;
+        }
+        if (result.success && result.verified) {
+            await Swal.fire({
+                icon: 'success',
+                title: 'Verified!',
+                text: result.message || 'Your Verified badge is now live.',
+            });
+            reloadPublisherSitesTable();
+            break;
+        }
+
+        await Swal.fire({
+            icon: 'error',
+            title: verificationErrorTitle(result.error_code),
+            text: result.message || 'Upload the file, then try again.',
+            confirmButtonText: 'Back to instructions',
+        });
+    }
+}
+
+window.openSiteVerificationDialog = openSiteVerificationDialog;
+
+$(document).on('click', '.btn-verify-site', function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    openSiteVerificationDialog(id, name);
+});
+
+async function postSiteAssignment(url) {
+    const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+    const res = await fetch(url, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: {
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': token,
+        },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+        throw new Error(data.message || 'Request failed');
+    }
+    return data;
+}
+
+$(document).on('click', '.btn-accept-assignment', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    const confirm = await Swal.fire({
+        icon: 'question',
+        title: 'Accept this site?',
+        text: name + ' will appear in My Sites (Pending) until staff activate it.',
+        showCancelButton: true,
+        confirmButtonText: 'Accept',
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        const data = await postSiteAssignment(`/publisher/sites/${id}/accept-assignment`);
+        Swal.fire({ icon: 'success', title: data.message || 'Accepted', timer: 2200, showConfirmButton: false });
+        setPublisherSitesFilter('pending');
+        reloadPublisherSitesTable(1);
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: e.message || 'Could not accept' });
+    }
+});
+
+$(document).on('click', '.btn-reject-assignment', async function () {
+    const id = $(this).data('id');
+    const name = $(this).data('name') || 'this website';
+    const confirm = await Swal.fire({
+        icon: 'warning',
+        title: 'Decline this invite?',
+        text: name + ' will be removed from your account.',
+        showCancelButton: true,
+        confirmButtonText: 'Decline',
+        customClass: { confirmButton: 'slb-swal-danger' },
+    });
+    if (!confirm.isConfirmed) return;
+    try {
+        const data = await postSiteAssignment(`/publisher/sites/${id}/reject-assignment`);
+        Swal.fire({ icon: 'success', title: data.message || 'Declined', timer: 2200, showConfirmButton: false });
+        reloadPublisherSitesTable(1);
+    } catch (e) {
+        Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
+    }
+});
+
+})(); // publisherWebsitesAlwaysOnActions
+
+/*
+ * Listing preview before submit — always-on so it works when Blade owns the form.
+ * Blade calls window.showSiteListingPreview() from the inline submit gate.
+ */
+(function publisherWebsitesListingPreview() {
+'use strict';
+
+window.sitePreviewConfirmed = false;
+
+function previewEscape(str) {
+    return String(str === null || str === undefined ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function previewValue(selector) {
+    const $el = $(selector);
+    if (!$el.length) return '';
+    if ($el.is('select')) {
+        const label = $el.find('option:selected').text();
+        return $.trim(label || $el.val() || '');
+    }
+    return $.trim($el.val() || '');
+}
+
+function previewLabelFor(hiddenSelector, optionsSelector) {
+    const value = $.trim($(hiddenSelector).val() || '');
+    if (!value) return '';
+
+    const $option = $(optionsSelector).find('[data-value="' + value.replace(/"/g, '\\"') + '"]').first();
+    return $.trim($option.data('label') || $option.text() || value);
+}
+
+function previewNiches() {
+    return $.trim($('#selectedCategories').val() || '')
+        .split('|')
+        .map(function (name) { return $.trim(name); })
+        .filter(Boolean)
+        .join(', ');
+}
+
+function previewRow(label, value, opts) {
+    opts = opts || {};
+    const missing = !value;
+    const shown = missing ? (opts.emptyLabel || 'Not set') : value;
+    const cls = missing ? (opts.optional ? 'text-muted' : 'text-danger fst-italic') : '';
+    return '<div class="row g-2 py-2 border-bottom">' +
+        '<div class="col-5 col-md-4 text-muted small">' + previewEscape(label) + '</div>' +
+        '<div class="col-7 col-md-8 ' + cls + '">' + previewEscape(shown) + '</div>' +
+        '</div>';
+}
+
+function previewDescriptionBlock(description) {
+    if (!description) {
+        return '<div class="border rounded-3 p-3 mb-3"><span class="text-danger fst-italic">Not set</span></div>';
+    }
+
+    return '<div class="border rounded-3 p-3 mb-3 site-preview-desc-wrap">' +
+        '<div class="site-preview-desc is-clamped">' + previewEscape(description) + '</div>' +
+        '<button type="button" class="btn btn-link btn-sm px-0 mt-1 site-preview-desc-toggle d-none" ' +
+            'aria-expanded="false">Show more</button>' +
+        '</div>';
+}
+
+function syncSitePreviewDescToggles(root) {
+    if (!root) return;
+    root.querySelectorAll('.site-preview-desc-wrap').forEach(function (wrap) {
+        const desc = wrap.querySelector('.site-preview-desc');
+        const btn = wrap.querySelector('.site-preview-desc-toggle');
+        if (!desc || !btn) return;
+
+        const wasExpanded = !desc.classList.contains('is-clamped');
+        desc.classList.add('is-clamped');
+        const needsToggle = desc.scrollHeight > desc.clientHeight + 1;
+        if (!needsToggle) {
+            desc.classList.remove('is-clamped');
+            btn.classList.add('d-none');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+            return;
+        }
+
+        btn.classList.remove('d-none');
+        if (wasExpanded) {
+            desc.classList.remove('is-clamped');
+            btn.setAttribute('aria-expanded', 'true');
+            btn.textContent = 'Show less';
+        } else {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+        }
+    });
+}
+
+function publisherQuill() {
+    if (typeof window.getPublisherQuill === 'function') {
+        return window.getPublisherQuill();
+    }
+    return null;
+}
+
+function buildSitePreview() {
+    const price = previewValue('#addSiteForm [name="price"]');
+    const q = publisherQuill();
+    const description = q
+        ? $.trim($(q.root).text())
+        : $.trim($('<div>').html($('#siteDescription').val() || '').text());
+
+    let html = '<div class="mb-3">' +
+        '<div class="fw-semibold fs-5">' + previewEscape(previewValue('#addSiteForm [name="siteName"]') || 'Untitled site') + '</div>' +
+        '<div class="text-muted small">' + previewEscape(previewValue('#addSiteForm [name="siteUrl"]')) + '</div>' +
+        '</div>';
+
+    html += '<div class="border rounded-3 p-3 mb-3">';
+    html += previewRow('Price advertisers pay', price ? '€' + price : '');
+    html += previewRow('Domain Authority (DA)', previewValue('#addSiteForm [name="da"]'));
+    html += previewRow('Domain Rating (DR)', previewValue('#addSiteForm [name="dr"]'));
+    html += previewRow('Monthly traffic', previewValue('#addSiteForm [name="traffic"]'));
+    html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
+    html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
+    html += previewRow('Niches', previewNiches());
+    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
+    html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
+    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += '</div>';
+
+    html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
+    html += previewDescriptionBlock(description);
+
+    const turnaround = previewValue('#addSiteForm [name="turnaround_time"]');
+    if (turnaround) {
+        html += '<div class="alert alert-light border small mb-0">' +
+            'Once you accept an order we will expect the article live within <strong>' +
+            previewEscape(turnaround) + '</strong>, and will remind you as that deadline approaches.' +
+            '</div>';
+    }
+
+    return html;
+}
+
+window.showSiteListingPreview = function showSiteListingPreview() {
+    const body = document.getElementById('sitePreviewBody');
+    const modalEl = document.getElementById('sitePreviewModal');
+    if (!body || !modalEl || !window.bootstrap) {
+        console.warn('Site listing preview modal is missing');
+        return;
+    }
+    body.innerHTML = buildSitePreview();
+    const previewModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    previewModal.show();
+    requestAnimationFrame(function () {
+        syncSitePreviewDescToggles(body);
+    });
+};
+
+function resetPublisherSubmitButton() {
+    const isEdit = $('#methodField').val() === 'PUT';
+    $('#submitBtn').prop('disabled', false).text(isEdit ? 'Review & update' : 'Review & submit');
+}
+
+$('#sitePreviewConfirmBtn').on('click', function () {
+    window.sitePreviewConfirmed = true;
+    const q = publisherQuill();
+    if (q) {
+        $('#siteDescription').val(q.root.innerHTML);
+    }
+    if ($('#methodField').val() !== 'PUT' && typeof window.clearSiteDraft === 'function') {
+        window.clearSiteDraft();
+    }
+    const modalEl = document.getElementById('sitePreviewModal');
+    const instance = modalEl && bootstrap.Modal.getInstance(modalEl);
+    if (instance) instance.hide();
+
+    const formEl = document.getElementById('addSiteForm');
+    $('#submitBtn').prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+    if (formEl) {
+        HTMLFormElement.prototype.submit.call(formEl);
+    }
+});
+
+$('#sitePreviewBody').on('click', '.site-preview-desc-toggle', function () {
+    const wrap = this.closest('.site-preview-desc-wrap');
+    const desc = wrap ? wrap.querySelector('.site-preview-desc') : null;
+    if (!desc) return;
+    const expanded = desc.classList.toggle('is-clamped') === false;
+    this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    this.textContent = expanded ? 'Show less' : 'Show more';
+});
+
+document.getElementById('sitePreviewModal')?.addEventListener('shown.bs.modal', function () {
+    syncSitePreviewDescToggles(document.getElementById('sitePreviewBody'));
+});
+
+window.addEventListener('pageshow', function () {
+    window.sitePreviewConfirmed = false;
+    resetPublisherSubmitButton();
+});
+
+})(); // publisherWebsitesListingPreview

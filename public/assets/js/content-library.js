@@ -9,7 +9,9 @@ const libraryOrderUrlBase = boot.libraryOrderUrlBase;
 const libraryPreviewUrlBase = boot.libraryPreviewUrlBase;
 const libraryCsrf = boot.libraryCsrf;
 const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
+const libraryCountryLanguageMap = boot.libraryCountryLanguageMap || {};
 const libraryPreferredCountry = boot.libraryPreferredCountry || '';
+const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
 const libraryUploadsEnabled = !!boot.uploadsEnabled;
 const libraryOpenUpload = !!boot.openUpload;
 const libraryEditSubmission = boot.editSubmission || null;
@@ -19,43 +21,49 @@ let articleEditorSubmissionId = null;
 let articleEditorDetectedLinks = [];
 let previewModalState = { title: '', submissionId: null, editable: false, html: '' };
 
-function refreshLibraryCountries(preferredCountry) {
-    const langSelect = document.getElementById('libraryLanguage');
+function refreshLibraryLanguages(preferredLanguage) {
     const countrySelect = document.getElementById('libraryCountry');
-    if (!langSelect || !countrySelect) return;
-    const lang = (langSelect.value || '').toLowerCase();
-    const options = libraryLanguageCountryMap[lang] || [];
-    const keep = (preferredCountry || countrySelect.value || '').toLowerCase();
-    countrySelect.innerHTML = '';
-    if (!lang) {
-        countrySelect.disabled = true;
-        countrySelect.innerHTML = '<option value="">Select language first</option>';
+    const langSelect = document.getElementById('libraryLanguage');
+    if (!countrySelect || !langSelect) return;
+    const country = (countrySelect.value || '').toLowerCase();
+    const options = libraryCountryLanguageMap[country] || [];
+    const keep = (preferredLanguage || langSelect.value || '').toLowerCase();
+    langSelect.innerHTML = '';
+    if (!country) {
+        langSelect.disabled = true;
+        langSelect.innerHTML = '<option value="">Select country first</option>';
         return;
     }
-    countrySelect.disabled = false;
+    langSelect.disabled = false;
     const placeholder = document.createElement('option');
     placeholder.value = '';
-    placeholder.textContent = 'Select country';
-    countrySelect.appendChild(placeholder);
+    placeholder.textContent = 'Select language';
+    langSelect.appendChild(placeholder);
     options.forEach(function (item) {
         const opt = document.createElement('option');
         opt.value = item.code;
         opt.textContent = item.name;
         if (keep && keep === item.code) opt.selected = true;
-        countrySelect.appendChild(opt);
+        langSelect.appendChild(opt);
     });
-    if (keep && !Array.from(countrySelect.options).some(function (o) { return o.value === keep; })) {
-        countrySelect.value = '';
+    if (options.length === 1) {
+        langSelect.value = options[0].code;
+    } else if (keep && !Array.from(langSelect.options).some(function (o) { return o.value === keep; })) {
+        langSelect.value = '';
     }
 }
-document.getElementById('libraryLanguage')?.addEventListener('change', function () {
-    refreshLibraryCountries('');
+document.getElementById('libraryCountry')?.addEventListener('change', function () {
+    refreshLibraryLanguages('');
 });
 document.addEventListener('DOMContentLoaded', function () {
-    refreshLibraryCountries(libraryPreferredCountry);
+    if (libraryPreferredCountry) {
+        const countrySelect = document.getElementById('libraryCountry');
+        if (countrySelect) countrySelect.value = libraryPreferredCountry;
+    }
+    refreshLibraryLanguages(libraryPreferredLanguage);
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
-    refreshLibraryCountries(libraryPreferredCountry || document.getElementById('libraryCountry')?.value || '');
+    refreshLibraryLanguages(libraryPreferredLanguage || document.getElementById('libraryLanguage')?.value || '');
 });
 
 function escapeHtml(str) {

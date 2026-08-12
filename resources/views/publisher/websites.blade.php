@@ -201,6 +201,71 @@
 
     #sitesTableWrapper {
         min-height: 80px;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    /* Desktop: center Price and other short columns under their headers */
+    @media (min-width: 769px) {
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(1),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(3),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(4),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(5),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(6),
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(7),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Preview"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Status"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Price"],
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] {
+            text-align: center !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table thead th:nth-child(2),
+        #sitesTableWrapper .sites-responsive-table td[data-label="Site"] {
+            text-align: left !important;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-actions,
+        #sitesTableWrapper .sites-responsive-table .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table .site-row-market {
+            justify-content: center;
+        }
+
+        #sitesTableWrapper .sites-responsive-table .site-row-price-wrap {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+            width: 100%;
+            margin-inline: auto;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"] .site-row-metrics,
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"] .site-row-market,
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] .site-row-actions {
+            display: inline-flex;
+            justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+    }
+
+    #sitesTableWrapper .sites-responsive-table {
+        min-width: 1140px;
+    }
+
+    #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
+        max-width: 220px;
+        text-align: left;
+        white-space: normal;
+    }
+
+    #sitesTableWrapper .sites-responsive-table .category-chip {
+        max-width: 100%;
+        white-space: normal;
     }
 
     .btn-primary {
@@ -538,7 +603,7 @@
             gap: 12px;
             border: 0;
             padding: 6px 0;
-            text-align: right;
+            text-align: right !important;
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td::before {
@@ -566,6 +631,52 @@
             display: block;
             margin-bottom: 12px;
         }
+    }
+
+    .site-status-filter-group {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .site-status-filter {
+        display: inline-flex !important;
+        align-items: center;
+        gap: 6px;
+        line-height: 1.2;
+        padding: 0.4rem 0.9rem !important;
+        background: #fff;
+        border: 1px solid #c5d4d6;
+        color: #334155;
+        box-shadow: none;
+    }
+    .site-status-filter:hover {
+        background: #f1f7f7;
+        border-color: #9ec5c8;
+        color: #123f42;
+    }
+    .site-status-filter.is-active {
+        background: #0f766e;
+        border-color: #0f766e;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: none;
+    }
+    .site-status-filter.is-active:hover {
+        background: #0d9488;
+        border-color: #0d9488;
+        color: #fff;
+    }
+    .site-status-filter.is-active .badge {
+        background: rgba(255, 255, 255, 0.22) !important;
+        color: #fff !important;
+    }
+    .site-status-filter .filter-main {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+    }
+    #sitesFilterHint {
+        min-height: 1.25rem;
     }
 </style>
 
@@ -595,6 +706,12 @@
         <i class="fa fa-plus"></i> Add New Website
     </button>
 
+    <button id="showBulkRequestBtn" type="button" class="btn mb-3 shadow-sm btn-outline-secondary ms-1"
+            data-bs-toggle="modal" data-bs-target="#bulkRequestModal"
+            @if(!empty($openBulkRequest)) disabled title="You already have an open bulk request" @endif>
+        <i class="fa fa-layer-group"></i> I want to add many sites
+    </button>
+
     <button id="showBulkBtn" type="button" class="btn mb-3 shadow-sm btn-outline-primary ms-1">
         <i class="fa fa-file-csv"></i> Bulk Import (Agency)
     </button>
@@ -602,6 +719,153 @@
     <button id="showClaimBtn" type="button" class="btn mb-3 shadow-sm btn-outline-warning ms-1">
         <i class="fa fa-user-check"></i> Claim a website
     </button>
+    <a href="{{ route('site-claims.index') }}" class="btn mb-3 shadow-sm btn-outline-secondary ms-1" id="myClaimsLink">
+        <i class="fa fa-list"></i> My claims
+    </a>
+
+    @if(!empty($awaitingDetailsCount) && $awaitingDetailsCount > 0)
+        <a href="{{ route('publisher.bulk-sites.complete') }}" class="btn mb-3 shadow-sm btn-upload ms-1" id="bulkCompleteDetailsBtn">
+            <i class="fa fa-pen-to-square"></i> Complete details ({{ $awaitingDetailsCount }})
+        </a>
+    @endif
+    @if(!empty($detailsCompleteCount) && $detailsCompleteCount > 0)
+        <a href="{{ route('publisher.bulk-sites.review') }}" class="btn mb-3 shadow-sm btn-outline-primary ms-1" id="bulkReviewSubmitBtn">
+            <i class="fa fa-clipboard-check"></i> Review &amp; submit ({{ $detailsCompleteCount }})
+        </a>
+    @endif
+
+    @if(!empty($openBulkRequest))
+        <div class="alert alert-light border mb-3">
+            <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
+            — status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span>.
+            You submitted <strong>URL + price</strong> only — track progress under
+            <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="fw-semibold">Pending</a>.
+            Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions &amp; listing details → we approve.
+            @if(($openBulkRequest->estimated_count ?? 0) > 0)
+                <span class="d-block small text-muted mt-1">{{ $openBulkRequest->estimated_count }} site(s) in this request.</span>
+            @endif
+        </div>
+    @endif
+
+    {{-- Guided bulk: publisher submits URL + price only (marketing fills metrics) --}}
+    <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
+            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm">
+                @csrf
+                <div class="modal-header">
+                    <h5 class="modal-title">Add many websites</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="border rounded-3 p-3 mb-3" style="background:#f7fafb;">
+                        <div class="fw-semibold mb-2">How bulk onboarding works</div>
+                        <ol class="small text-muted mb-0 ps-3">
+                            <li class="mb-1"><strong>You</strong> add only <strong>Website URL</strong> + <strong>Price</strong> (type, paste, or upload a 2-column sheet).</li>
+                            <li class="mb-1"><strong>Our marketer</strong> adds stats and niches (DA, DR, traffic, language, country, niches).</li>
+                            <li class="mb-1"><strong>You</strong> finish descriptions, link type, and timing, then review &amp; submit.</li>
+                            <li><strong>We</strong> review and approve — sites stay hidden until then.</li>
+                        </ol>
+                    </div>
+
+                    @error('sites')
+                        <div class="alert alert-danger py-2 small">{{ $message }}</div>
+                    @enderror
+
+                    <div class="mb-3 border rounded-3 p-3">
+                        <div class="fw-semibold mb-2">Import URL + price</div>
+                        <p class="small text-muted mb-3 mb-md-2">
+                            Upload a CSV/TSV with <strong>two columns</strong> (Website URL, Price), or paste the same from Excel/Sheets.
+                            Header row optional. Excel: <em>File → Save As → CSV</em>, or copy both columns and paste below.
+                        </p>
+
+                        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+                            <label class="btn btn-sm btn-outline-primary mb-0" for="bulkSheetFile">
+                                <i class="fa fa-file-csv me-1"></i> Upload sheet (CSV / TSV)
+                            </label>
+                            <input type="file" id="bulkSheetFile" class="d-none"
+                                   accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain">
+                            <a href="#" id="bulkSheetTemplateBtn" class="btn btn-sm btn-outline-secondary">
+                                <i class="fa fa-download me-1"></i> Sample CSV
+                            </a>
+                            <span class="form-text mb-0" id="bulkSheetFileName"></span>
+                        </div>
+
+                        <label class="form-label mb-1" for="bulkPasteUrls">Paste into the box, then click Fill rows</label>
+                        <textarea id="bulkPasteUrls" class="form-control form-control-sm font-monospace" rows="5"
+                                  placeholder="https://site-one.com,99&#10;https://site-two.com,150&#10;&#10;# Excel: copy two columns (URL + Price) and paste here&#10;# URLs only (one per line) also work — add prices in the table"></textarea>
+                        <div class="d-flex flex-wrap gap-2 align-items-center mt-2">
+                            <button type="button" class="btn btn-sm btn-primary" id="bulkPasteUrlsBtn">
+                                <i class="fa fa-clipboard-list me-1"></i> Fill rows from paste
+                            </button>
+                            <span class="form-text mb-0">Formats: <code>url,price</code> · tab from Excel · <code>url price</code> · URLs only</span>
+                        </div>
+                        <div class="small text-success mt-1 d-none" id="bulkPasteUrlsSuccess" role="status"></div>
+                        <div class="small text-danger mt-1 d-none" id="bulkPasteUrlsError" role="alert"></div>
+                    </div>
+
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <label class="form-label mb-0">Your sites (URL + price only)</label>
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="bulkAddRowBtn">
+                            <i class="fa fa-plus"></i> Add row
+                        </button>
+                    </div>
+
+                    <div class="table-responsive mb-3">
+                        <table class="table table-sm align-middle mb-0" id="bulkUrlPriceTable">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:14rem;">Website URL</th>
+                                    <th style="width:8.5rem;">Price (€)</th>
+                                    <th style="width:2.5rem;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="bulkUrlPriceBody">
+                                @php
+                                    $oldSites = old('sites');
+                                    if (!is_array($oldSites) || count($oldSites) < 2) {
+                                        $oldSites = [['url' => '', 'price' => ''], ['url' => '', 'price' => '']];
+                                    }
+                                @endphp
+                                @foreach($oldSites as $i => $row)
+                                    <tr class="bulk-url-price-row">
+                                        <td>
+                                            <input type="url" name="sites[{{ $i }}][url]"
+                                                   class="form-control form-control-sm @error('sites.'.$i.'.url') is-invalid @enderror"
+                                                   placeholder="https://example.com"
+                                                   value="{{ $row['url'] ?? '' }}" required>
+                                            @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        </td>
+                                        <td>
+                                            <input type="number" name="sites[{{ $i }}][price]" step="0.01" min="0"
+                                                   class="form-control form-control-sm @error('sites.'.$i.'.price') is-invalid @enderror"
+                                                   placeholder="99"
+                                                   value="{{ $row['price'] ?? '' }}" required>
+                                            @error('sites.'.$i.'.price')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                        </td>
+                                        <td class="text-end">
+                                            <button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                    <div class="form-text mb-3">Minimum 2 sites. One open bulk request at a time. For a single site, use <strong>Add New Website</strong>. Agencies with full CSV data can use <strong>Bulk Import (Agency)</strong>.</div>
+
+                    <div class="mb-0">
+                        <label class="form-label">Note for our team (optional)</label>
+                        <textarea name="publisher_note" class="form-control @error('publisher_note') is-invalid @enderror"
+                                  rows="2" maxlength="2000" placeholder="Niches, languages, or anything we should know…">{{ old_text('publisher_note') }}</textarea>
+                        @error('publisher_note')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Submit URL + prices</button>
+                </div>
+            </form>
+        </div>
+    </div>
 
     <div class="card shadow-sm border-0 d-none mb-3" id="claimCard">
         <div class="card-body">
@@ -639,6 +903,66 @@
             </form>
         </div>
     </div>
+
+    @php
+        $myClaims = \App\Models\SiteClaim::query()
+            ->with('site:id,site_name,domain')
+            ->where('claimer_id', auth()->id())
+            ->latest('id')
+            ->limit(10)
+            ->get();
+    @endphp
+    @if($myClaims->isNotEmpty())
+    <div class="card shadow-sm border-0 mb-3" id="myClaimsPanel">
+        <div class="card-body">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0"><i class="fa fa-user-check me-1"></i> Your ownership claims</h5>
+                <span class="small text-muted">We email you after each review.</span>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Website</th>
+                            <th>Name match</th>
+                            <th>Status</th>
+                            <th>Reviewed</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach($myClaims as $claim)
+                            @php
+                                $statusClass = match($claim->status) {
+                                    'approved' => 'bg-success',
+                                    'rejected' => 'bg-danger',
+                                    default => 'bg-warning text-dark',
+                                };
+                            @endphp
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ $claim->site->site_name ?? $claim->website_name }}</div>
+                                    <div class="small text-muted">{{ $claim->domain }}</div>
+                                    @if($claim->status !== 'pending' && filled($claim->admin_notes))
+                                        <div class="small text-muted fst-italic">Note: {{ $claim->admin_notes }}</div>
+                                    @endif
+                                </td>
+                                <td>
+                                    @if($claim->name_matches)
+                                        <span class="badge bg-success-subtle text-success border">Matches</span>
+                                    @else
+                                        <span class="badge bg-warning-subtle text-dark border">Mismatch</span>
+                                    @endif
+                                </td>
+                                <td><span class="badge {{ $statusClass }}">{{ ucfirst($claim->status) }}</span></td>
+                                <td class="small text-muted">{{ optional($claim->reviewed_at)->diffForHumans() ?: '—' }}</td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    @endif
 
     @if(session('error') && !session('bulk_import_failures'))
         <div class="alert alert-danger alert-dismissible fade show">
@@ -817,41 +1141,11 @@
                         <span class="form-section-title">Market & niche</span>
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
-                                <label class="form-label">Language <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
-                                <div class="single-select-wrapper" id="languageWrapper">
-                                    <div class="single-select-input" id="languageInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
-                                        <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select language...</span></span>
-                                        <span class="single-select-arrow" aria-hidden="true">▾</span>
-                                    </div>
-                                    <div class="single-select-dropdown" id="languageDropdown">
-                                        <div class="single-select-search">
-                                            <input type="text" placeholder="Search languages..." id="languageSearch">
-                                        </div>
-                                        <div class="single-select-options" id="languageOptions">
-                                            @foreach($languages as $language)
-                                                <div class="single-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
-                                            @endforeach
-                                        </div>
-                                    </div>
-                                </div>
-                                <div class="help-text mt-1 d-flex align-items-center gap-1">
-                                    Pick one language.
-                                    <i class="fa fa-circle-question text-muted"
-                                       role="button"
-                                       tabindex="0"
-                                       aria-label="Help: country options update to markets that match this language"
-                                       data-bs-toggle="tooltip"
-                                       data-bs-placement="top"
-                                       title="Country options update to markets that match this language (e.g. German → DE, AT, CH)."></i>
-                                </div>
-                            </div>
-                            <div class="col-md-4">
                                 <label class="form-label">Country / Market <span class="req" aria-hidden="true">*</span></label>
                                 <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
                                 <div class="single-select-wrapper" id="countryWrapper">
                                     <div class="single-select-input" id="countryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select country or market">
-                                        <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select language first...</span></span>
+                                        <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select country...</span></span>
                                         <span class="single-select-arrow" aria-hidden="true">▾</span>
                                     </div>
                                     <div class="single-select-dropdown" id="countryDropdown">
@@ -865,16 +1159,46 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div id="relatedCountriesHint" class="mt-2 small text-muted"></div>
                                 <div class="help-text mt-1 d-flex align-items-center gap-1">
-                                    One country only.
+                                    Pick country first.
                                     <i class="fa fa-circle-question text-muted"
                                        role="button"
                                        tabindex="0"
-                                       aria-label="Help: matching markets are selectable"
+                                       aria-label="Help: pick country first then a paired language"
                                        data-bs-toggle="tooltip"
                                        data-bs-placement="top"
-                                       title="Matching markets are selectable. Other countries stay visible but faded."></i>
+                                       title="Pick the market country first. Language options then show only allowed pairs (e.g. Germany → German; UAE → Arabic or English)."></i>
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Language <span class="req" aria-hidden="true">*</span></label>
+                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
+                                <div class="single-select-wrapper" id="languageWrapper">
+                                    <div class="single-select-input" id="languageInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
+                                        <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select country first...</span></span>
+                                        <span class="single-select-arrow" aria-hidden="true">▾</span>
+                                    </div>
+                                    <div class="single-select-dropdown" id="languageDropdown">
+                                        <div class="single-select-search">
+                                            <input type="text" placeholder="Search languages..." id="languageSearch">
+                                        </div>
+                                        <div class="single-select-options" id="languageOptions">
+                                            @foreach($languages as $language)
+                                                <div class="single-select-option" data-value="{{ strtolower($language->code) }}" data-label="{{ $language->name }}">{{ $language->name }}</div>
+                                            @endforeach
+                                        </div>
+                                    </div>
+                                </div>
+                                <div id="relatedLanguagesHint" class="mt-2 small text-muted"></div>
+                                <div class="help-text mt-1 d-flex align-items-center gap-1">
+                                    Only languages paired with the country.
+                                    <i class="fa fa-circle-question text-muted"
+                                       role="button"
+                                       tabindex="0"
+                                       aria-label="Help: language list follows the selected country"
+                                       data-bs-toggle="tooltip"
+                                       data-bs-placement="top"
+                                       title="Germany allows German only. Gulf markets allow Arabic and English."></i>
                                 </div>
                             </div>
                             <div class="col-md-4">
@@ -1004,8 +1328,74 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">
                                         </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-section">
+                        @php
+                            $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
+                            $hasHomepageOld = collect($homepageDays)->contains(fn ($d) => filled(old("homepage.$d")) || filled(old("price_homepage.$d")));
+                            $hasSocialOld = collect(['facebook', 'instagram', 'x'])->contains(fn ($c) => filled(old("social.$c")));
+                            $hasPlacementOld = $hasHomepageOld || $hasSocialOld;
+                        @endphp
+                        <button type="button"
+                                class="disclosure-toggle"
+                                id="placementDisclosureBtn"
+                                aria-expanded="{{ $hasPlacementOld ? 'true' : 'false' }}"
+                                aria-controls="placementDisclosurePanel">
+                            <i class="fa fa-chevron-{{ $hasPlacementOld ? 'down' : 'right' }}" aria-hidden="true"></i>
+                            Homepage &amp; social promotions (optional)
+                        </button>
+                        <p class="small text-muted mb-0 mt-1">Leave empty if you do not offer homepage placement or social sharing. Advertisers only see what you enable.</p>
+                        <div class="disclosure-panel" id="placementDisclosurePanel" @unless($hasPlacementOld) hidden @endunless>
+                            <div class="row bg-light p-3 rounded mt-2 g-3">
+                                <div class="col-12">
+                                    <p class="fw-semibold small mb-2">Homepage placement</p>
+                                    <p class="small text-muted mb-2">Offer putting the guest article on your homepage for 1, 7, or 30 days. Price €0 = Free. Leave unchecked to not offer that duration.</p>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        @foreach($homepageDays as $days)
+                                            <div class="me-3" style="min-width:140px;">
+                                                <div class="form-check">
+                                                    <input type="checkbox"
+                                                           name="homepage[{{ $days }}]"
+                                                           class="form-check-input homepage-checkbox"
+                                                           id="homepage{{ $days }}"
+                                                           value="1"
+                                                           {{ old("homepage.$days") ? 'checked' : '' }}>
+                                                    <label class="form-check-label" for="homepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
+                                                </div>
+                                                <input type="number"
+                                                       name="price_homepage[{{ $days }}]"
+                                                       class="form-control mt-1 homepage-price"
+                                                       placeholder="Fee (€) — 0 = Free"
+                                                       value="{{ old("price_homepage.$days") }}"
+                                                       min="0"
+                                                       step="0.01"
+                                                       inputmode="decimal">
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                                <div class="col-12">
+                                    <p class="fw-semibold small mb-2">Social media sharing</p>
+                                    <p class="small text-muted mb-2">Always free for advertisers. They get whatever you check — no choice on their side. Uncheck if you will not share.</p>
+                                    <div class="d-flex flex-wrap gap-3">
+                                        @foreach(['facebook' => 'Facebook', 'instagram' => 'Instagram', 'x' => 'X'] as $channel => $label)
+                                            <div class="form-check">
+                                                <input type="checkbox"
+                                                       name="social[{{ $channel }}]"
+                                                       class="form-check-input social-checkbox"
+                                                       id="social{{ ucfirst($channel) }}"
+                                                       value="1"
+                                                       {{ old("social.$channel") ? 'checked' : '' }}>
+                                                <label class="form-check-label" for="social{{ ucfirst($channel) }}">{{ $label }}</label>
+                                            </div>
                                         @endforeach
                                     </div>
                                 </div>
@@ -1022,7 +1412,7 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-cta-tertiary shadow-sm" id="closeBtn">Close</button>
                         <button type="button" class="btn btn-primary shadow-sm" id="wizardNextBtn">Next</button>
-                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Submit</button>
+                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Review &amp; submit</button>
                     </div>
                 </div>
 
@@ -1030,32 +1420,126 @@
         </div>
     </div>
 
-    <div class="mt-5">
-        <h4>Your Sites</h4>
-        <div class="d-flex flex-wrap gap-2 align-items-center mb-2">
-            <input type="text" id="siteSearch" class="form-control table-search mb-0" placeholder="Search sites..." style="max-width:280px;">
-            <select id="siteStatusFilter" class="form-select" style="max-width:200px;" aria-label="Filter by status">
-                <option value="all">All (not archived)</option>
-                <option value="pending">Pending</option>
-                <option value="verified">Verified</option>
-                <option value="active">Active</option>
-                <option value="featured">Featured</option>
-                <option value="archived">Archived</option>
-            </select>
+    {{-- Last look before the listing goes to review. The wizard splits the form
+         across panes, so publishers need to see the whole listing at once. --}}
+    <div class="modal fade" id="sitePreviewModal" tabindex="-1" aria-labelledby="sitePreviewLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sitePreviewLabel">Check your listing before you submit</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="sitePreviewBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-cta-secondary" data-bs-dismiss="modal" id="sitePreviewBackBtn">Back to edit</button>
+                    <button type="button" class="btn btn-primary" id="sitePreviewConfirmBtn">Looks right — submit</button>
+                </div>
+            </div>
         </div>
+    </div>
+
+    <div class="mt-5">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+            <h4 class="mb-0">Your Sites</h4>
+            <div class="d-inline-flex flex-wrap align-items-center gap-2" role="group" aria-label="Filter sites by status">
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter is-active" data-status="active" id="sitesFilterActive" aria-pressed="true">
+                        <span class="filter-main">
+                            Active <span class="badge text-bg-secondary" id="sitesActiveCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Active"
+                        body="Approved / live sites on your panel."
+                        label="What Active means"
+                        placement="top"
+                    />
+                </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="pending" id="sitesFilterPending" aria-pressed="false">
+                        <span class="filter-main">
+                            Pending <span class="badge text-bg-secondary" id="sitesPendingCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Pending"
+                        body="Bulk drafts with the marketer, sites that need your details, and listings waiting for admin approval."
+                        label="What Pending means"
+                        placement="top"
+                    />
+                </div>
+                <div class="site-status-filter-group">
+                    <button type="button" class="btn btn-sm site-status-filter" data-status="invites" id="sitesFilterInvites" aria-pressed="false">
+                        <span class="filter-main">
+                            Invites <span class="badge text-bg-secondary" id="sitesInviteCount">0</span>
+                        </span>
+                    </button>
+                    <x-glass-tip
+                        title="Invites"
+                        body="Sites our team added for you. Accept to show them in My Sites, or decline to remove them."
+                        label="What Invites means"
+                        placement="top"
+                    />
+                </div>
+            </div>
+        </div>
+        <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
+        <input type="text" id="siteSearch" class="form-control table-search" placeholder="Search sites...">
         <div id="sitesTableWrapper" class="mt-3"></div>
     </div>
 </div>
 
 <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
+<link href="{{ asset('assets/css/publisher-websites.css') }}?v={{ @filemtime(public_path('assets/css/publisher-websites.css')) ?: '1' }}" rel="stylesheet">
 <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+@php
+    $pwOldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
+    $pwOldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
+    $pwOldCategories = old('categories', []);
+@endphp
+<script>
+window.__publisherWebsitesInlineLoaded = true;
+window.PublisherWebsitesConfig = {
+    csrfToken: @json(csrf_token()),
+    maxBulkRows: {{ (int) \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }},
+    openBulkRequestModal: @json((bool) session('open_bulk_request_modal')),
+    countryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
+    languageCountryMap: @json($languageCountryMap ?? new \stdClass()),
+    descMinChars: {{ (int) \App\Support\SiteDescriptionRules::MIN_CHARS }},
+    descMaxWords: {{ (int) \App\Support\SiteDescriptionRules::MAX_WORDS }},
+    descPlaceholder: @json(\App\Support\SiteDescriptionRules::placeholder()),
+    old: {
+        language: @json($pwOldLanguage ? strtolower((string) $pwOldLanguage) : null),
+        country: @json($pwOldCountry ? strtolower((string) $pwOldCountry) : null),
+        categories: @json($pwOldCategories),
+    },
+    routes: {
+        ajax: @json(route('publisher.sites.ajax')),
+        store: @json(route('publisher.sites.store')),
+        login: @json(route('login')),
+        balance: @json(route('publisher.balance')),
+        promotionsWallet: @json(route('publisher.promotions.wallet')),
+    },
+};
+</script>
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    if (!(window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.openBulkRequestModal)) return;
+    var el = document.getElementById('bulkRequestModal');
+    if (el && window.bootstrap && typeof window.bootstrap.Modal === 'function') {
+        window.bootstrap.Modal.getOrCreateInstance(el).show();
+    }
+});
+</script>
 
 <script>
 const addBtn = $('#showFormBtn');
 const bulkBtn = $('#showBulkBtn');
+const bulkRequestBtn = $('#showBulkRequestBtn');
+const claimBtn = $('#showClaimBtn');
 const bulkCard = $('#bulkCard');
 const claimCard = $('#claimCard');
 const closeBulkBtn = $('#closeBulkBtn');
@@ -1093,6 +1577,65 @@ $('#sensitiveDisclosureBtn').on('click', function () {
     $(this).attr('aria-expanded', open ? 'true' : 'false');
     $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
 });
+
+$('#placementDisclosureBtn').on('click', function () {
+    const panel = $('#placementDisclosurePanel');
+    const open = panel.prop('hidden');
+    panel.prop('hidden', !open);
+    $(this).attr('aria-expanded', open ? 'true' : 'false');
+    $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+});
+
+function setPlacementDisclosureOpen(open) {
+    const panel = $('#placementDisclosurePanel');
+    const btn = $('#placementDisclosureBtn');
+    if (!panel.length || !btn.length) return;
+    panel.prop('hidden', !open);
+    btn.attr('aria-expanded', open ? 'true' : 'false');
+    btn.find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+}
+
+function clearHomepageSocialFields() {
+    $('.homepage-checkbox').prop('checked', false);
+    $('.homepage-price').val('');
+    $('.social-checkbox').prop('checked', false);
+}
+
+function fillHomepageSocialFromSite(site) {
+    clearHomepageSocialFields();
+    let hasPlacement = false;
+
+    let homepage = site.homepage_placement_prices || null;
+    if (typeof homepage === 'string') {
+        try { homepage = JSON.parse(homepage); } catch (e) { homepage = null; }
+    }
+    if (homepage && typeof homepage === 'object') {
+        Object.keys(homepage).forEach(function (days) {
+            const $cb = $(`#homepage${days}`);
+            if (!$cb.length) return;
+            $cb.prop('checked', true);
+            $(`input[name="price_homepage[${days}]"]`).val(homepage[days]);
+            hasPlacement = true;
+        });
+    }
+
+    let social = site.social_promotion || null;
+    if (typeof social === 'string') {
+        try { social = JSON.parse(social); } catch (e) { social = null; }
+    }
+    if (social && typeof social === 'object') {
+        ['facebook', 'instagram', 'x'].forEach(function (channel) {
+            if (!social[channel]) return;
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', true);
+            hasPlacement = true;
+        });
+    }
+
+    if (hasPlacement) {
+        setPlacementDisclosureOpen(true);
+    }
+}
 
 // FR3 — inline validation on blur
 function markFieldValidity(el) {
@@ -1441,89 +1984,98 @@ function initMultiSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInputI
     };
 }
 
-window.languageCountryMap = @json($languageCountryMap ?? new \stdClass());
-const languageCountryMap = window.languageCountryMap;
+window.countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+const countryLanguageMap = window.countryLanguageMap;
 
-// Single language + single country (country list filtered by language)
-let languageSingleSelect = initSingleSelect(
-    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
-    'selectedLanguage', 'languageSearch', 'languageValue', 'Select language...'
-);
+// Country first → language list filtered by allowed pairs
 let countrySingleSelect = initSingleSelect(
     'countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions',
-    'selectedCountry', 'countrySearch', 'countryValue', 'Select language first...'
+    'selectedCountry', 'countrySearch', 'countryValue', 'Select country...'
+);
+let languageSingleSelect = initSingleSelect(
+    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
+    'selectedLanguage', 'languageSearch', 'languageValue', 'Select country first...'
 );
 
-function relatedCountryCodesForLanguage(langCode) {
+function relatedLanguageCodesForCountry(countryCode) {
     const related = [];
-    (languageCountryMap[langCode] || []).forEach(item => {
+    (countryLanguageMap[countryCode] || []).forEach(item => {
         const code = typeof item === 'string' ? item : (item.code || '');
         if (code) related.push(String(code).toLowerCase());
     });
     return Array.from(new Set(related));
 }
 
-function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
-    const hint = $('#relatedCountriesHint');
-    if (!langCode) {
-        // No language yet: all countries visible but not selectable
-        countrySingleSelect.setAllowedValues([]);
-        countrySingleSelect.setPlaceholder('Select language first...');
-        if (clearCountry) countrySingleSelect.clearSelection();
-        hint.text('Select a language first.');
+function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferLanguage = null } = {}) {
+    const hint = $('#relatedLanguagesHint');
+    if (!countryCode) {
+        languageSingleSelect.setAllowedValues([]);
+        languageSingleSelect.setPlaceholder('Select country first...');
+        if (clearLanguage) languageSingleSelect.clearSelection();
+        if (hint.length) hint.text('Select a country first.');
         return;
     }
 
-    const relatedCodes = relatedCountryCodesForLanguage(langCode);
-    // Fade non-matching countries (keep them visible, non-selectable)
-    countrySingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
-    countrySingleSelect.setPlaceholder('Select country...');
-    if (clearCountry) countrySingleSelect.clearSelection();
+    const relatedCodes = relatedLanguageCodesForCountry(countryCode);
+    languageSingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
+    languageSingleSelect.setPlaceholder('Select language...');
+    if (clearLanguage) languageSingleSelect.clearSelection();
 
-    if (relatedCodes.length) {
+    if (relatedCodes.length === 1) {
+        const only = relatedCodes[0];
+        const opt = $(`#languageOptions .single-select-option[data-value="${only}"]`);
+        if (opt.length) {
+            languageSingleSelect.setSelectedValue(only, opt.data('label'));
+        }
+        if (hint.length) hint.text('Language locked to ' + (opt.data('label') || only.toUpperCase()) + ' for this country.');
+    } else if (relatedCodes.length) {
+        if (preferLanguage && relatedCodes.indexOf(String(preferLanguage).toLowerCase()) !== -1) {
+            const code = String(preferLanguage).toLowerCase();
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
+            if (opt.length) languageSingleSelect.setSelectedValue(code, opt.data('label'));
+        }
         const labels = relatedCodes.map(code => {
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
             return opt.length ? opt.data('label') : code.toUpperCase();
         });
-        hint.text('Suggested: ' + labels.join(', '));
-    } else {
-        hint.text('All markets selectable for this language.');
+        if (hint.length) hint.text('Allowed: ' + labels.join(', '));
+    } else if (hint.length) {
+        hint.text('No paired languages for this country.');
     }
 }
 
-let syncingLanguageCountry = false;
-$('#selectedLanguage').on('change', function() {
-    if (syncingLanguageCountry) return;
-    applyLanguageCountryFilter($(this).val() || '', { clearCountry: true });
+let syncingCountryLanguage = false;
+$('#selectedCountry').on('change', function() {
+    if (syncingCountryLanguage) return;
+    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
 });
 
-// Start with countries locked until language is chosen
-applyLanguageCountryFilter('', { clearCountry: false });
+// Start with languages locked until country is chosen
+applyCountryLanguageFilter('', { clearLanguage: false });
 
 @php
     $pwOldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
     $pwOldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
     $pwOldCategories = old('categories', []);
 @endphp
-@if($pwOldLanguage)
-    (function() {
-        const code = @json(strtolower((string) $pwOldLanguage));
-        const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
-        if (opt.length) {
-            syncingLanguageCountry = true;
-            languageSingleSelect.setSelectedValue(code, opt.data('label'));
-            applyLanguageCountryFilter(code, { clearCountry: false });
-            syncingLanguageCountry = false;
-        }
-    })();
-@endif
 @if($pwOldCountry)
     (function() {
         const code = @json(strtolower((string) $pwOldCountry));
         const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
         if (opt.length) {
+            syncingCountryLanguage = true;
             countrySingleSelect.setSelectedValue(code, opt.data('label'));
+            applyCountryLanguageFilter(code, {
+                clearLanguage: false,
+                preferLanguage: @json($pwOldLanguage ? strtolower((string) $pwOldLanguage) : null)
+            });
+            syncingCountryLanguage = false;
         }
+    })();
+@elseif($pwOldLanguage)
+    (function() {
+        // Legacy: language without country — leave language locked until country is picked.
+        applyCountryLanguageFilter('', { clearLanguage: true });
     })();
 @endif
 
@@ -1584,12 +2136,23 @@ function saveSiteDraft() {
             siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
+            homepage: {},
+            price_homepage: {},
+            social: {},
             step: wizardStep,
             savedAt: Date.now()
         };
         ['crypto','trading','CBD','forex'].forEach(topic => {
             draft.sensitive[topic] = $(`#sensitive${topic}`).is(':checked');
             draft.price_sensitive[topic] = $(`input[name="price_sensitive[${topic}]"]`).val();
+        });
+        [1, 7, 30].forEach(days => {
+            draft.homepage[days] = $(`#homepage${days}`).is(':checked');
+            draft.price_homepage[days] = $(`input[name="price_homepage[${days}]"]`).val();
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            draft.social[channel] = $(id).is(':checked');
         });
         localStorage.setItem(SITE_DRAFT_KEY, JSON.stringify(draft));
         $('#wizardDraftHint').text('Draft saved');
@@ -1602,6 +2165,8 @@ function clearSiteDraft() {
     try { localStorage.removeItem(SITE_DRAFT_KEY); } catch (e) {}
     $('#wizardDraftHint').text('');
 }
+window.clearSiteDraft = clearSiteDraft;
+window.getPublisherQuill = function () { return quill; };
 
 function loadSiteDraft() {
     try {
@@ -1638,18 +2203,36 @@ function loadSiteDraft() {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
             $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
         });
-
-        if (draft.language) {
-            const langOpt = $(`#languageOptions .single-select-option[data-value="${draft.language}"]`);
-            if (langOpt.length) {
-                languageSingleSelect.setSelectedValue(draft.language, langOpt.data('label'));
-            }
+        let hasPlacementDraft = false;
+        [1, 7, 30].forEach(days => {
+            const on = !!(draft.homepage && draft.homepage[days]);
+            $(`#homepage${days}`).prop('checked', on);
+            $(`input[name="price_homepage[${days}]"]`).val((draft.price_homepage && draft.price_homepage[days]) || '');
+            if (on) hasPlacementDraft = true;
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const on = !!(draft.social && draft.social[channel]);
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', on);
+            if (on) hasPlacementDraft = true;
+        });
+        if (hasPlacementDraft) {
+            setPlacementDisclosureOpen(true);
         }
+
         if (draft.country) {
             const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
             if (countryOpt.length) {
+                syncingCountryLanguage = true;
                 countrySingleSelect.setSelectedValue(draft.country, countryOpt.data('label'));
+                applyCountryLanguageFilter(draft.country, {
+                    clearLanguage: false,
+                    preferLanguage: draft.language || null
+                });
+                syncingCountryLanguage = false;
             }
+        } else {
+            applyCountryLanguageFilter('', { clearLanguage: true });
         }
         if (draft.categories) {
             const raw = String(draft.categories);
@@ -1695,13 +2278,13 @@ function validateWizardStep(step) {
     }
 
     if (step === 2) {
-        if (!languageSingleSelect.getSelectedValue()) {
-            ok = false;
-            message = message || 'Please select a language.';
-        }
         if (!countrySingleSelect.getSelectedValue()) {
             ok = false;
             message = message || 'Please select a country / market.';
+        }
+        if (!languageSingleSelect.getSelectedValue()) {
+            ok = false;
+            message = message || 'Please select a language.';
         }
         if (categoryMultiSelect.getSelectedItems().length === 0) {
             ok = false;
@@ -1748,6 +2331,8 @@ addBtn.on('click', function() {
 
     addBtn.toggleClass('d-none', isOpen);
     bulkBtn.toggleClass('d-none', isOpen);
+    bulkRequestBtn.toggleClass('d-none', isOpen);
+    claimBtn.toggleClass('d-none', isOpen);
     formHeaderSpan.text('Add New Website');
 
     if(isOpen){
@@ -1761,12 +2346,13 @@ addBtn.on('click', function() {
         }
         $('#addSiteForm').attr('action', "{{ route('publisher.sites.store') }}");
         if (quill) quill.root.innerHTML = '';
-        submitBtn.prop('disabled', false).text('Submit');
+        submitBtn.prop('disabled', false).text('Review & submit');
+        window.sitePreviewConfirmed = false;
         
         // Reset selects
         languageSingleSelect.clearSelection();
         countrySingleSelect.clearSelection();
-        applyLanguageCountryFilter('', { clearCountry: false });
+        applyCountryLanguageFilter('', { clearLanguage: true });
         categoryMultiSelect.clearSelections();
         
         // Enable site name and URL for create
@@ -1785,8 +2371,11 @@ addBtn.on('click', function() {
 
 bulkBtn.on('click', function() {
     formCard.addClass('d-none');
+    claimCard.addClass('d-none');
     closeBtn.addClass('d-none');
     addBtn.removeClass('d-none');
+    bulkRequestBtn.removeClass('d-none');
+    claimBtn.removeClass('d-none');
     bulkCard.toggleClass('d-none');
     bulkBtn.toggleClass('d-none', !bulkCard.hasClass('d-none'));
     formHeaderSpan.text(bulkCard.hasClass('d-none') ? 'Add New Website' : 'Bulk Import');
@@ -1798,7 +2387,7 @@ closeBulkBtn.on('click', function() {
     formHeaderSpan.text('Add New Website');
 });
 
-// Form validation
+// Form validation + listing preview gate (modal handlers live in always-on JS)
 $('#addSiteForm').submit(function(e){
     if (quill) $('#siteDescription').val(quill.root.innerHTML);
 
@@ -1825,33 +2414,404 @@ $('#addSiteForm').submit(function(e){
             }
         }
         setWizardStep(wizardStep);
+    } else if (!window.sitePreviewConfirmed) {
+        e.preventDefault();
+        if (typeof window.showSiteListingPreview === 'function') {
+            window.showSiteListingPreview();
+        }
     } else {
-        submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+        if ($('#methodField').val() !== 'PUT') {
+            clearSiteDraft();
+        }
+        // Defer disable: Chromium aborts form submit when the submitting
+        // button is disabled synchronously inside the submit handler.
+        setTimeout(function () {
+            submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+        }, 0);
     }
 });
 
-// Fetch sites
-function fetchSites(page = 1, query = null, status = null) {
-    if (query === null) query = $('#siteSearch').val() || '';
-    if (status === null) status = $('#siteStatusFilter').val() || 'all';
+let sitesStatusFilter = (function () {
+    try {
+        const raw = (new URLSearchParams(window.location.search).get('status') || 'active').toLowerCase();
+        return (raw === 'pending' || raw === 'active' || raw === 'invites') ? raw : 'active';
+    } catch (e) {
+        return 'active';
+    }
+})();
+
+function syncSitesStatusUrl(status) {
+    try {
+        const url = new URL(window.location.href);
+        if (status && status !== 'active') {
+            url.searchParams.set('status', status);
+        } else {
+            url.searchParams.delete('status');
+        }
+        history.replaceState({}, '', url.pathname + url.search + url.hash);
+    } catch (e) { /* ignore */ }
+}
+
+window.setSitesStatusFilter = function (status) {
+    const next = (status === 'pending' || status === 'invites') ? status : 'active';
+    sitesStatusFilter = next;
+    syncSitesStatusUrl(next);
+    syncSitesFilterUi(
+        parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
+        parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
+        sitesStatusFilter,
+        null,
+        parseInt(document.getElementById('sitesInviteCount')?.textContent || '0', 10)
+    );
+};
+const ACTIVE_SITES_SEEN_KEY = 'slb_publisher_active_sites_seen_v1';
+
+function parseActiveIds(raw) {
+    if (!raw) return [];
+    return String(raw)
+        .split(',')
+        .map(function (part) { return parseInt(part, 10); })
+        .filter(function (id) { return Number.isFinite(id) && id > 0; });
+}
+
+function getSeenActiveSiteIds() {
+    try {
+        const raw = localStorage.getItem(ACTIVE_SITES_SEEN_KEY);
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (!Array.isArray(parsed)) return new Set();
+        return new Set(parsed.map(function (id) { return parseInt(id, 10); }).filter(Boolean));
+    } catch (e) {
+        return new Set();
+    }
+}
+
+function saveSeenActiveSiteIds(ids) {
+    try {
+        localStorage.setItem(ACTIVE_SITES_SEEN_KEY, JSON.stringify(Array.from(ids)));
+    } catch (e) { /* ignore quota / private mode */ }
+}
+
+function markActiveSitesSeen(activeIds) {
+    const seen = getSeenActiveSiteIds();
+    (activeIds || []).forEach(function (id) { seen.add(id); });
+    saveSeenActiveSiteIds(seen);
+}
+
+function syncNewActiveBadges(activeIds, markSeen) {
+    const ids = Array.isArray(activeIds) ? activeIds : [];
+    const seen = getSeenActiveSiteIds();
+
+    if (seen.size === 0) {
+        // First visit: seed current actives so historical listings don't flash as "new".
+        saveSeenActiveSiteIds(new Set(ids));
+        markSeen = false;
+    } else if (markSeen) {
+        markActiveSitesSeen(ids);
+    }
+
+    const latestSeen = markSeen ? getSeenActiveSiteIds() : (seen.size === 0 ? new Set(ids) : seen);
+    const newIdSet = new Set(ids.filter(function (id) { return !latestSeen.has(id); }));
+
+    document.querySelectorAll('[data-site-new-badge]').forEach(function (badge) {
+        const row = badge.closest('tr.main-row');
+        const id = row ? parseInt(row.getAttribute('data-id') || '', 10) : 0;
+        const isNew = id > 0 && newIdSet.has(id);
+        if (window.PulseBadge && typeof window.PulseBadge.sync === 'function') {
+            window.PulseBadge.sync(badge, isNew ? 1 : 0);
+            if (isNew) {
+                badge.textContent = 'New';
+                badge.classList.add('is-visible');
+            } else {
+                badge.textContent = '';
+                badge.classList.remove('is-visible');
+            }
+        } else if (isNew) {
+            badge.hidden = false;
+            badge.textContent = 'New';
+            badge.classList.add('is-visible', 'is-pulsing', 'pulse-badge');
+        } else {
+            badge.hidden = true;
+            badge.textContent = '';
+            badge.classList.remove('is-visible', 'is-pulsing');
+        }
+        badge.setAttribute('aria-label', isNew ? 'Newly approved site' : 'Not new');
+    });
+
+    return newIdSet.size;
+}
+
+function syncSitesFilterUi(pendingCount, activeCount, status, activeIds, inviteCount) {
+    const pendingCountEl = document.getElementById('sitesPendingCount');
+    const activeCountEl = document.getElementById('sitesActiveCount');
+    const inviteCountEl = document.getElementById('sitesInviteCount');
+    const hint = document.getElementById('sitesFilterHint');
+    const meta = document.getElementById('sitesStatusMeta');
+    const bulkWaiting = parseInt(meta?.getAttribute('data-bulk-waiting') || '0', 10);
+    const openBulk = meta?.getAttribute('data-open-bulk') === '1';
+    const invites = inviteCount ?? parseInt(meta?.getAttribute('data-invites') || '0', 10);
+
+    if (pendingCountEl) {
+        pendingCountEl.textContent = String(pendingCount ?? 0);
+        pendingCountEl.classList.toggle('text-bg-secondary', !(pendingCount > 0));
+        pendingCountEl.classList.toggle('text-bg-warning', pendingCount > 0);
+    }
+    if (activeCountEl) activeCountEl.textContent = String(activeCount ?? 0);
+    if (inviteCountEl) {
+        inviteCountEl.textContent = String(invites || 0);
+        inviteCountEl.classList.toggle('text-bg-secondary', !(invites > 0));
+        inviteCountEl.classList.toggle('text-bg-info', invites > 0);
+    }
+
+    document.querySelectorAll('.site-status-filter').forEach(function (btn) {
+        const on = btn.getAttribute('data-status') === status;
+        btn.classList.toggle('is-active', on);
+        btn.classList.remove('btn-primary', 'btn-outline-secondary');
+        btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+
+    const ids = Array.isArray(activeIds) ? activeIds : parseActiveIds(
+        meta?.getAttribute('data-active-ids') || ''
+    );
+    syncNewActiveBadges(ids, false);
+
+    if (hint) {
+        if (status === 'active') {
+            hint.textContent = 'Approved and live sites on your panel.';
+        } else if (status === 'invites') {
+            hint.textContent = 'Sites our team added for you — accept to move them into My Sites, or decline to remove them.';
+        } else if (bulkWaiting > 0) {
+            hint.textContent = bulkWaiting === 1
+                ? '1 site is with our marketer; others below may need your details or admin review.'
+                : bulkWaiting + ' sites are with our marketer; others below may need your details or admin review.';
+        } else if (openBulk) {
+            hint.textContent = 'Your bulk request is open — drafts appear here as the marketer adds them, then you finish details.';
+        } else {
+            hint.textContent = 'Drafts that need your details, plus sites waiting for admin approval.';
+        }
+    }
+}
+
+function initSitesTableTips(root) {
+    const scope = root || document.getElementById('sitesTableWrapper') || document;
+    if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
+        window.GlassTip.enhance(scope);
+    }
+    initSitePreviewZoom(scope);
+}
+
+function initSitePreviewZoom(root) {
+    const scope = root || document;
+    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+
+    let pop = document.getElementById('sitePreviewZoomPop');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'sitePreviewZoomPop';
+        pop.className = 'site-preview-zoom-pop';
+        pop.setAttribute('aria-hidden', 'true');
+        pop.innerHTML = '<img alt="" decoding="async">';
+        document.body.appendChild(pop);
+    }
+    const img = pop.querySelector('img');
+    let hideTimer = null;
+
+    function place(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const pad = 12;
+        const popW = pop.offsetWidth || 360;
+        const popH = pop.offsetHeight || 220;
+        let left = rect.right + 12;
+        let top = rect.top + (rect.height / 2) - (popH / 2);
+        if (left + popW > window.innerWidth - pad) {
+            left = rect.left - popW - 12;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, window.innerHeight - popH - pad);
+        }
+        pop.style.left = Math.round(left) + 'px';
+        pop.style.top = Math.round(top) + 'px';
+    }
+
+    function show(trigger) {
+        const src = trigger.getAttribute('data-zoom-src');
+        if (!src || trigger.classList.contains('is-empty')) return;
+        clearTimeout(hideTimer);
+        if (img.getAttribute('src') !== src) {
+            img.setAttribute('src', src);
+        }
+        img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
+        pop.classList.add('is-visible');
+        place(trigger);
+        requestAnimationFrame(function () { place(trigger); });
+    }
+
+    function hide() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+            pop.classList.remove('is-visible');
+        }, 80);
+    }
+
+    scope.querySelectorAll('.site-row-preview[data-zoom-src]').forEach(function (el) {
+        if (el.getAttribute('data-zoom-ready') === '1') return;
+        el.setAttribute('data-zoom-ready', '1');
+        el.addEventListener('mouseenter', function () { show(el); });
+        el.addEventListener('mouseleave', hide);
+        el.addEventListener('focus', function () { show(el); });
+        el.addEventListener('blur', hide);
+    });
+}
+
+function fetchSites(page = 1, query = '', opts = {}) {
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
         url: '{{ route("publisher.sites.ajax") }}',
         method: 'GET',
-        data: { page: page, query: query, status: status },
+        dataType: 'html',
+        data: { page: page, query: query, status: sitesStatusFilter },
+        headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
         success: function(res) {
-            $('#sitesTableWrapper').html(res || '<div class="text-muted">No websites found.</div>');
+            const html = (res || '').trim();
+            // Session expiry / middleware redirect often returns the login page HTML.
+            if (html.includes('name="password"') && html.includes('/login')) {
+                $('#sitesTableWrapper').html(
+                    '<div class="text-center py-4">' +
+                    '<div class="text-danger mb-2">Your session expired. Please refresh and sign in again.</div>' +
+                    '<a class="btn btn-sm btn-primary" href="' + @json(route('login')) + '">Sign in</a>' +
+                    '</div>'
+                );
+                return;
+            }
+            if (html === '') {
+                if (sitesStatusFilter === 'invites') {
+                    $('#sitesTableWrapper').html(
+                        '<div class="alert alert-light border text-center mb-0">' +
+                        '<i class="fa fa-inbox me-2 text-muted"></i>' +
+                        'No site invites waiting. When our team adds a website for you, Accept / Decline appear here.' +
+                        '</div>'
+                    );
+                } else {
+                    $('#sitesTableWrapper').html(
+                        '<div class="ui-empty-state text-center mx-auto py-4" style="max-width:420px">' +
+                        '<div class="mx-auto mb-3 d-flex align-items-center justify-content-center" style="width:52px;height:52px;border-radius:50%;background:var(--brand-primary-bg,#e6f5f5);color:var(--brand-primary,var(--brand-primary, #1a585e))" aria-hidden="true"><i class="fa-solid fa-globe"></i></div>' +
+                        '<h5 class="mb-2">No websites listed yet</h5>' +
+                        '<p class="text-muted mb-3">Add your first site so advertisers can find and order from you.</p>' +
+                        '<button type="button" class="btn btn-primary btn-sm" id="emptyAddSiteCta"><i class="fa fa-plus"></i> Add New Website</button>' +
+                        '</div>'
+                    );
+                    $('#emptyAddSiteCta').on('click', function(){ $('#showFormBtn').trigger('click'); });
+                }
+                syncNewActiveBadges([], !!opts.acknowledgeNewActive);
+            } else {
+                $('#sitesTableWrapper').html(html);
+                const meta = document.getElementById('sitesStatusMeta');
+                const activeIds = parseActiveIds(meta?.getAttribute('data-active-ids') || '');
+                if (meta) {
+                    syncSitesFilterUi(
+                        parseInt(meta.getAttribute('data-pending') || '0', 10),
+                        parseInt(meta.getAttribute('data-active') || '0', 10),
+                        meta.getAttribute('data-status') || sitesStatusFilter,
+                        activeIds,
+                        parseInt(meta.getAttribute('data-invites') || '0', 10)
+                    );
+                }
+                if (opts.acknowledgeNewActive) {
+                    syncNewActiveBadges(activeIds, true);
+                }
+                initSitesTableTips(document.getElementById('sitesTableWrapper'));
+            }
         },
-        error: function() {
-            $('#sitesTableWrapper').html('<div class="text-danger">Failed to load sites.</div>');
+        error: function(xhr) {
+            const message = xhr.status === 403
+                ? 'You do not have access to load sites. Refresh the page (or switch to Publisher) and try again.'
+                : (xhr.status === 401 || xhr.status === 419)
+                    ? 'Your session expired. Please refresh and sign in again.'
+                    : 'Failed to load sites.';
+            $('#sitesTableWrapper').html(
+                '<div class="text-center py-4">' +
+                '<div class="text-danger mb-2">' + message + '</div>' +
+                '<button type="button" class="btn btn-sm btn-outline-primary me-2" id="retrySitesBtn">Retry</button>' +
+                '<button type="button" class="btn btn-sm btn-primary" id="reloadSitesPageBtn">Refresh page</button>' +
+                '</div>'
+            );
+            $('#reloadSitesPageBtn').on('click', function () {
+                window.location.reload();
+            });
+            $('#retrySitesBtn').on('click', function () {
+                fetchSites(page, query);
+            });
         }
     });
 }
+window.loadSites = fetchSites;
 
-window.loadSites = function () {
-    fetchSites(1, $('#siteSearch').val() || '', $('#siteStatusFilter').val() || 'all');
-};
+// Debounced search
+let delayTimer;
+$(document).ready(function(){
+    syncSitesFilterUi(0, 0, sitesStatusFilter);
+    fetchSites();
+    if (sitesStatusFilter === 'pending' || sitesStatusFilter === 'invites') {
+        const section = document.getElementById('sitesTableWrapper');
+        if (section && typeof section.scrollIntoView === 'function') {
+            setTimeout(function () {
+                section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 120);
+        }
+    }
+
+    $(document).on('click', '.site-status-filter', function () {
+        const next = this.getAttribute('data-status') || 'active';
+        const acknowledgeNewActive = next === 'active';
+        if (next === sitesStatusFilter) {
+            if (acknowledgeNewActive) {
+                const meta = document.getElementById('sitesStatusMeta');
+                syncNewActiveBadges(parseActiveIds(meta?.getAttribute('data-active-ids') || ''), true);
+            }
+            return;
+        }
+        sitesStatusFilter = next;
+        syncSitesStatusUrl(sitesStatusFilter);
+        syncSitesFilterUi(
+            parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
+            parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
+            sitesStatusFilter,
+            null,
+            parseInt(document.getElementById('sitesInviteCount')?.textContent || '0', 10)
+        );
+        fetchSites(1, $('#siteSearch').val(), { acknowledgeNewActive: acknowledgeNewActive });
+    });
+
+    $('#siteSearch').on('keyup', function(){
+        clearTimeout(delayTimer);
+        delayTimer = setTimeout(() => {
+            fetchSites(1, $(this).val());
+        }, 400);
+    });
+
+    $(document).on('click', '.pagination a', function(e){
+        const href = $(this).attr('href');
+        if (!href || href === '#') return;
+        e.preventDefault();
+        let page = $(this).data('page');
+        if (!page) {
+            try {
+                page = new URL(href, window.location.origin).searchParams.get('page') || 1;
+            } catch (err) {
+                page = 1;
+            }
+        }
+        fetchSites(page, $('#siteSearch').val());
+    });
+
+    $(document).on('click', '.pagination li[data-page]', function(){
+        const page = $(this).data('page');
+        if (page) fetchSites(page, $('#siteSearch').val());
+    });
+});
+
 
 function prefillSiteForm(site) {
     $('#formCard').removeClass('d-none');
@@ -1859,6 +2819,8 @@ function prefillSiteForm(site) {
     $('#bulkCard').addClass('d-none');
     $('#showFormBtn').addClass('d-none');
     $('#showBulkBtn').addClass('d-none');
+    $('#showBulkRequestBtn').addClass('d-none');
+    $('#showClaimBtn').addClass('d-none');
     closeBtn.removeClass('d-none');
     $('#formHeader').text('Edit Site: ' + site.site_name);
     setWizardStep(1);
@@ -1908,28 +2870,26 @@ function prefillSiteForm(site) {
             $(`input[name="price_sensitive[${key}]"]`).val(prices[key]);
         }
     }
+    fillHomepageSocialFromSite(site);
 
     const langCode = (site.language || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();
     const countryCode = (site.country || (Array.isArray(site.countries) ? site.countries[0] : null) || '').toString().toLowerCase();
-    syncingLanguageCountry = true;
+    syncingCountryLanguage = true;
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    if (langCode) {
-        const langOpt = $(`#languageOptions .single-select-option[data-value="${langCode}"]`);
-        if (langOpt.length) {
-            languageSingleSelect.setSelectedValue(langCode, langOpt.data('label'));
-            applyLanguageCountryFilter(langCode, { clearCountry: false });
-        }
-    } else {
-        applyLanguageCountryFilter('', { clearCountry: false });
-    }
     if (countryCode) {
         const countryOpt = $(`#countryOptions .single-select-option[data-value="${countryCode}"]`);
         if (countryOpt.length) {
             countrySingleSelect.setSelectedValue(countryCode, countryOpt.data('label'));
+            applyCountryLanguageFilter(countryCode, {
+                clearLanguage: false,
+                preferLanguage: langCode || null
+            });
         }
+    } else {
+        applyCountryLanguageFilter('', { clearLanguage: true });
     }
-    syncingLanguageCountry = false;
+    syncingCountryLanguage = false;
 
     categoryMultiSelect.clearSelections();
     (Array.isArray(site.categories) ? site.categories : []).forEach(categoryName => {
@@ -1947,11 +2907,11 @@ function prefillSiteForm(site) {
         $('#wizardDraftHint').text('Changing country, language, or categories will send this site for re-review and take it offline.');
     }
 
-    $('#submitBtn').prop('disabled', false).text('Update');
+    $('#submitBtn').prop('disabled', false).text('Review & update');
+    window.sitePreviewConfirmed = false;
     $('html, body').animate({ scrollTop: $("#formCard").offset().top - 100 }, 500);
 }
 
-let delayTimer;
 $(document).ready(function(){
     @if(session('success'))
         clearSiteDraft();
@@ -1964,6 +2924,8 @@ $(document).ready(function(){
             bulkCard.addClass('d-none');
             addBtn.addClass('d-none');
             bulkBtn.addClass('d-none');
+            bulkRequestBtn.addClass('d-none');
+            claimBtn.addClass('d-none');
             closeBtn.removeClass('d-none');
 
             const editingSiteId = @json(session('editing_site_id'));
@@ -1986,18 +2948,20 @@ $(document).ready(function(){
                             $('#siteUrl').after('<small class="text-muted readonly-note d-block">Due to security reasons, this field is readonly</small>');
                         }
                         formHeaderSpan.text('Edit Site: ' + data.site.site_name);
-                        $('#submitBtn').prop('disabled', false).text('Update');
+                        $('#submitBtn').prop('disabled', false).text('Review & update');
+                        window.sitePreviewConfirmed = false;
                         if (data.site.is_live) {
                             $('#wizardDraftHint').text('Changing country, language, or categories will send this site for re-review and take it offline.');
                         }
                     }
                 } catch (e) {
                     formHeaderSpan.text('Edit Site');
-                    $('#submitBtn').text('Update');
+                    $('#submitBtn').text('Review & update');
                 }
             } else {
                 formHeaderSpan.text('Add New Website');
-                $('#submitBtn').prop('disabled', false).text('Submit');
+                $('#submitBtn').prop('disabled', false).text('Review & submit');
+                window.sitePreviewConfirmed = false;
             }
 
             if (quill && !quill.root.innerHTML.trim()) {
@@ -2010,33 +2974,6 @@ $(document).ready(function(){
         })();
     @endif
 
-    fetchSites();
-
-    $('#siteSearch').on('keyup', function(){
-        clearTimeout(delayTimer);
-        delayTimer = setTimeout(() => loadSites(), 400);
-    });
-
-    $('#siteStatusFilter').on('change', function(){
-        loadSites();
-    });
-
-    $(document).on('click', '#emptyAddSiteCta', function(){
-        $('#showFormBtn').trigger('click');
-    });
-
-    $(document).on('click', '#sitesTableWrapper .pagination a', function(e){
-        e.preventDefault();
-        const href = $(this).attr('href');
-        if (!href) return;
-        try {
-            const url = new URL(href, window.location.origin);
-            fetchSites(url.searchParams.get('page') || 1);
-        } catch (err) {
-            const match = href.match(/[?&]page=(\d+)/);
-            fetchSites(match ? match[1] : 1);
-        }
-    });
 
     $(document).on('click', '.action-view', function(e) {
         e.stopPropagation();
@@ -2061,9 +2998,10 @@ $(document).ready(function(){
             text: 'This site will be deleted permanently!',
             icon: 'warning',
             showCancelButton: true,
-            confirmButtonColor: '#d33',
-            cancelButtonColor: '#3085d6',
-            confirmButtonText: 'Yes, delete it!'
+            confirmButtonText: 'Yes, delete it!',
+            customClass: { confirmButton: 'slb-swal-danger' },
+            reverseButtons: true,
+            focusCancel: true,
         }).then((result) => {
             if (result.isConfirmed) form.submit();
         });
@@ -2108,15 +3046,19 @@ closeBtn.on('click', function(){
     formCard.addClass('d-none');
     addBtn.removeClass('d-none');
     bulkBtn.removeClass('d-none');
+    bulkRequestBtn.removeClass('d-none');
+    claimBtn.removeClass('d-none');
     formHeaderSpan.text('Add New Website');
     $('#addSiteForm')[0].reset();
     if (quill) quill.root.innerHTML = '';
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    applyLanguageCountryFilter('', { clearCountry: false });
+    applyCountryLanguageFilter('', { clearLanguage: true });
     categoryMultiSelect.clearSelections();
     $('#siteName').prop('disabled', false);
     $('#siteUrl').prop('disabled', false);
@@ -2126,12 +3068,18 @@ closeBtn.on('click', function(){
     $('#addSiteForm').attr('action', "{{ route('publisher.sites.store') }}");
     $('#methodField').remove();
     $('#addSiteForm').append('<input type="hidden" name="_method" id="methodField" value="POST">');
-    $('#submitBtn').text('Submit');
+    $('#submitBtn').text('Review & submit');
+    window.sitePreviewConfirmed = false;
 });
 
 // Edit via lean JSON endpoint
 $(document).on('click', '.btn-edit', async function() {
-    const id = $(this).data('id');
+    const siteHint = $(this).data('site') || {};
+    const id = $(this).data('id') || siteHint.id;
+    if (!id) {
+        Swal.fire({ icon: 'error', title: 'Could not load site for editing' });
+        return;
+    }
     try {
         const res = await fetch(`/publisher/sites/${id}/edit-data`, { headers: { 'Accept': 'application/json' } });
         const data = await res.json();
@@ -2159,6 +3107,7 @@ $(document).on('click', '.btn-edit', async function() {
 $('#showClaimBtn').on('click', function () {
     formCard.addClass('d-none');
     bulkCard.addClass('d-none');
+    bulkBtn.removeClass('d-none');
     claimCard.toggleClass('d-none');
     formHeaderSpan.text(claimCard.hasClass('d-none') ? 'Add New Website' : 'Claim a website');
 });
@@ -2176,10 +3125,12 @@ $('#claimWebsiteForm').on('submit', async function (e) {
         body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    await Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
     if (data.success) {
         this.reset();
         claimCard.addClass('d-none');
+        // Claims panel is server-rendered — reload so the new pending row appears.
+        window.location.reload();
     }
 });
 
@@ -2229,8 +3180,6 @@ $(document).on('click', '.btn-feature-site', async function () {
         showCancelButton: true,
         confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
         denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
-        confirmButtonColor: '#0b6266',
-        denyButtonColor: '#635bff',
     });
 
     if (result.isDenied) {
@@ -2290,7 +3239,6 @@ $(document).on('click', '.btn-discount-site', async function () {
                <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
         showCancelButton: true,
         confirmButtonText: 'Publish discount',
-        confirmButtonColor: '#0b6266',
         preConfirm: () => ({
             percent: document.getElementById('swal-pct').value,
             days: document.getElementById('swal-days').value,
@@ -2309,7 +3257,14 @@ $(document).on('click', '.btn-discount-site', async function () {
 
 $(document).on('click', '.btn-discount-clear', async function () {
     const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'End this discount now?', showCancelButton: true, confirmButtonText: 'End discount', confirmButtonColor: '#b91c1c' });
+    const ok = await Swal.fire({
+        title: 'End this discount now?',
+        showCancelButton: true,
+        confirmButtonText: 'End discount',
+        customClass: { confirmButton: 'slb-swal-danger' },
+        reverseButtons: true,
+        focusCancel: true,
+    });
     if (!ok.isConfirmed) return;
     const res = await fetch(`/publisher/sites/${id}/discount`, {
         method: 'DELETE',
@@ -2330,7 +3285,6 @@ $(document).on('click', '.btn-bulk-join', async function () {
         inputAttributes: { min: 10, max: 15, step: 1 },
         showCancelButton: true,
         confirmButtonText: 'Join',
-        confirmButtonColor: '#0b6266',
     });
     if (percent === undefined || percent === null || percent === '') return;
     const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {

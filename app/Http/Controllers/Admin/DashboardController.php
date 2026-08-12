@@ -7,6 +7,7 @@ use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\Withdrawal;
 use Carbon\Carbon;
@@ -169,6 +170,7 @@ class DashboardController extends Controller
                 $q->whereNull('payment_status')
                     ->orWhereNotIn('payment_status', ['paid', 'refunded']);
             })->whereIn('status', ['pending', 'processing', 'review'])->count();
+            $pendingClaims = SiteClaim::where('status', 'pending')->count();
 
             return response()->json([
                 'success' => true,
@@ -176,6 +178,7 @@ class DashboardController extends Controller
                 'pending_withdrawals' => $pendingWithdrawals,
                 'unverified_sites' => $unverifiedSites,
                 'pending_payments' => $pendingPayments,
+                'pending_claims' => $pendingClaims,
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard queue counts error: '.$e->getMessage());

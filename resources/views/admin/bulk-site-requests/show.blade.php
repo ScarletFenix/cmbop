@@ -171,8 +171,8 @@
                                         <tr>
                                             <th>Website</th>
                                             <th>Price</th>
-                                            <th>Language <span class="text-danger">*</span></th>
                                             <th>Country <span class="text-danger">*</span></th>
+                                            <th>Language <span class="text-danger">*</span></th>
                                             <th>DA <span class="text-danger">*</span></th>
                                             <th>DR <span class="text-danger">*</span></th>
                                             <th>Traffic <span class="text-danger">*</span></th>
@@ -188,6 +188,8 @@
                                                     $oldCategories = implode('|', $oldCategories);
                                                 }
                                                 $uid = 'done'.$item->id;
+                                                $oldCountry = strtolower((string) ($old['country'] ?? ''));
+                                                $oldLanguage = strtolower((string) ($old['language'] ?? ''));
                                             @endphp
                                             <tr data-bulk-done-row>
                                                 <td>
@@ -198,36 +200,41 @@
                                                 </td>
                                                 <td class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</td>
                                                 <td>
-                                                    <select name="items[{{ $item->id }}][language]"
-                                                            class="form-select form-select-sm @error('items.'.$item->id.'.language') is-invalid @enderror"
-                                                            required
-                                                            data-bulk-required>
-                                                        <option value="">Select…</option>
-                                                        @foreach($languages as $language)
-                                                            <option value="{{ strtolower($language->code) }}"
-                                                                @selected(($old['language'] ?? '') === strtolower($language->code))>
-                                                                {{ $language->name }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
-                                                    @error('items.'.$item->id.'.language')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                                <td>
                                                     <select name="items[{{ $item->id }}][country]"
                                                             class="form-select form-select-sm @error('items.'.$item->id.'.country') is-invalid @enderror"
                                                             required
-                                                            data-bulk-required>
+                                                            data-bulk-required
+                                                            data-bulk-country>
                                                         <option value="">Select…</option>
                                                         @foreach($countries as $country)
                                                             <option value="{{ strtolower($country->code) }}"
-                                                                @selected(($old['country'] ?? '') === strtolower($country->code))>
+                                                                @selected($oldCountry === strtolower($country->code))>
                                                                 {{ $country->name }}
                                                             </option>
                                                         @endforeach
                                                     </select>
                                                     @error('items.'.$item->id.'.country')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
+                                                </td>
+                                                <td>
+                                                    <select name="items[{{ $item->id }}][language]"
+                                                            class="form-select form-select-sm @error('items.'.$item->id.'.language') is-invalid @enderror"
+                                                            required
+                                                            data-bulk-required
+                                                            data-bulk-language
+                                                            @disabled($oldCountry === '')>
+                                                        <option value="">{{ $oldCountry === '' ? 'Select country first' : 'Select…' }}</option>
+                                                        @if($oldCountry !== '')
+                                                            @foreach(($countryLanguageMap[$oldCountry] ?? []) as $lang)
+                                                                <option value="{{ $lang['code'] }}"
+                                                                    @selected($oldLanguage === strtolower((string) $lang['code']))>
+                                                                    {{ $lang['name'] }}
+                                                                </option>
+                                                            @endforeach
+                                                        @endif
+                                                    </select>
+                                                    @error('items.'.$item->id.'.language')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
                                                 </td>
@@ -340,16 +347,16 @@
                     <h6 class="fw-semibold mb-1">Advanced: seed with per-row metrics</h6>
                     <p class="small text-muted mb-3">
                         Optional. Paste custom rows when metrics differ per site.
-                        Columns: <code>url,price,da,dr,traffic,language,country[,site_name]</code>
+                        Columns: <code>url,price,da,dr,traffic,country,language[,site_name]</code>
                     </p>
                     @php
                         $seedStarter = $pendingItems->map(function ($item) {
-                            return $item->site_url.','.$item->price.',0,0,0,lang,country';
+                            return $item->site_url.','.$item->price.',0,0,0,country,lang';
                         })->implode("\n");
                     @endphp
                     @if($seedStarter !== '')
                         <div class="small mb-2">
-                            <span class="text-muted">Starter from pending URL + price (replace lang/country and metrics):</span>
+                            <span class="text-muted">Starter from pending URL + price (replace country/lang and metrics):</span>
                             <pre class="bg-light border rounded p-2 small mb-2 mt-1" id="bulkSeedStarter" style="max-height:8rem;overflow:auto;">{{ $seedStarter }}</pre>
                             <button type="button" class="btn btn-sm btn-outline-secondary" id="bulkCopySeedStarter">Copy starter into box</button>
                         </div>
@@ -390,7 +397,7 @@
                                         </td>
                                         <td>€{{ number_format((float) $site->price, 2) }}</td>
                                         <td>{{ $site->dr }} / {{ $site->da }}</td>
-                                        <td class="text-uppercase small">{{ $site->language }} / {{ $site->country }}</td>
+                                        <td class="text-uppercase small">{{ $site->country }} / {{ $site->language }}</td>
                                         <td>
                                             <span class="badge text-bg-light border text-capitalize">
                                                 {{ str_replace('_', ' ', $site->onboarding_status ?? '—') }}
@@ -446,6 +453,50 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const hasServerOld = @json((bool) old('items'));
     const draftKey = @json('bulkDoneDraft:'.$bulkRequest->id.':'.auth()->id());
     const draftTtlMs = 24 * 60 * 60 * 1000;
+    const countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+
+    function refreshBulkDoneLanguages(row, preferredLanguage) {
+        const countryEl = row.querySelector('[data-bulk-country]');
+        const langEl = row.querySelector('[data-bulk-language]');
+        if (!countryEl || !langEl) return;
+        const code = String(countryEl.value || '').toLowerCase();
+        const list = countryLanguageMap[code] || [];
+        const keep = String(preferredLanguage || langEl.value || '').toLowerCase();
+        langEl.innerHTML = '';
+        if (!code) {
+            langEl.disabled = true;
+            langEl.innerHTML = '<option value="">Select country first</option>';
+            return;
+        }
+        langEl.disabled = false;
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select…';
+        langEl.appendChild(placeholder);
+        list.forEach(function (rowLang) {
+            const opt = document.createElement('option');
+            opt.value = rowLang.code;
+            opt.textContent = rowLang.name || String(rowLang.code).toUpperCase();
+            if (keep && keep === String(rowLang.code).toLowerCase()) {
+                opt.selected = true;
+            }
+            langEl.appendChild(opt);
+        });
+        if (list.length === 1) {
+            langEl.value = list[0].code;
+        }
+    }
+
+    form.querySelectorAll('[data-bulk-done-row]').forEach(function (row) {
+        const countryEl = row.querySelector('[data-bulk-country]');
+        if (!countryEl) return;
+        countryEl.addEventListener('change', function () {
+            refreshBulkDoneLanguages(row, '');
+            if (typeof syncDoneState === 'function') syncDoneState();
+        });
+        // Keep server-old language when present; otherwise lock until country picked.
+        refreshBulkDoneLanguages(row, row.querySelector('[data-bulk-language]')?.value || '');
+    });
 
     @foreach($pendingItems as $item)
         @php
@@ -541,8 +592,11 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             const da = form.querySelector('input[name="items[' + itemId + '][da]"]');
             const dr = form.querySelector('input[name="items[' + itemId + '][dr]"]');
             const traffic = form.querySelector('input[name="items[' + itemId + '][traffic]"]');
-            if (language && data.language) language.value = data.language;
+            const row = (country && country.closest('[data-bulk-done-row]'))
+                || (language && language.closest('[data-bulk-done-row]'));
             if (country && data.country) country.value = data.country;
+            if (row) refreshBulkDoneLanguages(row, data.language || '');
+            if (language && data.language) language.value = data.language;
             if (da && data.da !== undefined && data.da !== null) da.value = data.da;
             if (dr && data.dr !== undefined && data.dr !== null) dr.value = data.dr;
             if (traffic && data.traffic !== undefined && data.traffic !== null) traffic.value = data.traffic;
@@ -653,7 +707,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 hint.textContent = 'Finish or clear incomplete rows first. You can submit the '
                     + complete.length + ' complete block(s) after that.';
             } else if (complete.length === 0) {
-                hint.textContent = 'Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.';
+                hint.textContent = 'Fill at least one complete block (Country, Language, DA, DR, Traffic, Niches) before Done.';
             } else {
                 hint.textContent = '';
             }

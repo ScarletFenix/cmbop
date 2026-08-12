@@ -276,6 +276,7 @@ class CatalogCountryInventory
 
     /**
      * Primary country for inventory counting: single-country rule.
+     * Scalar `sites.country` wins; otherwise first entry of `countries` JSON.
      */
     public function primaryCountryCode(?string $country, mixed $countries): ?string
     {
@@ -293,6 +294,33 @@ class CatalogCountryInventory
         }
 
         return null;
+    }
+
+    /**
+     * Constrain a catalog/site query to primary country codes only.
+     *
+     * Matches scalar `sites.country` (case-insensitive). Does NOT use
+     * JSON `countries` "contains" — that caused DE-primary multi-market
+     * listings to appear under US (and show a German flag).
+     *
+     * @param  list<string>|string  $codes
+     */
+    public function constrainQueryToPrimaryCountries($query, array|string $codes)
+    {
+        $normalized = array_values(array_unique(array_filter(array_map(
+            static fn ($c) => strtolower(trim((string) $c)),
+            is_array($codes) ? $codes : [$codes]
+        ))));
+
+        if ($normalized === []) {
+            return $query;
+        }
+
+        return $query->where(function ($q) use ($normalized) {
+            foreach ($normalized as $code) {
+                $q->orWhereRaw('LOWER(TRIM(country)) = ?', [$code]);
+            }
+        });
     }
 
     /**

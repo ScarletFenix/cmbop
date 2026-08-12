@@ -111,19 +111,6 @@
                     </div>
 
                     <div class="col-md-6">
-                        <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
-                        <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
-                            <option value="">Select…</option>
-                            @foreach($languages as $language)
-                                <option value="{{ strtolower($language->code) }}"
-                                    @selected(old('language') === strtolower($language->code))>
-                                    {{ $language->name }}
-                                </option>
-                            @endforeach
-                        </select>
-                        @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                    </div>
-                    <div class="col-md-6">
                         <label class="form-label fw-semibold" for="country">Country <span class="text-danger">*</span></label>
                         <select id="country" name="country" class="form-select @error('country') is-invalid @enderror" required>
                             <option value="">Select…</option>
@@ -134,7 +121,16 @@
                                 </option>
                             @endforeach
                         </select>
+                        <div class="form-text">Pick country first.</div>
                         @error('country')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+                    <div class="col-md-6">
+                        <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
+                        <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required disabled>
+                            <option value="">Select country first</option>
+                        </select>
+                        <div class="form-text">Only languages paired with that country.</div>
+                        @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
 
                     <div class="col-12">
@@ -239,6 +235,46 @@
 <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
 <script>
 (function () {
+    const map = @json($countryLanguageMap ?? new \stdClass());
+    const countryEl = document.getElementById('country');
+    const langEl = document.getElementById('language');
+    const preferredLang = @json(old('language', ''));
+
+    function refreshLanguages() {
+        if (!countryEl || !langEl) return;
+        const code = (countryEl.value || '').toLowerCase();
+        const list = map[code] || [];
+        const keep = (preferredLang || langEl.value || '').toLowerCase();
+        langEl.innerHTML = '';
+        if (!code) {
+            langEl.disabled = true;
+            langEl.innerHTML = '<option value="">Select country first</option>';
+            return;
+        }
+        langEl.disabled = false;
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = 'Select…';
+        langEl.appendChild(placeholder);
+        list.forEach(function (row) {
+            const opt = document.createElement('option');
+            opt.value = row.code;
+            opt.textContent = row.name || String(row.code).toUpperCase();
+            if (keep && keep === String(row.code).toLowerCase()) opt.selected = true;
+            langEl.appendChild(opt);
+        });
+        if (list.length === 1) {
+            langEl.value = list[0].code;
+        }
+    }
+
+    if (countryEl) {
+        countryEl.addEventListener('change', function () {
+            refreshLanguages();
+        });
+        refreshLanguages();
+    }
+
     const prefills = @json($prefillNiches);
     const ms = window.initMultiSelect({
         wrapperId: 'categoryWrapper',

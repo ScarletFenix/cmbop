@@ -6,7 +6,7 @@
         <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
             <div>
                 <h1>Place a guest post</h1>
-                <p class="muted">Step 1 — Choose your market (language and niche). We’ll filter publishers next.</p>
+                <p class="muted">Step 1 — Choose your market (country, then language). We’ll filter publishers next.</p>
             </div>
             <div class="d-flex flex-wrap gap-2">
                 <a href="{{ route('advertiser.catalog') }}" class="btn btn-sm btn-outline-secondary">Browse catalog</a>
@@ -33,24 +33,25 @@
                 @csrf
                 <div class="card-body p-4">
                     <div class="mb-4">
-                        <label class="form-label fw-semibold" for="wizardLanguage">Language <span class="text-danger">*</span></label>
-                        <select name="language" id="wizardLanguage" class="form-select" required>
-                            <option value="">Select language</option>
-                            @foreach($languages as $lang)
-                                <option value="{{ strtolower($lang->code) }}"
-                                    @selected(old('language', $state['language'] ?? '') === strtolower($lang->code))>
-                                    {{ $lang->name }}
+                        <label class="form-label fw-semibold" for="wizardCountry">Country <span class="text-danger">*</span></label>
+                        <select name="country" id="wizardCountry" class="form-select" required>
+                            <option value="">Select country</option>
+                            @foreach(($countries ?? []) as $country)
+                                <option value="{{ strtolower($country->code) }}"
+                                    @selected(old('country', $state['country'] ?? '') === strtolower($country->code))>
+                                    {{ $country->name }}
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">English articles work across English-country publishers (US, UK, AU, …).</div>
+                        <div class="form-text">Pick the market first. Language options follow the country pair rules.</div>
                     </div>
 
                     <div class="mb-4">
-                        <label class="form-label fw-semibold" for="wizardCountry">Preferred country <span class="text-muted fw-normal">(optional)</span></label>
-                        <select name="country" id="wizardCountry" class="form-select">
-                            <option value="">All countries for this language</option>
+                        <label class="form-label fw-semibold" for="wizardLanguage">Language <span class="text-danger">*</span></label>
+                        <select name="language" id="wizardLanguage" class="form-select" required disabled>
+                            <option value="">Select country first</option>
                         </select>
+                        <div class="form-text">Germany → German only. Gulf markets → Arabic or English.</div>
                     </div>
 
                     <div class="mb-2">
@@ -83,26 +84,38 @@
 
 <script>
 (function () {
-    const map = @json($languageCountryMap);
-    const langEl = document.getElementById('wizardLanguage');
+    const map = @json($countryLanguageMap ?? new \stdClass());
     const countryEl = document.getElementById('wizardCountry');
-    const preferred = @json(old('country', $state['country'] ?? ''));
+    const langEl = document.getElementById('wizardLanguage');
+    const preferredLang = @json(old('language', $state['language'] ?? ''));
 
-    function refreshCountries() {
-        const code = (langEl.value || '').toLowerCase();
+    function refreshLanguages() {
+        const code = (countryEl.value || '').toLowerCase();
         const list = map[code] || [];
-        countryEl.innerHTML = '<option value="">All countries for this language</option>';
+        langEl.innerHTML = '';
+        if (!code) {
+            langEl.disabled = true;
+            langEl.innerHTML = '<option value="">Select country first</option>';
+            return;
+        }
+        langEl.disabled = false;
+        langEl.innerHTML = '<option value="">Select language</option>';
         list.forEach((row) => {
             const opt = document.createElement('option');
             opt.value = row.code;
             opt.textContent = row.name;
-            if (preferred && preferred === row.code) opt.selected = true;
-            countryEl.appendChild(opt);
+            if (preferredLang && preferredLang === row.code) opt.selected = true;
+            langEl.appendChild(opt);
         });
+        if (list.length === 1) {
+            langEl.value = list[0].code;
+        }
     }
 
-    langEl.addEventListener('change', refreshCountries);
-    refreshCountries();
+    countryEl.addEventListener('change', function () {
+        refreshLanguages();
+    });
+    refreshLanguages();
 })();
 </script>
 @endsection

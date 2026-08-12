@@ -6,12 +6,48 @@ use App\Http\Controllers\Controller;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Services\ActivityLogger;
+use App\Services\SiteClaimTransferService;
 use App\Support\NormalizesHttpUrls;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class SiteClaimController extends Controller
 {
     use NormalizesHttpUrls;
+
+    public function __construct(private SiteClaimTransferService $transfers) {}
+
+    /**
+     * The claimer's own ownership claims (any authenticated user).
+     */
+    public function index(Request $request)
+    {
+        $claims = SiteClaim::query()
+            ->with(['site:id,site_name,domain', 'reviewer:id,name'])
+            ->where('claimer_id', auth()->id())
+            ->latest('id')
+            ->paginate(20)
+            ->withQueryString();
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'claims' => $claims->getCollection()->map(fn (SiteClaim $c) => [
+                    'id' => $c->id,
+                    'site_name' => $c->site?->site_name ?: $c->website_name,
+                    'domain' => $c->domain,
+                    'name_matches' => (bool) $c->name_matches,
+                    'status' => $c->status,
+                    'admin_notes' => $c->admin_notes,
+                    'reviewed_at' => optional($c->reviewed_at)?->toIso8601String(),
+                    'created_at' => optional($c->created_at)?->toIso8601String(),
+                ])->all(),
+            ]);
+        }
+
+        return view('publisher.site-claims', compact('claims'));
+    }
 
     public function store(Request $request)
     {
@@ -55,19 +91,6 @@ class SiteClaimController extends Controller
             ], 422);
         }
 
-        $pending = SiteClaim::query()
-            ->where('site_id', $site->id)
-            ->where('claimer_id', auth()->id())
-            ->where('status', 'pending')
-            ->exists();
-
-        if ($pending) {
-            return response()->json([
-                'success' => false,
-                'message' => 'You already have a pending claim for this website. We’ll email you after review.',
-            ], 422);
-        }
-
         $websiteUrl = $data['website_url'] ?? $site->site_url;
         if (! $websiteUrl && $site->domain) {
             $websiteUrl = 'https://'.$site->domain;
@@ -81,17 +104,42 @@ class SiteClaimController extends Controller
         $domain = $site->domain ?: $this->extractDomain((string) $websiteUrl);
         $nameMatches = $this->namesMatch($websiteName, (string) $site->site_name);
 
-        $claim = SiteClaim::create([
-            'site_id' => $site->id,
-            'claimer_id' => auth()->id(),
-            'website_name' => $websiteName,
-            'website_url' => $websiteUrl,
-            'domain' => $domain,
-            'name_matches' => $nameMatches,
-            'proof_message' => $data['proof_message'],
-            'contact_email' => $data['contact_email'] ?? auth()->user()->email,
-            'status' => 'pending',
-        ]);
+        try {
+            $claim = DB::transaction(function () use ($site, $data, $websiteUrl, $websiteName, $domain, $nameMatches) {
+                // Serialize pending-claim creation per site so double-submit cannot
+                // create two pending rows for the same claimer.
+                Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+
+                $pending = SiteClaim::query()
+                    ->where('site_id', $site->id)
+                    ->where('claimer_id', auth()->id())
+                    ->where('status', 'pending')
+                    ->exists();
+
+                if ($pending) {
+                    throw ValidationException::withMessages([
+                        'claim' => 'You already have a pending claim for this website. We’ll email you after review.',
+                    ]);
+                }
+
+                return SiteClaim::create([
+                    'site_id' => $site->id,
+                    'claimer_id' => auth()->id(),
+                    'website_name' => $websiteName,
+                    'website_url' => $websiteUrl,
+                    'domain' => $domain,
+                    'name_matches' => $nameMatches,
+                    'proof_message' => $data['proof_message'],
+                    'contact_email' => $data['contact_email'] ?? auth()->user()->email,
+                    'status' => 'pending',
+                ]);
+            });
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'Claim could not be submitted.',
+            ], 422);
+        }
 
         try {
             ActivityLogger::log(
@@ -109,6 +157,8 @@ class SiteClaimController extends Controller
         } catch (\Throwable $e) {
             report($e);
         }
+
+        $this->transfers->notifySubmitted($claim);
 
         return response()->json([
             'success' => true,

@@ -22,6 +22,7 @@ use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Orders\ReviewHandoffService;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\SocialPostUrlValidator;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -76,12 +77,8 @@ class OrderController extends Controller
 
             $userId = auth()->id();
 
-            Log::info('Fetching orders for publisher', ['user_id' => $userId]);
-
             // Get all sites owned by this publisher
             $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
-
-            Log::info('Sites found for publisher', ['site_ids' => $siteIds]);
 
             // If no sites found, return empty data
             if (empty($siteIds)) {
@@ -118,8 +115,32 @@ class OrderController extends Controller
                 });
             }
 
-            // Status filter - using orders.status (the order status)
-            if ($request->filled('status')) {
+            // Needs-action filter (accept / publish / modification) — paid already applied above.
+            if ($request->boolean('needs_action')) {
+                $query->where(function ($q) {
+                    $q->whereHas('order', function ($sub) {
+                        $sub->where('status', 'pending');
+                    })->orWhere(function ($sub) {
+                        $sub->where('modification_requested', 'yes');
+                    })->orWhere(function ($sub) {
+                        $sub->whereHas('order', function ($o) {
+                            $o->where('status', 'processing');
+                        })->where(function ($u) {
+                            $u->whereNull('live_url')->orWhere('live_url', '');
+                        })->where(function ($m) {
+                            $m->whereNull('modification_requested')
+                                ->orWhere('modification_requested', '!=', 'yes');
+                        });
+                        if (Schema::hasColumn('order_items', 'content_revision_requested')) {
+                            $sub->where(function ($c) {
+                                $c->whereNull('content_revision_requested')
+                                    ->orWhere('content_revision_requested', '!=', 'yes');
+                            });
+                        }
+                    });
+                });
+            } elseif ($request->filled('status')) {
+                // Status filter - using orders.status (the order status)
                 $query->whereHas('order', function ($sub) use ($request) {
                     $sub->where('status', $request->status);
                 });
@@ -158,6 +179,12 @@ class OrderController extends Controller
                     ->flip();
             }
 
+            $orderItemCountsByOrder = OrderItem::query()
+                ->whereIn('order_id', $orderIds)
+                ->selectRaw('order_id, COUNT(*) as items_count')
+                ->groupBy('order_id')
+                ->pluck('items_count', 'order_id');
+
             // Transform data to include sensitive price info and auto-approve fields
             $transformedItems = [];
             foreach ($orderItems->items() as $item) {
@@ -170,6 +197,10 @@ class OrderController extends Controller
                     'price' => $item->publisherPayoutAmount(),
                     'additional_price' => (float) ($item->additional_price ?? 0),
                     'sensitive_type' => $item->sensitive_type ?? null,
+                    'homepage_days' => $item->homepage_days !== null ? (int) $item->homepage_days : null,
+                    'homepage_price' => (float) ($item->homepage_price ?? 0),
+                    'social_channels' => $item->enabledSocialChannels(),
+                    'social_post_urls' => $item->socialPostUrls(),
                     'content_link' => $item->content_link,
                     'content_download_url' => $item->content_submission_id
                         ? route('publisher.content.download', $item->content_submission_id)
@@ -188,6 +219,7 @@ class OrderController extends Controller
                     'content_revision_reason' => $item->content_revision_reason ?? null,
                     'completion_notes' => $item->completion_notes ?? null,
                     'unread_chat' => (int) ($unreadByOrder[$item->order_id] ?? 0),
+                    'order_items_count' => (int) ($orderItemCountsByOrder[$item->order_id] ?? 1),
                     'created_at' => $item->created_at,
                     'order' => [
                         'id' => $item->order->id,
@@ -237,6 +269,48 @@ class OrderController extends Controller
     /**
      * Get single order item details (AJAX)
      */
+
+    /**
+     * Resolve a publisher-owned order item id for deep links (bell / email focus).
+     */
+    public function locateOrderItem(Request $request)
+    {
+        $orderId = (int) $request->query('order_id', 0);
+        if ($orderId < 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'order_id is required',
+            ], 422);
+        }
+
+        $userId = auth()->id();
+        $siteIds = Site::where('publisher_id', $userId)->pluck('id');
+
+        $item = OrderItem::query()
+            ->with('order:id,order_number')
+            ->where('order_id', $orderId)
+            ->whereIn('site_id', $siteIds)
+            ->whereHas('order', function ($q) {
+                $q->where('payment_status', 'paid');
+            })
+            ->orderBy('id')
+            ->first();
+
+        if (! $item) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Order not found in your tasks',
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'order_item_id' => $item->id,
+            'order_id' => $item->order_id,
+            'order_number' => optional($item->order)->order_number,
+        ]);
+    }
+
     public function getOrderDetails($id)
     {
         try {
@@ -273,6 +347,10 @@ class OrderController extends Controller
                 'price' => $orderItem->publisherPayoutAmount(),
                 'additional_price' => (float) ($orderItem->additional_price ?? 0),
                 'sensitive_type' => $orderItem->sensitive_type ?? null,
+                'homepage_days' => $orderItem->homepage_days !== null ? (int) $orderItem->homepage_days : null,
+                'homepage_price' => (float) ($orderItem->homepage_price ?? 0),
+                'social_channels' => $orderItem->enabledSocialChannels(),
+                'social_post_urls' => $orderItem->socialPostUrls(),
                 'content_link' => $orderItem->content_link,
                 'content_download_url' => $orderItem->content_submission_id
                     ? route('publisher.content.download', $orderItem->content_submission_id)
@@ -349,16 +427,37 @@ class OrderController extends Controller
                 ], 403);
             }
 
-            $order = Order::find($orderItem->order_id);
+            DB::beginTransaction();
+
+            $orderItem = OrderItem::query()->whereKey($orderItem->id)->lockForUpdate()->firstOrFail();
+            $order = Order::query()->whereKey($orderItem->order_id)->lockForUpdate()->first();
+
+            if (! $order) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found',
+                ], 404);
+            }
 
             if ($order->payment_status !== 'paid') {
+                DB::rollBack();
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Order payment is not confirmed yet',
                 ], 400);
             }
 
-            DB::beginTransaction();
+            if ($order->status !== 'pending') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only new (pending) orders can be accepted.',
+                ], 422);
+            }
 
             // Dedicated OrderAccepted mail covers the advertiser — skip generic
             // OrderStatusChanged for that audience on this transition.
@@ -370,9 +469,7 @@ class OrderController extends Controller
                 'status' => 'processing',
             ]);
 
-            // accepted_at was read in two places but never written, so the
-            // advertiser's status never said "Accepted" and nothing could work
-            // out when a publisher's turnaround window started.
+            // accepted_at drives advertiser "Accepted" UI and turnaround windows.
             $orderItem->update([
                 'accepted_at' => now(),
                 'publisher_status' => 'accepted',
@@ -639,6 +736,10 @@ class OrderController extends Controller
         // into a 500 and hide the field errors from the UI.
         $request->validate([
             'live_url' => 'required|url',
+            'social_post_urls' => 'nullable|array',
+            'social_post_urls.facebook' => 'nullable|url',
+            'social_post_urls.instagram' => 'nullable|url',
+            'social_post_urls.x' => 'nullable|url',
         ]);
 
         app(CheckoutSchemaService::class)->ensureCheckoutTables();
@@ -667,6 +768,11 @@ class OrderController extends Controller
                 ], 422);
             }
 
+            $social = app(SocialPostUrlValidator::class)->normalize(
+                $orderItem->enabledSocialChannels(),
+                $request->input('social_post_urls')
+            );
+
             $health = app(LiveUrlHealthChecker::class)->check((string) $request->live_url);
 
             DB::beginTransaction();
@@ -692,6 +798,21 @@ class OrderController extends Controller
                 ], 422);
             }
 
+            // processing = first submit; review = sibling line still publishing
+            // while the order is already waiting on the advertiser.
+            if (! in_array($order->status, ['processing', 'review'], true)) {
+                DB::rollBack();
+                if ($suppressedOrderId) {
+                    $suppressor->forget($suppressedOrderId);
+                    $suppressedOrderId = null;
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Accept the order before submitting a live URL.',
+                ], 422);
+            }
+
             $heldForSiblingRevision = OrderItem::orderHasOpenContentRevision(
                 (int) $order->id,
                 (int) $orderItem->id
@@ -712,6 +833,9 @@ class OrderController extends Controller
                     $payload['live_url_check_ok'] = $health['ok'];
                     $payload['live_url_http_status'] = $health['status'];
                     $payload['live_url_checked_at'] = $health['checked_at'];
+                }
+                if (Schema::hasColumn('order_items', 'social_post_urls')) {
+                    $payload['social_post_urls'] = $social['urls'] === [] ? null : $social['urls'];
                 }
                 $orderItem->update($payload);
             } else {
@@ -764,6 +888,7 @@ class OrderController extends Controller
                 'site_id' => $site->id,
                 'publisher_id' => $userId,
                 'live_url' => $request->live_url,
+                'social_post_urls' => $social['urls'],
                 'held_in_processing_for_sibling_revision' => $heldForSiblingRevision,
             ]);
 
@@ -775,6 +900,9 @@ class OrderController extends Controller
             if (! $health['ok']) {
                 $message .= ' Note: '.$health['message'];
             }
+            foreach ($social['warnings'] as $warning) {
+                $message .= ' Note: '.$warning;
+            }
 
             return response()->json([
                 'success' => true,
@@ -784,6 +912,8 @@ class OrderController extends Controller
                     'status' => $health['status'],
                     'message' => $health['message'],
                 ],
+                'social_post_urls' => $social['urls'],
+                'social_warnings' => $social['warnings'],
             ]);
 
         } catch (\Exception $e) {
@@ -810,6 +940,10 @@ class OrderController extends Controller
         // into a 500 and hide the field errors from the UI.
         $request->validate([
             'live_url' => 'required|url',
+            'social_post_urls' => 'nullable|array',
+            'social_post_urls.facebook' => 'nullable|url',
+            'social_post_urls.instagram' => 'nullable|url',
+            'social_post_urls.x' => 'nullable|url',
         ]);
 
         try {
@@ -833,17 +967,26 @@ class OrderController extends Controller
             }
 
             $liveUrl = (string) $request->live_url;
+            $social = app(SocialPostUrlValidator::class)->normalize(
+                $orderItem->enabledSocialChannels(),
+                $request->input('social_post_urls')
+            );
 
             $health = app(ReviewHandoffService::class)->handBack(
                 $orderItem,
                 $site,
                 $liveUrl,
-                'Live URL resubmitted: '.$liveUrl
+                'Live URL resubmitted: '.$liveUrl,
+                // Always pass the map (even empty) so resubmit can clear stale URLs.
+                $social['urls']
             );
 
             $message = 'Live URL resubmitted successfully!';
             if (! $health['ok']) {
                 $message .= ' Note: '.$health['message'];
+            }
+            foreach ($social['warnings'] as $warning) {
+                $message .= ' Note: '.$warning;
             }
 
             return response()->json([
@@ -854,6 +997,8 @@ class OrderController extends Controller
                     'status' => $health['status'],
                     'message' => $health['message'],
                 ],
+                'social_post_urls' => $social['urls'],
+                'social_warnings' => $social['warnings'],
             ]);
         } catch (ValidationException $e) {
             throw $e;
@@ -962,8 +1107,6 @@ class OrderController extends Controller
             $userId = auth()->id();
             $siteIds = Site::where('publisher_id', $userId)->pluck('id')->toArray();
 
-            Log::info('Fetching statistics for publisher', ['user_id' => $userId, 'site_ids' => $siteIds]);
-
             // If no sites found, return zero stats
             if (empty($siteIds)) {
                 return response()->json([
@@ -1002,8 +1145,6 @@ class OrderController extends Controller
                     })
                     ->sum(OrderItem::publisherPayoutSqlExpression()), 2),
             ];
-
-            Log::info('Statistics calculated', $stats);
 
             return response()->json([
                 'success' => true,

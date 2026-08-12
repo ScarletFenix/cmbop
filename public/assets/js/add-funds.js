@@ -80,6 +80,60 @@ document.addEventListener('DOMContentLoaded', function() {
         return `${base}?amount=${amount}&currency=EUR`;
     }
 
+    function wiseQrEndpoint() {
+        const fromBoot = boot.routes && boot.routes.wiseQr;
+        const img = document.getElementById('wiseQRCode');
+        const fromDom = img && img.dataset ? img.dataset.qrBase : '';
+        return String(fromBoot || fromDom || '').trim();
+    }
+
+    function syncWiseQr(amount) {
+        const wiseQRCode = document.getElementById('wiseQRCode');
+        const wiseQrHint = document.getElementById('wiseQrHint');
+        const wiseQrFallback = document.getElementById('wiseQrFallback');
+        const wiseOpenLink = document.getElementById('wiseOpenLink');
+        const wiseLink = document.getElementById('wisePaymentLink');
+        const payLink = buildWisePayLink(amount);
+
+        if (wiseLink) {
+            wiseLink.textContent = payLink;
+        }
+
+        if (wiseOpenLink) {
+            wiseOpenLink.href = payLink;
+            wiseOpenLink.classList.toggle('d-none', !(amount >= 10));
+        }
+
+        if (!wiseQRCode) {
+            return;
+        }
+
+        const qrBase = wiseQrEndpoint();
+        if (amount >= 10 && qrBase) {
+            const nextSrc = `${qrBase}?amount=${encodeURIComponent(amount)}`;
+            wiseQRCode.onerror = function () {
+                wiseQRCode.style.display = 'none';
+                if (wiseQrHint) wiseQrHint.classList.add('d-none');
+                if (wiseQrFallback) wiseQrFallback.classList.remove('d-none');
+            };
+            wiseQRCode.onload = function () {
+                wiseQRCode.style.display = 'block';
+                if (wiseQrHint) wiseQrHint.classList.add('d-none');
+                if (wiseQrFallback) wiseQrFallback.classList.add('d-none');
+            };
+            // Force reload when amount changes or a prior error hid the image.
+            if (wiseQRCode.getAttribute('src') === nextSrc) {
+                wiseQRCode.removeAttribute('src');
+            }
+            wiseQRCode.src = nextSrc;
+        } else {
+            wiseQRCode.removeAttribute('src');
+            wiseQRCode.style.display = 'none';
+            if (wiseQrHint) wiseQrHint.classList.remove('d-none');
+            if (wiseQrFallback) wiseQrFallback.classList.add('d-none');
+        }
+    }
+
     function syncFeeNote() {
         if (!depositFeeNote) return;
         const note = selectedMethod ? depositFeeNotes[selectedMethod] : '';
@@ -181,43 +235,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Update Wise link and QR code
-        const wiseQRCode = document.getElementById('wiseQRCode');
-        const wiseQrHint = document.getElementById('wiseQrHint');
-        const wiseQrFallback = document.getElementById('wiseQrFallback');
-        const wiseOpenLink = document.getElementById('wiseOpenLink');
-        const wiseLink = document.getElementById('wisePaymentLink');
-        const payLink = buildWisePayLink(amount);
-
-        if (wiseLink) {
-            wiseLink.textContent = payLink;
-        }
-
-        if (wiseOpenLink) {
-            wiseOpenLink.href = payLink;
-            wiseOpenLink.classList.toggle('d-none', !(amount >= 10));
-        }
-
-        if (wiseQRCode) {
-            const qrBase = wiseQRCode.dataset.qrBase;
-            if (amount >= 10 && qrBase) {
-                wiseQRCode.onerror = function () {
-                    wiseQRCode.style.display = 'none';
-                    if (wiseQrHint) wiseQrHint.classList.add('d-none');
-                    if (wiseQrFallback) wiseQrFallback.classList.remove('d-none');
-                };
-                wiseQRCode.onload = function () {
-                    wiseQRCode.style.display = '';
-                    if (wiseQrHint) wiseQrHint.classList.add('d-none');
-                    if (wiseQrFallback) wiseQrFallback.classList.add('d-none');
-                };
-                wiseQRCode.src = `${qrBase}?amount=${amount}`;
-            } else {
-                wiseQRCode.removeAttribute('src');
-                wiseQRCode.style.display = 'none';
-                if (wiseQrHint) wiseQrHint.classList.remove('d-none');
-                if (wiseQrFallback) wiseQrFallback.classList.add('d-none');
-            }
-        }
+        syncWiseQr(amount);
         
         // Update crypto and bank amounts
         const cryptoAmount = document.getElementById('cryptoAmount');
@@ -268,7 +286,13 @@ document.addEventListener('DOMContentLoaded', function() {
             if (cardDetails) cardDetails.style.display = 'none';
             
             // Show selected
-            if (method === 'wise' && wiseDetails) wiseDetails.style.display = 'block';
+            if (method === 'wise' && wiseDetails) {
+                wiseDetails.style.display = 'block';
+                // Re-sync if amount was chosen before Wise (image may have loaded while hidden).
+                if (selectedAmount >= 10) {
+                    syncWiseQr(selectedAmount);
+                }
+            }
             if (method === 'crypto' && cryptoDetails) cryptoDetails.style.display = 'block';
             if (method === 'bank' && bankDetails) bankDetails.style.display = 'block';
             if (method === 'card' && cardDetails) cardDetails.style.display = 'block';

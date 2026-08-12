@@ -41,6 +41,9 @@ use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
 use App\Mail\RefundReceiptMail;
+use App\Mail\SiteClaimOwnershipTransferred;
+use App\Mail\SiteClaimReviewed;
+use App\Mail\SiteClaimSubmitted;
 use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
@@ -379,6 +382,27 @@ return [
             'audience' => 'admin',
             'preference' => null,
             'mailable' => AdminNewUserRegistered::class,
+            'default_enabled' => true,
+        ],
+        'site_claim_submitted' => [
+            'name' => 'Site Claim Submitted',
+            'audience' => 'admin',
+            'preference' => null,
+            'mailable' => SiteClaimSubmitted::class,
+            'default_enabled' => true,
+        ],
+        'site_claim_reviewed' => [
+            'name' => 'Site Claim Reviewed',
+            'audience' => 'user',
+            'preference' => 'system_updates',
+            'mailable' => SiteClaimReviewed::class,
+            'default_enabled' => true,
+        ],
+        'site_claim_ownership_transferred' => [
+            'name' => 'Site Claim Ownership Transferred',
+            'audience' => 'publisher',
+            'preference' => 'system_updates',
+            'mailable' => SiteClaimOwnershipTransferred::class,
             'default_enabled' => true,
         ],
 
