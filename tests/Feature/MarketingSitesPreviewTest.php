@@ -80,8 +80,11 @@ class MarketingSitesPreviewTest extends TestCase
 
         $row = collect($json['sites'] ?? [])->firstWhere('id', $site->id);
         $this->assertIsArray($row);
-        $this->assertSame('/storage/site-screenshots/missing-thumb.webp', $row['preview_thumb_url']);
+        // Uploaded cover wins the list thumb so Sites Management Images stay visible
+        // even when auto-screenshot paths are stale/missing.
+        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_thumb_url']);
         $this->assertContains('/storage/sites/cover-real.webp', $row['preview_fallback_urls']);
+        $this->assertContains('/storage/site-screenshots/missing-thumb.webp', $row['preview_fallback_urls']);
         $this->assertSame('/storage/sites/cover-real.webp', $row['image_url']);
         $this->assertArrayNotHasKey('verify_token', $row);
     }
@@ -128,10 +131,34 @@ class MarketingSitesPreviewTest extends TestCase
             ->json('sites.0');
 
         $this->assertSame($site->id, $row['id']);
-        // Fast list path: emit URLs from DB; browser onerror handles 404s.
-        $this->assertSame('/storage/site-screenshots/gone-thumb.webp', $row['preview_thumb_url']);
+        // Uploaded cover is preferred for the list thumb; full capture still used for zoom.
+        $this->assertSame('/storage/sites/gone-upload.webp', $row['preview_thumb_url']);
         $this->assertSame('/storage/site-screenshots/gone-full.webp', $row['preview_full_url']);
         $this->assertContains('/storage/sites/gone-upload.webp', $row['preview_fallback_urls']);
+        $this->assertContains('/storage/site-screenshots/gone-thumb.webp', $row['preview_fallback_urls']);
+    }
+
+    public function test_user_sites_json_always_includes_image_fields_when_columns_exist(): void
+    {
+        Storage::disk('public')->put('sites/always-select.webp', 'cover');
+
+        $site = $this->makeSite([
+            'site_name' => 'Always Select Image',
+            'site_url' => 'https://always-select.example',
+            'domain' => 'always-select.example',
+            'site_image' => 'sites/always-select.webp',
+        ]);
+
+        $row = $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', $this->publisher->id))
+            ->assertOk()
+            ->json('sites.0');
+
+        $this->assertSame($site->id, $row['id']);
+        $this->assertSame('sites/always-select.webp', $row['site_image']);
+        $this->assertSame('/storage/sites/always-select.webp', $row['image_url']);
+        $this->assertSame('/storage/sites/always-select.webp', $row['preview_thumb_url']);
+        $this->assertNotEmpty($row['preview_fallback_urls']);
     }
 
     public function test_enrich_and_screenshot_default_to_queued_jobs(): void
@@ -191,6 +218,7 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('hydrateSiteDetailImages', $html);
         $this->assertStringContainsString('data-detail-src', $html);
         $this->assertStringContainsString('sync: false', $html);
+        $this->assertStringContainsString('siteStorageUrl(site.site_image)', $html);
 
         // Preview sizing lives in the shared staff stylesheet (not inline HTML).
         $this->assertStringContainsString('staff-sites.css', $html);

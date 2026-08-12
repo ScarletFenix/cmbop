@@ -565,6 +565,22 @@ function editSiteWithImage(siteId) {
                     if (imageUrl) {
                         site.image_url = imageUrl;
                         site.site_image = imagePath;
+                        site.preview_thumb_url = imageUrl;
+                        site.preview_full_url = imageUrl;
+                        site.preview_fallback_urls = [imageUrl].concat(
+                            Array.isArray(site.preview_fallback_urls) ? site.preview_fallback_urls : []
+                        ).filter(function (u, i, arr) { return u && arr.indexOf(u) === i; });
+                        // Keep the in-memory list in sync so row previews refresh immediately.
+                        const idx = allSites.findIndex(s => s.id == siteId);
+                        if (idx >= 0) {
+                            allSites[idx] = Object.assign({}, allSites[idx], {
+                                image_url: imageUrl,
+                                site_image: imagePath,
+                                preview_thumb_url: imageUrl,
+                                preview_full_url: imageUrl,
+                                preview_fallback_urls: site.preview_fallback_urls,
+                            });
+                        }
                     }
                 } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
@@ -946,7 +962,8 @@ function siteStorageUrl(path) {
 }
 
 function sitePreviewPaths(site) {
-    // Prefer API-built disk-aware URLs. Avoid inventing /storage/ paths that 404.
+    // Prefer API-built URLs, but always keep a client-side /storage fallback for
+    // site_image so row previews still render if the API omits preview_* fields.
     const chain = [];
     const push = (url) => {
         if (!url) return;
@@ -960,25 +977,29 @@ function sitePreviewPaths(site) {
 
     if (apiFallbacks !== null) {
         apiFallbacks.forEach(push);
-        push(site.preview_thumb_url);
-        push(site.preview_full_url);
-        push(site.screenshot_thumb_url);
-        push(site.screenshot_url);
-        push(site.image_url);
-    } else {
-        // Legacy payload without disk checks.
-        push(site.preview_thumb_url);
-        push(site.preview_full_url);
-        push(site.screenshot_thumb_url);
-        push(site.screenshot_url);
-        push(site.image_url);
-        push(siteStorageUrl(site.screenshot_thumb_path));
-        push(siteStorageUrl(site.screenshot_path));
-        push(siteStorageUrl(site.site_image));
     }
 
-    const thumb = site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
-    const full = site.preview_full_url || site.screenshot_url || site.image_url || thumb || null;
+    push(site.preview_thumb_url);
+    push(site.preview_full_url);
+    push(site.screenshot_thumb_url);
+    push(site.screenshot_url);
+    push(site.image_url);
+    push(siteStorageUrl(site.site_image));
+    push(siteStorageUrl(site.screenshot_thumb_path));
+    push(siteStorageUrl(site.screenshot_path));
+
+    const thumb = site.preview_thumb_url
+        || site.image_url
+        || siteStorageUrl(site.site_image)
+        || site.screenshot_thumb_url
+        || chain[0]
+        || null;
+    const full = site.preview_full_url
+        || site.screenshot_url
+        || site.image_url
+        || siteStorageUrl(site.site_image)
+        || thumb
+        || null;
 
     if (thumb) push(thumb);
     if (full) push(full);
