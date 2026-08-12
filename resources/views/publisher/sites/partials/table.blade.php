@@ -473,6 +473,11 @@
         color: #9a3412;
         border-color: #fed7aa;
     }
+    .site-status--invite {
+        background: #eff6ff;
+        color: #1e40af;
+        border-color: #bfdbfe;
+    }
     .site-status--needs-details {
         background: #ecfeff;
         color: #155e75;
@@ -810,7 +815,7 @@
                         <i class="fa fa-box-archive me-1"></i>Archived
                     </span>
                 @elseif(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
-                    <span class="site-status site-status--with-marketer"
+                    <span class="site-status site-status--invite"
                           data-glass-tip
                           data-glass-tip-body="Our team added this listing. Accept it to show it in My Sites."
                           data-glass-tip-placement="top"

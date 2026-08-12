@@ -596,10 +596,31 @@
         gap: 6px;
         line-height: 1.2;
         padding: 0.4rem 0.9rem !important;
-    }
-    .site-status-filter.is-active,
-    .site-status-filter.btn-primary {
+        background: #fff;
+        border: 1px solid #c5d4d6;
+        color: #334155;
         box-shadow: none;
+    }
+    .site-status-filter:hover {
+        background: #f1f7f7;
+        border-color: #9ec5c8;
+        color: #123f42;
+    }
+    .site-status-filter.is-active {
+        background: #0f766e;
+        border-color: #0f766e;
+        color: #fff;
+        font-weight: 600;
+        box-shadow: none;
+    }
+    .site-status-filter.is-active:hover {
+        background: #0d9488;
+        border-color: #0d9488;
+        color: #fff;
+    }
+    .site-status-filter.is-active .badge {
+        background: rgba(255, 255, 255, 0.22) !important;
+        color: #fff !important;
     }
     .site-status-filter .filter-main {
         display: inline-flex;
@@ -1214,11 +1235,29 @@
                     <div class="d-flex gap-2">
                         <button type="button" class="btn btn-cta-tertiary shadow-sm" id="closeBtn">Close</button>
                         <button type="button" class="btn btn-primary shadow-sm" id="wizardNextBtn">Next</button>
-                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Submit</button>
+                        <button type="submit" class="btn btn-primary shadow-sm d-none" id="submitBtn">Review &amp; submit</button>
                     </div>
                 </div>
 
             </form>
+        </div>
+    </div>
+
+    {{-- Last look before the listing goes to review. The wizard splits the form
+         across panes, so publishers need to see the whole listing at once. --}}
+    <div class="modal fade" id="sitePreviewModal" tabindex="-1" aria-labelledby="sitePreviewLabel" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="sitePreviewLabel">Check your listing before you submit</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body" id="sitePreviewBody"></div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-cta-secondary" data-bs-dismiss="modal" id="sitePreviewBackBtn">Back to edit</button>
+                    <button type="button" class="btn btn-primary" id="sitePreviewConfirmBtn">Looks right — submit</button>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1879,6 +1918,8 @@ function clearSiteDraft() {
     try { localStorage.removeItem(SITE_DRAFT_KEY); } catch (e) {}
     $('#wizardDraftHint').text('');
 }
+window.clearSiteDraft = clearSiteDraft;
+window.getPublisherQuill = function () { return quill; };
 
 function loadSiteDraft() {
     try {
@@ -2042,7 +2083,8 @@ addBtn.on('click', function() {
         }
         $('#addSiteForm').attr('action', "{{ route('publisher.sites.store') }}");
         if (quill) quill.root.innerHTML = '';
-        submitBtn.prop('disabled', false).text('Submit');
+        submitBtn.prop('disabled', false).text('Review & submit');
+        window.sitePreviewConfirmed = false;
         
         // Reset selects
         languageSingleSelect.clearSelection();
@@ -2082,7 +2124,7 @@ closeBulkBtn.on('click', function() {
     formHeaderSpan.text('Add New Website');
 });
 
-// Form validation
+// Form validation + listing preview gate (modal handlers live in always-on JS)
 $('#addSiteForm').submit(function(e){
     if (quill) $('#siteDescription').val(quill.root.innerHTML);
 
@@ -2109,8 +2151,20 @@ $('#addSiteForm').submit(function(e){
             }
         }
         setWizardStep(wizardStep);
+    } else if (!window.sitePreviewConfirmed) {
+        e.preventDefault();
+        if (typeof window.showSiteListingPreview === 'function') {
+            window.showSiteListingPreview();
+        }
     } else {
-        submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+        if ($('#methodField').val() !== 'PUT') {
+            clearSiteDraft();
+        }
+        // Defer disable: Chromium aborts form submit when the submitting
+        // button is disabled synchronously inside the submit handler.
+        setTimeout(function () {
+            submitBtn.prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+        }, 0);
     }
 });
 
@@ -2122,6 +2176,31 @@ let sitesStatusFilter = (function () {
         return 'active';
     }
 })();
+
+function syncSitesStatusUrl(status) {
+    try {
+        const url = new URL(window.location.href);
+        if (status && status !== 'active') {
+            url.searchParams.set('status', status);
+        } else {
+            url.searchParams.delete('status');
+        }
+        history.replaceState({}, '', url.pathname + url.search + url.hash);
+    } catch (e) { /* ignore */ }
+}
+
+window.setSitesStatusFilter = function (status) {
+    const next = (status === 'pending' || status === 'invites') ? status : 'active';
+    sitesStatusFilter = next;
+    syncSitesStatusUrl(next);
+    syncSitesFilterUi(
+        parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
+        parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
+        sitesStatusFilter,
+        null,
+        parseInt(document.getElementById('sitesInviteCount')?.textContent || '0', 10)
+    );
+};
 const ACTIVE_SITES_SEEN_KEY = 'slb_publisher_active_sites_seen_v1';
 
 function parseActiveIds(raw) {
@@ -2431,6 +2510,7 @@ $(document).ready(function(){
             return;
         }
         sitesStatusFilter = next;
+        syncSitesStatusUrl(sitesStatusFilter);
         syncSitesFilterUi(
             parseInt(document.getElementById('sitesPendingCount')?.textContent || '0', 10),
             parseInt(document.getElementById('sitesActiveCount')?.textContent || '0', 10),
@@ -2563,7 +2643,8 @@ function prefillSiteForm(site) {
         $('#wizardDraftHint').text('Changing country, language, or categories will send this site for re-review and take it offline.');
     }
 
-    $('#submitBtn').prop('disabled', false).text('Update');
+    $('#submitBtn').prop('disabled', false).text('Review & update');
+    window.sitePreviewConfirmed = false;
     $('html, body').animate({ scrollTop: $("#formCard").offset().top - 100 }, 500);
 }
 
@@ -2603,18 +2684,20 @@ $(document).ready(function(){
                             $('#siteUrl').after('<small class="text-muted readonly-note d-block">Due to security reasons, this field is readonly</small>');
                         }
                         formHeaderSpan.text('Edit Site: ' + data.site.site_name);
-                        $('#submitBtn').prop('disabled', false).text('Update');
+                        $('#submitBtn').prop('disabled', false).text('Review & update');
+                        window.sitePreviewConfirmed = false;
                         if (data.site.is_live) {
                             $('#wizardDraftHint').text('Changing country, language, or categories will send this site for re-review and take it offline.');
                         }
                     }
                 } catch (e) {
                     formHeaderSpan.text('Edit Site');
-                    $('#submitBtn').text('Update');
+                    $('#submitBtn').text('Review & update');
                 }
             } else {
                 formHeaderSpan.text('Add New Website');
-                $('#submitBtn').prop('disabled', false).text('Submit');
+                $('#submitBtn').prop('disabled', false).text('Review & submit');
+                window.sitePreviewConfirmed = false;
             }
 
             if (quill && !quill.root.innerHTML.trim()) {
@@ -2719,7 +2802,8 @@ closeBtn.on('click', function(){
     $('#addSiteForm').attr('action', "{{ route('publisher.sites.store') }}");
     $('#methodField').remove();
     $('#addSiteForm').append('<input type="hidden" name="_method" id="methodField" value="POST">');
-    $('#submitBtn').text('Submit');
+    $('#submitBtn').text('Review & submit');
+    window.sitePreviewConfirmed = false;
 });
 
 // Edit via lean JSON endpoint
