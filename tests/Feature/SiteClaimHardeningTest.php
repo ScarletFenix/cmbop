@@ -227,6 +227,52 @@ class SiteClaimHardeningTest extends TestCase
 
         $this->assertSame('approved', $claimA->fresh()->status);
         $this->assertSame('rejected', $claimB->fresh()->status);
+        $this->assertSame(
+            'Closed because another claim was approved.',
+            $claimB->fresh()->admin_notes
+        );
+
+        // Winner + previous owner + closed sibling each get a reviewed/transfer mail.
+        Mail::assertQueued(SiteClaimReviewed::class, function (SiteClaimReviewed $mail) use ($claimerA) {
+            return (int) $mail->claim->claimer_id === (int) $claimerA->id
+                && $mail->claim->status === 'approved';
+        });
+        Mail::assertQueued(SiteClaimReviewed::class, function (SiteClaimReviewed $mail) use ($claimerB) {
+            return (int) $mail->claim->claimer_id === (int) $claimerB->id
+                && $mail->claim->status === 'rejected';
+        });
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $claimerB->id,
+        ]);
+    }
+
+    public function test_stale_in_memory_claim_cannot_overwrite_already_reviewed_sibling(): void
+    {
+        Mail::fake();
+
+        $admin = $this->admin();
+        $owner = $this->userWithRole('publisher');
+        $claimerA = $this->userWithRole('publisher');
+        $claimerB = $this->userWithRole('publisher');
+        $site = $this->siteFor($owner);
+
+        $claimA = $this->pendingClaimFor($site, $claimerA);
+        $claimB = $this->pendingClaimFor($site, $claimerB);
+
+        $this->actingAs($admin)->postJson(route('admin.community.claims.approve', $claimA->id), [])
+            ->assertOk();
+
+        // Stale in-memory model still says pending — must not resurrect as approved.
+        $this->assertSame('pending', $claimB->status);
+
+        $this->actingAs($admin)->postJson(route('admin.community.claims.approve', $claimB->id), [])
+            ->assertStatus(422)
+            ->assertJson(['success' => false]);
+
+        $this->assertSame('approved', $claimA->fresh()->status);
+        $this->assertSame('rejected', $claimB->fresh()->status);
+        $this->assertSame($claimerA->id, (int) $site->fresh()->publisher_id);
     }
 
     public function test_admin_queue_counts_include_pending_claims(): void

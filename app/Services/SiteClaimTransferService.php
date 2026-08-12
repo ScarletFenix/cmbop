@@ -60,12 +60,6 @@ class SiteClaimTransferService
      */
     public function approve(SiteClaim $claim, User $admin, ?string $adminNotes = null): SiteClaim
     {
-        if ($claim->status !== 'pending') {
-            throw ValidationException::withMessages([
-                'claim' => 'This claim was already reviewed.',
-            ]);
-        }
-
         $claim->loadMissing(['site', 'claimer']);
         $site = $claim->site;
         $claimer = $claim->claimer;
@@ -76,18 +70,40 @@ class SiteClaimTransferService
             ]);
         }
 
-        $openOrders = $this->openOrderItemsCount($site);
-        if ($openOrders > 0) {
-            throw ValidationException::withMessages([
-                'claim' => "Cannot approve while this site has {$openOrders} open order(s). Finish, cancel, or resolve them first, then try again.",
-            ]);
-        }
+        $previousPublisher = null;
+        $previousPublisherId = null;
+        /** @var list<SiteClaim> $closedSiblings */
+        $closedSiblings = [];
 
-        $previousPublisher = $site->publisher;
-        $previousPublisherId = $site->publisher_id;
-
-        DB::transaction(function () use ($claim, $site, $claimer, $admin, $adminNotes, $previousPublisherId) {
+        DB::transaction(function () use (
+            $claim,
+            $site,
+            $claimer,
+            $admin,
+            $adminNotes,
+            &$previousPublisher,
+            &$previousPublisherId,
+            &$closedSiblings
+        ) {
+            // Lock site + claim so concurrent approves cannot both win.
             $locked = Site::query()->lockForUpdate()->findOrFail($site->id);
+            $lockedClaim = SiteClaim::query()->lockForUpdate()->findOrFail($claim->id);
+
+            if ($lockedClaim->status !== 'pending') {
+                throw ValidationException::withMessages([
+                    'claim' => 'This claim was already reviewed.',
+                ]);
+            }
+
+            $openOrders = $this->openOrderItemsCount($locked);
+            if ($openOrders > 0) {
+                throw ValidationException::withMessages([
+                    'claim' => "Cannot approve while this site has {$openOrders} open order(s). Finish, cancel, or resolve them first, then try again.",
+                ]);
+            }
+
+            $previousPublisherId = $locked->publisher_id;
+            $previousPublisher = $locked->publisher;
 
             $locked->publisher_id = $claimer->id;
             if (Site::hasSitesColumn('publisher_accepted_at')) {
@@ -110,30 +126,36 @@ class SiteClaimTransferService
                 $claimer->assignRole('publisher');
             }
 
-            $claim->forceFill([
+            $lockedClaim->forceFill([
                 'status' => 'approved',
-                'admin_notes' => $adminNotes ?? $claim->admin_notes,
+                'admin_notes' => $adminNotes ?? $lockedClaim->admin_notes,
                 'reviewed_at' => now(),
                 'reviewed_by' => $admin->id,
             ])->save();
 
-            SiteClaim::query()
+            $siblings = SiteClaim::query()
                 ->where('site_id', $locked->id)
-                ->where('id', '!=', $claim->id)
+                ->where('id', '!=', $lockedClaim->id)
                 ->where('status', 'pending')
-                ->update([
+                ->lockForUpdate()
+                ->get();
+
+            foreach ($siblings as $sibling) {
+                $sibling->forceFill([
                     'status' => 'rejected',
                     'admin_notes' => 'Closed because another claim was approved.',
                     'reviewed_at' => now(),
                     'reviewed_by' => $admin->id,
-                ]);
+                ])->save();
+                $closedSiblings[] = $sibling;
+            }
 
             ActivityLogger::log(
                 'site.claim_approved',
-                $admin->name.' approved site claim #'.$claim->id.' (publisher '.$previousPublisherId.' → '.$claimer->id.')',
+                $admin->name.' approved site claim #'.$lockedClaim->id.' (publisher '.$previousPublisherId.' → '.$claimer->id.')',
                 $locked,
                 [
-                    'claim_id' => $claim->id,
+                    'claim_id' => $lockedClaim->id,
                     'previous_publisher_id' => $previousPublisherId,
                     'new_publisher_id' => $claimer->id,
                 ],
@@ -144,6 +166,11 @@ class SiteClaimTransferService
         $claim->refresh()->load(['site', 'claimer', 'reviewer']);
         $this->notifyApproved($claim, $previousPublisher);
 
+        foreach ($closedSiblings as $sibling) {
+            $sibling->loadMissing(['site', 'claimer']);
+            $this->notifyRejected($sibling);
+        }
+
         return $claim;
     }
 
@@ -152,28 +179,32 @@ class SiteClaimTransferService
      */
     public function reject(SiteClaim $claim, User $admin, ?string $adminNotes = null): SiteClaim
     {
-        if ($claim->status !== 'pending') {
-            throw ValidationException::withMessages([
-                'claim' => 'This claim was already reviewed.',
-            ]);
-        }
+        DB::transaction(function () use ($claim, $admin, $adminNotes) {
+            $lockedClaim = SiteClaim::query()->lockForUpdate()->findOrFail($claim->id);
 
-        $claim->forceFill([
-            'status' => 'rejected',
-            'admin_notes' => $adminNotes ?? $claim->admin_notes,
-            'reviewed_at' => now(),
-            'reviewed_by' => $admin->id,
-        ])->save();
+            if ($lockedClaim->status !== 'pending') {
+                throw ValidationException::withMessages([
+                    'claim' => 'This claim was already reviewed.',
+                ]);
+            }
 
-        ActivityLogger::log(
-            'site.claim_rejected',
-            $admin->name.' rejected site claim #'.$claim->id,
-            $claim->site,
-            ['claim_id' => $claim->id],
-            $claim->website_name
-        );
+            $lockedClaim->forceFill([
+                'status' => 'rejected',
+                'admin_notes' => $adminNotes ?? $lockedClaim->admin_notes,
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+            ])->save();
 
-        $claim->load(['site', 'claimer', 'reviewer']);
+            ActivityLogger::log(
+                'site.claim_rejected',
+                $admin->name.' rejected site claim #'.$lockedClaim->id,
+                $lockedClaim->site,
+                ['claim_id' => $lockedClaim->id],
+                $lockedClaim->website_name
+            );
+        });
+
+        $claim->refresh()->load(['site', 'claimer', 'reviewer']);
         $this->notifyRejected($claim);
 
         return $claim;
