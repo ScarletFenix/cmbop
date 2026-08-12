@@ -384,6 +384,10 @@ class SiteController extends Controller
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
+            'agency_site_import_id' => Site::hasSitesColumn('agency_site_import_id')
+                ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
+                : null,
+            'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
@@ -472,6 +476,8 @@ class SiteController extends Controller
             'site_image',
             'screenshot_path',
             'screenshot_thumb_path',
+            'agency_site_import_id',
+            'metrics_manual',
             'created_at',
             'updated_at',
         ];

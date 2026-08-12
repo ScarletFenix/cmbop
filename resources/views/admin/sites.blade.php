@@ -1128,6 +1128,9 @@ function renderSites(data){
             const inviteBadge = site.pending_publisher_acceptance
                 ? `<span class="badge text-bg-info badge-needs-review ms-1">Awaiting accept</span>`
                 : '';
+            const csvMetricsBadge = site.csv_metrics_spot_check
+                ? `<span class="badge text-bg-light border badge-needs-review ms-1" title="Publisher-supplied DA/DR/traffic from agency CSV — spot-check before activate">CSV metrics — spot-check</span>`
+                : '';
 
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
@@ -1139,6 +1142,7 @@ function renderSites(data){
                             ${reviewBadge}
                             ${awaitingBadge}
                             ${inviteBadge}
+                            ${csvMetricsBadge}
                         </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}

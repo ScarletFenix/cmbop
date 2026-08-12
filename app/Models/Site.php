@@ -73,6 +73,7 @@ class Site extends Model
         'custom_discount_ends_at',
         'custom_discount_notified_at',
         'bulk_site_request_id',
+        'agency_site_import_id',
         'onboarding_status',
         'status_reason',
         'status_reason_at',
@@ -586,6 +587,20 @@ class Site extends Model
     public function publisher()
     {
         return $this->belongsTo(User::class, 'publisher_id');
+    }
+
+    public function agencySiteImport()
+    {
+        return $this->belongsTo(AgencySiteImport::class, 'agency_site_import_id');
+    }
+
+    public function isFromAgencyCsvImport(): bool
+    {
+        if (! static::hasSitesColumn('agency_site_import_id')) {
+            return false;
+        }
+
+        return (int) ($this->agency_site_import_id ?? 0) > 0;
     }
 
     /**
