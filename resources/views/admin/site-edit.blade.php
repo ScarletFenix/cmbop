@@ -180,9 +180,13 @@
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
+                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}"
+                                 data-existing-fallback="{{ $site->site_image ? '/media/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ '/storage/'.$site->site_image }}" alt="Current site image">
+                                    <img src="{{ '/storage/'.$site->site_image }}"
+                                         data-media-fallback="{{ '/media/'.$site->site_image }}"
+                                         alt="Current site image"
+                                         onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">
                                 @else
                                     <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
@@ -351,9 +355,13 @@
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
+                                 data-existing="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}"
+                                 data-existing-fallback="{{ $site->site_image ? '/media/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ '/storage/'.$site->site_image }}" alt="Current site image">
+                                    <img src="{{ '/storage/'.$site->site_image }}"
+                                         data-media-fallback="{{ '/media/'.$site->site_image }}"
+                                         alt="Current site image"
+                                         onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">
                                 @else
                                     <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
@@ -435,16 +443,34 @@
     if (!imageInput || !preview) return;
 
     const existingSrc = preview.getAttribute('data-existing') || '';
+    const existingFallback = preview.getAttribute('data-existing-fallback') || '';
+
+    function bindMediaFallback(img) {
+        if (!img || !existingFallback) return;
+        img.setAttribute('data-media-fallback', existingFallback);
+        img.onerror = function () {
+            if (!this.dataset.triedMedia && this.dataset.mediaFallback) {
+                this.dataset.triedMedia = '1';
+                this.src = this.dataset.mediaFallback;
+                return;
+            }
+            preview.classList.add('is-empty');
+            this.remove();
+        };
+    }
 
     function showExistingOrEmpty() {
         if (existingSrc) {
             preview.classList.remove('is-empty');
             preview.innerHTML = '<img src="' + existingSrc + '" alt="Current site image">';
+            bindMediaFallback(preview.querySelector('img'));
         } else {
             preview.classList.add('is-empty');
             preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot (16:10)</span>';
         }
     }
+
+    bindMediaFallback(preview.querySelector('img'));
 
     imageInput.addEventListener('change', function () {
         const file = this.files && this.files[0];

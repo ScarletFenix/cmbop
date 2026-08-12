@@ -445,7 +445,7 @@ function editSiteWithImage(siteId) {
                 <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
                 <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
                     ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
-                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" onerror="this.parentElement.classList.add('is-empty'); this.remove();">`
+                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" data-media-fallback="${escapeHtml(siteMediaUrl(site.site_image) || '')}" onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">`
                         : '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>'}
                 </div>
                 <small class="text-muted" style="display:block; margin-top:5px; margin-bottom:12px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
@@ -1088,6 +1088,19 @@ function hydrateSiteDetailImages(scope) {
         if (!src || img.getAttribute('src')) return;
         img.setAttribute('src', src);
         img.removeAttribute('data-detail-src');
+        // If /storage 404s (broken Hostinger symlink), retry via /media disk stream.
+        if (!img.getAttribute('onerror')) {
+            img.onerror = function () {
+                if (!this.dataset.triedMedia && String(this.src || '').includes('/storage/')) {
+                    this.dataset.triedMedia = '1';
+                    this.src = String(this.src).replace('/storage/', '/media/');
+                    return;
+                }
+                if (this.parentElement) {
+                    this.parentElement.style.display = 'none';
+                }
+            };
+        }
     });
 }
 
@@ -1298,7 +1311,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
                                     <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
-                                    ${(site.image_url || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div></div>` : ''}
+                                    ${(site.image_url || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
                                 </div>
                             </div>
                         </div>

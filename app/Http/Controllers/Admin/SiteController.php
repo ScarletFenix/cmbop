@@ -715,6 +715,7 @@ class SiteController extends Controller
                             'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                         ]);
                     }
+                    PublicStorageLink::ensure();
                     $imagePath = $stored;
                 }
 
