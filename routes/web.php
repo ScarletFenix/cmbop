@@ -392,6 +392,11 @@ $registerStaffOpsRoutes = function () {
         ->name('staff-handbook');
     Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
         ->name('users.sites');
+    // Disk-stream preview when public/storage symlink is broken (Hostinger MEDIA_PATH).
+    // Must be registered before /sites/{id}… wildcards.
+    Route::get('/sites/media/{path}', [PublicMediaController::class, 'show'])
+        ->where('path', '.*')
+        ->name('sites.media');
     Route::get('/sites/{id}/edit', [AdminSiteController::class, 'edit'])
         ->name('sites.edit');
     Route::put('/sites/{id}', [AdminSiteController::class, 'update'])

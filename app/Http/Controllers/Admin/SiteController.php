@@ -262,8 +262,9 @@ class SiteController extends Controller
      * @return array{thumb: ?string, full: ?string, fallbacks: list<string>}
      */
     /**
-     * Relative public URL for a path on the public disk (avoids APP_URL host mismatch).
-     * Always emits /storage/... — client onerror also walks /media/... fallbacks.
+     * Staff preview URL for a public-disk path.
+     * Prefer /{admin|marketing}/sites/media/... (Laravel disk stream) so Hostinger
+     * broken public/storage symlinks do not blank row/detail previews.
      */
     private function staffPublicStorageUrl(?string $path): ?string
     {
@@ -277,15 +278,17 @@ class SiteController extends Controller
         }
 
         if (str_starts_with($normalized, 'storage/')) {
-            return '/'.$normalized;
+            $normalized = ltrim(substr($normalized, strlen('storage/')), '/');
+        }
+        if ($normalized === '') {
+            return null;
         }
 
-        return '/storage/'.$normalized;
+        return rtrim(staff_base_path(), '/').'/sites/media/'.$normalized;
     }
 
     /**
-     * Both /storage and /media URLs for client onerror fallback chains.
-     * /media streams from the public disk when the Hostinger symlink is broken.
+     * Client onerror chain: staff media → /storage → public /media.
      *
      * @return list<string>
      */
@@ -306,10 +309,13 @@ class SiteController extends Controller
             return [];
         }
 
-        return array_values(array_unique([
+        $staff = $this->staffPublicStorageUrl($normalized);
+
+        return array_values(array_unique(array_filter([
+            $staff,
             '/storage/'.$normalized,
             '/media/'.$normalized,
-        ]));
+        ])));
     }
 
     /**
@@ -992,18 +998,12 @@ class SiteController extends Controller
         );
 
         $imageUrl = $this->staffPublicStorageUrl($path);
-        if (! $publicLinked) {
-            // Symlink broken — point the admin preview at the disk-stream fallback.
-            $imageUrl = '/media/'.ltrim(str_replace('\\', '/', $path), '/');
-        }
         // Cache-bust so browsers do not keep a prior broken/blank response.
         $imageUrlWithBust = $imageUrl ? ($imageUrl.'?v='.time()) : null;
 
         $message = 'Image uploaded successfully';
         if (! $publicLinked) {
-            $message = 'Image saved. If the preview stays blank, run on the server: '
-                .'php artisan media:ensure-link '
-                .'(or: rm -f public/storage && php artisan storage:link).';
+            $message = 'Image saved. Preview uses a secure media URL; run php artisan media:ensure-link if /storage still 404s publicly.';
         }
 
         return response()->json([

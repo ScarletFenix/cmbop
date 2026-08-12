@@ -81,10 +81,11 @@ class MarketingSitesPreviewTest extends TestCase
         $row = collect($json['sites'] ?? [])->firstWhere('id', $site->id);
         $this->assertIsArray($row);
         // Uploaded cover wins list thumb over stale/missing auto-screenshots.
-        $this->assertSame('/storage/sites/cover-real.webp', $row['preview_thumb_url']);
+        // Staff previews use the auth'd disk-stream route (Hostinger-safe).
+        $this->assertSame('/marketing/sites/media/sites/cover-real.webp', $row['preview_thumb_url']);
+        $this->assertContains('/marketing/sites/media/sites/cover-real.webp', $row['preview_fallback_urls']);
         $this->assertContains('/storage/sites/cover-real.webp', $row['preview_fallback_urls']);
-        $this->assertContains('/media/sites/cover-real.webp', $row['preview_fallback_urls']);
-        $this->assertSame('/storage/sites/cover-real.webp', $row['image_url']);
+        $this->assertSame('/marketing/sites/media/sites/cover-real.webp', $row['image_url']);
         $this->assertArrayNotHasKey('verify_token', $row);
     }
 
@@ -107,9 +108,9 @@ class MarketingSitesPreviewTest extends TestCase
             ->json('sites.0');
 
         $this->assertSame($site->id, $row['id']);
-        // List uses lighter thumb; zoom/detail uses full desktop capture.
-        $this->assertSame('/storage/site-screenshots/home-thumb.webp', $row['preview_thumb_url']);
-        $this->assertSame('/storage/site-screenshots/home-full.webp', $row['preview_full_url']);
+        // List uses staff media stream; zoom/detail prefers full desktop capture URL.
+        $this->assertSame('/marketing/sites/media/site-screenshots/home-thumb.webp', $row['preview_thumb_url']);
+        $this->assertSame('/marketing/sites/media/site-screenshots/home-full.webp', $row['preview_full_url']);
         $this->assertNotSame($row['preview_thumb_url'], $row['preview_full_url']);
     }
 
@@ -132,8 +133,9 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertSame($site->id, $row['id']);
         // Fast list path: emit URLs from DB; browser onerror handles 404s.
         // Uploaded cover is preferred for the list thumb when present.
-        $this->assertSame('/storage/sites/gone-upload.webp', $row['preview_thumb_url']);
-        $this->assertSame('/storage/site-screenshots/gone-full.webp', $row['preview_full_url']);
+        $this->assertSame('/marketing/sites/media/sites/gone-upload.webp', $row['preview_thumb_url']);
+        $this->assertSame('/marketing/sites/media/site-screenshots/gone-full.webp', $row['preview_full_url']);
+        $this->assertContains('/marketing/sites/media/sites/gone-upload.webp', $row['preview_fallback_urls']);
         $this->assertContains('/storage/sites/gone-upload.webp', $row['preview_fallback_urls']);
     }
 
@@ -200,9 +202,8 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('staff-sites.css', $html);
         $staffCss = (string) file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-row-preview', $staffCss);
-        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $staffCss);
-        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
+        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
         // Absolute <img> needs the ::before padding frame — do not strip it via @supports.
         $this->assertStringNotContainsString('@supports (aspect-ratio: 16 / 10)', $staffCss);

@@ -69,19 +69,26 @@
   position: relative;
   width: min(120px, 100%);
   max-width: 120px;
-  aspect-ratio: var(--site-preview-ratio);
   height: auto;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   flex-shrink: 0;
   cursor: zoom-in;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  min-height: 64px;
+}
+
+/* Padding-top frame: absolute <img> does not contribute height; aspect-ratio alone
+   was collapsing thumbs to blank in some admin table layouts. */
+.site-row-preview::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 62.5%; /* 10 / 16 */
 }
 
 .site-row-preview:hover,
@@ -93,8 +100,11 @@
 
 /* contain = full desktop homepage in the 16:10 frame (cover crops/zooms). */
 .site-row-preview img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  max-width: none;
   object-fit: contain;
   object-position: center top;
   display: block;
@@ -113,24 +123,43 @@
   cursor: default;
 }
 
+.site-row-preview.is-empty > i {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .site-row-preview.is-empty:hover img,
 .site-row-preview.is-empty:focus-visible img {
   transform: none;
 }
 
 .site-preview-detail {
+  position: relative;
   width: min(100%, 360px);
-  aspect-ratio: 16 / 10;
   overflow: hidden;
   border-radius: var(--radius-sm, 8px);
   margin-top: 4px;
   border: 1px solid var(--border-subtle);
   background: #f8fafc;
+  min-height: 120px;
+}
+
+.site-preview-detail::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 62.5%;
 }
 
 .site-preview-detail img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
+  max-width: none;
   object-fit: contain;
   object-position: center top;
   display: block;

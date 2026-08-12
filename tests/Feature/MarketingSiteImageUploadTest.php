@@ -156,7 +156,7 @@ class MarketingSiteImageUploadTest extends TestCase
         Storage::disk('public')->assertExists($site->site_image);
 
         $imageUrl = (string) $response->json('image_url');
-        $this->assertStringContainsString('/storage/sites/', $imageUrl);
+        $this->assertStringContainsString('/admin/sites/media/sites/', $imageUrl);
         $this->assertStringContainsString('?v=', $imageUrl);
     }
 
@@ -194,7 +194,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('name="site_image"', $marketingEdit);
         $this->assertStringContainsString('enctype="multipart/form-data"', $marketingEdit);
         $this->assertStringContainsString('desktop screenshot', strtolower($marketingEdit));
-        $this->assertStringContainsString('/media/sites/existing-cover.webp', $marketingEdit);
+        $this->assertStringContainsString('/marketing/sites/media/sites/existing-cover.webp', $marketingEdit);
         $this->assertStringContainsString('data-media-fallback', $marketingEdit);
 
         $adminEdit = $this->actingAs($this->admin)
