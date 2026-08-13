@@ -746,7 +746,7 @@ class ContentLibraryImprovementsTest extends TestCase
         );
         $this->assertNotSame('', $previewHeader);
         $this->assertStringContainsString('id="articlePreviewEditBtn"', $previewHeader);
-        $this->assertStringContainsString('>Edit article</button>', $previewHeader);
+        $this->assertMatchesRegularExpression('/>\s*Edit article\s*<\/button>/', $previewHeader);
 
         $js = file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('dangerouslyPasteHTML', $js);
