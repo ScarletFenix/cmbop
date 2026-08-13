@@ -134,9 +134,45 @@ class ContentSubmission extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /** Orderable approved articles stay marked “Just approved” for this many days. */
+    public const JUST_APPROVED_DAYS = 7;
+
     public function isApproved(): bool
     {
         return $this->moderation_status === self::STATUS_APPROVED;
+    }
+
+    /**
+     * True when we approved this article recently and it is still waiting to be ordered.
+     */
+    public function isJustApproved(): bool
+    {
+        if (! $this->canBeOrdered() || $this->evaluated_at === null) {
+            return false;
+        }
+
+        $cutoff = now()->copy()->subDays(self::JUST_APPROVED_DAYS)->startOfDay();
+
+        return $this->evaluated_at->copy()->startOfDay()->gte($cutoff);
+    }
+
+    public function justApprovedLabel(): ?string
+    {
+        if (! $this->isJustApproved() || $this->evaluated_at === null) {
+            return null;
+        }
+
+        if ($this->evaluated_at->isSameDay(now())) {
+            return 'Approved today';
+        }
+
+        if ($this->evaluated_at->isSameDay(now()->subDay())) {
+            return 'Approved yesterday';
+        }
+
+        $days = (int) abs($this->evaluated_at->copy()->startOfDay()->diffInDays(now()->copy()->startOfDay()));
+
+        return 'Approved '.$days.' days ago';
     }
 
     public function needsCorrection(): bool

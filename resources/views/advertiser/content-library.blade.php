@@ -284,6 +284,9 @@
                             <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
                                 {{ $submission->title ?: $submission->original_filename }}
                             </div>
+                            @if($submission->isJustApproved() && ($justApprovedHint = $submission->justApprovedLabel()))
+                                <div class="library-just-approved-hint">{{ $justApprovedHint }}</div>
+                            @endif
                             @if($availability === 'published')
                                 <div class="library-live-link">
                                     <div class="library-pub-details">
@@ -402,7 +405,9 @@
                         <td>
                             <div class="library-status-wrap">
                                 <span class="library-status library-status--{{ $statusCategory }}">{{ $label }}</span>
-                                @if($statusCategory === 'completed')
+                                @if($submission->isJustApproved())
+                                    <span class="library-just-approved">Just approved</span>
+                                @elseif($statusCategory === 'completed')
                                     <span class="library-status-hint">Done — not orderable</span>
                                 @elseif($availability === 'in_progress')
                                     <span class="library-status-hint">In placement</span>
