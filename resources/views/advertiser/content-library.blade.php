@@ -681,7 +681,7 @@
 
 {{-- Docs-style editor modal --}}
 <div class="modal fade" id="articleEditorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
                 <div>

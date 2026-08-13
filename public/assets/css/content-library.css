@@ -661,13 +661,18 @@
         line-height: 1.65;
         padding: 1.25rem 1.5rem;
     }
-    /* Fill the viewport and scroll the document, not the page behind the modal.
-       Quill snow sets height:100% on .ql-editor; without a bounded flex parent
-       that percentage never becomes a scrollport. */
+    /* Fill the viewport and scroll the document, not the page behind the modal. */
+    body.modal-open:has(#articleEditorModal.show) {
+        overscroll-behavior: none;
+    }
+    #articleEditorModal {
+        overscroll-behavior: none;
+    }
     #articleEditorModal .modal-dialog {
         height: calc(100vh - 1.75rem);
         max-height: calc(100vh - 1.75rem);
         margin: .75rem auto;
+        overflow: hidden;
     }
     #articleEditorModal .modal-content {
         height: 100%;
@@ -675,17 +680,38 @@
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        overscroll-behavior: contain;
+    }
+    #articleEditorModal .modal-header,
+    #articleEditorModal .modal-footer {
+        flex: 0 0 auto;
     }
     #articleEditorModal .modal-body {
         flex: 1 1 auto;
         min-height: 0;
-        overflow-y: auto;
+        overflow: hidden;
         display: flex;
         flex-direction: column;
+        gap: .75rem;
+        overscroll-behavior: contain;
+    }
+    #articleEditorModal .modal-body > .mb-3 {
+        margin-bottom: 0;
+    }
+    #articleEditorModal .modal-body > :not(.article-docs-shell) {
+        flex: 0 0 auto;
     }
     #articleEditorModal .article-docs-shell {
         flex: 1 1 auto;
         min-height: 12rem;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
+    #articleEditorModal .article-docs-shell #articleQuillEditor {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100%;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -701,6 +727,7 @@
     }
     #articleEditorModal .article-docs-shell .ql-editor {
         height: 100%;
+        max-height: 100%;
         min-height: 0;
         overflow-y: auto;
         overscroll-behavior: contain;
