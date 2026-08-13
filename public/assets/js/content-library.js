@@ -510,8 +510,10 @@ function showImageRemoveOverlay(img, index) {
     btn.classList.remove('d-none');
     const shellRect = shell.getBoundingClientRect();
     const imgRect = img.getBoundingClientRect();
-    const top = imgRect.bottom - shellRect.top - 36;
-    const left = imgRect.right - shellRect.left - 92;
+    const btnW = btn.offsetWidth || 88;
+    // Pin to the top-right of the image so a small figure stays visible.
+    const top = imgRect.top - shellRect.top + 8;
+    const left = imgRect.right - shellRect.left - btnW - 8;
     btn.style.top = Math.max(8, top) + 'px';
     btn.style.left = Math.max(8, left) + 'px';
 }
