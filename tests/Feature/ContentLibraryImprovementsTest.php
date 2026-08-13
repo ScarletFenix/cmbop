@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -902,7 +903,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function firstErrorMessage', $js);
     }
 
-    public function test_library_upload_allows_five_megabyte_docx_not_two(): void
+    public function test_library_upload_allows_ten_megabyte_docx(): void
     {
         $advertiser = $this->advertiser();
 
@@ -915,14 +916,29 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('Max 5 MB', $html);
+        $this->assertStringContainsString('Max 10 MB', $html);
         $this->assertStringNotContainsString('Max 2 MB', $html);
-        $this->assertMatchesRegularExpression('/maxKilobytes:\s*5120/', $html);
+        $this->assertStringNotContainsString('Max 5 MB', $html);
+        $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
 
         $this->actingAs($advertiser)
             ->getJson(route('advertiser.content-submissions.config'))
             ->assertOk()
-            ->assertJsonPath('config.max_kilobytes', 5120);
+            ->assertJsonPath('config.max_kilobytes', 10240);
+
+        ContentModerationSetting::setValue('upload_config', [
+            'max_kilobytes' => 5120,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.config'))
+            ->assertOk()
+            ->assertJsonPath('config.max_kilobytes', 10240);
+
+        $service = app(ContentUploadService::class);
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 2048]));
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 5120]));
+        $this->assertSame(20480, $service->effectiveMaxKilobytes(['max_kilobytes' => 20480]));
 
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);

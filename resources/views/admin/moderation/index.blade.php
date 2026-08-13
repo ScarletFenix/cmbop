@@ -103,9 +103,9 @@
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Max upload size (KB)</label>
-                            <input type="number" name="max_kilobytes" class="form-control" min="5120" max="51200"
-                                   value="{{ old_text('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 5120) }}">
-                            <div class="form-text">Advertiser article uploads. Minimum 5 MB (5120 KB).</div>
+                            <input type="number" name="max_kilobytes" class="form-control" min="10240" max="51200"
+                                   value="{{ old_text('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 10240) }}">
+                            <div class="form-text">Advertiser article uploads. Minimum 10 MB (10240 KB).</div>
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Document retention (months)</label>

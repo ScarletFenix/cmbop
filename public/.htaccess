@@ -8,7 +8,7 @@
 </IfModule>
 
 # Marketer bulk Done posts many fields (up to 200 sites). Article .docx
-# uploads need at least 5 MB; Hostinger/LiteSpeed default is often 2 MB.
+# uploads need at least 10 MB; Hostinger/LiteSpeed default is often 2 MB.
 <IfModule lsapi_module>
     php_value max_input_vars 10000
     php_value post_max_size 64M

@@ -53,7 +53,7 @@ class ContentModerationController extends Controller
             'categories' => ['nullable', 'array'],
             'categories.*' => ['string'],
             'allowed_extensions' => ['nullable', 'string'],
-            'max_kilobytes' => ['nullable', 'integer', 'min:5120', 'max:51200'],
+            'max_kilobytes' => ['nullable', 'integer', 'min:10240', 'max:51200'],
             'scheduling_enabled' => ['sometimes', 'boolean'],
             'uploads_enabled' => ['sometimes', 'boolean'],
             'require_same_language' => ['sometimes', 'boolean'],

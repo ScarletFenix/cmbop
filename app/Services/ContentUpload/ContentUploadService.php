@@ -17,8 +17,8 @@ use Symfony\Component\Mime\MimeTypes;
 
 class ContentUploadService
 {
-    /** Product cap for article .docx uploads (5 MB). */
-    public const MAX_KILOBYTES = 5120;
+    /** Product cap for article .docx uploads (10 MB). */
+    public const MAX_KILOBYTES = 10240;
 
     public function __construct(
         private DocumentTextExtractor $extractor,
@@ -515,7 +515,7 @@ class ContentUploadService
     }
 
     /**
-     * Article cap is 5 MB. Never advertise less than that (old admin/PHP 2 MB clamps).
+     * Article cap is 10 MB. Never advertise less than that (old admin/PHP 2–5 MB clamps).
      */
     public function effectiveMaxKilobytes(?array $cfg = null): int
     {

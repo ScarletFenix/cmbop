@@ -608,7 +608,7 @@
             </div>
             <div class="modal-body">
                 @php
-                    $uploadMaxKb = (int) ($uploadCfg['max_kilobytes'] ?? 5120);
+                    $uploadMaxKb = (int) ($uploadCfg['max_kilobytes'] ?? 10240);
                     $uploadMaxMb = max(1, (int) round($uploadMaxKb / 1024));
                 @endphp
                 <ol class="library-upload-steps mb-3" aria-label="Upload steps">
@@ -797,7 +797,7 @@ window.ContentLibraryBoot = {
     uploadUrl: @json(route('advertiser.content-library.upload')),
     libraryIndexUrl: @json(route('advertiser.content-library')),
     editSubmission: @json($editSubmissionBoot ?? null),
-    maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 5120)),
+    maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 10240)),
 };
 </script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
