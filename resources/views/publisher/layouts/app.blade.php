@@ -107,7 +107,7 @@
         </a>
 
         <!-- Reports -->
-        <a href="{{ route('publisher.reports') }}" class="{{ request()->routeIs('publisher.reports') ? 'active' : '' }}">
+        <a href="{{ route('publisher.reports') }}" class="{{ request()->routeIs('publisher.reports*') ? 'active' : '' }}">
             <i class="fa fa-chart-bar" aria-hidden="true"></i> <span class="nav-label">Reports</span>
         </a>
         

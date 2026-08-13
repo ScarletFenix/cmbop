@@ -116,10 +116,9 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'auto_approve_at', 'timestamp NULL');
     }
 
+
     /**
      * Site counters touched during Approve / auto-approve payouts.
-     * Also ensure homepage/social offer columns so catalog Site Details can show them
-     * on Hostinger deploys that skipped the placement migration.
      */
     private function ensureSitesColumns(): void
     {
@@ -129,8 +128,6 @@ class CheckoutSchemaService
 
         // Missing column previously aborted advertiser Approve mid-transaction.
         $this->addColumn('sites', 'completed_orders_count', 'int unsigned NOT NULL DEFAULT 0');
-        $this->addColumn('sites', 'homepage_placement_prices', 'json NULL');
-        $this->addColumn('sites', 'social_promotion', 'json NULL');
     }
 
     private function tableExists(string $table): bool
