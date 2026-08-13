@@ -327,20 +327,11 @@ document.querySelectorAll('.js-open-editor').forEach(function (btn) {
         btn.disabled = true;
         try {
             const payload = await fetchSubmissionPayload(id);
-            openArticleEditor({
+            openArticleEditor(Object.assign({}, payload, {
                 id: payload.id || parseInt(id, 10),
-                title: payload.title,
-                country: payload.country,
-                language: payload.language,
                 preview_html: payload.preview_html || payload.html || '',
-                word_count: payload.word_count,
-                moderation_status: payload.moderation_status,
-                can_order: !!payload.can_order,
-                anchor_text: payload.anchor_text,
-                target_url: payload.target_url,
                 detected_links: payload.detected_links || payload.links || [],
-                feature_image_url: payload.feature_image_url || null,
-            });
+            }));
         } catch (e) {
             console.error('Failed to open editor', e);
             showLibraryFlash(e.message || 'Could not open editor', false);
@@ -535,11 +526,13 @@ function openArticleEditor(submission) {
     const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
     syncEditorImageRights(needsRights);
     const orderBtn = document.getElementById('articleEditorOrderBtn');
-    if (submission.can_order) {
-        orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
-        orderBtn.classList.remove('d-none');
-    } else {
-        orderBtn.classList.add('d-none');
+    if (orderBtn) {
+        if (submission.can_order) {
+            orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
+            orderBtn.classList.remove('d-none');
+        } else {
+            orderBtn.classList.add('d-none');
+        }
     }
     showArticleEditorAfterUploadModal();
 }
@@ -851,11 +844,11 @@ async function restoreLibraryArticle(id) {
 document.getElementById('libraryUploadForm')?.addEventListener('submit', async function (e) {
     e.preventDefault();
     const fileInput = document.getElementById('libraryFileInput');
-    const file = fileInput.files && fileInput.files[0];
+    const file = fileInput && fileInput.files && fileInput.files[0];
     const feedback = document.getElementById('libraryUploadFeedback');
     const btn = document.getElementById('libraryUploadBtn');
     const progress = document.getElementById('libraryUploadProgress');
-    const bar = progress.querySelector('.progress-bar');
+    const bar = progress ? progress.querySelector('.progress-bar') : null;
 
     if (!file) {
         setFeedbackHtml(feedback, false, 'Drop a .docx or click the box to choose a file.');
@@ -875,18 +868,19 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     langSelect.disabled = false;
 
     const fd = new FormData(this);
-    btn.disabled = true;
-    progress.classList.remove('d-none');
-    bar.style.width = '40%';
-    feedback.textContent = 'Uploading your article…';
+    if (btn) btn.disabled = true;
+    progress?.classList.remove('d-none');
+    if (bar) bar.style.width = '40%';
+    if (feedback) feedback.textContent = 'Uploading your article…';
 
+    let openedEditor = false;
     try {
         const res = await fetch(boot.uploadUrl, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
             body: fd,
         });
-        bar.style.width = '100%';
+        if (bar) bar.style.width = '100%';
         let data = {};
         try {
             data = await res.json();
@@ -900,6 +894,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         }
         setFeedbackHtml(feedback, true, 'Opening editor…');
         if (data.submission) {
+            openedEditor = true;
             openArticleEditor(Object.assign({}, data.submission, {
                 can_order: !!(data.submission.can_order || data.approved),
             }));
@@ -909,9 +904,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     } catch (err) {
         setFeedbackHtml(feedback, false, 'Network error while uploading.');
     } finally {
-        btn.disabled = false;
-        progress.classList.add('d-none');
-        bar.style.width = '0%';
+        if (!openedEditor && btn) btn.disabled = false;
+        progress?.classList.add('d-none');
+        if (bar) bar.style.width = '0%';
     }
 });
 
@@ -926,4 +921,12 @@ if (window.location.hash === '#upload' && libraryUploadsEnabled) {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadContentModal')).show();
     });
 }
+
+// Blade row actions call these from onclick="" — they must be global.
+window.toggleLibraryTitleEdit = toggleLibraryTitleEdit;
+window.saveLibraryTitle = saveLibraryTitle;
+window.copyLibraryLiveUrl = copyLibraryLiveUrl;
+window.archiveLibraryArticle = archiveLibraryArticle;
+window.deleteLibraryArticle = deleteLibraryArticle;
+window.restoreLibraryArticle = restoreLibraryArticle;
 })();

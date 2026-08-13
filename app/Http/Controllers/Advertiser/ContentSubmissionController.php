@@ -425,6 +425,9 @@ class ContentSubmissionController extends Controller
                 : null,
             'uniqueness_score' => $submission->uniqueness_score,
             'quality_score' => $submission->quality_score,
+            'has_images' => $submission->hasImages(),
+            'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
+            'image_rights_covers' => $submission->imageRightsCoverContent(),
         ]);
     }
 

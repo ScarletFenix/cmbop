@@ -228,6 +228,25 @@ class ContentImageRightsTest extends TestCase
         );
     }
 
+    public function test_preview_payload_tells_the_editor_when_rights_are_still_needed(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.preview', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('has_images', true)
+            ->assertJsonPath('needs_image_rights', true)
+            ->assertJsonPath('image_rights_covers', false);
+    }
+
     public function test_library_upload_rejects_an_unpaired_market_as_json(): void
     {
         $this->upload($this->advertiser(), [
@@ -313,6 +332,12 @@ class ContentImageRightsTest extends TestCase
         $this->assertStringContainsString('Opening editor…', $js);
         $this->assertStringContainsString('hidden.bs.modal', $js);
         $this->assertStringContainsString('function showArticleEditorAfterUploadModal', $js);
+        $this->assertStringContainsString('window.toggleLibraryTitleEdit = toggleLibraryTitleEdit', $js);
+        $this->assertStringContainsString('window.copyLibraryLiveUrl = copyLibraryLiveUrl', $js);
+        $this->assertStringContainsString('window.saveLibraryTitle = saveLibraryTitle', $js);
+        $this->assertStringContainsString('window.archiveLibraryArticle = archiveLibraryArticle', $js);
+        $this->assertStringContainsString('window.deleteLibraryArticle = deleteLibraryArticle', $js);
+        $this->assertStringContainsString('window.restoreLibraryArticle = restoreLibraryArticle', $js);
         $this->assertStringNotContainsString('readImageRights(this)', $js);
 
         $declaration = file_get_contents(resource_path('views/advertiser/partials/image-rights-declaration.blade.php'));

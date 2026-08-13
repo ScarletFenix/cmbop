@@ -202,7 +202,10 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertJsonPath('title', 'Preview Fetch Article')
             ->assertJsonPath('editable', true)
             ->assertJsonPath('can_order', true)
-            ->assertJsonPath('preview_html', '<p>Hello <a href="https://example.com/x">world</a></p>');
+            ->assertJsonPath('preview_html', '<p>Hello <a href="https://example.com/x">world</a></p>')
+            ->assertJsonPath('has_images', false)
+            ->assertJsonPath('needs_image_rights', false)
+            ->assertJsonPath('image_rights_covers', true);
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library'))
