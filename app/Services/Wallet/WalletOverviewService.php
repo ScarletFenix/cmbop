@@ -294,6 +294,10 @@ class WalletOverviewService
         // Prefer ledger entries
         $ledger = WalletTransaction::where('user_id', $userId)->orderByDesc('created_at')->get();
         foreach ($ledger as $tx) {
+            // Advertiser activity is the spend wallet: hide the publisher debit twin.
+            if ($tx->type === WalletTransaction::TYPE_ROLE_MOVE_OUT) {
+                continue;
+            }
             $invoice = null;
             $depositMeta = [
                 'invoice_view_url' => null,
@@ -479,7 +483,7 @@ class WalletOverviewService
             ]);
         });
 
-        // Transfers out from advertiser
+        // Transfers out from advertiser (legacy reverse moves; the live API is 410)
         BalanceTransfer::where('user_id', $userId)
             ->where('from_role', 'advertiser')
             ->orderByDesc('created_at')
@@ -508,6 +512,39 @@ class WalletOverviewService
                     'invoice_number' => null,
                     'order_reference' => null,
                     'icon' => $this->iconForType(WalletTransaction::TYPE_TRANSFER_OUT),
+                ]);
+            });
+
+        // Publisher → advertiser moves that predate the role_move ledger types
+        BalanceTransfer::where('user_id', $userId)
+            ->where('from_role', 'publisher')
+            ->where('to_role', 'advertiser')
+            ->orderByDesc('created_at')
+            ->get()
+            ->each(function ($t) use ($rows, $ledger) {
+                if ($ledger->where('reference', $t->reference_code)->isNotEmpty()) {
+                    return;
+                }
+                $rows->push([
+                    'id' => $t->id,
+                    'source' => 'transfer',
+                    'date' => $t->created_at?->toIso8601String(),
+                    'timestamp' => $t->created_at?->timestamp ?? 0,
+                    'type' => WalletTransaction::TYPE_ROLE_MOVE_IN,
+                    'type_label' => 'Earnings Moved for Spending',
+                    'description' => 'Publisher earnings moved for spending',
+                    'reference' => $t->reference_code,
+                    'amount' => (float) $t->net_amount,
+                    'direction' => 'credit',
+                    'signed_amount' => (float) $t->net_amount,
+                    'status' => $t->status,
+                    'balance_after' => null,
+                    'bonus_amount' => 0,
+                    'payment_method' => null,
+                    'invoice_id' => null,
+                    'invoice_number' => null,
+                    'order_reference' => null,
+                    'icon' => $this->iconForType(WalletTransaction::TYPE_ROLE_MOVE_IN),
                 ]);
             });
 

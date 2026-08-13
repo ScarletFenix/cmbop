@@ -217,6 +217,55 @@ class PublisherRoleMoveTest extends TestCase
             ->assertJsonPath('advertiser.bonus', 0);
     }
 
+    public function test_advertiser_activity_labels_role_move_in_and_hides_debit_twin(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 10])
+            ->assertOk();
+
+        $response = $this->actingAs($user->fresh())
+            ->getJson(route('advertiser.balance.transactions'));
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $rows = collect($response->json('transactions'));
+        $types = $rows->pluck('type')->all();
+
+        $this->assertContains(WalletTransaction::TYPE_ROLE_MOVE_IN, $types);
+        $this->assertNotContains(WalletTransaction::TYPE_ROLE_MOVE_OUT, $types);
+
+        $move = $rows->firstWhere('type', WalletTransaction::TYPE_ROLE_MOVE_IN);
+        $this->assertNotNull($move);
+        $this->assertSame('Earnings Moved for Spending', $move['type_label']);
+        $this->assertSame('credit', $move['direction']);
+        $this->assertSame(10.0, (float) $move['amount']);
+    }
+
+    public function test_add_funds_filter_offers_role_move_in_label(): void
+    {
+        $user = $this->publisherWithWallets();
+        $user->update(['active_role_id' => Role::where('name', 'advertiser')->value('id')]);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('value="role_move_in"', $html);
+        $this->assertStringContainsString('Earnings Moved for Spending', $html);
+        $this->assertStringContainsString('Open Balance to move earnings here for catalog spend', $html);
+    }
+
+    public function test_role_move_type_labels(): void
+    {
+        $out = new WalletTransaction(['type' => WalletTransaction::TYPE_ROLE_MOVE_OUT]);
+        $in = new WalletTransaction(['type' => WalletTransaction::TYPE_ROLE_MOVE_IN]);
+
+        $this->assertSame('Moved to Advertiser Wallet', $out->typeLabel());
+        $this->assertSame('Earnings Moved for Spending', $in->typeLabel());
+    }
+
     public function test_advertiser_to_publisher_transfer_stays_gone(): void
     {
         $user = $this->publisherWithWallets();

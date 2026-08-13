@@ -111,7 +111,7 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringContainsString('id="publisherRoleStrip"', $html);
         $this->assertStringContainsString('Publisher earnings', $html);
         $this->assertStringContainsString('id="publisherEarningsKpi">€7.64', $html);
-        $this->assertStringContainsString('cannot be moved into this advertiser wallet', $html);
+        $this->assertStringContainsString('Open Balance to move earnings here for catalog spend', $html);
         $this->assertStringContainsString('id="publisherBalanceCta"', $html);
         $this->assertStringContainsString('id="publisherWithdrawCta"', $html);
         $this->assertStringNotContainsString('Transfer to Publisher Wallet', $html);

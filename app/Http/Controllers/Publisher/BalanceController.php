@@ -33,8 +33,12 @@ class BalanceController extends Controller
         $publisher = $publisherWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
         $advertiser = $advertiserWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
         $minWithdrawalAmount = max(0.01, round((float) config('billing.withdrawal_min_amount', 20), 2));
+        $roleMoveMinAmount = max(0.01, round((float) config('billing.role_move.min_amount', 0.01), 2));
         $canWithdraw = $publisher['debt'] <= 0 && $publisher['withdrawable'] >= $minWithdrawalAmount;
         $showAdvertiserWallet = $advertiserWallet !== null && $user->hasRole('advertiser');
+        $canMove = $showAdvertiserWallet
+            && $publisher['debt'] <= 0
+            && $publisher['withdrawable'] >= $roleMoveMinAmount;
 
         return view('publisher.balance', [
             'publisher' => $publisher,
@@ -43,7 +47,9 @@ class BalanceController extends Controller
             'advertiserBalance' => $advertiser['spendable'],
             'publisherDebt' => $publisher['debt'],
             'minWithdrawalAmount' => $minWithdrawalAmount,
+            'roleMoveMinAmount' => $roleMoveMinAmount,
             'canWithdraw' => $canWithdraw,
+            'canMove' => $canMove,
             'showAdvertiserWallet' => $showAdvertiserWallet,
         ]);
     }
