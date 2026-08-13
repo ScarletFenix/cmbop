@@ -271,13 +271,19 @@ function openPreviewModal(title, html, links, submissionId, editable) {
     }
     if (tools) tools.renderLinkRows(list, linkRows, previewModalState.editable);
     if (saveBtn) saveBtn.classList.toggle('d-none', !previewModalState.editable);
+    const editBtn = document.getElementById('articlePreviewEditBtn');
+    if (editBtn) {
+        const canEdit = previewModalState.editable
+            || (!!articleEditorSubmissionId && Number(articleEditorSubmissionId) === Number(previewModalState.submissionId));
+        editBtn.classList.toggle('d-none', !canEdit);
+    }
     if (help) {
         help.textContent = previewModalState.editable
             ? 'Edit any anchor or URL, then save. The first link is used for checkout.'
             : 'Shown outside the article so you can review every anchor and URL.';
     }
 
-    new bootstrap.Modal(document.getElementById('articlePreviewModal')).show();
+    bootstrap.Modal.getOrCreateInstance(document.getElementById('articlePreviewModal')).show();
 }
 
 async function fetchSubmissionPayload(submissionId) {
@@ -452,6 +458,159 @@ function fixPreviewImages(root) {
     });
 }
 
+function rewriteStorageUrlsInHtml(html) {
+    return String(html || '').replace(/(?:https?:)?\/\/[^"'>\s]+(\/storage\/[^"'\s>]+)/gi, '$1');
+}
+
+function hideImageRemoveOverlay() {
+    const btn = document.getElementById('articleImageRemoveBtn');
+    if (btn) {
+        btn.classList.add('d-none');
+        btn.removeAttribute('data-image-index');
+    }
+    articleQuill?.root.querySelectorAll('img.is-selected').forEach(function (img) {
+        img.classList.remove('is-selected');
+    });
+}
+
+function imageIndexFromBlot(blot) {
+    if (!articleQuill || !blot) return null;
+    const node = blot.domNode;
+    if (!node || node.tagName !== 'IMG') return null;
+    try {
+        return blot.offset(articleQuill.scroll);
+    } catch (e) {
+        return null;
+    }
+}
+
+function selectedImageIndexFromRange(range) {
+    if (!articleQuill || !range) return null;
+    const index = range.length > 0 ? range.index : Math.max(0, range.index - (range.index > 0 ? 1 : 0));
+    try {
+        const leaf = articleQuill.getLeaf(range.length > 0 ? range.index : index);
+        const blot = leaf && leaf[0];
+        const imageIndex = imageIndexFromBlot(blot);
+        if (imageIndex == null) return null;
+        if (range.length > 0 && range.index !== imageIndex) return null;
+        if (range.length === 0 && range.index !== imageIndex && range.index !== imageIndex + 1) return null;
+        return imageIndex;
+    } catch (e) {
+        return null;
+    }
+}
+
+function showImageRemoveOverlay(img, index) {
+    const btn = document.getElementById('articleImageRemoveBtn');
+    const shell = document.querySelector('.article-docs-shell');
+    if (!btn || !shell || !img) return;
+    hideImageRemoveOverlay();
+    img.classList.add('is-selected');
+    btn.dataset.imageIndex = String(index);
+    btn.classList.remove('d-none');
+    const shellRect = shell.getBoundingClientRect();
+    const imgRect = img.getBoundingClientRect();
+    const top = imgRect.bottom - shellRect.top - 36;
+    const left = imgRect.right - shellRect.left - 92;
+    btn.style.top = Math.max(8, top) + 'px';
+    btn.style.left = Math.max(8, left) + 'px';
+}
+
+function syncSelectedImageOverlay() {
+    if (!articleQuill) {
+        hideImageRemoveOverlay();
+        return;
+    }
+    const range = articleQuill.getSelection(true);
+    const imageIndex = selectedImageIndexFromRange(range);
+    if (imageIndex == null) {
+        hideImageRemoveOverlay();
+        return;
+    }
+    try {
+        const leaf = articleQuill.getLeaf(imageIndex);
+        const blot = leaf && leaf[0];
+        const img = blot && blot.domNode;
+        if (img && img.tagName === 'IMG') {
+            showImageRemoveOverlay(img, imageIndex);
+            return;
+        }
+    } catch (e) { /* ignore */ }
+    hideImageRemoveOverlay();
+}
+
+function removeSelectedEditorImage() {
+    if (!articleQuill) return;
+    const btn = document.getElementById('articleImageRemoveBtn');
+    const fromBtn = btn ? parseInt(btn.dataset.imageIndex || '', 10) : NaN;
+    const index = Number.isNaN(fromBtn) ? selectedImageIndexFromRange(articleQuill.getSelection(true)) : fromBtn;
+    if (index == null || Number.isNaN(index)) return;
+    articleQuill.deleteText(index, 1, 'user');
+    hideImageRemoveOverlay();
+    articleQuill.focus();
+}
+
+function loadArticleHtml(html) {
+    if (!articleQuill) return;
+    const raw = rewriteStorageUrlsInHtml((html && String(html).trim()) ? html : '<p><br></p>');
+    if (typeof articleQuill.clipboard.dangerouslyPasteHTML === 'function') {
+        articleQuill.clipboard.dangerouslyPasteHTML(raw, 'silent');
+    } else {
+        const delta = articleQuill.clipboard.convert({ html: raw, text: '' });
+        articleQuill.setContents(delta, 'silent');
+    }
+    const history = articleQuill.getModule('history');
+    if (history && typeof history.clear === 'function') {
+        history.clear();
+    }
+    articleQuill.setSelection(0, 0, 'silent');
+    hideImageRemoveOverlay();
+}
+
+function bindEditorImageChrome() {
+    if (!articleQuill || articleQuill.root.dataset.imageChrome === '1') return;
+    articleQuill.root.dataset.imageChrome = '1';
+
+    articleQuill.root.addEventListener('click', function (e) {
+        const img = e.target && e.target.closest ? e.target.closest('img') : null;
+        if (!img || !articleQuill.root.contains(img)) return;
+        const blot = typeof Quill.find === 'function' ? Quill.find(img) : null;
+        if (!blot) return;
+        const index = imageIndexFromBlot(blot);
+        if (index == null) return;
+        articleQuill.setSelection(index, 1, 'user');
+        showImageRemoveOverlay(img, index);
+    });
+
+    articleQuill.root.addEventListener('keydown', function (e) {
+        if (e.key !== 'Backspace' && e.key !== 'Delete') return;
+        const range = articleQuill.getSelection();
+        if (!range || range.length !== 1) return;
+        const imageIndex = selectedImageIndexFromRange(range);
+        if (imageIndex == null) return;
+        e.preventDefault();
+        articleQuill.deleteText(imageIndex, 1, 'user');
+        hideImageRemoveOverlay();
+    });
+
+    articleQuill.on('selection-change', function (range) {
+        if (!range) {
+            hideImageRemoveOverlay();
+            return;
+        }
+        syncSelectedImageOverlay();
+    });
+
+    articleQuill.root.addEventListener('scroll', syncSelectedImageOverlay);
+    document.querySelector('#articleEditorModal .modal-body')?.addEventListener('scroll', syncSelectedImageOverlay);
+
+    document.getElementById('articleImageRemoveBtn')?.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        removeSelectedEditorImage();
+    });
+}
+
 function ensureArticleQuill() {
     if (articleQuill || typeof Quill === 'undefined') {
         return articleQuill;
@@ -462,16 +621,40 @@ function ensureArticleQuill() {
         ['bold', 'italic', 'underline'],
         [{ list: 'ordered' }, { list: 'bullet' }],
         ['link', 'image'],
+        ['undo', 'redo'],
         ['clean'],
     ];
 
     articleQuill = new Quill('#articleQuillEditor', {
         theme: 'snow',
         placeholder: 'Edit your article…',
-        modules: { toolbar: toolbarOptions },
+        modules: {
+            toolbar: toolbarOptions,
+            history: { delay: 500, maxStack: 100, userOnly: true },
+        },
     });
 
     const toolbar = articleQuill.getModule('toolbar');
+    toolbar.addHandler('undo', function () {
+        const history = articleQuill.getModule('history');
+        if (history) history.undo();
+    });
+    toolbar.addHandler('redo', function () {
+        const history = articleQuill.getModule('history');
+        if (history) history.redo();
+    });
+    const undoBtn = toolbar.container.querySelector('.ql-undo');
+    if (undoBtn) {
+        undoBtn.innerHTML = '<i class="fa fa-undo" aria-hidden="true"></i>';
+        undoBtn.setAttribute('aria-label', 'Undo');
+        undoBtn.setAttribute('title', 'Undo (Ctrl+Z)');
+    }
+    const redoBtn = toolbar.container.querySelector('.ql-redo');
+    if (redoBtn) {
+        redoBtn.innerHTML = '<i class="fa fa-redo" aria-hidden="true"></i>';
+        redoBtn.setAttribute('aria-label', 'Redo');
+        redoBtn.setAttribute('title', 'Redo (Ctrl+Shift+Z)');
+    }
     toolbar.addHandler('image', function () {
         const input = document.createElement('input');
         input.setAttribute('type', 'file');
@@ -498,13 +681,14 @@ function ensureArticleQuill() {
                 const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
                 articleQuill.insertEmbed(range.index, 'image', data.url, 'user');
                 articleQuill.setSelection(range.index + 1);
-                setFeedbackHtml(feedback, true, 'Image added. You can remove it with Backspace/Delete.');
+                setFeedbackHtml(feedback, true, 'Image added. Select it and press Backspace, or use Remove.');
             } catch (e) {
                 setFeedbackHtml(feedback, false, 'Network error while uploading image.');
             }
         };
     });
 
+    bindEditorImageChrome();
     return articleQuill;
 }
 
@@ -520,9 +704,7 @@ function openArticleEditor(submission) {
         market + (status ? ' · ' + status.replace(/_/g, ' ') : '') +
         (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
     document.getElementById('articleEditorFeedback').textContent = '';
-    if (articleQuill) {
-        articleQuill.root.innerHTML = submission.preview_html || '<p><br></p>';
-    }
+    loadArticleHtml(submission.preview_html || '<p><br></p>');
     const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
     syncEditorImageRights(needsRights);
     const orderBtn = document.getElementById('articleEditorOrderBtn');
@@ -659,13 +841,63 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
     if ((!links.length) && tools) {
         links = tools.extractLinksFromHtml(html);
     }
-    openPreviewModal(
-        document.getElementById('articleEditorTitle').value || 'Article preview',
-        html,
-        links,
-        articleEditorSubmissionId,
-        true
-    );
+    const editorEl = document.getElementById('articleEditorModal');
+    const openPreview = function () {
+        openPreviewModal(
+            document.getElementById('articleEditorTitle').value || 'Article preview',
+            html,
+            links,
+            articleEditorSubmissionId,
+            true
+        );
+    };
+    if (editorEl && editorEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
+        editorEl.addEventListener('hidden.bs.modal', function onEditorHidden() {
+            editorEl.removeEventListener('hidden.bs.modal', onEditorHidden);
+            openPreview();
+        });
+        bootstrap.Modal.getOrCreateInstance(editorEl).hide();
+        return;
+    }
+    openPreview();
+});
+
+function returnToEditorFromPreview() {
+    const previewEl = document.getElementById('articlePreviewModal');
+    const editorEl = document.getElementById('articleEditorModal');
+    const id = previewModalState.submissionId;
+    const showEditor = function () {
+        if (articleEditorSubmissionId && articleQuill && Number(articleEditorSubmissionId) === Number(id)) {
+            if (editorEl && typeof bootstrap !== 'undefined') {
+                bootstrap.Modal.getOrCreateInstance(editorEl).show();
+            }
+            return;
+        }
+        if (!id) return;
+        fetchSubmissionPayload(id).then(function (payload) {
+            openArticleEditor(Object.assign({}, payload, {
+                id: payload.id || id,
+                preview_html: payload.preview_html || payload.html || '',
+                detected_links: payload.detected_links || payload.links || [],
+            }));
+        }).catch(function (e) {
+            showLibraryFlash((e && e.message) || 'Could not open editor', false);
+        });
+    };
+    if (previewEl && previewEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
+        previewEl.addEventListener('hidden.bs.modal', function onPreviewHidden() {
+            previewEl.removeEventListener('hidden.bs.modal', onPreviewHidden);
+            showEditor();
+        });
+        bootstrap.Modal.getOrCreateInstance(previewEl).hide();
+        return;
+    }
+    showEditor();
+}
+
+document.getElementById('articlePreviewEditBtn')?.addEventListener('click', function (e) {
+    e.preventDefault();
+    returnToEditorFromPreview();
 });
 
 function toggleLibraryTitleEdit(id, open) {

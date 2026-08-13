@@ -692,6 +692,38 @@ class ContentLibraryImprovementsTest extends TestCase
         );
     }
 
+    public function test_article_editor_loads_html_as_quill_blots_with_undo_and_preview_edit(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $library = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="articlePreviewEditBtn"', $library);
+        $this->assertStringContainsString('id="articleImageRemoveBtn"', $library);
+        $this->assertStringContainsString('article-img-remove', $library);
+        $this->assertStringNotContainsString('id="articlePreviewBody" contenteditable', $library);
+        $this->assertDoesNotMatchRegularExpression('/id="articlePreviewBody"[^>]*contenteditable/', $library);
+
+        $js = file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('dangerouslyPasteHTML', $js);
+        $this->assertStringContainsString('history.clear', $js);
+        $this->assertStringContainsString('deleteText(', $js);
+        $this->assertStringContainsString("['undo', 'redo']", $js);
+        $this->assertStringContainsString('function returnToEditorFromPreview', $js);
+        $this->assertStringContainsString('function loadArticleHtml', $js);
+        $this->assertStringNotContainsString(
+            'articleQuill.root.innerHTML = submission.preview_html',
+            $js
+        );
+
+        $css = file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertStringContainsString('.article-img-remove', $css);
+        $this->assertStringContainsString('img.is-selected', $css);
+    }
+
     private function makeOrder(User $advertiser): Order
     {
         return Order::create([

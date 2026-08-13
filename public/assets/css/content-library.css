@@ -602,10 +602,25 @@
         text-decoration: underline;
     }
     .article-docs-shell {
+        position: relative;
         border: 1px solid #e2e8f0;
         border-radius: 12px;
         overflow: hidden;
         background: #f8fafc;
+    }
+    .ql-editor img.is-selected {
+        outline: 2px solid #2563eb;
+        outline-offset: 2px;
+    }
+    .article-img-remove {
+        position: absolute;
+        z-index: 3;
+        box-shadow: 0 1px 4px rgba(15, 23, 42, .35);
+    }
+    .article-docs-shell .ql-snow button.ql-undo,
+    .article-docs-shell .ql-snow button.ql-redo {
+        width: 1.75rem;
+        height: 1.5rem;
     }
     .article-docs-shell .ql-toolbar.ql-snow {
         border: none;

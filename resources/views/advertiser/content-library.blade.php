@@ -700,6 +700,11 @@
                 </div>
                 <div class="article-docs-shell mb-3">
                     <div id="articleQuillEditor"></div>
+                    <button type="button"
+                            class="btn btn-sm btn-dark article-img-remove d-none"
+                            id="articleImageRemoveBtn">
+                        <i class="fa fa-trash me-1" aria-hidden="true"></i>Remove
+                    </button>
                 </div>
 
                 {{-- Shown when the article gains images the current declaration does not cover. --}}
@@ -733,6 +738,11 @@
                     <div class="small text-muted" id="articlePreviewHeadingHint"></div>
                 </div>
                 <div class="article-preview-toolbar d-flex flex-wrap gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-primary d-none"
+                            id="articlePreviewEditBtn">
+                        Edit article
+                    </button>
                     <button type="button"
                             class="btn btn-sm btn-outline-primary btn-copy-icon"
                             id="articleCopyHeadingBtn"
