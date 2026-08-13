@@ -185,6 +185,7 @@
 /* Keep the ring visible against a dark fill. */
 .btn-primary:focus-visible,
 .btn-danger:focus-visible,
+.btn-upload:focus-visible,
 .btn-chip.is-active:focus-visible,
 .site-status-filter.btn-primary:focus-visible {
   outline: none;

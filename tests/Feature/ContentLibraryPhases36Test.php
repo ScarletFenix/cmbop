@@ -102,7 +102,30 @@ class ContentLibraryPhases36Test extends TestCase
 
         $this->assertStringContainsString('Expires in', $html);
         $this->assertStringContainsString('library-expiry-hint', $html);
+        $this->assertStringContainsString('library-expiry-hint--urgent', $html);
         $this->assertTrue($submission->fresh()->isNearExpiry(7));
+    }
+
+    public function test_far_expiry_row_hint_is_not_styled_as_urgent(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Plenty Of Time Piece',
+            'expires_at' => now()->addMonths(6),
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Plenty Of Time Piece')
+            ->assertDontSee('within 7 days', false)
+            ->getContent();
+
+        $this->assertStringContainsString('Expires in', $html);
+        $this->assertStringContainsString('library-expiry-hint', $html);
+        $this->assertStringNotContainsString('library-expiry-hint--urgent', $html);
+        $this->assertFalse($submission->fresh()->isNearExpiry(7));
     }
 
     public function test_purge_expired_skips_articles_linked_to_orders(): void
@@ -202,7 +225,10 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertJsonPath('title', 'Preview Fetch Article')
             ->assertJsonPath('editable', true)
             ->assertJsonPath('can_order', true)
-            ->assertJsonPath('preview_html', '<p>Hello <a href="https://example.com/x">world</a></p>');
+            ->assertJsonPath('preview_html', '<p>Hello <a href="https://example.com/x">world</a></p>')
+            ->assertJsonPath('has_images', false)
+            ->assertJsonPath('needs_image_rights', false)
+            ->assertJsonPath('image_rights_covers', true);
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library'))

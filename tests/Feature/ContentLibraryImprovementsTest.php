@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -125,7 +126,9 @@ class ContentLibraryImprovementsTest extends TestCase
             ->get(route('advertiser.content-library', ['country' => 'gb']))
             ->assertOk()
             ->assertSee('UK Guide')
-            ->assertDontSee('Growth Playbook');
+            ->assertDontSee('Growth Playbook')
+            ->assertSee('Reset', false)
+            ->assertDontSee('>Apply<', false);
     }
 
     public function test_library_shows_published_live_link(): void
@@ -273,14 +276,16 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="libraryCountryFilter"', $html);
         $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
         $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
-        $this->assertMatchesRegularExpression(
-            '/library-filter-bar__actions[\s\S]*?btn-outline-secondary[\s\S]*?>Apply</',
-            $html
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/library-filter-bar[\s\S]*?btn-primary[\s\S]*?>Apply</',
-            $html
-        );
+        $this->assertStringContainsString('visually-hidden" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('visually-hidden">Search</button>', $html);
+        $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
+        $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
+        $this->assertStringContainsString('Search title or filename', $html);
+        $this->assertStringContainsString('All countries', $html);
+        $this->assertStringContainsString('All languages', $html);
+        $this->assertStringNotContainsString('>Apply<', $html);
+        $this->assertStringNotContainsString('form-label small text-muted mb-1" for="librarySearchInput"', $html);
+        $this->assertStringNotContainsString('library-filter-bar__actions', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.library-status-row', $css);
@@ -288,6 +293,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('.mod-count.is-zero', $css);
         $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
+        $this->assertStringContainsString('.library-browse-link', $css);
+        $this->assertStringNotContainsString('.library-page-actions.upload-zone', $css);
+        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: center;", $css);
+        $this->assertStringNotContainsString('align-items: flex-end', $css);
         $boxPos = strpos($css, '.library-status-box {');
         $mediaPos = strpos($css, '@media (max-width: 575.98px)');
         $this->assertNotFalse($boxPos);
@@ -511,6 +520,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotFalse($headingPos);
         $this->assertNotFalse($uploadPos);
         $this->assertGreaterThan($headingPos, $uploadPos);
+        $this->assertMatchesRegularExpression(
+            '/<button type="button"\s+class="btn btn-upload"[\s\S]*?id="openUploadModalBtn"[\s\S]*?btn-upload__label">Upload article<\/span>/',
+            $html
+        );
         $this->assertStringContainsString('articleQuillEditor', $html);
         $this->assertStringContainsString('Edit article', $html);
         $this->assertStringContainsString('article-preview-tools.js', $html);
@@ -519,10 +532,70 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('articlePreviewLinksList', $html);
         $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
         $this->assertStringContainsString('Browse publishers', $html);
-        $this->assertStringContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringContainsString('btn-upload__hint', $html);
+        $this->assertSame(1, substr_count($html, 'id="openUploadModalBtn"'));
+        $this->assertStringContainsString('class="library-page-actions"', $html);
+        $this->assertStringNotContainsString('library-page-actions upload-zone', $html);
+        $this->assertStringNotContainsString('btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringNotContainsString('btn-sm btn-outline-secondary">Browse publishers', $html);
+        $this->assertStringNotContainsString('One job here: upload and approve articles', $html);
+        $this->assertStringNotContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringContainsString('browse publishers first and upload when you pick a site', $html);
         $this->assertStringNotContainsString('library-order-soon', $html);
         $this->assertStringNotContainsString('Order your article', $html);
         $this->assertStringNotContainsString('Coming soon', $html);
+    }
+
+    public function test_library_browse_publishers_is_secondary_not_in_stepper(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('href="'.route('advertiser.catalog').'"', $html);
+
+        $chrome = $this->extractHtmlBetween($html, 'class="wizard-chrome"', 'class="library-page-actions"');
+        $this->assertNotSame('', $chrome);
+        $this->assertStringNotContainsString('id="libraryBrowsePublishersBtn"', $chrome);
+        $this->assertStringNotContainsString('id="openUploadModalBtn"', $chrome);
+        $this->assertDoesNotMatchRegularExpression('/>\s*Browse publishers\s*</', $chrome);
+
+        $actions = $this->extractHtmlBetween($html, 'class="library-page-actions"', 'id="libraryFlash"');
+        $this->assertNotSame('', $actions);
+        $this->assertStringContainsString('id="openUploadModalBtn"', $actions);
+        $this->assertStringContainsString('class="btn btn-upload"', $actions);
+        $this->assertStringContainsString('btn-upload__label">Upload article</span>', $actions);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $actions);
+        $this->assertStringContainsString('library-browse-link', $actions);
+        $this->assertStringContainsString('btn btn-link', $actions);
+    }
+
+    public function test_empty_library_offers_upload_and_catalog_path(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('No articles yet', false)
+            ->assertSee('Upload a .docx to get your first approved article', false)
+            ->assertSee('browse publishers now and upload when you pick a site', false)
+            ->assertSee('Upload article', false)
+            ->assertSee('Browse publishers', false)
+            ->assertSee(route('advertiser.catalog'), false)
+            ->assertDontSee('Upload a .docx here. After approval, assign it in your cart and checkout.', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('library-browse-link', $html);
+        $this->assertSame(1, substr_count($html, 'id="openUploadModalBtn"'));
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'Browse publishers'));
+        $this->assertStringContainsString('Guided placement', $html);
+        $this->assertStringNotContainsString('btn btn-outline-secondary">Guided placement', $html);
     }
 
     public function test_advertiser_can_save_multiple_detected_links_from_preview(): void
@@ -572,6 +645,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->putJson(route('advertiser.content-submissions.content', $submission), [
                 'preview_html' => $html,
                 'title' => 'Edited Doc Title',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -600,6 +674,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->actingAs($advertiser)
             ->putJson(route('advertiser.content-submissions.content', $submission), [
                 'preview_html' => $html,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
@@ -647,6 +722,70 @@ class ContentLibraryImprovementsTest extends TestCase
             'function openPreviewModal(title, html, links, submissionId, editable)',
             file_get_contents(public_path('assets/js/content-library.js'))
         );
+    }
+
+    public function test_article_editor_loads_html_as_quill_blots_with_undo_and_preview_edit(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $library = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="articlePreviewEditBtn"', $library);
+        $this->assertStringContainsString('id="articleImageRemoveBtn"', $library);
+        $this->assertStringContainsString('article-img-remove', $library);
+        $this->assertStringNotContainsString('id="articlePreviewBody" contenteditable', $library);
+        $this->assertDoesNotMatchRegularExpression('/id="articlePreviewBody"[^>]*contenteditable/', $library);
+
+        $previewHeader = $this->extractHtmlBetween(
+            $library,
+            'id="articlePreviewModal"',
+            'id="articlePreviewBody"'
+        );
+        $this->assertNotSame('', $previewHeader);
+        $this->assertStringContainsString('id="articlePreviewEditBtn"', $previewHeader);
+        $this->assertMatchesRegularExpression('/>\s*Edit article\s*<\/button>/', $previewHeader);
+
+        $js = file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('dangerouslyPasteHTML', $js);
+        $this->assertStringContainsString('history.clear', $js);
+        $this->assertStringContainsString('deleteText(', $js);
+        $this->assertStringContainsString("['undo', 'redo']", $js);
+        $this->assertStringContainsString('function returnToEditorFromPreview', $js);
+        $this->assertStringContainsString('function loadArticleHtml', $js);
+        $this->assertStringNotContainsString(
+            'articleQuill.root.innerHTML = submission.preview_html',
+            $js
+        );
+
+        $css = file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertStringContainsString('.article-img-remove', $css);
+        $this->assertStringContainsString('img.is-selected', $css);
+        $this->assertStringContainsString('img.is-broken', $css);
+        $this->assertStringContainsString('function patchQuillImageSanitize', $js);
+        $this->assertStringContainsString("value.startsWith('/storage/')", $js);
+        $this->assertStringContainsString('function hideBootstrapModal', $js);
+        $this->assertStringContainsString('data-no-tip', $js);
+        $this->assertStringContainsString('imgRect.top - shellRect.top + 8', $js);
+        $this->assertStringNotContainsString('imgRect.bottom - shellRect.top - 36', $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.library-expiry-hint \{\s*font-size:[^}]*color: #b45309/',
+            $css
+        );
+        $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
+    }
+
+    private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
+    {
+        $start = strpos($html, $startNeedle);
+        $end = strpos($html, $endNeedle);
+        if ($start === false || $end === false || $end <= $start) {
+            return '';
+        }
+
+        return substr($html, $start, $end - $start);
     }
 
     private function makeOrder(User $advertiser): Order

@@ -179,7 +179,9 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
             ->assertSee('upload', false)
             ->assertSee('.docx', false)
             ->assertSee('No articles yet', false)
+            ->assertSee('Upload a .docx to get your first approved article', false)
             ->assertSee('Upload article', false)
+            ->assertSee('Browse publishers', false)
             ->assertDontSee('Order an article', false);
     }
 

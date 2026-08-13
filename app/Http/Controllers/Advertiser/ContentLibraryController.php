@@ -354,22 +354,21 @@ class ContentLibraryController extends Controller
             'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
             'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
             'replace_id' => ['nullable', 'integer'],
-            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights' => ['nullable', Rule::in(ContentSubmission::imageRightsOptions())],
             'image_rights_source' => [
                 'nullable', 'string', 'max:2000',
                 'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
             ],
         ], [
-            'image_rights.required' => 'Tell us where the images in this article came from.',
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
         if (! $this->countryLanguagePairs->isAllowedPair($data['country'], $data['language'])) {
-            return back()
-                ->withInput()
-                ->withErrors([
-                    'language' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
-                ]);
+            return response()->json([
+                'success' => false,
+                'title' => 'Market required',
+                'message' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
+            ], 422);
         }
 
         $replace = null;
@@ -392,7 +391,7 @@ class ContentLibraryController extends Controller
             title: $data['title'] ?? null,
             country: $data['country'],
             language: $data['language'],
-            imageRights: $data['image_rights'],
+            imageRights: $data['image_rights'] ?? null,
             imageRightsSource: $data['image_rights_source'] ?? null,
         );
 
@@ -492,6 +491,9 @@ class ContentLibraryController extends Controller
             'moderation_status' => $s->moderation_status,
             'can_order' => $s->canBeOrdered(),
             'detected_links' => $s->detectedLinks(),
+            'has_images' => $s->hasImages(),
+            'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
+            'image_rights_covers' => $s->imageRightsCoverContent(),
         ];
     }
 
@@ -520,6 +522,9 @@ class ContentLibraryController extends Controller
             'has_link' => $s->hasLink(),
             'can_order' => $s->canBeOrdered(),
             'needs_correction' => $s->needsCorrection(),
+            'has_images' => $s->hasImages(),
+            'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
+            'image_rights_covers' => $s->imageRightsCoverContent(),
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),

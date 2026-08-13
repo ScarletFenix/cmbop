@@ -127,32 +127,21 @@
     @include('advertiser.partials.ordering-path', [
         'step' => 3,
         'title' => 'Place a guest post · Content',
-        'subtitle' => 'One job here: upload and approve articles. Any approved article can be placed on any catalog site.',
+        'subtitle' => 'Upload and approve articles here. You can also browse publishers first and upload when you pick a site.',
         'linkAll' => true,
         'contentRoute' => route('advertiser.content-library'),
-        'actions' => '<a href="'.e(route('advertiser.catalog')).'" class="btn btn-sm btn-outline-secondary">Browse publishers</a>',
     ])
 
     <div class="mb-3">
         <h2 class="mb-1 fw-semibold">Content Library</h2>
-        <p class="text-muted mb-0 small">
-            Upload a .docx (choose language and country yourself) → wait for approval → browse any publishers → assign in cart → pay.
-            Multi-site orders need a different approved article for each website — language does not have to match the site.
-        </p>
-        <div class="library-page-actions upload-zone">
-            @if($uploadsEnabled)
-                <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
-                    <i class="fa fa-upload me-1"></i> Upload article
-                </button>
-            @else
-                <button type="button" class="btn btn-upload" id="openUploadModalBtn" disabled title="Uploads are temporarily turned off">
-                    <i class="fa fa-upload me-1"></i> Uploads disabled
-                </button>
-            @endif
-            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
-                <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
+        <div class="library-page-actions">
+            @include('advertiser.partials.upload-article-button', [
+                'uploadButtonId' => 'openUploadModalBtn',
+                'uploadsEnabled' => $uploadsEnabled,
+            ])
+            <a href="{{ route('advertiser.catalog') }}" class="btn btn-link btn-sm library-browse-link" id="libraryBrowsePublishersBtn">
+                Browse publishers
             </a>
-            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload · use Order on a row to place an approved article</span>
         </div>
     </div>
 
@@ -182,16 +171,16 @@
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
         <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
         <div class="library-filter-bar__search">
-            <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
+            <label class="visually-hidden" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
-                   value="{{ $searchQuery ?? '' }}" placeholder="Title or filename"
+                   value="{{ $searchQuery ?? '' }}" placeholder="Search title or filename"
                    title="Results update as you type" autocomplete="off" enterkeyhint="search"
                    data-slb-live-search="form">
         </div>
         <div class="library-filter-bar__select">
-            <label class="form-label small text-muted mb-1" for="libraryCountryFilter">Country</label>
+            <label class="visually-hidden" for="libraryCountryFilter">Country</label>
             <select name="country" id="libraryCountryFilter" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All</option>
+                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
                 @foreach(($groupedByCountry ?? []) as $countryCode => $count)
                     <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
                         {{ strtoupper($countryCode) }} ({{ $count }})
@@ -200,9 +189,9 @@
             </select>
         </div>
         <div class="library-filter-bar__select">
-            <label class="form-label small text-muted mb-1" for="libraryLanguageFilter">Language</label>
+            <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
             <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All</option>
+                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
                 @foreach(($groupedByLanguage ?? []) as $langCode => $count)
                     <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
                         {{ strtoupper($langCode) }} ({{ $count }})
@@ -210,12 +199,12 @@
                 @endforeach
             </select>
         </div>
-        <div class="library-filter-bar__actions">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
-            @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+        @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            <div class="library-filter-bar__actions">
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
-            @endif
-        </div>
+            </div>
+        @endif
+        <button type="submit" class="visually-hidden">Search</button>
     </form>
 
     <nav class="library-status-row" aria-label="Library status filter">
@@ -545,18 +534,9 @@
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
-                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                    message="Upload a .docx to get your first approved article. Or browse publishers now and upload when you pick a site."
                                 >
-                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        @if($uploadsEnabled)
-                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                                <i class="fa fa-upload me-1"></i> Upload article
-                                            </button>
-                                        @endif
-                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
-                                            Guided placement
-                                        </a>
-                                    </div>
+                                    @include('advertiser.partials.library-empty-actions', ['uploadsEnabled' => $uploadsEnabled])
                                 </x-ui.empty-state>
                             @elseif(($availabilityFilter ?? 'all') === 'archived')
                                 <x-ui.empty-state
@@ -601,18 +581,9 @@
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
-                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                    message="Upload a .docx to get your first approved article. Or browse publishers now and upload when you pick a site."
                                 >
-                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        @if($uploadsEnabled)
-                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                                <i class="fa fa-upload me-1"></i> Upload article
-                                            </button>
-                                        @endif
-                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
-                                            Guided placement
-                                        </a>
-                                    </div>
+                                    @include('advertiser.partials.library-empty-actions', ['uploadsEnabled' => $uploadsEnabled])
                                 </x-ui.empty-state>
                             @endif
                         </td>
@@ -635,54 +606,74 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <x-ui.callout variant="attention" class="ui-callout--sm mb-3">
-                    {{ $uploadCfg['help']['preferred_format'] ?? 'Please upload your article as a Microsoft Word (.docx) document only.' }}
-                    After upload you can preview and edit the article (add/remove images and links) before ordering.
+                @php
+                    $uploadMaxKb = (int) ($uploadCfg['max_kilobytes'] ?? 5120);
+                    $uploadMaxMb = max(1, (int) round($uploadMaxKb / 1024));
+                @endphp
+                <ol class="library-upload-steps mb-3" aria-label="Upload steps">
+                    <li data-upload-step="file" class="is-current">File</li>
+                    <li data-upload-step="market">Market</li>
+                    <li data-upload-step="rights" class="is-pending">Rights</li>
+                </ol>
+                <x-ui.callout variant="info" class="ui-callout--sm mb-3">
+                    Microsoft Word (.docx) only — not PDF, Google Doc, or pasted text.
+                    Max {{ $uploadMaxMb }} MB. Opens in the editor next.
+                    Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
+
                 <div class="mb-3">
-                    <label class="form-label">Title <span class="text-muted">(optional)</span></label>
-                    <input type="text" name="title" class="form-control" maxlength="200" placeholder="Article title"
-                           value="{{ $editSubmission->title ?? '' }}">
+                    <label class="library-dropzone" id="libraryDropzone" for="libraryFileInput">
+                        <input type="file" name="file" id="libraryFileInput" class="visually-hidden"
+                               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                        <span class="library-dropzone__idle" id="libraryDropzoneIdle">
+                            <i class="fa fa-file-word" aria-hidden="true"></i>
+                            <strong>Drop a .docx here or click to browse</strong>
+                            <span>Word only — not PDF, Google Doc, or pasted text</span>
+                        </span>
+                        <span class="library-dropzone__file d-none" id="libraryDropzoneFile"></span>
+                    </label>
                 </div>
+
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                        <label class="form-label" for="libraryCountry">Country <span class="text-danger">*</span></label>
                         <select name="country" id="libraryCountry" class="form-select" required>
                             <option value="">Select country</option>
                             @foreach(($countries ?? []) as $country)
                                 <option value="{{ strtolower($country->code) }}"
-                                    @selected(strtolower((string) ($editSubmission->country ?? '')) === strtolower($country->code))>
+                                    @selected(strtolower((string) ($editSubmission?->country ?? '')) === strtolower($country->code))>
                                     {{ $country->name }}
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">Pick the market country first.</div>
+                        <div class="form-text">Pick the market country first — language stays closed until you do.</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Language <span class="text-danger">*</span></label>
+                        <label class="form-label" for="libraryLanguage">Language <span class="text-danger">*</span></label>
                         <select name="language" id="libraryLanguage" class="form-select" required disabled>
                             <option value="">Select country first</option>
                         </select>
-                        <div class="form-text">Only languages paired with that country (e.g. Germany → German; UAE → Arabic or English).</div>
+                        <div class="form-text" id="libraryLanguageHint">Select a country first, then a paired language (e.g. Germany → German).</div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Microsoft Word document (.docx)</label>
-                    <input type="file" name="file" id="libraryFileInput" class="form-control" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+                <div class="mb-3" id="libraryMarketChipWrap">
+                    <span class="library-market-chip d-none" id="libraryMarketChip"></span>
                 </div>
 
-                @include('advertiser.partials.image-rights-declaration', [
-                    'idPrefix' => 'libraryImageRights',
-                    'submission' => $editSubmission ?? null,
-                ])
+                <div class="mb-3">
+                    <label class="form-label" for="libraryTitleInput">Title <span class="text-muted">(optional)</span></label>
+                    <input type="text" name="title" id="libraryTitleInput" class="form-control" maxlength="200"
+                           placeholder="Defaults to the filename"
+                           value="{{ $editSubmission?->title ?? '' }}">
+                </div>
 
-                <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission->id ?? '' }}">
+                <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission?->id ?? '' }}">
                 <div id="libraryUploadFeedback" class="small" aria-live="polite"></div>
                 <div class="progress d-none mt-2" id="libraryUploadProgress" style="height:6px;"><div class="progress-bar" style="width:0%"></div></div>
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload &amp; preview</button>
+                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload and edit</button>
             </div>
         </form>
     </div>
@@ -709,6 +700,11 @@
                 </div>
                 <div class="article-docs-shell mb-3">
                     <div id="articleQuillEditor"></div>
+                    <button type="button"
+                            class="btn btn-sm btn-dark article-img-remove d-none"
+                            id="articleImageRemoveBtn">
+                        <i class="fa fa-trash me-1" aria-hidden="true"></i>Remove
+                    </button>
                 </div>
 
                 {{-- Shown when the article gains images the current declaration does not cover. --}}
@@ -742,6 +738,11 @@
                     <div class="small text-muted" id="articlePreviewHeadingHint"></div>
                 </div>
                 <div class="article-preview-toolbar d-flex flex-wrap gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-primary d-none"
+                            id="articlePreviewEditBtn">
+                        Edit article
+                    </button>
                     <button type="button"
                             class="btn btn-sm btn-outline-primary btn-copy-icon"
                             id="articleCopyHeadingBtn"
@@ -787,13 +788,14 @@ window.ContentLibraryBoot = {
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
     libraryCountryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
-    libraryPreferredCountry: @json(strtolower((string) ($editSubmission->country ?? ''))),
-    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission->language ?? ''))),
+    libraryPreferredCountry: @json(strtolower((string) ($editSubmission?->country ?? ''))),
+    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission?->language ?? ''))),
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
     uploadUrl: @json(route('advertiser.content-library.upload')),
     libraryIndexUrl: @json(route('advertiser.content-library')),
     editSubmission: @json($editSubmissionBoot ?? null),
+    maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 5120)),
 };
 </script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
