@@ -925,6 +925,17 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString("fd.set('file', file, file.name)", $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
+        $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
+        $this->assertStringContainsString('function resetLibraryUploadUi', $js);
+        $this->assertStringContainsString('function bindLibraryUploadCancel', $js);
+        $this->assertStringContainsString('function abortLibraryUpload', $js);
+        $this->assertStringContainsString('AbortController', $js);
+        $this->assertStringContainsString('isLibraryUploadAbortError', $js);
+        $this->assertStringContainsString('if (!libraryUploadHandoff)', $js);
+        $this->assertStringContainsString('libraryUploadSavedSubmission', $js);
+        $this->assertStringContainsString('id="libraryUploadCancelBtn"', $html);
+        $this->assertStringContainsString('Could not open the editor. Try again.', $js);
+        $this->assertStringContainsString('Article uploaded. It is in your library.', $js);
     }
 
     public function test_library_upload_allows_ten_megabyte_docx(): void

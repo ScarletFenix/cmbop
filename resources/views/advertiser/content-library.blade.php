@@ -682,7 +682,7 @@
                 <div class="progress d-none mt-2" id="libraryUploadProgress" style="height:6px;"><div class="progress-bar" style="width:0%"></div></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-outline-secondary" id="libraryUploadCancelBtn" data-bs-dismiss="modal">Cancel</button>
                 <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload and edit</button>
             </div>
         </form>
