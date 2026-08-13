@@ -7,6 +7,10 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class Withdrawal extends Model
 {
+    public const CANCELLED_BY_USER = 'user';
+
+    public const CANCELLED_BY_ADMIN = 'admin';
+
     protected $fillable = [
         'user_id',
         'amount',
@@ -15,6 +19,8 @@ class Withdrawal extends Model
         'payment_method',
         'payment_details',
         'status',
+        'cancelled_by',
+        'cancelled_at',
         'admin_notes',
         'processed_at',
     ];
@@ -22,6 +28,7 @@ class Withdrawal extends Model
     protected $casts = [
         'payment_details' => 'array',
         'processed_at' => 'datetime',
+        'cancelled_at' => 'datetime',
         'amount' => 'decimal:2',
         'fee' => 'decimal:2',
         'net_amount' => 'decimal:2',
@@ -58,17 +65,46 @@ class Withdrawal extends Model
         $this->update($payload);
     }
 
-    public function markAsCancelled(?string $notes = null): void
+    public function markAsCancelled(?string $notes = null, string $cancelledBy = self::CANCELLED_BY_ADMIN): void
     {
-        $this->update([
+        $payload = [
             'status' => 'cancelled',
-            'admin_notes' => $notes,
-        ]);
+            'cancelled_by' => $cancelledBy,
+            'cancelled_at' => now(),
+        ];
+
+        if ($notes !== null && $notes !== '') {
+            $payload['admin_notes'] = $notes;
+        }
+
+        $this->update($payload);
     }
 
     public function isActionable(): bool
     {
         return in_array($this->status, ['pending', 'processing'], true);
+    }
+
+    public function isCancellableByPublisher(): bool
+    {
+        return $this->status === 'pending';
+    }
+
+    public function wasCancelledByUser(): bool
+    {
+        if ($this->status !== 'cancelled') {
+            return false;
+        }
+
+        // Post-migration: cancelled_by is always present on the model attributes.
+        if (array_key_exists('cancelled_by', $this->getAttributes())) {
+            return ($this->cancelled_by ?? null) === self::CANCELLED_BY_USER;
+        }
+
+        // Pre-migration fallback: publisher cancel writes WD-{id}-cancel ledger credit.
+        return WalletTransaction::query()
+            ->where('reference', 'WD-'.$this->id.'-cancel')
+            ->exists();
     }
 
     /**
@@ -148,7 +184,7 @@ class Withdrawal extends Model
             'pending' => 'Requested',
             'processing' => 'Processing',
             'completed' => 'Paid',
-            'cancelled' => 'Rejected',
+            'cancelled' => $this->wasCancelledByUser() ? 'Cancelled' : 'Rejected',
             default => ucfirst((string) $this->status),
         };
     }

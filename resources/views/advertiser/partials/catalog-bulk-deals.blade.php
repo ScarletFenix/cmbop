@@ -13,7 +13,7 @@
                     Bulk discount deals
                     <span class="badge rounded-pill catalog-bulk-count">{{ $bulkDeals->count() }}</span>
                 </strong>
-                <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save 10–15%. Totals at checkout include the discount.</div>
+                <div class="small text-muted">Add a 3-article pack to cart (adjust to 3–5 there) and save {{ (int) config('site_promotions.bulk.min_percent', 10) }}–{{ (int) config('site_promotions.bulk.max_percent', 80) }}%. Totals at checkout include the discount.</div>
             </div>
 
             <div class="catalog-bulk-controls">

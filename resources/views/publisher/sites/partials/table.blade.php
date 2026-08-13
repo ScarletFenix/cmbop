@@ -49,8 +49,8 @@
     .modern-table col.col-metrics { width: 188px; }
     .modern-table col.col-market { width: 128px; }
     .modern-table col.col-status { width: 118px; }
-    .modern-table col.col-price { width: 100px; }
-    .modern-table col.col-actions { width: 250px; }
+    .modern-table col.col-price { width: 148px; }
+    .modern-table col.col-actions { width: 280px; }
 
     .sites-table-scroll {
         overflow-x: auto;
@@ -326,12 +326,96 @@
     }
 
     .site-row-actions {
-        display: inline-flex;
-        flex-wrap: wrap;
+        display: flex;
+        flex-direction: column;
+        flex-wrap: nowrap;
         align-items: center;
         gap: 6px;
         justify-content: center;
         max-width: 100%;
+    }
+
+    .site-row-actions__manage,
+    .site-row-actions__offers {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        max-width: 100%;
+    }
+
+    .site-row-actions__offers-label {
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #94a3b8;
+        line-height: 1;
+    }
+
+    .site-offer-chips {
+        display: inline-flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 4px;
+    }
+
+    .site-offer-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        height: 28px;
+        padding: 0 8px;
+        border-radius: 999px;
+        border: 1px solid #cbd5e1;
+        background: #fff;
+        color: #475569;
+        font-size: 11.5px;
+        font-weight: 600;
+        line-height: 1;
+        white-space: nowrap;
+    }
+
+    .site-offer-chip:hover {
+        background: #f8fafc;
+        color: #334155;
+        border-color: #94a3b8;
+    }
+
+    .site-offer-chip.is-on {
+        color: var(--brand-primary, #1a585e);
+        background: #e6f5f5;
+        border-color: rgba(26, 88, 94, 0.28);
+    }
+
+    .site-offer-chip.is-on:hover {
+        background: #d8ebeb;
+        color: var(--brand-primary, #1a585e);
+    }
+
+    .site-row-price-advertiser {
+        display: block;
+        font-size: 11px;
+        font-weight: 600;
+        color: #0f766e;
+        line-height: 1.25;
+        white-space: normal;
+        max-width: 11.5rem;
+    }
+
+    .site-row-price-advertiser--pack {
+        color: #334155;
+        font-weight: 500;
+    }
+
+    .site-row-price-advertiser__cut {
+        color: #b91c1c;
+    }
+
+    .modern-table td[data-label="Price"] .site-row-price-wrap {
+        white-space: normal;
     }
 
     .site-row-actions .btn-edit {
@@ -559,7 +643,10 @@
     }
 
     @media (max-width: 768px) {
-        .site-row-actions {
+        .site-row-actions,
+        .site-row-actions__manage,
+        .site-row-actions__offers {
+            align-items: flex-end;
             justify-content: flex-end;
         }
 
@@ -767,9 +854,14 @@
         @endforeach
         @foreach($sites as $index => $site)
         @php
-            $thumbUrl = $site->screenshot_thumb_url;
-            $fullPreviewUrl = $site->screenshot_url ?: $site->image_url;
-            $previewUrl = $thumbUrl ?: $fullPreviewUrl;
+            // Cover first (admin parity), then screenshots. /media → /storage chain.
+            $previewPaths = $site->listingPreviewUrlChain();
+            $previewUrl = $previewPaths[0] ?? null;
+            $zoomPaths = $site->zoomPreviewUrlChain();
+            if ($zoomPaths === [] && $previewPaths !== []) {
+                $zoomPaths = $previewPaths;
+            }
+            $fullPreviewUrl = $zoomPaths[0] ?? null;
             $siteCountries = is_array($site->countries) && count($site->countries)
                 ? $site->countries
                 : array_filter([$site->country]);
@@ -787,11 +879,15 @@
                           role="img"
                           tabindex="0"
                           aria-label="{{ $site->site_name }} preview"
-                          data-zoom-src="{{ $fullPreviewUrl ?: $previewUrl }}">
+                          data-zoom-src="{{ $fullPreviewUrl ?: $previewUrl }}"
+                          data-zoom-chain="{{ json_encode($zoomPaths !== [] ? $zoomPaths : $previewPaths, JSON_UNESCAPED_SLASHES) }}">
                         <img src="{{ $previewUrl }}"
                              alt="{{ $site->site_name }} preview"
                              loading="lazy"
-                             onerror="this.onerror=null; this.parentElement.classList.add('is-empty'); this.parentElement.removeAttribute('data-zoom-src'); this.parentElement.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';">
+                             decoding="async"
+                             data-preview-chain="{{ json_encode($previewPaths, JSON_UNESCAPED_SLASHES) }}"
+                             data-preview-i="0"
+                             onerror="if(window.publisherSitePreviewOnError){window.publisherSitePreviewOnError(this);}else{(function(img){var c=[];try{c=JSON.parse(img.getAttribute('data-preview-chain')||'[]');}catch(e){c=[];}if(!Array.isArray(c))c=[];var i=parseInt(img.getAttribute('data-preview-i')||'0',10)||0;var n=i+1;if(n&lt;c.length&amp;&amp;c[n]){img.setAttribute('data-preview-i',String(n));img.src=c[n];return;}img.onerror=null;img.removeAttribute('src');var w=img.closest('.site-row-preview');if(w){w.classList.add('is-empty');w.removeAttribute('data-zoom-src');w.removeAttribute('data-zoom-chain');w.innerHTML='<i class=\'fa fa-image\' aria-hidden=\'true\'></i>';}})(this);}">
                     </span>
                 @else
                     <span class="site-row-preview is-empty"
@@ -932,64 +1028,94 @@
 
             <td data-label="Price" class="text-center">
                 <div class="site-row-price-wrap">
+                @php
+                    $fmtPct = static fn ($n) => rtrim(rtrim(number_format((float) $n, 1), '0'), '.');
+                    $pubCustomPct = $site->activeCustomDiscountPercent();
+                    $pubBulkPct = $site->joinsBulkDiscount()
+                        ? (float) $site->bulk_discount_percent
+                        : null;
+                    $pubShowSaleBadge = $pubCustomPct !== null;
+                    $pubJoinedBulk = $pubBulkPct !== null;
+                    $bulkMinQty = (int) config('site_promotions.bulk.min_qty', 3);
+                    $bulkMaxQty = (int) config('site_promotions.bulk.max_qty', 5);
+                    $cartPricing = app(\App\Services\CartPricingService::class);
+                    $pubSalePricing = $pubShowSaleBadge
+                        ? $cartPricing->priceForAdvertiser($site, null, 1)
+                        : null;
+                    $pubBulkPricing = $pubJoinedBulk
+                        ? $cartPricing->priceForAdvertiser($site, null, $bulkMinQty)
+                        : null;
+                    $pubSalePay = $pubSalePricing ? (float) ($pubSalePricing['total'] ?? 0) : null;
+                    $pubSaleList = $pubSalePricing ? (float) ($pubSalePricing['list_total'] ?? 0) : null;
+                    $pubSaleEff = $pubSalePricing ? (float) ($pubSalePricing['discount_percent'] ?? 0) : 0;
+                    $pubBulkPay = $pubBulkPricing ? (float) ($pubBulkPricing['total'] ?? 0) : null;
+                    $pubBulkEff = $pubBulkPricing ? (float) ($pubBulkPricing['discount_percent'] ?? 0) : 0;
+                    $pubAdvTip = null;
+                    if ($pubShowSaleBadge && $pubSaleEff > 0 && $pubSaleList > $pubSalePay) {
+                        $pubAdvTip = 'Advertisers see about −'.$fmtPct($pubSaleEff)
+                            .'% off (€'.number_format($pubSaleList, 0)
+                            .' → €'.number_format($pubSalePay, 0)
+                            .') after the fee floor — exclusive better-of with bulk, not stacked.';
+                    }
+                    $pubBulkTip = 'Joined the bulk discount programme ('.$bulkMinQty.'–'.$bulkMaxQty.' articles). Exclusive better-of with a timed sale — not stacked.';
+                    if ($pubShowSaleBadge && $pubCustomPct !== null && (float) $pubCustomPct >= (float) $pubBulkPct) {
+                        $pubBulkTip = 'Timed sale is stronger on packs too — exclusive better-of, not stacked.';
+                    } elseif ($pubJoinedBulk && $pubBulkPay && $pubBulkEff > 0) {
+                        $pubBulkTip = 'Advertisers pay about €'.number_format($pubBulkPay * $bulkMinQty, 0)
+                            .' for '.$bulkMinQty.' articles (−'.$fmtPct($pubBulkEff)
+                            .'%). Exclusive better-of with a timed sale — not stacked.';
+                    }
+                    $featureDaysLeft = ($site->isFeatured() && $site->featured_until)
+                        ? max(1, (int) now()->diffInDays($site->featured_until))
+                        : null;
+                    $featurePriceLabel = number_format((float) config('site_promotions.feature.price', 10), 0);
+                    $featureDaysCfg = (int) config('site_promotions.feature.days', 7);
+                @endphp
                 <span class="site-row-price">€{{ number_format((float) $site->price, 2) }}</span>
+                @if($pubShowSaleBadge && $pubSalePay !== null)
+                    <span class="site-row-price-advertiser">
+                        Advertisers from €{{ number_format($pubSalePay, 0) }}
+                        @if($pubSaleEff > 0)
+                            <span class="site-row-price-advertiser__cut">−{{ $fmtPct($pubSaleEff) }}%</span>
+                        @endif
+                    </span>
+                @elseif($pubJoinedBulk && $pubBulkPay !== null)
+                    <span class="site-row-price-advertiser">
+                        Advertisers from €{{ number_format($pubBulkPay, 0) }}
+                        @if($pubBulkEff > 0)
+                            <span class="site-row-price-advertiser__cut">−{{ $fmtPct($pubBulkEff) }}%</span>
+                        @endif
+                    </span>
+                @endif
+                @if($pubJoinedBulk && $pubBulkPay !== null && $pubShowSaleBadge)
+                    <span class="site-row-price-advertiser site-row-price-advertiser--pack">
+                        Pack of {{ $bulkMinQty }} from €{{ number_format($pubBulkPay * $bulkMinQty, 0) }}
+                    </span>
+                @endif
                 <span class="site-row-price-meta">
                     @if($site->isFeatured())
                         <span class="badge bg-warning text-dark"
                               data-glass-tip
-                              data-glass-tip-body="Featured"
+                              data-glass-tip-title="Featured"
+                              data-glass-tip-body="Featured in the advertiser catalog{{ $featureDaysLeft ? ' · '.$featureDaysLeft.' day'.($featureDaysLeft === 1 ? '' : 's').' left' : '' }}."
                               data-glass-tip-placement="top"
-                              data-glass-tip-hover-only="1">★</span>
+                              data-glass-tip-hover-only="1">★{{ $featureDaysLeft ? ' '.$featureDaysLeft.'d' : '' }}</span>
                     @endif
-                    @php
-                        // Badge shows the rate you configured; tip shows what
-                        // advertisers actually see (fee markup + payout floor).
-                        $pubCustomPct = $site->activeCustomDiscountPercent();
-                        $pubBulkPct = $site->joinsBulkDiscount()
-                            ? (float) $site->bulk_discount_percent
-                            : null;
-                        $pubShowSaleBadge = $pubCustomPct !== null;
-                        // Bulk membership badge: hide when a stronger timed sale
-                        // already covers packs (same better-of rule as catalog).
-                        $pubShowBulkBadge = $pubBulkPct !== null
-                            && ($pubCustomPct === null || $pubBulkPct > (float) $pubCustomPct);
-                        $pubAdvTip = null;
-                        if ($pubShowSaleBadge || $pubShowBulkBadge) {
-                            $pubPricing = app(\App\Services\CartPricingService::class)
-                                ->priceForAdvertiser(
-                                    $site,
-                                    null,
-                                    $pubShowBulkBadge && ! $pubShowSaleBadge
-                                        ? (int) config('site_promotions.bulk.min_qty', 3)
-                                        : 1
-                                );
-                            $pubEff = (float) ($pubPricing['discount_percent'] ?? 0);
-                            $pubList = (float) ($pubPricing['list_total'] ?? 0);
-                            $pubPay = (float) ($pubPricing['total'] ?? 0);
-                            if ($pubEff > 0 && $pubList > $pubPay) {
-                                $pubEffLabel = rtrim(rtrim(number_format($pubEff, 1), '0'), '.');
-                                $pubAdvTip = 'Advertisers see about −'.$pubEffLabel
-                                    .'% off (€'.number_format($pubList, 0)
-                                    .' → €'.number_format($pubPay, 0)
-                                    .') after the fee floor — exclusive better-of with bulk, not stacked.';
-                            }
-                        }
-                    @endphp
                     @if($pubShowSaleBadge)
                         <span class="badge bg-danger"
                               data-glass-tip
-                              data-glass-tip-title="Timed sale −{{ rtrim(rtrim(number_format((float) $pubCustomPct, 1), '0'), '.') }}% (configured)"
+                              data-glass-tip-title="Timed sale −{{ $fmtPct($pubCustomPct) }}% (configured)"
                               data-glass-tip-body="{{ $pubAdvTip ?: 'Your timed discount is live on this site.' }}"
                               data-glass-tip-placement="top"
-                              data-glass-tip-hover-only="1">−{{ rtrim(rtrim(number_format((float) $pubCustomPct, 1), '0'), '.') }}%</span>
+                              data-glass-tip-hover-only="1">−{{ $fmtPct($pubCustomPct) }}%</span>
                     @endif
-                    @if($pubShowBulkBadge)
+                    @if($pubJoinedBulk)
                         <span class="badge bg-success"
                               data-glass-tip
-                              data-glass-tip-title="Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}% on {{ (int) config('site_promotions.bulk.min_qty', 3) }}–{{ (int) config('site_promotions.bulk.max_qty', 5) }} articles"
-                              data-glass-tip-body="{{ $pubAdvTip ?: 'Joined the bulk discount programme. Exclusive better-of with a timed sale — not stacked.' }}"
+                              data-glass-tip-title="Bulk −{{ $fmtPct($pubBulkPct) }}% on {{ $bulkMinQty }}–{{ $bulkMaxQty }} articles"
+                              data-glass-tip-body="{{ $pubBulkTip }}"
                               data-glass-tip-placement="top"
-                              data-glass-tip-hover-only="1">Bulk −{{ rtrim(rtrim(number_format((float) $pubBulkPct, 1), '0'), '.') }}%</span>
+                              data-glass-tip-hover-only="1">Bulk −{{ $fmtPct($pubBulkPct) }}%</span>
                     @endif
                 </span>
                 </div>
@@ -998,6 +1124,7 @@
             <td data-label="Actions" class="text-center">
                 <div class="site-row-actions">
                 @if(($status ?? '') === 'invites' || $site->isPendingPublisherAcceptance())
+                <div class="site-row-actions__manage">
                 <button type="button" class="btn btn-sm btn-primary btn-accept-assignment"
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
@@ -1010,7 +1137,9 @@
                         aria-label="Decline">
                     Decline
                 </button>
+                </div>
                 @else
+                <div class="site-row-actions__manage">
                 <button type="button" class="btn-icon-quiet action-view" data-id="{{ $site->id }}"
                         aria-label="View"
                         data-glass-tip
@@ -1051,59 +1180,6 @@
                 </button>
                 @endif
 
-                @if($site->active || $site->verified)
-                <button type="button" class="btn-icon-quiet btn-feature-site {{ $site->isFeatured() ? 'is-on' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
-                        data-glass-tip
-                        data-glass-tip-body="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
-                        data-glass-tip-placement="top">
-                    <i class="fa fa-bolt" aria-hidden="true"></i>
-                </button>
-                <button type="button" class="btn-icon-quiet btn-discount-site {{ $site->hasActiveCustomDiscount() ? 'is-on' : '' }}"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        data-percent="{{ $site->custom_discount_percent }}"
-                        data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
-                        aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
-                        data-glass-tip
-                        data-glass-tip-title="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
-                        data-glass-tip-body="{{ $site->hasActiveCustomDiscount() ? 'A temporary price cut is currently live on this site.' : 'Offer a temporary % off for a limited time.' }}"
-                        data-glass-tip-placement="top">
-                    <i class="fa fa-percent" aria-hidden="true"></i>
-                </button>
-                @if($site->hasActiveCustomDiscount())
-                <button type="button" class="btn-text-quiet is-danger btn-discount-clear"
-                        data-id="{{ $site->id }}"
-                        data-glass-tip
-                        data-glass-tip-body="Clear discount"
-                        data-glass-tip-placement="top">
-                    Clear
-                </button>
-                @endif
-                @if($site->joinsBulkDiscount())
-                <button type="button" class="btn-icon-quiet is-on btn-bulk-leave"
-                        data-id="{{ $site->id }}"
-                        aria-label="Leave bulk"
-                        data-glass-tip
-                        data-glass-tip-body="Leave bulk"
-                        data-glass-tip-placement="top">
-                    <i class="fa fa-layer-group" aria-hidden="true"></i>
-                </button>
-                @else
-                <button type="button" class="btn-icon-quiet btn-bulk-join"
-                        data-id="{{ $site->id }}"
-                        data-name="{{ $site->site_name }}"
-                        aria-label="Bulk"
-                        data-glass-tip
-                        data-glass-tip-body="Bulk"
-                        data-glass-tip-placement="top">
-                    <i class="fa fa-layer-group" aria-hidden="true"></i>
-                </button>
-                @endif
-                @endif
-
                 @if(!$site->verified && !$site->active)
                 <form action="{{ route('publisher.sites.destroy', $site->id) }}" method="POST" class="d-inline delete-form">
                     @csrf
@@ -1116,6 +1192,85 @@
                         <i class="fa fa-trash" aria-hidden="true"></i>
                     </button>
                 </form>
+                @endif
+                </div>
+
+                @if($site->active || $site->verified)
+                <div class="site-row-actions__offers">
+                    <span class="site-row-actions__offers-label">Offers</span>
+                    <div class="site-offer-chips">
+                <button type="button"
+                        class="site-offer-chip btn-feature-site {{ $site->isFeatured() ? 'is-on' : '' }}"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        data-featured-until="{{ optional($site->featured_until)?->toIso8601String() }}"
+                        data-verified="{{ $site->verified ? '1' : '0' }}"
+                        aria-pressed="{{ $site->isFeatured() ? 'true' : 'false' }}"
+                        aria-label="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
+                        data-glass-tip
+                        data-glass-tip-title="{{ $site->isFeatured() ? 'Featured' : 'Feature this site' }}"
+                        data-glass-tip-body="{{ $site->isFeatured()
+                            ? 'Featured until '.optional($site->featured_until)->timezone(config('app.timezone'))->format('j M').'. Click to add another '.$featureDaysCfg.' days (€'.$featurePriceLabel.').'
+                            : 'Pin it higher in the advertiser catalog for '.$featureDaysCfg.' days. Paid from publisher balance or card (€'.$featurePriceLabel.').' }}{{ ! $site->verified ? ' This site is active but not verified. Featuring still works; advertisers may trust it less.' : '' }}"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-bolt" aria-hidden="true"></i>
+                    <span class="site-offer-chip__label">{{ $site->isFeatured()
+                        ? 'Featured'.($featureDaysLeft ? ' · '.$featureDaysLeft.'d left' : '')
+                        : 'Feature · €'.$featurePriceLabel }}</span>
+                </button>
+                <button type="button"
+                        class="site-offer-chip btn-discount-site {{ $site->hasActiveCustomDiscount() ? 'is-on' : '' }}"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        data-percent="{{ $site->custom_discount_percent }}"
+                        data-ends="{{ optional($site->custom_discount_ends_at)?->toIso8601String() }}"
+                        aria-pressed="{{ $site->hasActiveCustomDiscount() ? 'true' : 'false' }}"
+                        aria-label="{{ $site->hasActiveCustomDiscount() ? 'Timed discount active' : 'Set timed discount' }}"
+                        data-glass-tip
+                        data-glass-tip-title="{{ $site->hasActiveCustomDiscount() ? 'Timed sale −'.$fmtPct($pubCustomPct).'%' : 'Set timed sale' }}"
+                        data-glass-tip-body="{{ $site->hasActiveCustomDiscount()
+                            ? 'Live until '.optional($site->custom_discount_ends_at)->timezone(config('app.timezone'))->format('j M').'. Advertisers get the better of this or bulk — not both.'
+                            : 'Temporary % off for a limited time. Advertisers see the better of this or bulk — not both.' }}"
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-percent" aria-hidden="true"></i>
+                    <span class="site-offer-chip__label">{{ $site->hasActiveCustomDiscount()
+                        ? 'Sale −'.$fmtPct($pubCustomPct).'%'
+                        : 'Sale' }}</span>
+                </button>
+                @if($site->joinsBulkDiscount())
+                <button type="button"
+                        class="site-offer-chip is-on btn-bulk-site"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        data-percent="{{ $pubBulkPct }}"
+                        data-joined="1"
+                        aria-pressed="true"
+                        aria-label="Edit or leave bulk"
+                        data-glass-tip
+                        data-glass-tip-title="Bulk −{{ $fmtPct($pubBulkPct) }}% is on"
+                        data-glass-tip-body="{{ $bulkMinQty }}–{{ $bulkMaxQty }} articles. Click to change the percent or leave. Exclusive with a timed sale — not stacked."
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-layer-group" aria-hidden="true"></i>
+                    <span class="site-offer-chip__label">Bulk −{{ $fmtPct($pubBulkPct) }}%</span>
+                </button>
+                @else
+                <button type="button"
+                        class="site-offer-chip btn-bulk-site"
+                        data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
+                        data-joined="0"
+                        aria-pressed="false"
+                        aria-label="Join bulk"
+                        data-glass-tip
+                        data-glass-tip-title="Join bulk"
+                        data-glass-tip-body="{{ (int) config('site_promotions.bulk.min_percent', 10) }}–{{ (int) config('site_promotions.bulk.max_percent', 80) }}% off when an advertiser buys {{ $bulkMinQty }}–{{ $bulkMaxQty }} articles. Exclusive with a timed sale — not stacked."
+                        data-glass-tip-placement="top">
+                    <i class="fa fa-layer-group" aria-hidden="true"></i>
+                    <span class="site-offer-chip__label">Bulk</span>
+                </button>
+                @endif
+                    </div>
+                </div>
                 @endif
                 @endif
                 </div>

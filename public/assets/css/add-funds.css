@@ -241,6 +241,44 @@
     border: 1px solid var(--border-subtle, #e2e8f0);
     border-radius: var(--radius-sm, 8px);
 }
+
+.af-role-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 32rem;
+    padding: 14px 18px;
+    border: 1px solid var(--border-subtle, #e2e8f0);
+    border-radius: var(--radius-lg, 12px);
+    background: var(--surface-2, #f8fafc);
+}
+.af-role-strip__label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--brand-primary-soft, #3faeb2);
+}
+.af-role-strip__value {
+    display: block;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--brand-primary, #1a585e);
+    line-height: 1.15;
+    margin-top: 2px;
+}
+.af-role-strip__note {
+    font-size: 12px;
+    color: var(--brand-ink, #1e293b);
+    margin-top: 6px;
+}
+.af-role-strip__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
 .payment-option.selected .payment-option-card {
     border-color: var(--brand-primary, #1a585e) !important;
     background: var(--brand-primary-bg, #e6f5f5) !important;

@@ -96,7 +96,28 @@
   }
 
   function preferredPlacement(trigger) {
-    return (trigger.getAttribute('data-glass-tip-placement') || 'top').toLowerCase();
+    var explicit = (trigger.getAttribute('data-glass-tip-placement') || '').toLowerCase();
+    if (explicit) return explicit;
+    // Catalog Buy column: a top tip sits on Add to cart. Open inward instead.
+    if (trigger.closest('.catalog-row-actions, .catalog-td-action, .catalog-card-buy')) {
+      return 'left';
+    }
+    return 'top';
+  }
+
+  function rectsOverlap(a, b, pad) {
+    pad = pad || 4;
+    return !(a.right + pad < b.left || a.left - pad > b.right || a.bottom + pad < b.top || a.top - pad > b.bottom);
+  }
+
+  function nearbyClickTargets(trigger) {
+    var scope = trigger.closest('.catalog-td-action, .catalog-mobile-card, .catalog-row-actions');
+    if (!scope) return [];
+    return Array.prototype.slice.call(
+      scope.querySelectorAll('.buy-now, .btn-claim-site, .favorite-btn, .blacklist-btn')
+    ).filter(function (el) {
+      return el !== trigger;
+    });
   }
 
   /**
@@ -128,6 +149,7 @@
     });
 
     var best = null;
+    var blockers = nearbyClickTargets(trigger);
 
     placements.forEach(function (placement) {
       var top = 0;
@@ -155,6 +177,11 @@
       if (placement === 'bottom' && rect.bottom + tipRect.height + OFFSET > vh - PAD) overflow += 1000;
       if (placement === 'left' && rect.left - tipRect.width - OFFSET < PAD) overflow += 1000;
       if (placement === 'right' && rect.right + tipRect.width + OFFSET > vw - PAD) overflow += 1000;
+
+      var placed = { top: top, left: left, right: left + tipRect.width, bottom: top + tipRect.height };
+      blockers.forEach(function (el) {
+        if (rectsOverlap(placed, el.getBoundingClientRect())) overflow += 500;
+      });
 
       if (!best || overflow < best.overflow) {
         best = { top: top, left: left, placement: placement, overflow: overflow };
@@ -222,6 +249,8 @@
       tip.classList.remove('is-visible');
       tip.style.top = '0px';
       tip.style.left = '0px';
+      // Hover-only / adopted titles must never steal clicks from Add to cart.
+      tip.style.pointerEvents = isHoverOnlyTip(trigger) ? 'none' : '';
       measureAndPlace(trigger);
       tip.style.visibility = '';
 

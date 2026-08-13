@@ -161,7 +161,7 @@ class SitePromotionService
     public function joinBulkDiscount(Site $site, float $percent): Site
     {
         $min = (float) config('site_promotions.bulk.min_percent', 10);
-        $max = (float) config('site_promotions.bulk.max_percent', 15);
+        $max = (float) config('site_promotions.bulk.max_percent', 80);
         $percent = max($min, min($max, round($percent, 2)));
 
         $site->forceFill([

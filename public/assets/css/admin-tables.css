@@ -182,9 +182,9 @@
 
 .admin-site-info-stack .site-row-preview {
   /* Wider 16:10 desktop frame — fixed px so table-layout:fixed cannot collapse it. */
-  width: 152px;
-  min-width: 136px;
-  max-width: 168px;
+  width: 200px;
+  min-width: 168px;
+  max-width: 220px;
   flex-shrink: 0;
 }
 

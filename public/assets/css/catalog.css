@@ -93,7 +93,8 @@
 
 /* The Site column carries the domain, chips and meta lines; the rest of the
    table is numeric, so it gets the slack instead of a hard pixel floor. */
-/* Category — slightly wider so two niche chips fit; still clamped in-cell. */
+/* Category — slightly wider so two niche chips fit; still clamped in-cell.
+   Column order: 1 Site, 2 Category, 3 Traffic, 4 DR, 5 DA, 6 Country, 7 Buy */
 .catalog-page .catalog-table th:nth-child(2),
 .catalog-page .catalog-table td:nth-child(2) {
     width: 15%;
@@ -787,6 +788,49 @@ body:has(.catalog-page) {
     flex: 1 1 8rem;
 }
 
+.catalog-own-listing {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    max-width: 14rem;
+}
+
+/* Leftover Add to cart on an own-listing row must never stay clickable. */
+[data-own-listing="1"] .buy-now {
+    display: none !important;
+}
+
+.catalog-own-listing--start {
+    align-items: flex-start;
+}
+
+.catalog-own-listing__badge {
+    display: inline-block;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #5b6b73;
+}
+
+.catalog-own-listing__hint {
+    margin: 0;
+    font-size: 0.8rem;
+    line-height: 1.3;
+    color: var(--text-muted, #6b7280);
+    text-align: inherit;
+}
+
+.catalog-own-listing--center .catalog-own-listing__hint {
+    text-align: center;
+}
+
+.catalog-card-buy .catalog-own-listing {
+    flex: 1 1 10rem;
+    max-width: none;
+}
+
 /* Cards reuse the table row's action stack, so Buy spans the card and the quiet
    controls line up under it instead of wrapping unevenly. */
 .catalog-mobile-card .catalog-row-actions {
@@ -967,6 +1011,17 @@ body:has(.catalog-page) {
     border: 1px solid var(--border-subtle, #e2e8f0);
     box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
     background: var(--surface-2, #f7fafb);
+}
+
+.site-preview-zoom[data-zoom-src] {
+    cursor: zoom-in;
+}
+
+.site-preview-zoom[data-zoom-src]:hover,
+.site-preview-zoom[data-zoom-src]:focus-visible {
+    border-color: var(--brand-primary, #1a585e);
+    box-shadow: 0 0 0 1px var(--brand-primary, #1a585e);
+    outline: none;
 }
 
 .site-preview-zoom::before {
@@ -1623,6 +1678,62 @@ body:has(.catalog-page) {
 
 .catalog-site-cell {
     position: relative;
+}
+
+/* Floating enlarge for Site Details / card expand previews (fine pointer). */
+.site-preview-zoom-pop {
+    position: fixed;
+    z-index: 1200;
+    width: min(440px, calc(100vw - 24px));
+    max-height: min(300px, calc(100vh - 24px));
+    padding: 6px;
+    border-radius: 12px;
+    border: 1px solid rgba(26, 88, 94, 0.18);
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(14px) saturate(1.2);
+    -webkit-backdrop-filter: blur(14px) saturate(1.2);
+    box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px) scale(0.98);
+    transition: opacity .16s ease, transform .16s ease;
+    overflow: hidden;
+}
+
+.site-preview-zoom-pop.is-visible {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+}
+
+.site-preview-zoom-pop::before {
+    content: '';
+    display: block;
+    width: 100%;
+    padding-top: 62.5%;
+}
+
+.site-preview-zoom-pop img {
+    position: absolute;
+    inset: 6px;
+    width: calc(100% - 12px);
+    height: calc(100% - 12px);
+    max-width: none;
+    object-fit: contain;
+    object-position: center top;
+    border-radius: 8px;
+    background: #f8fafc;
+    display: block;
+}
+
+@media (hover: none) {
+    .site-preview-zoom-pop { display: none !important; }
+    .site-preview-zoom[data-zoom-src] { cursor: default; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .site-preview-zoom-pop {
+        transition: none;
+    }
 }
 
 .catalog-site-stack {

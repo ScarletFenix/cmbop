@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Models\Site;
 use App\Services\CheckoutSchemaService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -20,6 +21,10 @@ class CheckoutSchemaServiceTest extends TestCase
         $this->assertTrue(Schema::hasColumn('order_items', 'content_submission_id'));
         $this->assertTrue(Schema::hasColumn('order_items', 'publisher_price'));
         $this->assertTrue(Schema::hasColumn('orders', 'publication_mode'));
+        $this->assertTrue(Schema::hasColumn('sites', 'homepage_placement_prices'));
+        $this->assertTrue(Schema::hasColumn('sites', 'social_promotion'));
+        $this->assertTrue(Schema::hasColumn('order_items', 'homepage_days'));
+        $this->assertTrue(Schema::hasColumn('order_items', 'social_channels'));
     }
 
     public function test_filter_existing_columns_drops_unknown_keys(): void
@@ -34,5 +39,33 @@ class CheckoutSchemaServiceTest extends TestCase
         $this->assertArrayHasKey('order_id', $out);
         $this->assertArrayHasKey('price', $out);
         $this->assertArrayNotHasKey('not_a_real_column_xyz', $out);
+    }
+
+    public function test_ensure_repairs_homepage_placement_prices_so_where_not_null_count_works(): void
+    {
+        if (Schema::hasColumn('sites', 'homepage_placement_prices')) {
+            Schema::table('sites', function ($table) {
+                $table->dropColumn('homepage_placement_prices');
+            });
+        }
+
+        $this->assertFalse(Schema::hasColumn('sites', 'homepage_placement_prices'));
+
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+
+        $this->assertTrue(Schema::hasColumn('sites', 'homepage_placement_prices'));
+        $this->assertSame(0, Site::countWithHomepagePlacement());
+    }
+
+    public function test_homepage_placement_count_is_zero_when_column_is_missing(): void
+    {
+        if (Schema::hasColumn('sites', 'homepage_placement_prices')) {
+            Schema::table('sites', function ($table) {
+                $table->dropColumn('homepage_placement_prices');
+            });
+        }
+
+        $this->assertFalse(Schema::hasColumn('sites', 'homepage_placement_prices'));
+        $this->assertSame(0, Site::countWithHomepagePlacement());
     }
 }

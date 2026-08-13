@@ -125,6 +125,54 @@ class SitePromotionTest extends TestCase
             ->assertJsonFragment(['message' => 'Joined bulk discount programme (12% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
     }
 
+    public function test_publisher_can_join_bulk_at_eighty_percent(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 80])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($site->fresh()->joinsBulkDiscount());
+        $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
+    }
+
+    public function test_updating_bulk_percent_says_updated_not_joined(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 10])
+            ->assertOk();
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 80])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+
+        $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
+    }
+
+    public function test_bulk_percent_outside_ten_to_eighty_is_rejected(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 81])
+            ->assertStatus(422);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 9])
+            ->assertStatus(422);
+
+        $this->assertFalse($site->fresh()->joinsBulkDiscount());
+    }
+
     public function test_custom_discount_and_expiry_notification(): void
     {
         Mail::fake();

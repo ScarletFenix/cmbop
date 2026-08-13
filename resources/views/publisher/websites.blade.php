@@ -244,17 +244,25 @@
         }
 
         #sitesTableWrapper .sites-responsive-table td[data-label="Metrics"] .site-row-metrics,
-        #sitesTableWrapper .sites-responsive-table td[data-label="Market"] .site-row-market,
-        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] .site-row-actions {
+        #sitesTableWrapper .sites-responsive-table td[data-label="Market"] .site-row-market {
             display: inline-flex;
             justify-content: center;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        #sitesTableWrapper .sites-responsive-table td[data-label="Actions"] .site-row-actions {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
             width: 100%;
             box-sizing: border-box;
         }
     }
 
     #sitesTableWrapper .sites-responsive-table {
-        min-width: 1140px;
+        min-width: 1220px;
     }
 
     #sitesTableWrapper .sites-responsive-table td[data-label="Category"] {
@@ -1486,6 +1494,39 @@
 @endphp
 <script>
 window.__publisherWebsitesInlineLoaded = true;
+
+/**
+ * My Sites row thumbs: walk /media → /storage (and thumb → full → cover)
+ * so Hostinger broken public/storage symlinks do not blank the preview column.
+ * Defined before ajax table HTML so inline onerror always finds it.
+ */
+window.publisherSitePreviewOnError = function (img) {
+    if (!img) return;
+    var chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    if (!Array.isArray(chain)) chain = [];
+    var i = parseInt(img.getAttribute('data-preview-i') || '0', 10);
+    if (isNaN(i) || i < 0) i = 0;
+    var next = i + 1;
+    if (next < chain.length && chain[next]) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    img.removeAttribute('src');
+    var wrap = img.closest('.site-row-preview');
+    if (wrap) {
+        wrap.classList.add('is-empty');
+        wrap.removeAttribute('data-zoom-src');
+        wrap.removeAttribute('data-zoom-chain');
+        wrap.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
+    }
+};
 window.PublisherWebsitesConfig = {
     csrfToken: @json(csrf_token()),
     maxBulkRows: {{ (int) \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }},
@@ -1507,6 +1548,8 @@ window.PublisherWebsitesConfig = {
         balance: @json(route('publisher.balance')),
         promotionsWallet: @json(route('publisher.promotions.wallet')),
     },
+    bulkMinPercent: {{ (int) config('site_promotions.bulk.min_percent', 10) }},
+    bulkMaxPercent: {{ (int) config('site_promotions.bulk.max_percent', 80) }},
 };
 </script>
 <script>
@@ -2598,6 +2641,8 @@ function initSitePreviewZoom(root) {
     }
     const img = pop.querySelector('img');
     let hideTimer = null;
+    let zoomChain = [];
+    let zoomIndex = 0;
 
     function place(trigger) {
         const rect = trigger.getBoundingClientRect();
@@ -2618,12 +2663,37 @@ function initSitePreviewZoom(root) {
         pop.style.top = Math.round(top) + 'px';
     }
 
+    function parseZoomChain(trigger) {
+        let chain = [];
+        try {
+            chain = JSON.parse(trigger.getAttribute('data-zoom-chain') || '[]');
+        } catch (e) {
+            chain = [];
+        }
+        if (!Array.isArray(chain) || !chain.length) {
+            const src = trigger.getAttribute('data-zoom-src');
+            chain = src ? [src] : [];
+        }
+        return chain.filter(Boolean);
+    }
+
     function show(trigger) {
-        const src = trigger.getAttribute('data-zoom-src');
-        if (!src || trigger.classList.contains('is-empty')) return;
+        if (trigger.classList.contains('is-empty')) return;
+        zoomChain = parseZoomChain(trigger);
+        if (!zoomChain.length) return;
         clearTimeout(hideTimer);
-        if (img.getAttribute('src') !== src) {
-            img.setAttribute('src', src);
+        zoomIndex = 0;
+        img.onerror = function () {
+            zoomIndex += 1;
+            if (zoomIndex < zoomChain.length) {
+                img.src = zoomChain[zoomIndex];
+                return;
+            }
+            img.onerror = null;
+            pop.classList.remove('is-visible');
+        };
+        if (img.getAttribute('src') !== zoomChain[0]) {
+            img.setAttribute('src', zoomChain[0]);
         }
         img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
         pop.classList.add('is-visible');
@@ -2635,6 +2705,7 @@ function initSitePreviewZoom(root) {
         clearTimeout(hideTimer);
         hideTimer = setTimeout(function () {
             pop.classList.remove('is-visible');
+            img.onerror = null;
         }, 80);
     }
 
@@ -2649,6 +2720,10 @@ function initSitePreviewZoom(root) {
 }
 
 function fetchSites(page = 1, query = '', opts = {}) {
+    window.__publisherSitesList = {
+        page: parseInt(page, 10) || 1,
+        query: query == null ? '' : String(query),
+    };
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
@@ -3116,182 +3191,6 @@ $('#claimWebsiteForm').on('submit', async function (e) {
         // Claims panel is server-rendered — reload so the new pending row appears.
         window.location.reload();
     }
-});
-
-/* —— Site promotions: Feature / Discount / Bulk —— */
-const promoCsrf = '{{ csrf_token() }}';
-
-function escapeHtml(value) {
-    return String(value ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-
-async function startFeatureStripeCheckout(siteId) {
-    const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (data.success && data.checkout_url) {
-        window.location.href = data.checkout_url;
-        return;
-    }
-    Swal.fire({ icon: 'error', title: 'Checkout unavailable', text: data.message || 'Could not start card payment.' });
-}
-
-$(document).on('click', '.btn-feature-site', async function () {
-    const id = $(this).data('id');
-    const name = escapeHtml($(this).data('name'));
-    let wallet = { feature_price: 10, feature_days: 7, balance: 0, top_up_url: '{{ route('publisher.balance') }}', stripe_available: true };
-    try {
-        const w = await fetch(`{{ route('publisher.promotions.wallet') }}`, { headers: { 'Accept': 'application/json' }});
-        wallet = await w.json();
-    } catch (e) {}
-
-    const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
-    const result = await Swal.fire({
-        title: 'Feature this website?',
-        html: `<p>Feature <strong>${name}</strong> for <strong>${wallet.feature_days || 7} days</strong> to boost catalog visibility.</p>
-               <p class="mb-1">Cost: <strong>€${Number(wallet.feature_price || 10).toFixed(2)}</strong></p>
-               <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
-               <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
-        showDenyButton: !!wallet.stripe_available,
-        showCancelButton: true,
-        confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
-        denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
-    });
-
-    if (result.isDenied) {
-        return startFeatureStripeCheckout(id);
-    }
-    if (!result.isConfirmed) return;
-    if (!canWallet) {
-        return Swal.fire({
-            icon: 'info',
-            title: 'Insufficient balance',
-            html: `Top up your wallet or pay by card.<br><br>
-                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard">Pay by card</button>
-                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url}">Open balance</a>`,
-            didOpen: () => {
-                document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id));
-            },
-            showConfirmButton: false,
-            showCancelButton: true,
-        });
-    }
-
-    const res = await fetch(`/publisher/sites/${id}/feature`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    const data = await res.json();
-    if (data.success) {
-        Swal.fire({ icon: 'success', title: 'Featured!', text: data.message });
-        if (typeof loadSites === 'function') loadSites();
-    } else if (data.needs_top_up) {
-        Swal.fire({
-            icon: 'info',
-            title: 'Top up or pay by card',
-            html: `${data.message}<br><br>
-                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (€${Number(wallet.feature_price || 10).toFixed(2)})</button>
-                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url}">Open balance</a>`,
-            didOpen: () => {
-                document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id));
-            },
-            showConfirmButton: false,
-            showCancelButton: true,
-        });
-    } else {
-        Swal.fire({ icon: 'error', title: 'Could not feature', text: data.message || 'Failed' });
-    }
-});
-
-$(document).on('click', '.btn-discount-site', async function () {
-    const id = $(this).data('id');
-    const name = escapeHtml($(this).data('name'));
-    const current = $(this).data('percent');
-    const { value: form } = await Swal.fire({
-        title: 'Set timed discount',
-        html: `<p class="small text-muted">Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.</p>
-               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${current || 15}">
-               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
-        showCancelButton: true,
-        confirmButtonText: 'Publish discount',
-        preConfirm: () => ({
-            percent: document.getElementById('swal-pct').value,
-            days: document.getElementById('swal-days').value,
-        }),
-    });
-    if (!form) return;
-    const res = await fetch(`/publisher/sites/${id}/discount`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { loadSites(); }
-});
-
-$(document).on('click', '.btn-discount-clear', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({
-        title: 'End this discount now?',
-        showCancelButton: true,
-        confirmButtonText: 'End discount',
-        customClass: { confirmButton: 'slb-swal-danger' },
-        reverseButtons: true,
-        focusCancel: true,
-    });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { loadSites(); }
-});
-
-$(document).on('click', '.btn-bulk-join', async function () {
-    const id = $(this).data('id');
-    const { value: percent } = await Swal.fire({
-        title: 'Join bulk discount program',
-        input: 'number',
-        inputLabel: 'Discount % for 3–5 articles (10–15)',
-        inputValue: 10,
-        inputAttributes: { min: 10, max: 15, step: 1 },
-        showCancelButton: true,
-        confirmButtonText: 'Join',
-    });
-    if (percent === undefined || percent === null || percent === '') return;
-    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ percent }),
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { loadSites(); }
-});
-
-$(document).on('click', '.btn-bulk-leave', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'Leave bulk program?', showCancelButton: true, confirmButtonText: 'Leave' });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { loadSites(); }
 });
 </script>
 <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>

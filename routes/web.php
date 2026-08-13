@@ -65,6 +65,7 @@ use App\Http\Controllers\NotificationController;
 use App\Http\Controllers\NotificationPreferenceController;
 // BlogController for public blog pages
 use App\Http\Controllers\ProfileController;
+use App\Http\Controllers\PublicMediaController;
 use App\Http\Controllers\Publisher\BalanceController;
 use App\Http\Controllers\Publisher\BillingController as PublisherBillingController;
 use App\Http\Controllers\Publisher\BulkSiteRequestController as PublisherBulkSiteRequestController;
@@ -176,6 +177,15 @@ Route::get('/llms.txt', function () {
         'Cache-Control' => 'public, max-age=3600',
     ]);
 })->name('llms');
+
+/*
+| Public media fallback — when public/storage symlink is broken (Hostinger
+| MEDIA_PATH mismatch), /storage/... 404s. /media/... streams from the public
+| disk so admin/catalog previews still work until ops runs media:ensure-link.
+*/
+Route::get('/media/{path}', [PublicMediaController::class, 'show'])
+    ->where('path', '.*')
+    ->name('media.public');
 
 /*
 | Legacy /js and /css URLs — Hostinger production already serves /assets/*
@@ -382,6 +392,11 @@ $registerStaffOpsRoutes = function () {
         ->name('staff-handbook');
     Route::get('/users/{id}/sites', [AdminSiteController::class, 'userSites'])
         ->name('users.sites');
+    // Disk-stream preview when public/storage symlink is broken (Hostinger MEDIA_PATH).
+    // Must be registered before /sites/{id}… wildcards.
+    Route::get('/sites/media/{path}', [PublicMediaController::class, 'show'])
+        ->where('path', '.*')
+        ->name('sites.media');
     Route::get('/sites/{id}/edit', [AdminSiteController::class, 'edit'])
         ->name('sites.edit');
     Route::put('/sites/{id}', [AdminSiteController::class, 'update'])
@@ -1054,12 +1069,12 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':publisher'])
         // Withdraw
         Route::get('/withdraw', [WithdrawalController::class, 'index'])->name('withdraw');
         Route::post('/withdraw/request', [WithdrawalController::class, 'requestWithdrawal'])
-            ->middleware('throttle:10,1')
+            ->middleware('throttle:5,1')
             ->name('withdraw.request');
         Route::get('/withdrawals/history', [WithdrawalController::class, 'getHistory'])->name('withdrawals.history');
         Route::get('/withdrawals/statistics', [WithdrawalController::class, 'getStatistics'])->name('withdrawals.statistics');
         Route::post('/withdrawals/{id}/cancel', [WithdrawalController::class, 'cancelWithdrawal'])
-            ->middleware('throttle:20,1')
+            ->middleware('throttle:10,1')
             ->name('withdrawals.cancel');
 
         // Payout documents (completed withdrawal statements)

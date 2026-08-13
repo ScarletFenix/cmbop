@@ -14,7 +14,6 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
-use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
@@ -70,30 +69,15 @@ class CatalogController extends Controller
     }
 
     /**
-     * Get price based on user role
-     * - Publishers see original price
-     * - Advertisers see base + hidden tiered portal fee
-     * - Sensitive prices are NOT marked up
+     * Advertiser-facing catalog list price (publisher base + hidden tiered portal fee).
+     *
+     * Used for other people's listings (bulk rail, etc.). Own listings are not
+     * orderable and show the entered publisher price instead.
      */
-    private function getPriceForUser($originalPrice, $sitePublisherId = null)
+    private function advertiserCatalogListPrice(float|int|string $publisherBase): float
     {
-        $user = auth()->user();
-
-        // Check if user is a publisher and owns this site
-        if ($user && $sitePublisherId && $user->id == $sitePublisherId) {
-            // Publisher viewing their own site - show original price
-            return $originalPrice;
-        }
-
-        // Check if user has publisher role (but not owner of this specific site)
-        $role = Role::find($user->active_role_id ?? 0);
-        if ($role && $role->name === 'publisher') {
-            // Publisher viewing someone else's site - show original price
-            return $originalPrice;
-        }
-
         return app(PlatformFeeService::class)
-            ->advertiserBase((float) $originalPrice);
+            ->advertiserBase((float) $publisherBase);
     }
 
     /**
@@ -357,6 +341,21 @@ class CatalogController extends Controller
             ->where('bulk_discount_enabled', 1)
             ->whereNotNull('bulk_discount_percent');
 
+        // Dual-role publishers cannot order their own listings.
+        if (auth()->id()) {
+            $uid = (int) auth()->id();
+            $query->where(function ($q) use ($uid) {
+                $q->whereNull('publisher_id')
+                    ->orWhere('publisher_id', '!=', $uid);
+            });
+            if (Schema::hasColumn('sites', 'owner_id')) {
+                $query->where(function ($q) use ($uid) {
+                    $q->whereNull('owner_id')
+                        ->orWhere('owner_id', '!=', $uid);
+                });
+            }
+        }
+
         // Same blacklist browse modes as the main listing.
         if ($showBlacklistedOnly) {
             if (! empty($blacklist)) {
@@ -390,7 +389,9 @@ class CatalogController extends Controller
             ->orderByDesc('dr')
             // Enough for several 6-deal batches without loading the whole catalog.
             ->limit(36)
-            ->get();
+            ->get()
+            ->reject(fn (Site $site) => $site->isOwnedBy(auth()->user()))
+            ->values();
 
         foreach ($bulkDeals as $dealSite) {
             // Pack totals use CartPricingService so the rail “now” price floors
@@ -408,7 +409,7 @@ class CatalogController extends Controller
                 ? 'sale'
                 : 'bulk';
             $dealSite->original_price = $dealSite->price;
-            $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+            $dealSite->price = $this->advertiserCatalogListPrice($dealSite->price);
         }
 
         return $bulkDeals;
@@ -426,13 +427,16 @@ class CatalogController extends Controller
      */
     private function buildCatalogListing(Request $request): array
     {
+        // Hostinger often deploys without migrate — ensure placement JSON columns exist
+        // so Site Details can show Homepage promotions + Social when publishers offer them.
+        try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog schema ensure failed', ['error' => $e->getMessage()]);
+        }
+
         $userId = auth()->id();
         $currentUser = auth()->user();
-
-        $userRole = null;
-        if ($currentUser && $currentUser->active_role_id) {
-            $userRole = Role::find($currentUser->active_role_id);
-        }
 
         $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
         $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
@@ -589,25 +593,13 @@ class CatalogController extends Controller
             }
         }
 
+        $advPriceSql = app(PlatformFeeService::class)->advertiserBaseSqlExpression('price');
+
         if ($request->filled('price_min')) {
-            $minPrice = $request->price_min;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) >= ?", [$minPrice]);
-            } else {
-                $query->where('price', '>=', $minPrice);
-            }
+            $query->whereRaw("({$advPriceSql}) >= ?", [$request->price_min]);
         }
         if ($request->filled('price_max')) {
-            $maxPrice = $request->price_max;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) <= ?", [$maxPrice]);
-            } else {
-                $query->where('price', '<=', $maxPrice);
-            }
+            $query->whereRaw("({$advPriceSql}) <= ?", [$request->price_max]);
         }
 
         if ($request->filled('sponsored') && $request->sponsored == 1) {
@@ -648,8 +640,8 @@ class CatalogController extends Controller
             'da_asc' => $query->orderBy('da')->orderByDesc('id'),
             'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
-            'price_asc' => $query->orderBy('price')->orderByDesc('id'),
-            'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
+            'price_asc' => $query->orderByRaw($advPriceSql.' ASC')->orderByDesc('id'),
+            'price_desc' => $query->orderByRaw($advPriceSql.' DESC')->orderByDesc('id'),
             'newest' => $query->latest('created_at')->orderByDesc('id'),
             'rating_desc' => Site::hasSitesColumn('rating_avg')
                 ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
@@ -666,7 +658,11 @@ class CatalogController extends Controller
 
         foreach ($sites as $site) {
             $site->original_price = $site->price;
-            $site->price = $this->getPriceForUser($site->price, $site->publisher_id);
+            // Own listings stay at the entered publisher price so leftover
+            // Add-to-cart markup cannot paint a fee-inclusive number.
+            if (! $site->isOwnedBy(auth()->user())) {
+                $site->price = $this->advertiserCatalogListPrice($site->price);
+            }
 
             if ($site->sensitive_prices) {
                 $sensitivePrices = is_string($site->sensitive_prices)
@@ -995,33 +991,45 @@ class CatalogController extends Controller
     }
 
     /**
-     * Drop session cart lines whose sites are missing or inactive.
+     * Drop session cart lines whose sites are missing, inactive, or owned by the shopper.
      *
      * @param  array<int, array<string, mixed>>  $cart
-     * @return array{cart: array<int, array<string, mixed>>, removed_inactive: list<string>, changed: bool}
+     * @return array{
+     *     cart: array<int, array<string, mixed>>,
+     *     removed_inactive: list<string>,
+     *     removed_owned: list<string>,
+     *     changed: bool
+     * }
      */
     private function pruneInactiveCartLines(array $cart): array
     {
         $cart = array_values($cart);
         if ($cart === []) {
-            return ['cart' => [], 'removed_inactive' => [], 'changed' => false];
+            return ['cart' => [], 'removed_inactive' => [], 'removed_owned' => [], 'changed' => false];
         }
 
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
             : Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
+        $buyer = auth()->user();
 
         $kept = [];
         $removed = [];
+        $removedOwned = [];
         foreach ($cart as $line) {
             $site = $sites->get((int) ($line['id'] ?? 0));
+            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+            if ($name === '') {
+                $name = 'A website';
+            }
             if (! $site || (int) $site->active !== 1) {
-                $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
-                if ($name === '') {
-                    $name = 'A website';
-                }
                 $removed[] = $name;
+
+                continue;
+            }
+            if ($site->isOwnedBy($buyer)) {
+                $removedOwned[] = $name;
 
                 continue;
             }
@@ -1029,11 +1037,13 @@ class CatalogController extends Controller
         }
 
         $removed = array_values(array_unique($removed));
+        $removedOwned = array_values(array_unique($removedOwned));
         $changed = count($kept) !== count($cart);
 
         return [
             'cart' => $kept,
             'removed_inactive' => $removed,
+            'removed_owned' => $removedOwned,
             'changed' => $changed,
         ];
     }
@@ -1057,8 +1067,10 @@ class CatalogController extends Controller
     {
         $cart = array_values(session()->get('cart', []));
         $removedInactive = [];
+        $removedOwned = [];
+        $buyer = auth()->user();
 
-        // Refresh site market metadata; drop missing/inactive lines from the session cart.
+        // Refresh site market metadata; drop missing/inactive/own-listing lines.
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
@@ -1067,12 +1079,17 @@ class CatalogController extends Controller
         $kept = [];
         foreach ($cart as $line) {
             $site = $sites->get((int) ($line['id'] ?? 0));
+            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+            if ($name === '') {
+                $name = 'A website';
+            }
             if (! $site || (int) $site->active !== 1) {
-                $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
-                if ($name === '') {
-                    $name = 'A website';
-                }
                 $removedInactive[] = $name;
+
+                continue;
+            }
+            if ($site->isOwnedBy($buyer)) {
+                $removedOwned[] = $name;
 
                 continue;
             }
@@ -1080,9 +1097,10 @@ class CatalogController extends Controller
             $kept[] = $this->normalizeCartLineForSite($site, $line);
         }
         $removedInactive = array_values(array_unique($removedInactive));
+        $removedOwned = array_values(array_unique($removedOwned));
         $cart = $kept;
         // Repriced lines (sensitive add-ons / live listing) should persist.
-        $cartChanged = $removedInactive !== [] || $cart !== array_values(session()->get('cart', []));
+        $cartChanged = $removedInactive !== [] || $removedOwned !== [] || $cart !== array_values(session()->get('cart', []));
 
         $approved = ContentSubmission::query()
             ->where('user_id', auth()->id())
@@ -1146,7 +1164,7 @@ class CatalogController extends Controller
             }
         }
 
-        if ($cartChanged || $removedInactive !== []) {
+        if ($cartChanged || $removedInactive !== [] || $removedOwned !== []) {
             session()->put('cart', array_values($cart));
             $cart = array_values(session()->get('cart', []));
         }
@@ -1186,48 +1204,10 @@ class CatalogController extends Controller
             'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
             'removed_inactive' => $removedInactive,
             'removed_inactive_count' => count($removedInactive),
+            'removed_owned' => $removedOwned,
+            'removed_owned_count' => count($removedOwned),
             'require_same_language' => $requireSame,
         ];
-    }
-
-    /**
-     * Helper method to determine if current user is viewing as advertiser
-     */
-    private function isAdvertiserView()
-    {
-        $user = auth()->user();
-
-        // Check if user has advertiser role
-        if ($user && $user->active_role_id) {
-            $role = Role::find($user->active_role_id);
-            if ($role && $role->name === 'advertiser') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Helper method to determine if current user is publisher viewing their own site
-     */
-    private function isPublisherOwner($sitePublisherId)
-    {
-        $user = auth()->user();
-
-        if (! $user || ! $sitePublisherId) {
-            return false;
-        }
-
-        // Check if user has publisher role and is the owner
-        if ($user->active_role_id) {
-            $role = Role::find($user->active_role_id);
-            if ($role && $role->name === 'publisher' && $user->id == $sitePublisherId) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -1587,6 +1567,13 @@ class CatalogController extends Controller
                 ], 404);
             }
 
+            if ($site->isOwnedBy(auth()->user())) {
+                return response()->json([
+                    'success' => false,
+                    'error' => Site::cannotOrderOwnListingMessage(),
+                ], 403);
+            }
+
             // Resolve homepage up-front so re-adds merge onto the same identity key.
             try {
                 $homepageResolved = $this->cartPricing()->resolveHomepageSelection(
@@ -1906,7 +1893,7 @@ class CatalogController extends Controller
         $cart = session()->get('cart', []);
 
         if (empty($cart)) {
-            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
+            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
         $partition = $this->partitionCartByCheckoutReadiness($cart);
@@ -1914,12 +1901,12 @@ class CatalogController extends Controller
         $deferredCart = $partition['deferred'];
 
         try {
-            $allCheckout = $this->cartPricing()->buildCheckoutItems($cart);
+            $allCheckout = $this->cartPricing()->buildCheckoutItems($cart, auth()->id());
             $payableCheckout = $payableCart !== []
-                ? $this->cartPricing()->buildCheckoutItems($payableCart)
+                ? $this->cartPricing()->buildCheckoutItems($payableCart, auth()->id())
                 : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
             $deferredCheckout = $deferredCart !== []
-                ? $this->cartPricing()->buildCheckoutItems($deferredCart)
+                ? $this->cartPricing()->buildCheckoutItems($deferredCart, auth()->id())
                 : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
         } catch (\InvalidArgumentException $e) {
             return redirect()->route('advertiser.catalog')->with('error', UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.'));
@@ -1948,7 +1935,7 @@ class CatalogController extends Controller
         if (empty($cartItems)) {
             session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', GuestPostWizardController::SESSION_KEY]);
 
-            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
+            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
         $librarySubmission = $this->resolveLibrarySubmissionForCheckout($cart);
@@ -2026,6 +2013,7 @@ class CatalogController extends Controller
         }
 
         try {
+            $this->syncPrunedSessionCart();
             // Get cart from session
             $cart = session()->get('cart', []);
 
@@ -2184,6 +2172,9 @@ class CatalogController extends Controller
                     $orderItem = $line['orderItem'];
                     $submission = $line['submission'];
                     $site = $orderItem['site'];
+                    if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                        continue;
+                    }
                     $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                     $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                         'user_id' => $userId,
@@ -2249,6 +2240,9 @@ class CatalogController extends Controller
             $orderItem = $line['orderItem'];
             $submission = $line['submission'];
             $site = $orderItem['site'];
+            if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                continue;
+            }
             $packageLines[] = [
                 'site_id' => $site->id,
                 'site_name' => $site->site_name,
@@ -2258,7 +2252,8 @@ class CatalogController extends Controller
                 'additional_price' => $orderItem['additional_price'] ?? 0,
                 'homepage_days' => $orderItem['homepage_days'] ?? null,
                 'homepage_price' => $orderItem['homepage_price'] ?? 0,
-                'social_channels' => $orderItem['social_channels'] ?? [],
+                'social_channels' => $orderItem['social_channels']
+                    ?? ($site->enabledSocialChannels() ?: []),
                 'publisher_price' => $orderItem['publisher_price'] ?? null,
                 'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
                 'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -2448,6 +2443,9 @@ class CatalogController extends Controller
                 $orderItem = $line['orderItem'];
                 $submission = $line['submission'];
                 $site = $orderItem['site'];
+                if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                    continue;
+                }
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
                 $order = Order::create($schema->filterExistingColumns('orders', array_merge([
@@ -2589,6 +2587,9 @@ class CatalogController extends Controller
                 $orderItem = $line['orderItem'];
                 $submission = $line['submission'];
                 $site = $orderItem['site'];
+                if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                    continue;
+                }
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
                 $order = Order::create(array_merge([
@@ -3901,7 +3902,7 @@ class CatalogController extends Controller
     private function resolveCheckoutContent(array $cart, ?array $contentSubmissions, array $scheduleInput): array|JsonResponse
     {
         try {
-            $expandedOrders = $this->cartPricing()->expandCart($cart);
+            $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.')]);
         }
@@ -4058,7 +4059,8 @@ class CatalogController extends Controller
             'additional_price' => $orderItem['additional_price'],
             'homepage_days' => $orderItem['homepage_days'] ?? null,
             'homepage_price' => $orderItem['homepage_price'] ?? 0,
-            'social_channels' => $orderItem['social_channels'] ?? [],
+            'social_channels' => $orderItem['social_channels']
+                ?? ($site->enabledSocialChannels() ?: []),
             'publisher_price' => $orderItem['publisher_price'] ?? null,
             'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
             'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -4202,6 +4204,9 @@ class CatalogController extends Controller
                 // Inactive / missing sites are not payable.
                 $deferred[] = $item;
 
+                continue;
+            }
+            if ($site->isOwnedBy(auth()->user())) {
                 continue;
             }
 

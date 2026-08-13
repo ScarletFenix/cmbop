@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\SiteDescriptionSanitizer;
@@ -1032,41 +1033,187 @@ class Site extends Model
     }
 
     /**
+     * Root-relative URL for a public-disk path.
+     * Prefer /media (Laravel disk stream) so Hostinger broken public/storage
+     * symlinks do not blank My Sites / catalog previews.
+     */
+    public static function publicDiskUrl(?string $path): ?string
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $trimmed = trim($path);
+        // Already an absolute / protocol-relative URL — leave it alone.
+        if (preg_match('#^(https?:)?//#i', $trimmed) === 1) {
+            return $trimmed;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $trimmed), '/');
+        // Strip accidental storage/ or media/ prefixes (avoid /media/media/...).
+        foreach (['storage/', 'media/'] as $prefix) {
+            if (str_starts_with($normalized, $prefix)) {
+                $normalized = ltrim(substr($normalized, strlen($prefix)), '/');
+            }
+        }
+        if ($normalized === '') {
+            return null;
+        }
+
+        return '/media/'.$normalized;
+    }
+
+    /**
+     * /media then /storage for client onerror recovery.
+     *
+     * @return list<string>
+     */
+    public static function publicDiskUrlFallbacks(?string $path): array
+    {
+        $primary = static::publicDiskUrl($path);
+        if ($primary === null) {
+            return [];
+        }
+
+        // Absolute URLs have no /storage twin.
+        if (preg_match('#^(https?:)?//#i', $primary) === 1) {
+            return [$primary];
+        }
+
+        $normalized = ltrim(substr($primary, strlen('/media/')), '/');
+
+        return array_values(array_unique([
+            '/media/'.$normalized,
+            '/storage/'.$normalized,
+        ]));
+    }
+
+    /**
+     * Failed screenshot captures store gray *-placeholder.webp files that still
+     * HTTP 200 — prefer real uploads/captures over those when building chains.
+     */
+    public static function isPlaceholderPreviewPath(?string $path): bool
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return false;
+        }
+
+        return str_contains(strtolower($path), '-placeholder');
+    }
+
+    /**
+     * Build /media+/storage URL chain from ordered disk paths.
+     * Skips placeholder captures when any non-placeholder candidate exists.
+     *
+     * @param  list<mixed>  $candidates
+     * @return list<string>
+     */
+    public function previewUrlChainFrom(array $candidates): array
+    {
+        $usable = [];
+        $placeholders = [];
+        foreach ($candidates as $candidate) {
+            if (! is_string($candidate) || trim($candidate) === '') {
+                continue;
+            }
+            if (static::isPlaceholderPreviewPath($candidate)) {
+                $placeholders[] = $candidate;
+            } else {
+                $usable[] = $candidate;
+            }
+        }
+
+        $ordered = $usable !== [] ? $usable : $placeholders;
+        $urls = [];
+        foreach ($ordered as $path) {
+            foreach (static::publicDiskUrlFallbacks($path) as $url) {
+                if (! in_array($url, $urls, true)) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Catalog Site Details homepage preview: full → thumb → cover.
+     *
+     * @return list<string>
+     */
+    public function homepagePreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->screenshot_path,
+            $this->screenshot_thumb_path,
+            $this->site_image,
+        ]);
+    }
+
+    /**
+     * Publisher My Sites / staff list thumbs: uploaded cover first (matches admin),
+     * then screenshot thumb/full. Auto-screenshots and gray placeholders must not
+     * hide a real admin/marketing cover upload.
+     *
+     * @return list<string>
+     */
+    public function listingPreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->site_image,
+            $this->screenshot_thumb_path,
+            $this->screenshot_path,
+        ]);
+    }
+
+    /**
+     * Hover/detail zoom: full capture → cover → thumb.
+     *
+     * @return list<string>
+     */
+    public function zoomPreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->screenshot_path,
+            $this->site_image,
+            $this->screenshot_thumb_path,
+        ]);
+    }
+
+    /**
      * Accessor for full image URL.
      */
     public function getImageUrlAttribute(): ?string
     {
-        if ($this->site_image) {
-            return asset('storage/'.$this->site_image);
-        }
-
-        return null;
+        return static::publicDiskUrl(
+            is_string($this->site_image) ? $this->site_image : null
+        );
     }
 
     public function getScreenshotUrlAttribute(): ?string
     {
         $path = $this->screenshot_path ?: $this->site_image;
-        if (! $path) {
+        if (! is_string($path) || $path === '') {
             return null;
         }
 
-        return asset('storage/'.$path);
+        return static::publicDiskUrl($path);
     }
 
     public function getScreenshotThumbUrlAttribute(): ?string
     {
         $path = $this->screenshot_thumb_path ?: $this->screenshot_path ?: $this->site_image;
-        if (! $path) {
+        if (! is_string($path) || $path === '') {
             return null;
         }
 
-        return asset('storage/'.$path);
+        return static::publicDiskUrl($path);
     }
 
     public function getLogoUrlAttribute(): ?string
     {
         if ($this->favicon_path) {
-            return asset('storage/'.$this->favicon_path);
+            return static::publicDiskUrl($this->favicon_path);
         }
 
         return $this->image_url;
@@ -1223,17 +1370,159 @@ class Site extends Model
     }
 
     /**
+     * Publisher-entered article price (EUR), ignoring any in-memory advertiser markup.
+     */
+    public function publisherBasePrice(): float
+    {
+        $raw = $this->getRawOriginal('price');
+        if ($raw !== null && $raw !== '') {
+            return round((float) $raw, 2);
+        }
+
+        if (isset($this->original_price) && is_numeric($this->original_price)) {
+            return round((float) $this->original_price, 2);
+        }
+
+        return round((float) $this->price, 2);
+    }
+
+    /**
+     * Advertiser catalog/cart unit prices for this listing (hidden fee + sale floor).
+     *
+     * Always recomputes from the publisher base so a catalog row cannot show €40
+     * while add-to-cart charges the fee-marked total.
+     *
+     * @return array<string, mixed>
+     */
+    public function advertiserCatalogPricing(?string $sensitiveType = null, int $quantity = 1): array
+    {
+        $forCart = clone $this;
+        $forCart->setAttribute('price', $this->publisherBasePrice());
+
+        return app(CartPricingService::class)
+            ->priceForAdvertiser($forCart, $sensitiveType, $quantity);
+    }
+
+    /**
+     * True when this listing belongs to the given user (dual-role publisher shopping as advertiser).
+     *
+     * Matches publisher_id (who listed it) and owner_id (post-verification owner).
+     */
+    public function isOwnedBy(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $uid = (int) $user->id;
+        if ($uid <= 0) {
+            return false;
+        }
+
+        if ((int) $this->publisher_id === $uid) {
+            return true;
+        }
+
+        $ownerId = (int) ($this->getAttribute('owner_id') ?? 0);
+
+        return $ownerId > 0 && $ownerId === $uid;
+    }
+
+    /**
+     * Catalog/cart IDs this user must not order.
+     *
+     * @return list<int>
+     */
+    public static function ownedIdsFor(?User $user): array
+    {
+        if ($user === null || (int) $user->id <= 0) {
+            return [];
+        }
+
+        $uid = (int) $user->id;
+
+        return static::query()
+            ->where(function ($q) use ($uid) {
+                $q->where('publisher_id', $uid);
+                if (Schema::hasColumn('sites', 'owner_id')) {
+                    $q->orWhere('owner_id', $uid);
+                }
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Copy for own-listing catalog/cart surfaces. Does not mention the platform fee.
+     */
+    public static function cannotOrderOwnListingMessage(): string
+    {
+        return 'This is your listing — you can’t order it.';
+    }
+
+    /**
+     * Prices painted on the advertiser catalog for this viewer.
+     *
+     * Own listings show the entered publisher price (no hidden fee) because they
+     * cannot be added to cart. Everyone else sees fee-inclusive cart pricing.
+     *
+     * @return array{owned: bool, list: float, publisher: float, sale: float|null, sale_percent: float|null, sale_percent_nominal: float|null}
+     */
+    public function catalogPricesForViewer(?User $user): array
+    {
+        $owned = $this->isOwnedBy($user);
+        $nominal = $this->activeCustomDiscountPercent();
+
+        if ($owned) {
+            $base = $this->publisherBasePrice();
+
+            return [
+                'owned' => true,
+                'list' => $base,
+                'publisher' => $base,
+                'sale' => null,
+                'sale_percent' => null,
+                'sale_percent_nominal' => $nominal,
+            ];
+        }
+
+        $pricing = $this->advertiserCatalogPricing();
+        $list = (float) $pricing['base'];
+        $sale = null;
+        $salePercent = null;
+        if (($pricing['discount_amount'] ?? 0) > 0
+            && (float) $pricing['article_total'] < $list) {
+            $sale = (float) $pricing['article_total'];
+            $salePercent = (float) $pricing['discount_percent'];
+        }
+
+        return [
+            'owned' => false,
+            'list' => $list,
+            'publisher' => (float) $pricing['publisher_price'],
+            'sale' => $sale,
+            'sale_percent' => $salePercent,
+            'sale_percent_nominal' => $nominal,
+        ];
+    }
+
+    /**
      * Offered homepage placement durations (days => fee EUR). Empty = not offered.
      *
      * @return array<int, float>
      */
     public function homepagePlacementOptions(): array
     {
-        if (! static::hasSitesColumn('homepage_placement_prices')) {
-            return [];
-        }
-
+        // Read the cast attribute directly. Do not gate on Schema::hasColumn —
+        // Hostinger SQL patches can add columns before Schema cache refreshes,
+        // and a false-negative would hide offers in catalog Site Details.
         $raw = $this->homepage_placement_prices;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
         if (! is_array($raw) || $raw === []) {
             return [];
         }
@@ -1282,11 +1571,12 @@ class Site extends Model
      */
     public function enabledSocialChannels(): array
     {
-        if (! static::hasSitesColumn('social_promotion')) {
-            return [];
-        }
-
+        // Same as homepagePlacementOptions(): trust attributes over Schema::hasColumn.
         $raw = $this->social_promotion;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
         if (! is_array($raw) || $raw === []) {
             return [];
         }
@@ -1340,6 +1630,19 @@ class Site extends Model
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Count listings that offer homepage placement.
+     * Returns 0 when Hostinger skipped the placement migration (do not WHERE a missing column).
+     */
+    public static function countWithHomepagePlacement(): int
+    {
+        if (! static::hasSitesColumn('homepage_placement_prices')) {
+            return 0;
+        }
+
+        return (int) static::query()->whereNotNull('homepage_placement_prices')->count();
     }
 
     /**

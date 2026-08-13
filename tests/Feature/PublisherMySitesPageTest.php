@@ -58,6 +58,11 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('window.loadSites = fetchSites', $html);
         $this->assertStringContainsString('id="sitesTableWrapper"', $html);
         $this->assertStringContainsString(
+            'window.publisherSitePreviewOnError',
+            $html,
+            'My Sites must define preview onerror so ajax row thumbs can fall back /media → /storage.'
+        );
+        $this->assertStringContainsString(
             'const id = $(this).data(\'id\') || siteHint.id;',
             $html,
             'Edit click handler must resolve the site id from data-id or data-site.'
@@ -104,12 +109,144 @@ class PublisherMySitesPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Configured sale stays on the badge; bulk is hidden when custom wins packs.
+        // Configured sale stays on the badge; bulk membership stays visible even
+        // when the timed sale wins packs (better-of, not stacked).
         $this->assertStringContainsString('−20%', $html);
         $this->assertStringContainsString('Timed sale −20% (configured)', $html);
         $this->assertStringContainsString('Advertisers see about −11.5%', $html);
         $this->assertStringContainsString('exclusive better-of with bulk, not stacked', $html);
-        $this->assertStringNotContainsString('Bulk −15%', $html);
+        $this->assertStringContainsString('Bulk −15%', $html);
+        $this->assertStringContainsString('Advertisers from €', $html);
+        $this->assertStringContainsString('Timed sale is stronger on packs too', $html);
+        $this->assertStringContainsString('site-row-actions__offers', $html);
+        $this->assertStringContainsString('Sale −20%', $html);
+        $this->assertStringContainsString('site-offer-chip', $html);
+    }
+
+    public function test_offer_chips_are_labeled_and_promo_js_is_single_path(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'price' => 304,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-row-actions__manage', $html);
+        $this->assertStringContainsString('site-row-actions__offers', $html);
+        $this->assertStringContainsString('>Offers</span>', $html);
+        $this->assertStringContainsString('Feature · €10', $html);
+        $this->assertStringContainsString('>Sale</span>', $html);
+        $this->assertStringContainsString('>Bulk</span>', $html);
+        $this->assertStringContainsString('10–80% off when an advertiser buys', $html);
+        $this->assertStringContainsString('site-offer-chip btn-feature-site', $html);
+        $this->assertStringContainsString('Paid from publisher balance or card', $html);
+        $this->assertStringNotContainsString('class="btn-icon-quiet btn-feature-site', $html);
+        $this->assertStringContainsString('€304.00', $html);
+        $this->assertStringNotContainsString('Advertisers from €', $html);
+
+        $page = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringNotContainsString("$(document).on('click', '.btn-feature-site'", $page);
+        $this->assertSame(1, substr_count($js, "$(document).on('click', '.btn-feature-site'"));
+        $this->assertStringContainsString('__publisherPromoHandlersBound', $js);
+        $this->assertStringContainsString('__publisherSitesList', $js);
+        $this->assertStringContainsString('reloadSitesAfterPromo', $js);
+        $this->assertStringContainsString('promoEscapeHtml', $js);
+        $this->assertStringContainsString('Extend featuring', $js);
+        $this->assertStringContainsString('adds another', $js);
+        $this->assertStringContainsString("attr('data-featured-until')", $js);
+        $this->assertStringContainsString("attr('data-ends')", $js);
+        $this->assertStringContainsString('function promoDaysLeft', $js);
+        $this->assertStringContainsString('Update timed sale', $js);
+        $this->assertStringContainsString('End sale now', $js);
+        $this->assertStringContainsString('Publish sale', $js);
+        $this->assertStringContainsString('Leave programme', $js);
+        $this->assertStringContainsString('Update percent', $js);
+        $this->assertStringContainsString("$(document).on('click', '.btn-bulk-site'", $js);
+        $this->assertStringNotContainsString("$(document).on('click', '.btn-bulk-join'", $js);
+        $this->assertStringContainsString('cfg.bulkMinPercent', $js);
+        $this->assertStringContainsString('cfg.bulkMaxPercent', $js);
+        $this->assertStringContainsString('Enter a percent from', $js);
+        $this->assertStringNotContainsString('Discount % for 3–5 articles (10–15)', $js);
+        $this->assertStringContainsString('bulkMaxPercent: 80', $page);
+        $this->assertDoesNotMatchRegularExpression('/routes:\s*\{[^}]*bulkMaxPercent/', $page);
+    }
+
+    public function test_offer_dialogs_keep_get_verified_on_manage_and_note_unverified_feature(): void
+    {
+        $unverified = $this->makeSite([
+            'site_name' => 'Unverified Live',
+            'site_url' => 'https://unverified-live.example',
+            'domain' => 'unverified-live.example',
+            'verified' => false,
+            'active' => true,
+            'price' => 80,
+        ]);
+        $featured = $this->makeSite([
+            'site_name' => 'Featured Sale',
+            'site_url' => 'https://featured-sale.example',
+            'domain' => 'featured-sale.example',
+            'verified' => true,
+            'active' => true,
+            'price' => 100,
+            'featured_until' => now()->addDays(4),
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => 12,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-verified="0"', $html);
+        $this->assertStringContainsString(
+            'This site is active but not verified. Featuring still works; advertisers may trust it less.',
+            $html
+        );
+        $this->assertStringContainsString('data-featured-until=', $html);
+        $this->assertStringContainsString('data-ends=', $html);
+        $this->assertStringContainsString('btn-bulk-site', $html);
+        $this->assertStringContainsString('data-joined="1"', $html);
+        $this->assertStringContainsString('Edit or leave bulk', $html);
+        $this->assertStringNotContainsString('btn-discount-clear', $html);
+        $this->assertStringNotContainsString('btn-bulk-join', $html);
+        $this->assertStringNotContainsString('btn-bulk-leave', $html);
+        $this->assertStringContainsString('10–80% off when an advertiser buys', $html);
+
+        $this->assertStringContainsString('Get Verified', $html);
+        $this->assertMatchesRegularExpression(
+            '/site-row-actions__manage[\s\S]*btn-verify-site[\s\S]*Get Verified[\s\S]*<\/div>\s*<div class="site-row-actions__offers"/',
+            $html,
+            'Get Verified must stay on the manage row, before Offers.'
+        );
+
+        $blade = file_get_contents(resource_path('views/publisher/sites/partials/table.blade.php'));
+        $verifyInBlade = strpos($blade, 'aria-label="Get Verified"');
+        $offersInBlade = strpos($blade, 'class="site-row-actions__offers"');
+        $manageInBlade = strpos($blade, '<div class="site-row-actions__manage">');
+        $this->assertNotFalse($verifyInBlade);
+        $this->assertGreaterThan($manageInBlade, $verifyInBlade);
+        $this->assertLessThan($offersInBlade, $verifyInBlade);
+
+        $this->assertStringContainsString((string) $unverified->id, $html);
+        $this->assertStringContainsString((string) $featured->id, $html);
+
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringContainsString('Featuring still works; advertisers may trust it less.', $js);
+        $this->assertStringContainsString('promoBetterOfNote', $js);
+        $this->assertStringNotContainsString('btn-discount-clear', $js);
     }
 
     public function test_ajax_metrics_keep_traffic_out_of_market_column(): void
@@ -259,11 +396,56 @@ class PublisherMySitesPageTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('site-row-preview', $ajaxHtml);
-        $this->assertStringContainsString('storage/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('/media/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('/storage/sites/screenshots/thumb-demo.jpg', $ajaxHtml);
         $this->assertStringContainsString('data-zoom-src', $ajaxHtml);
-        $this->assertStringContainsString('storage/sites/screenshots/demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('data-zoom-chain', $ajaxHtml);
+        $this->assertStringContainsString('/media/sites/screenshots/demo.jpg', $ajaxHtml);
+        $this->assertStringContainsString('data-preview-chain', $ajaxHtml);
         $this->assertStringContainsString('alt="O&#039;Reilly News preview"', $ajaxHtml);
         $this->assertDoesNotMatchRegularExpression('/site-row-preview[^>]*(target="_blank"|href=)/', $ajaxHtml);
+    }
+
+    public function test_ajax_row_prefers_uploaded_cover_over_screenshot(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'site_image' => 'sites/admin-cover.webp',
+            'screenshot_thumb_path' => 'site-screenshots/auto-thumb.webp',
+            'screenshot_path' => 'site-screenshots/auto-full.webp',
+        ]);
+
+        $ajaxHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/class="site-row-preview"[^>]*>\s*<img[^>]+src="[^"]*\/media\/sites\/admin-cover\.webp"/',
+            $ajaxHtml
+        );
+        $this->assertStringContainsString('/media/sites/admin-cover.webp', $ajaxHtml);
+        $this->assertStringContainsString('/storage/sites/admin-cover.webp', $ajaxHtml);
+    }
+
+    public function test_ajax_row_skips_placeholder_screenshot_when_cover_exists(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'site_image' => 'sites/real-cover.webp',
+            'screenshot_thumb_path' => 'site-screenshots/home-placeholder.webp',
+            'screenshot_path' => 'site-screenshots/home-placeholder-full.webp',
+        ]);
+
+        $ajaxHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('/media/sites/real-cover.webp', $ajaxHtml);
+        $this->assertStringNotContainsString('placeholder', $ajaxHtml);
     }
 
     public function test_ajax_filters_pending_active_and_invites_sites(): void

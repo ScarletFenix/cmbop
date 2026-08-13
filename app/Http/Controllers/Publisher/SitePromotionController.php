@@ -217,14 +217,19 @@ class SitePromotionController extends Controller
 
         $data = $request->validate([
             'percent' => 'required|numeric|min:'.config('site_promotions.bulk.min_percent', 10)
-                .'|max:'.config('site_promotions.bulk.max_percent', 15),
+                .'|max:'.config('site_promotions.bulk.max_percent', 80),
         ]);
 
+        $alreadyJoined = $site->joinsBulkDiscount();
         $site = $this->promotions->joinBulkDiscount($site, (float) $data['percent']);
+        $pct = rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.');
+        $lead = $alreadyJoined
+            ? 'Updated bulk discount to '.$pct.'% on 3–5 articles.'
+            : 'Joined bulk discount programme ('.$pct.'% on 3–5 articles).';
 
         return response()->json([
             'success' => true,
-            'message' => 'Joined bulk discount programme ('.rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.').'% on 3–5 articles). Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.',
+            'message' => $lead.' Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.',
             'site' => $site,
         ]);
     }

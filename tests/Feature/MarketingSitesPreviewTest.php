@@ -80,9 +80,12 @@ class MarketingSitesPreviewTest extends TestCase
 
         $row = collect($json['sites'] ?? [])->firstWhere('id', $site->id);
         $this->assertIsArray($row);
-        $this->assertSame('/storage/site-screenshots/missing-thumb.webp', $row['preview_thumb_url']);
+        // Uploaded cover wins list thumb over stale/missing auto-screenshots.
+        // Staff previews use the auth'd disk-stream route (Hostinger-safe).
+        $this->assertSame('/marketing/sites/media/sites/cover-real.webp', $row['preview_thumb_url']);
+        $this->assertContains('/marketing/sites/media/sites/cover-real.webp', $row['preview_fallback_urls']);
         $this->assertContains('/storage/sites/cover-real.webp', $row['preview_fallback_urls']);
-        $this->assertSame('/storage/sites/cover-real.webp', $row['image_url']);
+        $this->assertSame('/marketing/sites/media/sites/cover-real.webp', $row['image_url']);
         $this->assertArrayNotHasKey('verify_token', $row);
     }
 
@@ -105,9 +108,9 @@ class MarketingSitesPreviewTest extends TestCase
             ->json('sites.0');
 
         $this->assertSame($site->id, $row['id']);
-        // List uses lighter thumb; zoom/detail uses full desktop capture.
-        $this->assertSame('/storage/site-screenshots/home-thumb.webp', $row['preview_thumb_url']);
-        $this->assertSame('/storage/site-screenshots/home-full.webp', $row['preview_full_url']);
+        // List uses staff media stream; zoom/detail prefers full desktop capture URL.
+        $this->assertSame('/marketing/sites/media/site-screenshots/home-thumb.webp', $row['preview_thumb_url']);
+        $this->assertSame('/marketing/sites/media/site-screenshots/home-full.webp', $row['preview_full_url']);
         $this->assertNotSame($row['preview_thumb_url'], $row['preview_full_url']);
     }
 
@@ -129,8 +132,10 @@ class MarketingSitesPreviewTest extends TestCase
 
         $this->assertSame($site->id, $row['id']);
         // Fast list path: emit URLs from DB; browser onerror handles 404s.
-        $this->assertSame('/storage/site-screenshots/gone-thumb.webp', $row['preview_thumb_url']);
-        $this->assertSame('/storage/site-screenshots/gone-full.webp', $row['preview_full_url']);
+        // Uploaded cover is preferred for the list thumb when present.
+        $this->assertSame('/marketing/sites/media/sites/gone-upload.webp', $row['preview_thumb_url']);
+        $this->assertSame('/marketing/sites/media/site-screenshots/gone-full.webp', $row['preview_full_url']);
+        $this->assertContains('/marketing/sites/media/sites/gone-upload.webp', $row['preview_fallback_urls']);
         $this->assertContains('/storage/sites/gone-upload.webp', $row['preview_fallback_urls']);
     }
 
@@ -183,6 +188,7 @@ class MarketingSitesPreviewTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('function sitePreviewPaths', $html);
+        $this->assertStringContainsString('function siteMediaUrl', $html);
         $this->assertStringContainsString('preview_thumb_url', $html);
         $this->assertStringContainsString('preview_fallback_urls', $html);
         $this->assertStringContainsString('sitePreviewImgOnError', $html);
@@ -196,13 +202,22 @@ class MarketingSitesPreviewTest extends TestCase
         $this->assertStringContainsString('staff-sites.css', $html);
         $staffCss = (string) file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-row-preview', $staffCss);
-        $this->assertStringContainsString('--site-preview-ratio: 16 / 10', $staffCss);
-        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
+        $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
+        // Absolute <img> needs the ::before padding frame — do not strip it via @supports.
+        $this->assertStringNotContainsString('@supports (aspect-ratio: 16 / 10)', $staffCss);
+        $this->assertStringContainsString('min-height: 180px', $staffCss);
 
         $css = (string) file_get_contents(public_path('assets/css/admin-tables.css'));
-        $this->assertStringContainsString('min-width: 136px', $css);
+        $this->assertStringContainsString('min-width: 168px', $css);
         $this->assertStringNotContainsString('width: min(120px, 100%)', $css);
+
+        $staffCss = (string) file_get_contents(public_path('assets/css/staff-sites.css'));
+        $this->assertMatchesRegularExpression(
+            '/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s',
+            $staffCss
+        );
+        $this->assertStringContainsString('.site-preview-zoom-pop', $staffCss);
     }
 }

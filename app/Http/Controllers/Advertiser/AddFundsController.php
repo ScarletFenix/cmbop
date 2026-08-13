@@ -39,7 +39,10 @@ class AddFundsController extends Controller
     public function index(Request $request)
     {
         $user = auth()->user();
-        $advertiserRoleId = Wallet::advertiserRoleId() ?? 1;
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if (! $advertiserRoleId) {
+            abort(503, 'Advertiser wallet is unavailable.');
+        }
 
         $wallet = Wallet::firstOrCreate(
             ['user_id' => $user->id, 'role_id' => $advertiserRoleId],
@@ -69,6 +72,12 @@ class AddFundsController extends Controller
             ? $request->query('method')
             : null;
 
+        $publisherRoleId = Wallet::publisherRoleId();
+        $publisherWallet = ($publisherRoleId && $user->hasRole('publisher'))
+            ? Wallet::where('user_id', $user->id)->where('role_id', $publisherRoleId)->first()
+            : null;
+        $publisher = $publisherWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+
         return view('advertiser.add-funds', [
             'pendingRequests' => $pendingRequests,
             'wallet' => $wallet,
@@ -77,6 +86,9 @@ class AddFundsController extends Controller
             'advertiserBalance' => (float) $wallet->balance,
             'advertiserBonusBalance' => $wallet->lockedBonusBalance(),
             'advertiserWithdrawableBalance' => $wallet->withdrawableBalance(),
+            'publisher' => $publisher,
+            'publisherBalance' => $publisher['withdrawable'],
+            'showPublisherWallet' => $publisherWallet !== null,
             'promotionalBonusMessage' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
             'payoutProfile' => $user->payoutProfile(),
             'payoutLocked' => $user->payoutProfileLocked(),

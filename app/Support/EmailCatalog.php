@@ -45,6 +45,7 @@ use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
+use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
 use App\Models\DepositRequest;
@@ -239,6 +240,13 @@ class EmailCatalog
                 'description' => 'Publisher notified when withdrawal status changes.',
                 'category' => 'Billing',
                 'mailable' => WithdrawalStatusUpdated::class,
+                'status' => 'active',
+            ],
+            'withdrawal_requested_confirmation' => [
+                'name' => 'Withdrawal Request Confirmation',
+                'description' => 'Publisher confirmation that a withdrawal request was submitted.',
+                'category' => 'Billing',
+                'mailable' => WithdrawalRequestedConfirmation::class,
                 'status' => 'active',
             ],
             'new_site' => [
@@ -491,6 +499,7 @@ class EmailCatalog
             'deposit_approved' => new DepositApproved(self::sampleDeposit()),
             'deposit_rejected' => new DepositRejected(self::sampleDeposit()),
             'withdrawal_request' => new WithdrawalRequestNotification(self::sampleWithdrawal(), $user),
+            'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),
             'withdrawal_status' => new WithdrawalStatusUpdated(
                 self::sampleWithdrawal(),
                 'pending',
@@ -612,7 +621,12 @@ class EmailCatalog
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
             'site_url' => 'https://example.com',
-            'price' => 99.00,
+            'price' => 138.00,
+            'additional_price' => 0,
+            'homepage_days' => 7,
+            'homepage_price' => 25.00,
+            'social_channels' => ['facebook', 'x'],
+            'content_link' => 'https://example.com/content.docx',
         ]);
         $item->setRelation('site', self::sampleSite());
 

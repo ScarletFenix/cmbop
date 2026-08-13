@@ -13,6 +13,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\PublicStorageLink;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
@@ -208,6 +209,8 @@ class AppServiceProvider extends ServiceProvider
     /**
      * When MEDIA_PATH is set (Hostinger durable media), fail loudly if the
      * directory is missing or not writable so uploads do not silently die.
+     * Also warn when public/storage does not resolve to MEDIA_PATH (blank
+     * admin previews after a "successful" upload).
      * Unset MEDIA_PATH keeps the default storage/app/public (local/CI).
      */
     private function assertConfiguredMediaPath(): void
@@ -219,15 +222,27 @@ class AppServiceProvider extends ServiceProvider
 
         $path = rtrim($configured, DIRECTORY_SEPARATOR);
         $ok = is_dir($path) && is_writable($path);
-        if ($ok) {
+        if (! $ok) {
+            $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
+                .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
+
+            Log::critical($message);
+
+            throw new \RuntimeException($message);
+        }
+
+        if (app()->runningUnitTests()) {
             return;
         }
 
-        $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
-            .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
-
-        Log::critical($message);
-
-        throw new \RuntimeException($message);
+        // Best-effort: recreate public/storage → MEDIA_PATH when it drifted after a deploy.
+        $ensure = PublicStorageLink::ensure();
+        if (! $ensure['ok']) {
+            Log::warning('public/storage does not point at MEDIA_PATH — site images may look blank after upload. '
+                .'Run: php artisan media:ensure-link', [
+                    'media_path' => $path,
+                    'ensure' => $ensure,
+                ]);
+        }
     }
 }

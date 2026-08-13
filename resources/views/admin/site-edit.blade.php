@@ -170,21 +170,25 @@
                             @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                         </div>
 
-                        <div class="col-md-6">
+                        <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="10240">
-                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? asset('storage/'.$site->site_image) : '' }}">
+                                 data-existing="{{ $site->site_image ? rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image : '' }}"
+                                 data-existing-fallback="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
+                                    <img src="{{ rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image }}"
+                                         data-media-fallback="{{ '/storage/'.$site->site_image }}"
+                                         alt="Current site image"
+                                         onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">
                                 @else
-                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                    <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
                         </div>
@@ -336,26 +340,74 @@
                                    value="{{ old_text('link_type', $site->link_type) }}" placeholder="dofollow">
                         </div>
 
-                        <div class="col-12">
+                            <div class="col-12">
                             <label class="form-label fw-semibold" for="description">Description</label>
                             <textarea id="description" name="description" class="form-control" rows="4">{{ old_text('description', $site->description) }}</textarea>
                         </div>
 
-                        <div class="col-md-6">
+                        @php
+                            $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
+                            $existingHomepage = is_array($site->homepage_placement_prices) ? $site->homepage_placement_prices : [];
+                            $existingSocial = is_array($site->social_promotion) ? $site->social_promotion : [];
+                        @endphp
+                        <div class="col-12">
+                            <input type="hidden" name="placement_offers_form" value="1">
+                            <div class="border rounded p-3 bg-light">
+                                <p class="fw-semibold mb-1">Homepage &amp; social promotions (optional)</p>
+                                <p class="small text-muted mb-3">Advertisers see these in catalog Site Details. Leave unchecked to hide the offer.</p>
+                                <p class="fw-semibold small mb-2">Homepage placement</p>
+                                <div class="d-flex flex-wrap gap-3 mb-3">
+                                    @foreach($homepageDays as $days)
+                                        @php
+                                            $checked = old("homepage.$days", array_key_exists((string) $days, $existingHomepage) || array_key_exists($days, $existingHomepage));
+                                            $priceVal = old("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
+                                        @endphp
+                                        <div style="min-width:140px;">
+                                            <div class="form-check">
+                                                <input type="checkbox" name="homepage[{{ $days }}]" value="1"
+                                                       class="form-check-input" id="adminHomepage{{ $days }}"
+                                                       {{ $checked ? 'checked' : '' }}>
+                                                <label class="form-check-label" for="adminHomepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
+                                            </div>
+                                            <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
+                                                   placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
+                                                   value="{{ $priceVal }}">
+                                        </div>
+                                    @endforeach
+                                </div>
+                                <p class="fw-semibold small mb-2">Social media sharing (always free)</p>
+                                <div class="d-flex flex-wrap gap-3">
+                                    @foreach(['facebook' => 'Facebook', 'instagram' => 'Instagram', 'x' => 'X'] as $channel => $label)
+                                        <div class="form-check">
+                                            <input type="checkbox" name="social[{{ $channel }}]" value="1"
+                                                   class="form-check-input" id="adminSocial{{ ucfirst($channel) }}"
+                                                   {{ old("social.$channel", !empty($existingSocial[$channel])) ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="adminSocial{{ ucfirst($channel) }}">{{ $label }}</label>
+                                        </div>
+                                    @endforeach
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="col-12">
                             <label class="form-label fw-semibold" for="site_image">Site image</label>
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="10240">
-                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to 10&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
-                                 data-existing="{{ $site->site_image ? asset('storage/'.$site->site_image) : '' }}">
+                                 data-existing="{{ $site->site_image ? rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image : '' }}"
+                                 data-existing-fallback="{{ $site->site_image ? '/storage/'.$site->site_image : '' }}">
                                 @if($site->site_image)
-                                    <img src="{{ asset('storage/'.$site->site_image) }}" alt="Current site image">
+                                    <img src="{{ rtrim(staff_base_path(), '/').'/sites/media/'.$site->site_image }}"
+                                         data-media-fallback="{{ '/storage/'.$site->site_image }}"
+                                         alt="Current site image"
+                                         onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">
                                 @else
-                                    <span>No image yet — choose a desktop-size screenshot</span>
+                                    <span>No image yet — choose a desktop-size screenshot (16:10)</span>
                                 @endif
                             </div>
                         </div>
@@ -435,16 +487,34 @@
     if (!imageInput || !preview) return;
 
     const existingSrc = preview.getAttribute('data-existing') || '';
+    const existingFallback = preview.getAttribute('data-existing-fallback') || '';
+
+    function bindMediaFallback(img) {
+        if (!img || !existingFallback) return;
+        img.setAttribute('data-media-fallback', existingFallback);
+        img.onerror = function () {
+            if (!this.dataset.triedMedia && this.dataset.mediaFallback) {
+                this.dataset.triedMedia = '1';
+                this.src = this.dataset.mediaFallback;
+                return;
+            }
+            preview.classList.add('is-empty');
+            this.remove();
+        };
+    }
 
     function showExistingOrEmpty() {
         if (existingSrc) {
             preview.classList.remove('is-empty');
             preview.innerHTML = '<img src="' + existingSrc + '" alt="Current site image">';
+            bindMediaFallback(preview.querySelector('img'));
         } else {
             preview.classList.add('is-empty');
-            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot</span>';
+            preview.innerHTML = '<span>No image yet — choose a desktop-size screenshot (16:10)</span>';
         }
     }
+
+    bindMediaFallback(preview.querySelector('img'));
 
     imageInput.addEventListener('change', function () {
         const file = this.files && this.files[0];

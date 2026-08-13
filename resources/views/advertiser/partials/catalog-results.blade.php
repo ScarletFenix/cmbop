@@ -157,7 +157,6 @@
             @php
                 $isBlacklisted = in_array($site->id, $blacklist);
                 $isFavorited = in_array($site->id, $favorites);
-                $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
                 // Decode sensitive prices (only positive numeric add-ons are selectable)
                 $sensitivePrices = $site->sensitive_prices;
                 if (is_string($sensitivePrices)) {
@@ -187,30 +186,15 @@
                 $expandDescriptionHtml = $site->safeDescriptionHtml();
                 $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
 
-                // List price is the advertiser-facing base (already fee-marked-up).
-                // data-discount-percent keeps the nominal configured sale so JS can
-                // re-apply (base + sensitive) × (1 − %) then floor — same as
-                // CartPricingService. Chips / “X% off” use the effective % after
-                // the publisher-payout floor so the label never oversells.
-                $catalogListPrice = round((float) $site->price, 2);
-                // CatalogController sets original_price to the publisher-entered base
-                // before applying the portal fee markup onto $site->price.
-                $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
-                $catalogSalePctNominal = $site->activeCustomDiscountPercent();
+                // Own listings show the entered price and cannot be ordered.
+                $viewPrices = $site->catalogPricesForViewer(auth()->user());
+                $isOwnedByMe = ! empty($viewPrices['owned']);
+                $catalogListPrice = (float) $viewPrices['list'];
+                $catalogPublisherPrice = (float) $viewPrices['publisher'];
+                $catalogSalePctNominal = $viewPrices['sale_percent_nominal'];
                 $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
-                $catalogSalePctDisplay = null;
-                $catalogSalePrice = null;
-                if ($catalogSalePctNominal) {
-                    $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePctNominal / 100), 2), 2));
-                    $flooredSale = max($catalogPublisherPrice, $rawSale);
-                    if ($flooredSale < $catalogListPrice) {
-                        $catalogSalePrice = $flooredSale;
-                        $catalogSalePctDisplay = \App\Services\CartPricingService::effectiveDiscountPercent(
-                            $catalogListPrice,
-                            round($catalogListPrice - $flooredSale, 2)
-                        );
-                    }
-                }
+                $catalogSalePctDisplay = $viewPrices['sale_percent'];
+                $catalogSalePrice = $viewPrices['sale'];
             @endphp
             @php
                 // Dynamic "new" flag — listing created within the last 30 days
@@ -228,8 +212,12 @@
                 $eyeShowLabel = 'Show site name and URL';
                 $eyeHideLabel = 'Hide site name and URL';
             @endphp
-            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
-                
+            <tr class="site-row {{ $isBlacklisted ? 'blacklisted-row' : '' }}"
+                data-id="{{ $site->id }}"
+                data-name="{{ $displayName }}"
+                data-publisher-id="{{ (int) $site->publisher_id }}"
+                @if((int) $site->owner_id > 0) data-owner-id="{{ (int) $site->owner_id }}" @endif
+                @if($isOwnedByMe) data-own-listing="1" @endif>
                 <td class="catalog-site-cell">
 
                     <div class="catalog-site-stack catalog-site-stack--tiled">
@@ -357,8 +345,12 @@
                             $dealSaleChipPct = $catalogSalePctDisplay;
                             $dealBulkChipPct = $dealBulkPct;
                             if ($showBulkChip) {
+                                // $site->price is already advertiser-facing; reprice from
+                                // the publisher base so the chip % is not fee-on-fee.
+                                $packSite = clone $site;
+                                $packSite->price = $catalogPublisherPrice;
                                 $packPricing = app(\App\Services\CartPricingService::class)
-                                    ->priceForAdvertiser($site, null, (int) config('site_promotions.bulk.min_qty', 3));
+                                    ->priceForAdvertiser($packSite, null, (int) config('site_promotions.bulk.min_qty', 3));
                                 $dealBulkChipPct = (float) ($packPricing['discount_percent'] ?? $dealBulkPct);
                                 if ($dealBulkChipPct <= 0) {
                                     $showBulkChip = false;
@@ -518,6 +510,9 @@
                             <p class="small text-muted mb-1 catalog-homepage-hint">Homepage placement available in Details.</p>
                         @endif
 
+                        @if($isOwnedByMe)
+                            @include('advertiser.partials.catalog-own-listing', ['align' => 'center'])
+                        @else
                         <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                                 data-id="{{ $site->id }}"
                                 data-base-price="{{ $catalogListPrice }}"
@@ -528,6 +523,7 @@
                             <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                             <span>Add to cart</span>
                         </button>
+                        @endif
 
                         <div class="catalog-row-actions__secondary">
                             <div class="catalog-row-actions-quiet">
@@ -535,6 +531,7 @@
                                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
                                         data-name="{{ $displayName }}"
+                                        data-glass-tip-placement="left"
                                         aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
                                         title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
                                     <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
@@ -544,6 +541,7 @@
                                         class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
                                         data-name="{{ $displayName }}"
+                                        data-glass-tip-placement="left"
                                         aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
                                         title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
@@ -556,6 +554,7 @@
                                     data-site-id="{{ $site->id }}"
                                     data-site-name="{{ $displayName }}"
                                     data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
+                                    data-glass-tip-placement="left"
                                     title="Claim this website if you own it"
                                     aria-label="Claim website {{ $identityLabel }}">
                                 Claim
@@ -578,12 +577,22 @@
                     <div class="col-lg-3 col-md-6 text-center catalog-expand-preview">
                         <p class="small text-muted mb-2"><strong>Homepage preview</strong></p>
                         @php
-                            // Homepage capture first (full → thumb), then admin/marketing upload.
-                            // Matches Site::screenshot_* accessors so expand previews stay filled.
-                            $previewUrl = $site->screenshot_url ?: $site->screenshot_thumb_url;
+                            // Full capture → thumb → upload; /media then /storage (Hostinger).
+                            $previewPaths = $site->homepagePreviewUrlChain();
+                            $previewUrl = $previewPaths[0] ?? null;
+                            $expandZoomPaths = $site->zoomPreviewUrlChain();
+                            if ($expandZoomPaths === [] && $previewPaths !== []) {
+                                $expandZoomPaths = $previewPaths;
+                            }
+                            $expandZoomUrl = $expandZoomPaths[0] ?? $previewUrl;
                         @endphp
                         @if($previewUrl)
-                            <div class="site-preview-zoom">
+                            <div class="site-preview-zoom"
+                                 tabindex="0"
+                                 role="img"
+                                 aria-label="{{ $identityLabel }} homepage preview"
+                                 data-zoom-src="{{ $expandZoomUrl }}"
+                                 data-zoom-chain="{{ json_encode($expandZoomPaths, JSON_UNESCAPED_SLASHES) }}">
                                 {{-- Deferred until expand opens (hydrateExpandScreenshots). Avoids
                                      Safari never loading lazy imgs that start inside display:none. --}}
                                 <img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
@@ -591,7 +600,9 @@
                                      alt="{{ $identityLabel }} homepage preview"
                                      decoding="async"
                                      class="catalog-deferred-preview site-image-thumbnail"
-                                     onerror="this.onerror=null;var z=this.closest('.site-preview-zoom');if(z){z.classList.add('is-broken');var f=z.nextElementSibling;if(f){f.classList.remove('d-none');f.classList.add('d-inline-flex');}}">
+                                     data-preview-chain="{{ json_encode($previewPaths, JSON_UNESCAPED_SLASHES) }}"
+                                     data-preview-i="0"
+                                     onerror="window.catalogSitePreviewOnError && window.catalogSitePreviewOnError(this)">
                             </div>
                             <div class="site-preview-fallback bg-light border rounded d-none flex-column align-items-center justify-content-center gap-2 px-3" aria-hidden="true">
                                 <i class="fa-solid fa-image text-muted" style="font-size: 28px;" aria-hidden="true"></i>
@@ -754,8 +765,8 @@
                             @endif
                         </div>
 
+                        <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
                         @if($homepageOptions !== [])
-                            <p class="mb-1"><strong>Homepage promotions</strong> <span class="text-muted fw-normal">(optional)</span></p>
                             <p class="small text-muted mb-2">Put the article on the publisher homepage for a set duration. Sale/bulk discounts do not apply to this fee.</p>
                             <div class="homepage-placement-group mb-3"
                                  data-site-id="{{ $site->id }}"
@@ -798,16 +809,20 @@
                                     </div>
                                 @endforeach
                             </div>
+                        @else
+                            <p class="small text-muted mb-3">Not offered on this listing.</p>
                         @endif
 
+                        <p class="mb-1"><strong>Social</strong></p>
                         @if($socialChannels !== [])
-                            <p class="mb-1"><strong>Social</strong></p>
                             <p class="small text-muted mb-2">Publisher will share the live post on these channels at no extra cost.</p>
                             <div class="d-flex flex-wrap gap-1 mb-3" aria-label="Included social channels">
                                 @foreach($socialChannels as $channel)
                                     <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
                                 @endforeach
                             </div>
+                        @else
+                            <p class="small text-muted mb-3">No social sharing included on this listing.</p>
                         @endif
 
                         <p class="mb-1"><strong>Sample article</strong></p>
@@ -939,7 +954,6 @@
         @php
             $isBlacklisted = in_array($site->id, $blacklist);
             $isFavorited = in_array($site->id, $favorites);
-            $isOwnedByMe = (int) $site->publisher_id === (int) auth()->id();
             $isNew = $site->created_at->gt(now()->subDays(30));
             $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
             $canSeeUrl = $showsIdentity;
@@ -971,25 +985,21 @@
                 'instagram' => 'Instagram',
                 'x' => 'X',
             ];
-            $catalogListPrice = round((float) $site->price, 2);
-            $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
-            $catalogSalePctNominal = $site->activeCustomDiscountPercent();
+            $viewPrices = $site->catalogPricesForViewer(auth()->user());
+            $isOwnedByMe = ! empty($viewPrices['owned']);
+            $catalogListPrice = (float) $viewPrices['list'];
+            $catalogPublisherPrice = (float) $viewPrices['publisher'];
+            $catalogSalePctNominal = $viewPrices['sale_percent_nominal'];
             $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
-            $catalogSalePctDisplay = null;
-            $catalogSalePrice = null;
-            if ($catalogSalePctNominal) {
-                $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePctNominal / 100), 2), 2));
-                $flooredSale = max($catalogPublisherPrice, $rawSale);
-                if ($flooredSale < $catalogListPrice) {
-                    $catalogSalePrice = $flooredSale;
-                    $catalogSalePctDisplay = \App\Services\CartPricingService::effectiveDiscountPercent(
-                        $catalogListPrice,
-                        round($catalogListPrice - $flooredSale, 2)
-                    );
-                }
-            }
+            $catalogSalePctDisplay = $viewPrices['sale_percent'];
+            $catalogSalePrice = $viewPrices['sale'];
         @endphp
-        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
+        <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}"
+                 data-id="{{ $site->id }}"
+                 data-name="{{ $displayName }}"
+                 data-publisher-id="{{ (int) $site->publisher_id }}"
+                 @if((int) $site->owner_id > 0) data-owner-id="{{ (int) $site->owner_id }}" @endif
+                 @if($isOwnedByMe) data-own-listing="1" @endif>
             <div class="d-flex justify-content-between align-items-start gap-2 mb-2">
                 <div class="catalog-mobile-card__host d-flex align-items-start gap-2">
                     @include('advertiser.partials.catalog-site-tile', [
@@ -1040,8 +1050,12 @@
                             $mobileSaleChipPct = $catalogSalePctDisplay;
                             $mobileBulkChipPct = $mobileBulkPct;
                             if ($showMobileBulkChip) {
+                                // $site->price is already advertiser-facing; reprice from
+                                // the publisher base so the chip % is not fee-on-fee.
+                                $mobilePackSite = clone $site;
+                                $mobilePackSite->price = $catalogPublisherPrice;
                                 $mobilePackPricing = app(\App\Services\CartPricingService::class)
-                                    ->priceForAdvertiser($site, null, (int) config('site_promotions.bulk.min_qty', 3));
+                                    ->priceForAdvertiser($mobilePackSite, null, (int) config('site_promotions.bulk.min_qty', 3));
                                 $mobileBulkChipPct = (float) ($mobilePackPricing['discount_percent'] ?? $mobileBulkPct);
                                 if ($mobileBulkChipPct <= 0) {
                                     $showMobileBulkChip = false;
@@ -1255,6 +1269,9 @@
                     'align' => 'start',
                 ])
 
+                @if($isOwnedByMe)
+                    @include('advertiser.partials.catalog-own-listing', ['align' => 'start'])
+                @else
                 <button type="button" class="btn btn-sm btn-primary buy-now d-inline-flex justify-content-center align-items-center gap-2"
                         data-id="{{ $site->id }}"
                         data-base-price="{{ $catalogListPrice }}"
@@ -1265,6 +1282,7 @@
                     <i class="fa-solid fa-cart-plus" aria-hidden="true"></i>
                     <span>Add to cart</span>
                 </button>
+                @endif
             </div>
 
             <div class="catalog-row-actions mt-2">
@@ -1277,14 +1295,18 @@
                                 class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
                                 data-name="{{ $displayName }}"
-                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
+                                data-glass-tip-placement="left"
+                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
+                                title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
                             <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
                         </button>
                         <button type="button"
                                 class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
                                 data-name="{{ $displayName }}"
-                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
+                                data-glass-tip-placement="left"
+                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
+                                title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -1294,6 +1316,7 @@
                                 data-site-id="{{ $site->id }}"
                                 data-site-name="{{ $displayName }}"
                                 data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
+                                data-glass-tip-placement="left"
                                 title="Claim this website if you own it"
                                 aria-label="Claim website {{ $identityLabel }}">
                             Claim
@@ -1316,19 +1339,32 @@
 
             <dl class="catalog-card-details" id="card-details-{{ $site->id }}" hidden>
                 @php
-                    $mobilePreviewUrl = $site->screenshot_url ?: $site->screenshot_thumb_url;
+                    $mobilePreviewPaths = $site->homepagePreviewUrlChain();
+                    $mobilePreviewUrl = $mobilePreviewPaths[0] ?? null;
+                    $mobileZoomPaths = $site->zoomPreviewUrlChain();
+                    if ($mobileZoomPaths === [] && $mobilePreviewPaths !== []) {
+                        $mobileZoomPaths = $mobilePreviewPaths;
+                    }
+                    $mobileZoomUrl = $mobileZoomPaths[0] ?? $mobilePreviewUrl;
                 @endphp
                 <div class="catalog-card-details__row">
                     <dt>Homepage preview</dt>
                     <dd>
                         @if($mobilePreviewUrl)
-                            <div class="site-preview-zoom catalog-card-preview">
+                            <div class="site-preview-zoom catalog-card-preview"
+                                 tabindex="0"
+                                 role="img"
+                                 aria-label="{{ $identityLabel }} homepage preview"
+                                 data-zoom-src="{{ $mobileZoomUrl }}"
+                                 data-zoom-chain="{{ json_encode($mobileZoomPaths, JSON_UNESCAPED_SLASHES) }}">
                                 <img class="catalog-deferred-preview site-image-thumbnail"
                                      src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
                                      data-src="{{ $mobilePreviewUrl }}"
                                      alt="{{ $identityLabel }} homepage preview"
                                      decoding="async"
-                                     onerror="this.onerror=null;var z=this.closest('.site-preview-zoom');if(z){z.classList.add('is-broken');var f=z.nextElementSibling;if(f){f.classList.remove('d-none');f.classList.add('d-inline-flex');}}">
+                                     data-preview-chain="{{ json_encode($mobilePreviewPaths, JSON_UNESCAPED_SLASHES) }}"
+                                     data-preview-i="0"
+                                     onerror="window.catalogSitePreviewOnError && window.catalogSitePreviewOnError(this)">
                             </div>
                             <div class="site-preview-fallback bg-light border rounded d-none flex-column align-items-center justify-content-center gap-2 px-3" aria-hidden="true">
                                 <i class="fa-solid fa-image text-muted" style="font-size: 24px;" aria-hidden="true"></i>
@@ -1372,10 +1408,10 @@
                         @endif
                     </dd>
                 </div>
-                @if($homepageOptions !== [])
-                    <div class="catalog-card-details__row">
-                        <dt>Homepage promotions</dt>
-                        <dd>
+                <div class="catalog-card-details__row">
+                    <dt>Homepage promotions</dt>
+                    <dd>
+                        @if($homepageOptions !== [])
                             <ul class="list-unstyled mb-0 small">
                                 @foreach($homepageOptions as $days => $fee)
                                     <li>
@@ -1389,19 +1425,25 @@
                                 @endforeach
                             </ul>
                             <span class="text-muted small">Choose a duration above Buy.</span>
-                        </dd>
-                    </div>
-                @endif
-                @if($socialChannels !== [])
-                    <div class="catalog-card-details__row">
-                        <dt>Social</dt>
-                        <dd class="d-flex flex-wrap gap-1">
-                            @foreach($socialChannels as $channel)
-                                <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
-                            @endforeach
-                        </dd>
-                    </div>
-                @endif
+                        @else
+                            <span class="text-muted small">Not offered on this listing.</span>
+                        @endif
+                    </dd>
+                </div>
+                <div class="catalog-card-details__row">
+                    <dt>Social</dt>
+                    <dd>
+                        @if($socialChannels !== [])
+                            <div class="d-flex flex-wrap gap-1">
+                                @foreach($socialChannels as $channel)
+                                    <span class="badge bg-light text-dark border">{{ $socialChannelLabels[$channel] ?? ucfirst($channel) }}</span>
+                                @endforeach
+                            </div>
+                        @else
+                            <span class="text-muted small">No social sharing included on this listing.</span>
+                        @endif
+                    </dd>
+                </div>
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>

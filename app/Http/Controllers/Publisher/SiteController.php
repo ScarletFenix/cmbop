@@ -12,6 +12,7 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Services\ActivityLogger;
 use App\Services\AgencySiteImportService;
+use App\Services\CheckoutSchemaService;
 use App\Services\EmailNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
@@ -30,6 +31,8 @@ class SiteController extends Controller
 
     public function index()
     {
+        $this->ensureListingSchema();
+
         // Europe + major North America markets
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter (Category::catalogPickerNames).
@@ -222,6 +225,8 @@ class SiteController extends Controller
 
         $site = null;
 
+        $this->ensureListingSchema();
+
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, &$site) {
                 $site = new Site;
@@ -317,6 +322,7 @@ class SiteController extends Controller
     public function ajax(Request $request)
     {
         try {
+            $this->ensureListingSchema();
             $query = $request->get('query');
             $status = strtolower((string) $request->get('status', 'active'));
             if (! in_array($status, ['pending', 'active', 'invites', 'archived', 'all'], true)) {
@@ -665,6 +671,8 @@ class SiteController extends Controller
 
         $needsRereview = $this->updateRequiresRereview($site, $countryCodes[0] ?? null, $languageCodes[0] ?? null, $categoriesArray ?? []);
         $wasLive = $site->verified || $site->active;
+
+        $this->ensureListingSchema();
 
         try {
             DB::transaction(function () use ($site, $request, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $needsRereview) {
@@ -1157,5 +1165,20 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * Hostinger often skips migrations. Repair homepage/social columns before
+     * listing reads/writes so WHERE/INSERT on them cannot 500.
+     */
+    private function ensureListingSchema(): void
+    {
+        try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        } catch (\Throwable $e) {
+            Log::warning('Publisher listing schema ensure failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

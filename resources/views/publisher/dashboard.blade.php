@@ -105,7 +105,7 @@
     }
 </style>
 
-<div class="container-fluid">
+<div class="container-fluid dash-page-end">
 
     <!-- HEADER -->
     <div class="row mb-4">
@@ -359,7 +359,7 @@
                     </div>
                 </div>
             </div>
-            <div class="col-md-8 mb-3">
+            <div class="col-md-8 mb-3 dash-recent-col">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
                         <span><i class="fa fa-list me-2 text-primary"></i> Recent tasks</span>

@@ -346,6 +346,40 @@ class OrderItem extends Model
         return $this->socialPostUrls() !== [];
     }
 
+    /**
+     * Short advertiser-facing extras for acceptance email / bell (pre-publish).
+     *
+     * @return list<string>
+     */
+    public function purchasedPlacementSummaries(): array
+    {
+        $parts = [];
+        if ($this->hasHomepagePlacement()) {
+            $days = (int) $this->homepage_days;
+            $fee = (float) ($this->homepage_price ?? 0);
+            $parts[] = 'homepage ('.$days.' day'.($days === 1 ? '' : 's')
+                .($fee > 0 ? ', +€'.number_format($fee, 2) : ', free').')';
+        }
+        if ($this->offersSocialPromotion()) {
+            $labels = collect($this->enabledSocialChannels())
+                ->map(fn (string $c) => $this->socialChannelLabel($c))
+                ->all();
+            $parts[] = 'social ('.implode(', ', $labels).')';
+        }
+
+        return $parts;
+    }
+
+    public function purchasedPlacementSentence(): ?string
+    {
+        $parts = $this->purchasedPlacementSummaries();
+        if ($parts === []) {
+            return null;
+        }
+
+        return 'Includes '.implode(' and ', $parts).'.';
+    }
+
     public function socialChannelLabel(string $channel): string
     {
         return match (strtolower($channel)) {

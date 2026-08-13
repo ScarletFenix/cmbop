@@ -3,6 +3,150 @@
 if (!window.CatalogConfig) { window.CatalogConfig = { favorites: [], blacklist: [], routes: {}, csrfToken: '' }; }
 })();
 
+/**
+ * Catalog homepage preview onerror: walk /media → /storage (and full → thumb → cover)
+ * before showing the empty-state fallback. Hostinger often 404s /storage when the
+ * public/storage symlink is missing; /media streams from the public disk.
+ */
+window.catalogSitePreviewOnError = function (img) {
+    if (!img) return;
+    // Ignore errors on the 1x1 deferred placeholder — hydrateExpandScreenshots
+    // will assign the real URL when the expand/card opens.
+    var cur = img.getAttribute('src') || '';
+    if (img.hasAttribute('data-src') && cur.indexOf('data:') === 0) {
+        return;
+    }
+    var chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    if (!Array.isArray(chain)) chain = [];
+    var i = parseInt(img.getAttribute('data-preview-i') || '0', 10);
+    if (isNaN(i) || i < 0) i = 0;
+    var next = i + 1;
+    if (next < chain.length && chain[next]) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    var z = img.closest('.site-preview-zoom');
+    if (z) {
+        z.classList.add('is-broken');
+        var f = z.nextElementSibling;
+        if (f && f.classList.contains('site-preview-fallback')) {
+            f.classList.remove('d-none');
+            f.classList.add('d-inline-flex');
+            f.removeAttribute('aria-hidden');
+        }
+    }
+};
+
+/**
+ * Floating desktop zoom popover for Site Details / card expand previews.
+ * Previews stay out of catalog rows; hover enlarge only on expand.
+ */
+function initCatalogExpandPreviewZoom(root) {
+    const scope = root || document;
+    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+
+    let pop = document.getElementById('catalogExpandPreviewZoomPop');
+    if (!pop) {
+        pop = document.createElement('div');
+        pop.id = 'catalogExpandPreviewZoomPop';
+        pop.className = 'site-preview-zoom-pop';
+        pop.setAttribute('aria-hidden', 'true');
+        pop.innerHTML = '<img alt="" decoding="async">';
+        document.body.appendChild(pop);
+    }
+    const img = pop.querySelector('img');
+    let hideTimer = null;
+    let zoomChain = [];
+    let zoomIndex = 0;
+
+    function place(trigger) {
+        const rect = trigger.getBoundingClientRect();
+        const pad = 12;
+        const popW = pop.offsetWidth || 360;
+        const popH = pop.offsetHeight || 220;
+        let left = rect.right + 12;
+        let top = rect.top + (rect.height / 2) - (popH / 2);
+        if (left + popW > window.innerWidth - pad) {
+            left = rect.left - popW - 12;
+        }
+        if (left < pad) left = pad;
+        if (top < pad) top = pad;
+        if (top + popH > window.innerHeight - pad) {
+            top = Math.max(pad, window.innerHeight - popH - pad);
+        }
+        pop.style.left = Math.round(left) + 'px';
+        pop.style.top = Math.round(top) + 'px';
+    }
+
+    function parseZoomChain(trigger) {
+        let chain = [];
+        try {
+            chain = JSON.parse(trigger.getAttribute('data-zoom-chain') || '[]');
+        } catch (e) {
+            chain = [];
+        }
+        if (!Array.isArray(chain) || !chain.length) {
+            const src = trigger.getAttribute('data-zoom-src');
+            chain = src ? [src] : [];
+        }
+        return chain.filter(Boolean);
+    }
+
+    function show(trigger) {
+        if (trigger.classList.contains('is-broken')) return;
+        zoomChain = parseZoomChain(trigger);
+        if (!zoomChain.length) return;
+        clearTimeout(hideTimer);
+        zoomIndex = 0;
+        img.onerror = function () {
+            zoomIndex += 1;
+            if (zoomIndex < zoomChain.length) {
+                img.src = zoomChain[zoomIndex];
+                return;
+            }
+            img.onerror = null;
+            pop.classList.remove('is-visible');
+        };
+        if (img.getAttribute('src') !== zoomChain[0]) {
+            img.setAttribute('src', zoomChain[0]);
+        }
+        img.setAttribute('alt', trigger.getAttribute('aria-label') || 'Site preview');
+        pop.classList.add('is-visible');
+        pop.setAttribute('aria-hidden', 'false');
+        place(trigger);
+        requestAnimationFrame(function () { place(trigger); });
+    }
+
+    function hide() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () {
+            pop.classList.remove('is-visible');
+            pop.setAttribute('aria-hidden', 'true');
+            img.onerror = null;
+        }, 80);
+    }
+
+    scope.querySelectorAll('.site-preview-zoom[data-zoom-src]').forEach(function (el) {
+        if (el.getAttribute('data-zoom-ready') === '1') return;
+        el.setAttribute('data-zoom-ready', '1');
+        el.addEventListener('mouseenter', function () { show(el); });
+        el.addEventListener('mouseleave', hide);
+        el.addEventListener('focus', function () { show(el); });
+        el.addEventListener('blur', hide);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () {
+    initCatalogExpandPreviewZoom(document.getElementById('catalogResults') || document);
+});
+
 document.addEventListener('DOMContentLoaded', function () {
     // NEW-batch alert: badges keep a continuous red zoom/pulse (no border ring); on load we
     // also one-shot pop + play a clear triple beep once per tab session.
@@ -2603,6 +2747,12 @@ const CatalogLive = (function () {
         syncSuggestButtons(params);
         if (typeof updateButtonStates === 'function') updateButtonStates();
         if (typeof syncDefaultHomepagePrices === 'function') syncDefaultHomepagePrices();
+        if (typeof initCatalogExpandPreviewZoom === 'function') {
+            initCatalogExpandPreviewZoom(card || document.getElementById('catalogResults'));
+        }
+        if (window.GlassTip && typeof window.GlassTip.enhance === 'function') {
+            window.GlassTip.enhance(card || document.getElementById('catalogResults'));
+        }
         // Re-hide blacklisted rows on the main catalog after a fresh paint.
         if (!CatalogConfig.blacklistFilter && typeof hideCatalogSite === 'function') {
             document.querySelectorAll('.site-row[data-id], .catalog-mobile-card[data-id]').forEach(function (el) {
@@ -3508,10 +3658,27 @@ function hydrateExpandScreenshots(root) {
         const deferred = img.getAttribute('data-src');
         if (!deferred) return;
         // Always promote data-src (Blade may use a 1x1 placeholder src).
+        img.setAttribute('data-preview-i', '0');
         img.setAttribute('src', deferred);
         img.setAttribute('loading', 'eager');
         img.setAttribute('decoding', 'async');
         img.removeAttribute('data-src');
+        // Re-bind after any premature placeholder onerror nulled the handler.
+        img.onerror = function () {
+            if (window.catalogSitePreviewOnError) {
+                window.catalogSitePreviewOnError(img);
+            }
+        };
+        const zoom = img.closest('.site-preview-zoom');
+        if (zoom) {
+            zoom.classList.remove('is-broken');
+            const fallback = zoom.nextElementSibling;
+            if (fallback && fallback.classList.contains('site-preview-fallback')) {
+                fallback.classList.add('d-none');
+                fallback.classList.remove('d-inline-flex');
+                fallback.setAttribute('aria-hidden', 'true');
+            }
+        }
     });
 }
 
@@ -3560,6 +3727,9 @@ function toggleCardDetails(toggle) {
     setCatalogDetailsToggleState(toggle, willOpen);
     if (willOpen) {
         hydrateExpandScreenshots(panel);
+        if (typeof initCatalogExpandPreviewZoom === 'function') {
+            initCatalogExpandPreviewZoom(panel);
+        }
         const siteId = (toggle.dataset.cardDetails || '').replace('card-details-', '');
         if (siteId) {
             syncSensitiveSelectionUi(siteId);
@@ -4089,6 +4259,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if (isClosed) {
             expandedRow.style.display = 'table-row';
             hydrateExpandScreenshots(expandedRow);
+            if (typeof initCatalogExpandPreviewZoom === 'function') {
+                initCatalogExpandPreviewZoom(expandedRow);
+            }
             setCatalogDetailsToggleState(arrow, true);
             syncSensitiveSelectionUi(id);
         } else {
@@ -4171,6 +4344,12 @@ document.addEventListener('DOMContentLoaded', function() {
         let name = button.dataset.name;
         if (!id || Number.isNaN(id)) {
             catalogToast('Could not add to cart.', 'error');
+            return;
+        }
+
+        if (button.closest('[data-own-listing="1"]')
+            || (typeof window.catalogIsOwnListing === 'function' && window.catalogIsOwnListing(id))) {
+            catalogToast(window.catalogOwnListingMessage || 'This is your listing — you can’t order it.', 'error');
             return;
         }
 

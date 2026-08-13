@@ -87,7 +87,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
 
         $this->actingAs($publisher)
             ->postJson(route('publisher.withdraw.request'), [
-                'amount' => 10,
+                'amount' => 20,
                 'payment_method' => 'wise',
                 'wise_email' => 'a@example.com',
                 'wise_email_confirm' => 'b@example.com',
@@ -114,7 +114,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
 
         $this->actingAs($publisher)
             ->postJson(route('publisher.withdraw.request'), [
-                'amount' => 10,
+                'amount' => 20,
                 'payment_method' => 'bank',
             ])
             ->assertOk()
@@ -128,7 +128,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
         $this->assertDatabaseHas('withdrawals', [
             'user_id' => $publisher->id,
             'payment_method' => 'bank',
-            'amount' => 10,
+            'amount' => 20,
         ]);
     }
 
@@ -143,7 +143,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
 
         $response = $this->actingAs($publisher)
             ->postJson(route('publisher.withdraw.request'), [
-                'amount' => 10,
+                'amount' => 20,
                 'payment_method' => 'wise',
                 'wise_email' => 'new@example.com',
                 'wise_email_confirm' => 'new@example.com',
@@ -191,7 +191,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
 
         $this->actingAs($publisher)
             ->postJson(route('publisher.withdraw.request'), [
-                'amount' => 15,
+                'amount' => 20,
                 'payment_method' => 'paypal',
             ])
             ->assertOk()
@@ -200,7 +200,7 @@ class PublisherWithdrawPayoutLockTest extends TestCase
         $this->assertDatabaseHas('withdrawals', [
             'user_id' => $publisher->id,
             'payment_method' => 'paypal',
-            'amount' => 15,
+            'amount' => 20,
         ]);
     }
 
