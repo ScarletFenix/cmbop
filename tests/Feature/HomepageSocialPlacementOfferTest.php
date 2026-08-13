@@ -15,6 +15,7 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class HomepageSocialPlacementOfferTest extends TestCase
@@ -277,5 +278,33 @@ class HomepageSocialPlacementOfferTest extends TestCase
         $site->refresh();
         $this->assertSame([7 => 15.0, 30 => 40.0], $site->homepagePlacementOptions());
         $this->assertSame(['facebook', 'instagram'], $site->enabledSocialChannels());
+    }
+
+    public function test_store_repairs_missing_homepage_placement_prices_and_saves_offer(): void
+    {
+        Queue::fake();
+
+        if (Schema::hasColumn('sites', 'homepage_placement_prices')) {
+            Schema::table('sites', function ($table) {
+                $table->dropColumn('homepage_placement_prices');
+            });
+        }
+        $this->assertFalse(Schema::hasColumn('sites', 'homepage_placement_prices'));
+
+        $payload = $this->basePayload('repaired-placement.example') + [
+            'homepage' => ['7' => '1'],
+            'price_homepage' => ['7' => '25'],
+        ];
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.sites.store'), $payload)
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertTrue(Schema::hasColumn('sites', 'homepage_placement_prices'));
+        $site = Site::where('domain', 'repaired-placement.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame([7 => 25.0], $site->homepagePlacementOptions());
+        $this->assertSame(1, Site::countWithHomepagePlacement());
     }
 }
