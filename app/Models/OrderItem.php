@@ -124,16 +124,6 @@ class OrderItem extends Model
         return $this->belongsTo(ContentSubmission::class);
     }
 
-    public function disputes()
-    {
-        return $this->hasMany(OrderItemDispute::class);
-    }
-
-    public function latestDispute()
-    {
-        return $this->hasOne(OrderItemDispute::class)->latestOfMany();
-    }
-
     /**
      * Get the publisher (site owner) for this order item
      */
