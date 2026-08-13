@@ -120,6 +120,7 @@
         return ['category' => $category, 'label' => $label];
     };
 @endphp
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <link href="{{ asset('assets/css/content-library.css') }}?v={{ @filemtime(public_path('assets/css/content-library.css')) ?: '1' }}" rel="stylesheet">
 
 
@@ -724,7 +725,7 @@
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-outline-primary" id="articleEditorPreviewBtn">Preview</button>
                 <button type="button" class="btn btn-primary" id="articleEditorSaveBtn">Save &amp; re-check</button>
-                <a href="#" class="btn btn-success d-none" id="articleEditorOrderBtn">Order</a>
+                <a href="#" class="btn btn-primary d-none" id="articleEditorOrderBtn">Order</a>
             </div>
         </div>
     </div>
@@ -777,7 +778,6 @@
     </div>
 </div>
 
-<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
