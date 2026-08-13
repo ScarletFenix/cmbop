@@ -14,7 +14,6 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
-use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
@@ -424,11 +423,6 @@ class CatalogController extends Controller
         $userId = auth()->id();
         $currentUser = auth()->user();
 
-        $userRole = null;
-        if ($currentUser && $currentUser->active_role_id) {
-            $userRole = Role::find($currentUser->active_role_id);
-        }
-
         $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
         $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
 
@@ -584,25 +578,13 @@ class CatalogController extends Controller
             }
         }
 
+        $advPriceSql = app(PlatformFeeService::class)->advertiserBaseSqlExpression('price');
+
         if ($request->filled('price_min')) {
-            $minPrice = $request->price_min;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) >= ?", [$minPrice]);
-            } else {
-                $query->where('price', '>=', $minPrice);
-            }
+            $query->whereRaw("({$advPriceSql}) >= ?", [$request->price_min]);
         }
         if ($request->filled('price_max')) {
-            $maxPrice = $request->price_max;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) <= ?", [$maxPrice]);
-            } else {
-                $query->where('price', '<=', $maxPrice);
-            }
+            $query->whereRaw("({$advPriceSql}) <= ?", [$request->price_max]);
         }
 
         if ($request->filled('sponsored') && $request->sponsored == 1) {
@@ -643,8 +625,8 @@ class CatalogController extends Controller
             'da_asc' => $query->orderBy('da')->orderByDesc('id'),
             'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
-            'price_asc' => $query->orderBy('price')->orderByDesc('id'),
-            'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
+            'price_asc' => $query->orderByRaw($advPriceSql.' ASC')->orderByDesc('id'),
+            'price_desc' => $query->orderByRaw($advPriceSql.' DESC')->orderByDesc('id'),
             'newest' => $query->latest('created_at')->orderByDesc('id'),
             'rating_desc' => Site::hasSitesColumn('rating_avg')
                 ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
