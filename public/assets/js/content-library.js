@@ -89,6 +89,7 @@ document.addEventListener('DOMContentLoaded', function () {
     bindLibraryUploadCancel();
     bindLibraryResultLanding();
     bindArticleEditorScrollport();
+    bindArticleEditorWheel();
     applyLibraryResultFocus();
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
@@ -798,6 +799,7 @@ function loadArticleHtml(html) {
     articleQuill.setSelection(0, 0, 'silent');
     hideImageRemoveOverlay();
     bindBrokenEditorImages();
+    silenceArticleQuillSelectionScroll();
 }
 
 function bindEditorImageChrome() {
@@ -992,14 +994,125 @@ function bindLibraryModalA11y() {
     });
 }
 
+function silenceArticleQuillSelectionScroll() {
+    if (!articleQuill) {
+        return;
+    }
+    const noop = function () {};
+    ['scrollSelectionIntoView', 'scrollRectIntoView'].forEach(function (name) {
+        if (typeof articleQuill[name] === 'function') {
+            articleQuill[name] = noop;
+        }
+        if (articleQuill.scroll && typeof articleQuill.scroll[name] === 'function') {
+            articleQuill.scroll[name] = noop;
+        }
+        if (articleQuill.selection && typeof articleQuill.selection[name] === 'function') {
+            articleQuill.selection[name] = noop;
+        }
+    });
+}
+
+function ensureArticleEditorScrollWrap() {
+    const container = document.querySelector('#articleEditorModal #articleQuillEditor.ql-container');
+    const editor = container ? container.querySelector('.ql-editor') : null;
+    if (!container || !editor) {
+        return null;
+    }
+    if (editor.parentElement && editor.parentElement.classList.contains('article-editor-scroll')) {
+        return editor.parentElement;
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'article-editor-scroll';
+    wrap.setAttribute('data-article-editor-scroll', '1');
+    container.insertBefore(wrap, editor);
+    wrap.appendChild(editor);
+    if (articleQuill) {
+        articleQuill.scrollingContainer = wrap;
+        silenceArticleQuillSelectionScroll();
+    }
+    return wrap;
+}
+
 function applyArticleEditorScrollport() {
-    const scroller = document.querySelector('#articleEditorModal #articleQuillEditor.ql-container');
-    if (!scroller) return;
-    scroller.style.minHeight = '0';
-    scroller.style.height = 'auto';
-    scroller.style.overflowX = 'hidden';
-    scroller.style.overflowY = 'auto';
-    scroller.style.webkitOverflowScrolling = 'touch';
+    const wrap = ensureArticleEditorScrollWrap();
+    const container = document.querySelector('#articleEditorModal #articleQuillEditor.ql-container');
+    const editor = wrap ? wrap.querySelector('.ql-editor') : (container ? container.querySelector('.ql-editor') : null);
+    if (!container || !editor) {
+        return;
+    }
+    container.style.minHeight = '0';
+    container.style.height = '';
+    container.style.overflow = 'hidden';
+    if (wrap) {
+        wrap.style.minHeight = '0';
+        wrap.style.height = '100%';
+        wrap.style.maxHeight = '100%';
+        wrap.style.overflowX = 'hidden';
+        wrap.style.overflowY = 'scroll';
+        wrap.style.webkitOverflowScrolling = 'touch';
+    }
+    editor.style.height = 'auto';
+    editor.style.maxHeight = 'none';
+    editor.style.minHeight = '100%';
+    editor.style.overflow = 'visible';
+    silenceArticleQuillSelectionScroll();
+}
+
+function articleEditorScrollport() {
+    const wrap = document.querySelector('#articleEditorModal .article-editor-scroll');
+    const editor = document.querySelector('#articleEditorModal .ql-editor');
+    const container = document.querySelector('#articleEditorModal #articleQuillEditor.ql-container');
+    if (wrap && wrap.scrollHeight > wrap.clientHeight + 1) {
+        return wrap;
+    }
+    if (editor && editor.scrollHeight > editor.clientHeight + 1) {
+        return editor;
+    }
+    if (container && container.scrollHeight > container.clientHeight + 1) {
+        return container;
+    }
+    return wrap || editor || container;
+}
+
+function bindArticleEditorWheel() {
+    const modal = document.getElementById('articleEditorModal');
+    if (!modal || modal.dataset.wheelBound === '1') {
+        return;
+    }
+    modal.dataset.wheelBound = '1';
+    modal.addEventListener('wheel', function (e) {
+        const wrap = modal.querySelector('.article-editor-scroll');
+        const editor = modal.querySelector('.ql-editor');
+        const scroller = articleEditorScrollport();
+        if (!scroller || !editor) {
+            return;
+        }
+        if (!editor.contains(e.target) && !(wrap && wrap.contains(e.target))) {
+            return;
+        }
+        let dy = e.deltaY;
+        if (e.deltaMode === 1) {
+            dy *= 16;
+        } else if (e.deltaMode === 2) {
+            dy *= scroller.clientHeight;
+        }
+        const max = scroller.scrollHeight - scroller.clientHeight;
+        if (max <= 1) {
+            return;
+        }
+        const next = Math.max(0, Math.min(max, scroller.scrollTop + dy));
+        if (next === scroller.scrollTop) {
+            return;
+        }
+        scroller.scrollTop = next;
+        e.preventDefault();
+        e.stopPropagation();
+        window.requestAnimationFrame(function () {
+            if (Math.abs(scroller.scrollTop - next) > 1) {
+                scroller.scrollTop = next;
+            }
+        });
+    }, { passive: false });
 }
 
 function bindArticleEditorScrollport() {
@@ -1045,6 +1158,7 @@ function ensureArticleQuill() {
             history: { delay: 500, maxStack: 100, userOnly: true },
         },
     });
+    silenceArticleQuillSelectionScroll();
 
     const toolbar = articleQuill.getModule('toolbar');
     const undoBtn = toolbar.container.querySelector('.ql-undo');
@@ -1094,8 +1208,8 @@ function ensureArticleQuill() {
         };
     });
 
-    bindEditorImageChrome();
     applyArticleEditorScrollport();
+    bindEditorImageChrome();
     return articleQuill;
 }
 
