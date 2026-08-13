@@ -70,30 +70,17 @@ class CatalogController extends Controller
     }
 
     /**
-     * Get price based on user role
-     * - Publishers see original price
-     * - Advertisers see base + hidden tiered portal fee
-     * - Sensitive prices are NOT marked up
+     * Advertiser-facing catalog list price (publisher base + hidden tiered portal fee).
+     *
+     * Always mark up on advertiser catalog/cart UI — even when the shopper owns
+     * the listing (dual-role). Skipping the fee here used to show €90 while
+     * cart.add charged €103.50 (15% tier). Publishers see entered base on
+     * publisher routes only; sensitive add-ons stay pass-through elsewhere.
      */
-    private function getPriceForUser($originalPrice, $sitePublisherId = null)
+    private function advertiserCatalogListPrice(float|int|string $publisherBase): float
     {
-        $user = auth()->user();
-
-        // Check if user is a publisher and owns this site
-        if ($user && $sitePublisherId && $user->id == $sitePublisherId) {
-            // Publisher viewing their own site - show original price
-            return $originalPrice;
-        }
-
-        // Check if user has publisher role (but not owner of this specific site)
-        $role = Role::find($user->active_role_id ?? 0);
-        if ($role && $role->name === 'publisher') {
-            // Publisher viewing someone else's site - show original price
-            return $originalPrice;
-        }
-
         return app(PlatformFeeService::class)
-            ->advertiserBase((float) $originalPrice);
+            ->advertiserBase((float) $publisherBase);
     }
 
     /**
@@ -408,7 +395,7 @@ class CatalogController extends Controller
                 ? 'sale'
                 : 'bulk';
             $dealSite->original_price = $dealSite->price;
-            $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+            $dealSite->price = $this->advertiserCatalogListPrice($dealSite->price);
         }
 
         return $bulkDeals;
@@ -674,7 +661,7 @@ class CatalogController extends Controller
 
         foreach ($sites as $site) {
             $site->original_price = $site->price;
-            $site->price = $this->getPriceForUser($site->price, $site->publisher_id);
+            $site->price = $this->advertiserCatalogListPrice($site->price);
 
             if ($site->sensitive_prices) {
                 $sensitivePrices = is_string($site->sensitive_prices)
@@ -1196,46 +1183,6 @@ class CatalogController extends Controller
             'removed_inactive_count' => count($removedInactive),
             'require_same_language' => $requireSame,
         ];
-    }
-
-    /**
-     * Helper method to determine if current user is viewing as advertiser
-     */
-    private function isAdvertiserView()
-    {
-        $user = auth()->user();
-
-        // Check if user has advertiser role
-        if ($user && $user->active_role_id) {
-            $role = Role::find($user->active_role_id);
-            if ($role && $role->name === 'advertiser') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Helper method to determine if current user is publisher viewing their own site
-     */
-    private function isPublisherOwner($sitePublisherId)
-    {
-        $user = auth()->user();
-
-        if (! $user || ! $sitePublisherId) {
-            return false;
-        }
-
-        // Check if user has publisher role and is the owner
-        if ($user->active_role_id) {
-            $role = Role::find($user->active_role_id);
-            if ($role && $role->name === 'publisher' && $user->id == $sitePublisherId) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**

@@ -356,8 +356,12 @@
                             $dealSaleChipPct = $catalogSalePctDisplay;
                             $dealBulkChipPct = $dealBulkPct;
                             if ($showBulkChip) {
+                                // $site->price is already advertiser-facing; reprice from
+                                // the publisher base so the chip % is not fee-on-fee.
+                                $packSite = clone $site;
+                                $packSite->price = $catalogPublisherPrice;
                                 $packPricing = app(\App\Services\CartPricingService::class)
-                                    ->priceForAdvertiser($site, null, (int) config('site_promotions.bulk.min_qty', 3));
+                                    ->priceForAdvertiser($packSite, null, (int) config('site_promotions.bulk.min_qty', 3));
                                 $dealBulkChipPct = (float) ($packPricing['discount_percent'] ?? $dealBulkPct);
                                 if ($dealBulkChipPct <= 0) {
                                     $showBulkChip = false;
@@ -1055,8 +1059,12 @@
                             $mobileSaleChipPct = $catalogSalePctDisplay;
                             $mobileBulkChipPct = $mobileBulkPct;
                             if ($showMobileBulkChip) {
+                                // $site->price is already advertiser-facing; reprice from
+                                // the publisher base so the chip % is not fee-on-fee.
+                                $mobilePackSite = clone $site;
+                                $mobilePackSite->price = $catalogPublisherPrice;
                                 $mobilePackPricing = app(\App\Services\CartPricingService::class)
-                                    ->priceForAdvertiser($site, null, (int) config('site_promotions.bulk.min_qty', 3));
+                                    ->priceForAdvertiser($mobilePackSite, null, (int) config('site_promotions.bulk.min_qty', 3));
                                 $mobileBulkChipPct = (float) ($mobilePackPricing['discount_percent'] ?? $mobileBulkPct);
                                 if ($mobileBulkChipPct <= 0) {
                                     $showMobileBulkChip = false;
