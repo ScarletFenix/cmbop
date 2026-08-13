@@ -28,7 +28,7 @@ class ArticlePreviewImageTest extends TestCase
             $this->markTestSkipped('GD WebP not available');
         }
 
-        $png = $this->pngBytes(400, 300);
+        $png = $this->largePngBytes();
         $this->assertGreaterThan(ArticlePreviewImage::SKIP_UNDER_BYTES, strlen($png));
 
         [$out, $ext] = app(ArticlePreviewImage::class)->compressForPreview($png, 'png');
@@ -80,6 +80,18 @@ class ArticlePreviewImageTest extends TestCase
         imagefilledrectangle($img, 0, 0, $width, $height, imagecolorallocate($img, 12, 80, 160));
         ob_start();
         imagepng($img);
+        $png = ob_get_clean();
+        imagedestroy($img);
+
+        return is_string($png) ? $png : '';
+    }
+
+    private function largePngBytes(): string
+    {
+        $img = imagecreatetruecolor(320, 240);
+        imagefilledrectangle($img, 0, 0, 319, 239, imagecolorallocate($img, 12, 80, 160));
+        ob_start();
+        imagepng($img, null, 0);
         $png = ob_get_clean();
         imagedestroy($img);
 
