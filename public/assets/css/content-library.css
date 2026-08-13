@@ -563,25 +563,28 @@
     .library-filter-bar {
         display: flex;
         flex-wrap: wrap;
-        align-items: flex-end;
-        gap: .5rem .75rem;
+        align-items: center;
+        gap: .4rem .5rem;
         margin-bottom: .85rem;
     }
     .library-filter-bar__search {
-        flex: 1 1 14rem;
+        flex: 1 1 16rem;
         min-width: 12rem;
     }
     .library-filter-bar__select {
-        flex: 0 1 9.5rem;
-        min-width: 8rem;
+        flex: 0 1 10rem;
+        min-width: 8.5rem;
     }
     .library-filter-bar__actions {
         display: flex;
         align-items: center;
-        gap: .35rem;
         min-height: 31px;
     }
-    .library-filter-bar .form-select { min-width: 0; width: 100%; }
+    .library-filter-bar .form-select,
+    .library-filter-bar .form-control {
+        min-width: 0;
+        width: 100%;
+    }
     .library-page-actions {
         display: flex;
         flex-wrap: wrap;

@@ -171,16 +171,16 @@
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
         <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
         <div class="library-filter-bar__search">
-            <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
+            <label class="visually-hidden" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
-                   value="{{ $searchQuery ?? '' }}" placeholder="Title or filename"
+                   value="{{ $searchQuery ?? '' }}" placeholder="Search title or filename"
                    title="Results update as you type" autocomplete="off" enterkeyhint="search"
                    data-slb-live-search="form">
         </div>
         <div class="library-filter-bar__select">
-            <label class="form-label small text-muted mb-1" for="libraryCountryFilter">Country</label>
+            <label class="visually-hidden" for="libraryCountryFilter">Country</label>
             <select name="country" id="libraryCountryFilter" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All</option>
+                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
                 @foreach(($groupedByCountry ?? []) as $countryCode => $count)
                     <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
                         {{ strtoupper($countryCode) }} ({{ $count }})
@@ -189,9 +189,9 @@
             </select>
         </div>
         <div class="library-filter-bar__select">
-            <label class="form-label small text-muted mb-1" for="libraryLanguageFilter">Language</label>
+            <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
             <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All</option>
+                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
                 @foreach(($groupedByLanguage ?? []) as $langCode => $count)
                     <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
                         {{ strtoupper($langCode) }} ({{ $count }})
@@ -199,12 +199,11 @@
                 @endforeach
             </select>
         </div>
-        <div class="library-filter-bar__actions">
-            <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
-            @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+        @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            <div class="library-filter-bar__actions">
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
-            @endif
-        </div>
+            </div>
+        @endif
     </form>
 
     <nav class="library-status-row" aria-label="Library status filter">
