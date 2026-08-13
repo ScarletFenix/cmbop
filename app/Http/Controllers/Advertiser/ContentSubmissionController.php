@@ -146,21 +146,17 @@ class ContentSubmissionController extends Controller
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
-        // The editor can add images after upload, so let the declaration be
-        // updated here and re-check that it still covers the article.
-        if (! empty($data['image_rights'])) {
-            $submission->update([
-                'image_rights' => $data['image_rights'],
-                'image_rights_source' => ContentSubmission::imageRightsNeedsSource($data['image_rights'])
-                    ? ($data['image_rights_source'] ?? null)
-                    : null,
-                'image_rights_declared_at' => now(),
-            ]);
-        }
-
+        // Apply a posted declaration on a replica first. Persisting before the
+        // cover check let "this article has no images" overwrite a real claim
+        // when the HTML still contained <img>.
         $incoming = $submission->replicate();
         $incoming->preview_html = $data['preview_html'];
-        $incoming->image_rights = $submission->image_rights;
+        if (! empty($data['image_rights'])) {
+            $incoming->image_rights = $data['image_rights'];
+            $incoming->image_rights_source = ContentSubmission::imageRightsNeedsSource($data['image_rights'])
+                ? ($data['image_rights_source'] ?? null)
+                : null;
+        }
 
         if (! $incoming->imageRightsCoverContent()) {
             return response()->json([
@@ -168,6 +164,14 @@ class ContentSubmissionController extends Controller
                 'message' => 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.',
                 'needs_image_rights' => true,
             ], 422);
+        }
+
+        if (! empty($data['image_rights'])) {
+            $submission->update([
+                'image_rights' => $incoming->image_rights,
+                'image_rights_source' => $incoming->image_rights_source,
+                'image_rights_declared_at' => now(),
+            ]);
         }
 
         $result = $this->uploads->updateArticleContent(

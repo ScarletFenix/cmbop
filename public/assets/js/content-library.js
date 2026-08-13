@@ -532,11 +532,8 @@ function openArticleEditor(submission) {
     if (articleQuill) {
         articleQuill.root.innerHTML = submission.preview_html || '<p><br></p>';
     }
-    const rightsWrap = document.getElementById('articleEditorImageRights');
-    if (rightsWrap) {
-        const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
-        rightsWrap.classList.toggle('d-none', !needsRights);
-    }
+    const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
+    syncEditorImageRights(needsRights);
     const orderBtn = document.getElementById('articleEditorOrderBtn');
     if (submission.can_order) {
         orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
@@ -544,10 +541,37 @@ function openArticleEditor(submission) {
     } else {
         orderBtn.classList.add('d-none');
     }
+    showArticleEditorAfterUploadModal();
+}
+
+/**
+ * Bootstrap cannot show a second modal while the upload dialog is still
+ * hiding — the backdrop sticks and the editor never becomes usable.
+ */
+function showArticleEditorAfterUploadModal() {
+    const editorEl = document.getElementById('articleEditorModal');
     const uploadModalEl = document.getElementById('uploadContentModal');
-    const uploadModal = bootstrap.Modal.getInstance(uploadModalEl);
-    if (uploadModal) uploadModal.hide();
-    new bootstrap.Modal(document.getElementById('articleEditorModal')).show();
+    const showEditor = function () {
+        if (!editorEl || typeof bootstrap === 'undefined') return;
+        bootstrap.Modal.getOrCreateInstance(editorEl).show();
+    };
+    if (uploadModalEl && uploadModalEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
+        uploadModalEl.addEventListener('hidden.bs.modal', function onUploadHidden() {
+            uploadModalEl.removeEventListener('hidden.bs.modal', onUploadHidden);
+            showEditor();
+        });
+        bootstrap.Modal.getOrCreateInstance(uploadModalEl).hide();
+        return;
+    }
+    showEditor();
+}
+
+function syncEditorImageRights(visible) {
+    const wrap = document.getElementById('articleEditorImageRights');
+    if (!wrap) return;
+    wrap.classList.toggle('d-none', !visible);
+    const noneChoice = wrap.querySelector('[data-image-rights-choice][value="none"]');
+    noneChoice?.closest('.form-check')?.classList.toggle('d-none', !!visible);
 }
 
 /**
@@ -583,6 +607,10 @@ async function saveArticleEditor() {
             setFeedbackHtml(feedback, false, rights.message);
             return;
         }
+        if (/<img\b/i.test(html) && rights.rights === 'none') {
+            setFeedbackHtml(feedback, false, 'This article contains images. Confirm you own them, or add the source URL or copyright details.');
+            return;
+        }
     }
     btn.disabled = true;
     feedback.textContent = 'Saving and re-checking content moderation…';
@@ -605,7 +633,7 @@ async function saveArticleEditor() {
             // Images were added without a declaration that covers them — reveal
             // the declaration so it can be answered without leaving the editor.
             if (data.needs_image_rights) {
-                document.getElementById('articleEditorImageRights')?.classList.remove('d-none');
+                syncEditorImageRights(true);
             }
             btn.disabled = false;
             return;
@@ -837,10 +865,14 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         return;
     }
-    if (!document.getElementById('libraryCountry').value || !document.getElementById('libraryLanguage').value) {
+    const langSelect = document.getElementById('libraryLanguage');
+    if (!document.getElementById('libraryCountry').value || !langSelect?.value) {
         setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
         return;
     }
+    // Disabled selects are omitted from FormData; language starts disabled
+    // until a country is chosen.
+    langSelect.disabled = false;
 
     const fd = new FormData(this);
     btn.disabled = true;
@@ -855,10 +887,15 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             body: fd,
         });
         bar.style.width = '100%';
-        const data = await res.json();
+        let data = {};
+        try {
+            data = await res.json();
+        } catch (parseErr) {
+            setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
+            return;
+        }
         if (!data.success) {
             setFeedbackHtml(feedback, false, data.message || 'Upload failed');
-            btn.disabled = false;
             return;
         }
         setFeedbackHtml(feedback, true, 'Opening editor…');
@@ -869,24 +906,24 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         } else {
             setTimeout(function () { window.location.href = boot.libraryIndexUrl; }, 800);
         }
+    } catch (err) {
+        setFeedbackHtml(feedback, false, 'Network error while uploading.');
+    } finally {
         btn.disabled = false;
         progress.classList.add('d-none');
         bar.style.width = '0%';
-    } catch (err) {
-        setFeedbackHtml(feedback, false, 'Network error while uploading.');
-        btn.disabled = false;
     }
 });
 
 if (libraryOpenUpload && libraryUploadsEnabled) {
     document.addEventListener('DOMContentLoaded', function () {
-        new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadContentModal')).show();
     });
 }
 
 if (window.location.hash === '#upload' && libraryUploadsEnabled) {
     document.addEventListener('DOMContentLoaded', function () {
-        new bootstrap.Modal(document.getElementById('uploadContentModal')).show();
+        bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadContentModal')).show();
     });
 }
 })();

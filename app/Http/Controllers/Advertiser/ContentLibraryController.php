@@ -364,11 +364,11 @@ class ContentLibraryController extends Controller
         ]);
 
         if (! $this->countryLanguagePairs->isAllowedPair($data['country'], $data['language'])) {
-            return back()
-                ->withInput()
-                ->withErrors([
-                    'language' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
-                ]);
+            return response()->json([
+                'success' => false,
+                'title' => 'Market required',
+                'message' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
+            ], 422);
         }
 
         $replace = null;

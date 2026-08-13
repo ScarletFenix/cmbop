@@ -641,7 +641,7 @@
                             <option value="">Select country</option>
                             @foreach(($countries ?? []) as $country)
                                 <option value="{{ strtolower($country->code) }}"
-                                    @selected(strtolower((string) ($editSubmission->country ?? '')) === strtolower($country->code))>
+                                    @selected(strtolower((string) ($editSubmission?->country ?? '')) === strtolower($country->code))>
                                     {{ $country->name }}
                                 </option>
                             @endforeach
@@ -664,10 +664,10 @@
                     <label class="form-label" for="libraryTitleInput">Title <span class="text-muted">(optional)</span></label>
                     <input type="text" name="title" id="libraryTitleInput" class="form-control" maxlength="200"
                            placeholder="Defaults to the filename"
-                           value="{{ $editSubmission->title ?? '' }}">
+                           value="{{ $editSubmission?->title ?? '' }}">
                 </div>
 
-                <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission->id ?? '' }}">
+                <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission?->id ?? '' }}">
                 <div id="libraryUploadFeedback" class="small" aria-live="polite"></div>
                 <div class="progress d-none mt-2" id="libraryUploadProgress" style="height:6px;"><div class="progress-bar" style="width:0%"></div></div>
             </div>
@@ -778,8 +778,8 @@ window.ContentLibraryBoot = {
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
     libraryCountryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
-    libraryPreferredCountry: @json(strtolower((string) ($editSubmission->country ?? ''))),
-    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission->language ?? ''))),
+    libraryPreferredCountry: @json(strtolower((string) ($editSubmission?->country ?? ''))),
+    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission?->language ?? ''))),
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
     uploadUrl: @json(route('advertiser.content-library.upload')),

@@ -202,6 +202,46 @@ class ContentImageRightsTest extends TestCase
         $this->assertSame('https://pexels.com/photo/999', $fresh->image_rights_source);
     }
 
+    public function test_claiming_no_images_does_not_overwrite_a_covering_declaration(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Body copy</p><img src="/storage/content-articles/1/x.png" alt="">',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_NONE,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('needs_image_rights', true);
+
+        $this->assertSame(
+            ContentSubmission::IMAGE_RIGHTS_OWN,
+            $submission->fresh()->image_rights
+        );
+    }
+
+    public function test_library_upload_rejects_an_unpaired_market_as_json(): void
+    {
+        $this->upload($this->advertiser(), [
+            'country' => 'de',
+            'language' => 'en',
+        ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath(
+                'message',
+                'That language is not allowed for the selected country. Pick country first, then a paired language.'
+            );
+    }
+
     public function test_text_only_edits_are_unaffected(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -271,6 +311,8 @@ class ContentImageRightsTest extends TestCase
         $js = file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function bindLibraryDropzone', $js);
         $this->assertStringContainsString('Opening editor…', $js);
+        $this->assertStringContainsString('hidden.bs.modal', $js);
+        $this->assertStringContainsString('function showArticleEditorAfterUploadModal', $js);
         $this->assertStringNotContainsString('readImageRights(this)', $js);
 
         $declaration = file_get_contents(resource_path('views/advertiser/partials/image-rights-declaration.blade.php'));
