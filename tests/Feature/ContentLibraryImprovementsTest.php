@@ -786,8 +786,19 @@ class ContentLibraryImprovementsTest extends TestCase
         );
         $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
         $this->assertStringContainsString('overscroll-behavior: contain', $css);
+        $this->assertStringContainsString('overscroll-behavior: none', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-body \{[^}]*overflow:\s*hidden/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog-scrollable[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
         $this->assertStringContainsString('.library-row--focus', $css);
         $this->assertStringContainsString('.library-row--focus > td', $css);
         $this->assertStringContainsString('function goToLibraryResult', $js);
