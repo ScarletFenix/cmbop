@@ -2,11 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Mail\OrderAccepted;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
 use App\Support\SocialPostUrlValidator;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -281,5 +284,91 @@ class HomepageSocialDeliveryTest extends TestCase
         $this->assertEquals(25.0, (float) $breakdown['homepage_price']);
         $this->assertSame(7, $breakdown['homepage_days']);
         $this->assertEquals(138.0, (float) $breakdown['total_price']);
+    }
+
+    public function test_tasks_list_payload_includes_social_channels_for_submit_button(): void
+    {
+        $item = $this->makeProcessingItem();
+
+        $payload = $this->actingAs($this->publisher)
+            ->getJson(route('publisher.orders.data'))
+            ->assertOk()
+            ->json();
+
+        $match = collect($payload['data'] ?? [])->firstWhere('id', $item->id);
+
+        $this->assertNotNull($match, 'Tasks list should include the processing item');
+        $this->assertSame(['facebook', 'x'], $match['social_channels']);
+        $this->assertSame([], $match['social_post_urls'] ?? []);
+        $this->assertSame(7, $match['homepage_days']);
+    }
+
+    public function test_order_accepted_email_and_bell_list_homepage_and_social(): void
+    {
+        $item = $this->makeProcessingItem([
+            'publisher_status' => null,
+            'accepted_at' => null,
+        ]);
+        $item->order->update(['status' => 'pending']);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.accept', $item->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Mail::assertQueued(OrderAccepted::class);
+
+        $html = (new OrderAccepted($item->order->fresh(), $item->fresh(), $this->site))->render();
+        $this->assertStringContainsString('Homepage placement', $html);
+        $this->assertStringContainsString('7 day', $html);
+        $this->assertStringContainsString('Social promotion', $html);
+        $this->assertStringContainsString('Facebook', $html);
+        $this->assertStringContainsString('(included)', $html);
+        $this->assertStringNotContainsString('facebook.com/posts', $html);
+
+        $note = InAppNotification::query()
+            ->where('user_id', $this->advertiser->id)
+            ->where('type', InAppNotificationService::TYPE_ORDER_ACCEPTED)
+            ->latest('id')
+            ->first();
+
+        $this->assertNotNull($note);
+        $this->assertStringContainsString('homepage (7 days', (string) $note->message);
+        $this->assertStringContainsString('social (Facebook, X)', (string) $note->message);
+    }
+
+    public function test_order_accepted_email_omits_homepage_social_when_not_purchased(): void
+    {
+        $item = $this->makeProcessingItem([
+            'homepage_days' => null,
+            'homepage_price' => 0,
+            'social_channels' => [],
+            'publisher_status' => null,
+            'accepted_at' => null,
+        ]);
+        $item->order->update(['status' => 'pending']);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.accept', $item->id))
+            ->assertOk();
+
+        Mail::assertQueued(OrderAccepted::class);
+
+        $html = (new OrderAccepted($item->order->fresh(), $item->fresh(), $this->site))->render();
+        $this->assertStringNotContainsString('Homepage placement', $html);
+        $this->assertStringNotContainsString('Social promotion', $html);
+    }
+
+    public function test_tasks_page_falls_back_to_row_payload_for_social_channels(): void
+    {
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.tasks'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('function parseSocialChannelsAttr', $html);
+        $this->assertStringContainsString('window._publisherTaskItems', $html);
+        $this->assertStringContainsString('item.social_channels', $html);
+        $this->assertStringContainsString('Live URL alone is enough', $html);
     }
 }

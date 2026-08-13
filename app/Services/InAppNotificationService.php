@@ -818,11 +818,17 @@ class InAppNotificationService
             ['icon' => 'check-circle', 'badge_color' => 'success']
         );
 
+        $extras = $item->purchasedPlacementSentence();
+        $body = "The publisher accepted your order for {$item->site_name}.";
+        if ($extras) {
+            $body .= ' '.$extras;
+        }
+
         $this->notify(
             $order->user_id,
             self::TYPE_ORDER_ACCEPTED,
             "Order #{$order->order_number} accepted",
-            "The publisher accepted your order for {$item->site_name}.",
+            $body,
             [
                 'category' => self::CATEGORY_ORDERS,
                 'icon' => 'check-circle',
@@ -830,7 +836,11 @@ class InAppNotificationService
                 'audience' => InAppNotification::AUDIENCE_ADVERTISER,
                 'action_label' => 'View order',
                 'action_url' => route('advertiser.orders', ['focus' => 'order', 'order' => $order->id], false),
-                'meta' => ['order_number' => $order->order_number],
+                'meta' => [
+                    'order_number' => $order->order_number,
+                    'homepage_days' => $item->hasHomepagePlacement() ? (int) $item->homepage_days : null,
+                    'social_channels' => $item->enabledSocialChannels(),
+                ],
             ]
         );
     }

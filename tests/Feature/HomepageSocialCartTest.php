@@ -6,14 +6,18 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Services\CartPricingService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class HomepageSocialCartTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private User $advertiser;
@@ -254,6 +258,50 @@ class HomepageSocialCartTest extends TestCase
             round((float) $expanded[0]['publisher_price'] + 25.0, 2),
             $item->publisherPayoutAmount()
         );
+    }
+
+    public function test_wallet_checkout_persists_social_channels_on_order_item(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+        Role::firstOrCreate(['name' => 'admin']);
+
+        $site = $this->makeSite([
+            'domain' => 'paid-social.example',
+            'site_url' => 'https://paid-social.example',
+        ]);
+        $sub = $this->createApprovedSubmission($this->advertiser, null);
+        Wallet::create([
+            'user_id' => $this->advertiser->id,
+            'role_id' => Role::where('name', 'advertiser')->value('id'),
+            'balance' => 500,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'homepage_days' => 7,
+                    'content_submission_id' => $sub->id,
+                ]],
+                'checkout_schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'SOC1',
+                'publication_mode' => 'immediate',
+            ])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $item = OrderItem::query()->latest('id')->firstOrFail();
+        $this->assertSame(['facebook', 'x'], $item->enabledSocialChannels());
+        $this->assertSame(7, (int) $item->homepage_days);
+        $this->assertEquals(25.0, (float) $item->homepage_price);
     }
 
     public function test_catalog_js_wires_homepage_selection_into_buy(): void

@@ -469,7 +469,8 @@ class OrderPaymentService
                     'additional_price' => $line['additional_price'] ?? 0,
                     'homepage_days' => $line['homepage_days'] ?? null,
                     'homepage_price' => $line['homepage_price'] ?? 0,
-                    'social_channels' => $line['social_channels'] ?? [],
+                    'social_channels' => $line['social_channels']
+                        ?? ($site?->enabledSocialChannels() ?: []),
                     'publisher_price' => $line['publisher_price'] ?? null,
                     'platform_fee_percent' => $line['platform_fee_percent'] ?? null,
                     'platform_fee_amount' => $line['platform_fee_amount'] ?? null,

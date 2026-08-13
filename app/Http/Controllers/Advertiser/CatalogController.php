@@ -2266,7 +2266,8 @@ class CatalogController extends Controller
                 'additional_price' => $orderItem['additional_price'] ?? 0,
                 'homepage_days' => $orderItem['homepage_days'] ?? null,
                 'homepage_price' => $orderItem['homepage_price'] ?? 0,
-                'social_channels' => $orderItem['social_channels'] ?? [],
+                'social_channels' => $orderItem['social_channels']
+                    ?? ($site->enabledSocialChannels() ?: []),
                 'publisher_price' => $orderItem['publisher_price'] ?? null,
                 'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
                 'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -4066,7 +4067,8 @@ class CatalogController extends Controller
             'additional_price' => $orderItem['additional_price'],
             'homepage_days' => $orderItem['homepage_days'] ?? null,
             'homepage_price' => $orderItem['homepage_price'] ?? 0,
-            'social_channels' => $orderItem['social_channels'] ?? [],
+            'social_channels' => $orderItem['social_channels']
+                ?? ($site->enabledSocialChannels() ?: []),
             'publisher_price' => $orderItem['publisher_price'] ?? null,
             'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
             'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,

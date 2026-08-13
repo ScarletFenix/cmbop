@@ -621,7 +621,12 @@ class EmailCatalog
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
             'site_url' => 'https://example.com',
-            'price' => 99.00,
+            'price' => 138.00,
+            'additional_price' => 0,
+            'homepage_days' => 7,
+            'homepage_price' => 25.00,
+            'social_channels' => ['facebook', 'x'],
+            'content_link' => 'https://example.com/content.docx',
         ]);
         $item->setRelation('site', self::sampleSite());
 
