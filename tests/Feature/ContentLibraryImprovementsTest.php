@@ -904,16 +904,24 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor.ql-container', $css);
-        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .article-editor-scroll .ql-editor', $css);
         $this->assertStringContainsString('flex: 1 1 0%', $css);
         $this->assertStringContainsString('min-height: 12rem', $css);
         $this->assertStringContainsString('function applyArticleEditorScrollport', $js);
         $this->assertStringContainsString('function bindArticleEditorScrollport', $js);
+        $this->assertStringContainsString('function bindArticleEditorWheel', $js);
+        $this->assertStringContainsString('function articleEditorScrollport', $js);
+        $this->assertStringContainsString('function ensureArticleEditorScrollWrap', $js);
+        $this->assertStringContainsString('function silenceArticleQuillSelectionScroll', $js);
+        $this->assertStringContainsString('scrollSelectionIntoView', $js);
+        $this->assertStringContainsString('scrollRectIntoView', $js);
+        $this->assertStringContainsString('article-editor-scroll', $css);
+        $this->assertStringContainsString('articleQuill.scrollingContainer', $js);
         $this->assertMatchesRegularExpression(
-            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow-y:\s*auto/s',
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow:\s*hidden/s',
             $css
         );
-        $this->assertMatchesRegularExpression(
+        $this->assertDoesNotMatchRegularExpression(
             '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*height:\s*auto/s',
             $css
         );
@@ -921,22 +929,30 @@ class ContentLibraryImprovementsTest extends TestCase
             '/#articleEditorModal \.article-docs-shell \{[^}]*flex:\s*1 1 0%/s',
             $css
         );
-        $this->assertMatchesRegularExpression(
-            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow-y:\s*auto/s',
-            $css
-        );
         $this->assertDoesNotMatchRegularExpression(
-            '/#articleEditorModal \.article-docs-shell #articleQuillEditor(?:\.ql-container)? \{[^}]*overflow:\s*hidden/s',
+            '/#articleEditorModal \.article-docs-shell \{[^}]*height:\s*auto/s',
             $css
         );
         $this->assertMatchesRegularExpression(
-            '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*height:\s*auto/s',
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \{[^}]*overflow-y:\s*scroll/s',
             $css
         );
         $this->assertMatchesRegularExpression(
-            '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*padding-bottom:\s*2\.75rem/s',
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \.ql-editor \{[^}]*height:\s*auto/s',
             $css
         );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \.ql-editor \{[^}]*overflow:\s*visible/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \.ql-editor \{[^}]*padding-bottom:\s*2\.75rem/s',
+            $css
+        );
+        $this->assertStringContainsString('scrollbar-gutter: stable', $css);
+        $this->assertStringContainsString('scrollbar-width: thin', $css);
+        $this->assertStringContainsString('.article-editor-scroll::-webkit-scrollbar', $css);
+        $this->assertStringContainsString('overflow-anchor: none', $css);
         $this->assertStringContainsString('overscroll-behavior: contain', $css);
         $this->assertStringContainsString('overscroll-behavior: none', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
