@@ -225,9 +225,9 @@ class PublisherMySitesPageTest extends TestCase
         );
 
         $blade = file_get_contents(resource_path('views/publisher/sites/partials/table.blade.php'));
-        $verifyInBlade = strpos($blade, 'Get Verified');
-        $offersInBlade = strpos($blade, 'site-row-actions__offers');
-        $manageInBlade = strpos($blade, 'site-row-actions__manage');
+        $verifyInBlade = strpos($blade, 'aria-label="Get Verified"');
+        $offersInBlade = strpos($blade, 'class="site-row-actions__offers"');
+        $manageInBlade = strpos($blade, '<div class="site-row-actions__manage">');
         $this->assertNotFalse($verifyInBlade);
         $this->assertGreaterThan($manageInBlade, $verifyInBlade);
         $this->assertLessThan($offersInBlade, $verifyInBlade);
