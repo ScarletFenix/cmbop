@@ -27,6 +27,7 @@ class Site extends Model
         'publisher_id',
         'publisher_accepted_at',
         'assigned_by_user_id',
+        'agency_site_import_id',
         'site_name',
         'site_url',
         'site_image', // ADDED - for storing site image path
@@ -610,6 +611,20 @@ class Site extends Model
     public function publisher()
     {
         return $this->belongsTo(User::class, 'publisher_id');
+    }
+
+    public function agencySiteImport()
+    {
+        return $this->belongsTo(AgencySiteImport::class, 'agency_site_import_id');
+    }
+
+    public function isFromAgencyCsvImport(): bool
+    {
+        if (! static::hasSitesColumn('agency_site_import_id')) {
+            return false;
+        }
+
+        return (int) ($this->agency_site_import_id ?? 0) > 0;
     }
 
     public function awaitsPublisherDetails(): bool
