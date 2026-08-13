@@ -112,7 +112,8 @@ class PublisherDashboardTest extends TestCase
         $response->assertOk()
             ->assertSee('No performance data yet')
             ->assertSee('€12.50')
-            ->assertSee('€0.00');
+            ->assertSee('€0.00')
+            ->assertSee('dash-page-end', false);
 
         $this->actingAs($publisher)
             ->getJson(route('publisher.dashboard.statistics'))
@@ -309,7 +310,10 @@ class PublisherDashboardTest extends TestCase
             ->assertSee('Unverified Blog')
             ->assertSee('Your payout')
             ->assertSee('id="orderStatusChart"', false)
-            ->assertSee('All time');
+            ->assertSee('All time')
+            ->assertSee('Recent tasks', false)
+            ->assertSee('dash-recent-col', false)
+            ->assertSee('dash-page-end', false);
     }
 
     public function test_order_status_distribution_includes_review_and_scheduled(): void
