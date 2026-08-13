@@ -788,15 +788,22 @@ class ContentLibraryImprovementsTest extends TestCase
         );
         $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
-        $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor.ql-container', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
-        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-container.ql-snow', $css);
         $this->assertMatchesRegularExpression(
-            '/#articleEditorModal \.article-docs-shell \.ql-container\.ql-snow \{[^}]*height:\s*0/s',
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow-y:\s*auto/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor(?:\.ql-container)? \{[^}]*overflow:\s*hidden/s',
             $css
         );
         $this->assertMatchesRegularExpression(
             '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*height:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*padding-bottom:\s*2\.75rem/s',
             $css
         );
         $this->assertStringContainsString('overscroll-behavior: contain', $css);
