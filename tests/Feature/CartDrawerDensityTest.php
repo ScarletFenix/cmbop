@@ -29,7 +29,10 @@ class CartDrawerDensityTest extends TestCase
 
         $this->assertStringContainsString('id="cartChecklist"', $layout);
         $this->assertStringContainsString('id="cartProceedHint"', $layout);
-        $this->assertStringContainsString('id="cartHeldNote"', $layout);
+        $this->assertStringContainsString('id="cartTotals"', $layout);
+        $this->assertStringContainsString('1 article still needed', $layout);
+        $this->assertStringContainsString('itemKey.replace', $layout);
+        $this->assertStringNotContainsString('1 site needs an article', $layout);
         $this->assertStringContainsString('id="cartTotalLabel"', $layout);
         $this->assertStringContainsString('Pay now', $layout);
         $this->assertStringContainsString('In cart €', $layout);

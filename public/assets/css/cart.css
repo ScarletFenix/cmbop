@@ -216,10 +216,6 @@
   margin-bottom: 2px;
 }
 
-.cart-item-order-label strong {
-  display: none;
-}
-
 .cart-item-article label:not(.visually-hidden) {
   display: block;
   font-size: 0.72rem;
@@ -355,9 +351,14 @@
   text-underline-offset: 2px;
 }
 
-.cart-keep-browsing:hover,
-.cart-keep-browsing:focus-visible {
+.cart-keep-browsing:hover {
   color: var(--brand-primary-soft, #3faeb2);
+}
+
+.cart-after-pay summary:focus-visible,
+.cart-keep-browsing:focus-visible {
+  outline: 3px solid var(--brand-primary-soft, #3faeb2);
+  outline-offset: 2px;
 }
 
 .cart-item-qty-note {

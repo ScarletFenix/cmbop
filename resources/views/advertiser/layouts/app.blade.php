@@ -267,7 +267,7 @@
     </div>
     <div class="cart-footer">
         <div id="cartReadyNote" class="cart-ready-note d-none"></div>
-        <div class="cart-totals">
+        <div id="cartTotals" class="cart-totals {{ $headerCartCount > 0 ? '' : 'd-none' }}">
             <div class="cart-totals__pay">
                 <span id="cartTotalLabel">Pay now</span>
                 <strong id="cartTotalAmount">€0.00</strong>
@@ -601,11 +601,13 @@
         const cartTotal = cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
         
         const badge = document.getElementById('cartBadge');
-        if (cartCount > 0) {
-            badge.style.display = 'flex';
-            badge.innerText = cartCount;
-        } else {
-            badge.style.display = 'none';
+        if (badge) {
+            if (cartCount > 0) {
+                badge.style.display = 'flex';
+                badge.innerText = cartCount;
+            } else {
+                badge.style.display = 'none';
+            }
         }
 
         const totalBadge = document.getElementById('cartTotalBadge');
@@ -628,6 +630,7 @@
         const headerMeta = document.getElementById('cartHeaderMeta');
         const totalLabel = document.getElementById('cartTotalLabel');
         const heldNote = document.getElementById('cartHeldNote');
+        const totalsEl = document.getElementById('cartTotals');
         if (cart.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-muted px-2">
@@ -661,6 +664,9 @@
                 heldNote.classList.add('d-none');
                 heldNote.textContent = '';
             }
+            if (totalsEl) {
+                totalsEl.classList.add('d-none');
+            }
         } else {
             let html = '';
             const sortedCart = [...cart].sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
@@ -670,7 +676,13 @@
             const readyTotal = cart
                 .filter((item) => lineFullyAssigned(item))
                 .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
+            const missingSlots = cart.reduce((n, item) => (
+                n + lineContentIds(item).filter((id) => !id).length
+            ), 0);
             const heldTotal = Math.max(0, cartTotal - readyTotal);
+            if (totalsEl) {
+                totalsEl.classList.remove('d-none');
+            }
             if (headerMeta) {
                 headerMeta.textContent = cart.length + ' site' + (cart.length === 1 ? '' : 's')
                     + ' · ' + readyCount + ' ready to pay';
@@ -681,23 +693,19 @@
                     checklistEl.innerHTML = '';
                 } else {
                     const status = readyCount === 0
-                        ? (missing === 1 ? '1 site needs an article' : missing + ' sites need an article')
-                        : (readyCount + ' ready · ' + missing + ' still ' + (missing === 1 ? 'needs' : 'need') + ' an article');
+                        ? (missingSlots === 1 ? '1 article still needed' : missingSlots + ' articles still needed')
+                        : (readyCount + ' ready · ' + missingSlots + ' article' + (missingSlots === 1 ? '' : 's') + ' still needed');
                     checklistEl.innerHTML = '<div class="cart-checklist__status">' + escapeHtml(status) + '</div>';
                     checklistEl.classList.remove('d-none');
                 }
             }
             if (readyNote) {
-                if (readyCount === 0) {
-                    readyNote.classList.add('d-none');
-                    readyNote.textContent = '';
-                } else if (missing > 0) {
-                    readyNote.classList.remove('d-none');
-                    readyNote.textContent = readyCount + ' ready to pay. '
-                        + missing + ' stay' + (missing === 1 ? 's' : '') + ' in your cart.';
-                } else {
+                if (readyCount > 0 && missing === 0) {
                     readyNote.classList.remove('d-none');
                     readyNote.textContent = 'Articles attached — proceed to pay, or keep browsing.';
+                } else {
+                    readyNote.classList.add('d-none');
+                    readyNote.textContent = '';
                 }
             }
             if (proceedBtn) {
@@ -760,6 +768,7 @@
                         const slotLabel = placementIds.length > 1
                             ? `Article ${copyIndex + 1} of ${placementIds.length}`
                             : (selectedId ? 'Attached' : 'Add article');
+                        const selectId = 'cart-doc-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + copyIndex;
                         let opts = `<option value="">— Choose ${placementIds.length > 1 ? 'article ' + (copyIndex + 1) + ' of ' + placementIds.length : 'article'} —</option>`;
                         options.forEach((article) => {
                             const fits = articleFitsSiteLanguages(article, siteLanguageCodes(item));
@@ -785,8 +794,8 @@
                             <div class="cart-item-order-label">
                                 <span class="cart-item-order-kicker">${escapeHtml(slotLabel)}</span>
                             </div>
-                            <label class="visually-hidden" for="cart-doc-${item.id}-${copyIndex}">Article for ${escapeHtml(siteName)}</label>
-                            <select id="cart-doc-${item.id}-${copyIndex}"
+                            <label class="visually-hidden" for="${selectId}">Article for ${escapeHtml(siteName)}</label>
+                            <select id="${selectId}"
                                     class="cart-article-select"
                                     data-id="${item.id}"
                                     data-sensitive-type="${item.sensitive_type || ''}"
