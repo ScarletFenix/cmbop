@@ -36,7 +36,7 @@ class ContentSubmissionController extends Controller
                 'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
-                'max_kilobytes' => (int) ($cfg['max_kilobytes'] ?? 5120),
+                'max_kilobytes' => $this->uploads->effectiveMaxKilobytes($cfg),
                 'scheduling_enabled' => (bool) ($cfg['scheduling']['enabled'] ?? true),
                 'max_schedule_months' => (int) ($cfg['scheduling']['max_months'] ?? 3),
                 'max_schedule_at' => $this->scheduler->maxScheduleAt()->toIso8601String(),

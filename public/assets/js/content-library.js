@@ -162,7 +162,7 @@ function showDropzoneFile(file) {
 
 function assignLibraryFile(file, feedback) {
     const input = document.getElementById('libraryFileInput');
-    const maxKb = Number(boot.maxKilobytes || 5120);
+    const maxKb = Number(boot.maxKilobytes || 10240);
     if (!file || !input) return false;
     if (!/\.docx$/i.test(file.name)) {
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
