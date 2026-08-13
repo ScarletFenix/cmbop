@@ -784,6 +784,9 @@ class ContentLibraryImprovementsTest extends TestCase
             $css
         );
         $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
+        $this->assertStringContainsString('overscroll-behavior: contain', $css);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
