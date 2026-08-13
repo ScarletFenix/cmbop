@@ -210,6 +210,7 @@ class AdminFinanceHubTest extends TestCase
             ->assertOk()
             ->assertSee('Wallet ledger')
             ->assertSee('Transfer In', false)
+            ->assertSee('Moved to Advertiser Wallet', false)
             ->assertSee('Earnings Moved for Spending', false)
             ->assertSee('Test earnings');
 
@@ -238,6 +239,8 @@ class AdminFinanceHubTest extends TestCase
     public function test_billing_config_exposes_withdrawal_fee_percent(): void
     {
         $this->assertIsFloat((float) config('billing.withdrawal_fee_percent'));
+        $this->assertSame(0.01, round((float) config('billing.role_move.min_amount'), 2));
+        $this->assertSame(0.0, (float) config('billing.role_move.fee_percent'));
     }
 
     public function test_record_transfer_in_writes_ledger(): void

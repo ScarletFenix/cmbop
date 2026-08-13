@@ -145,6 +145,10 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringContainsString('id="roleMoveForm"', $html);
         $this->assertDoesNotMatchRegularExpression('/<button[^>]*id="roleMoveBtn"[^>]*disabled/', $html);
         $this->assertStringContainsString('id="roleMoveAllBtn"', $html);
+        $this->assertStringContainsString('data-can-move="1"', $html);
+        $this->assertStringContainsString('data-min="0.01"', $html);
+        $this->assertStringContainsString('data-max="7.64"', $html);
+        $this->assertStringContainsString('The €20 payout minimum does not apply', $html);
     }
 
     public function test_withdraw_cta_is_disabled_when_publisher_has_debt(): void

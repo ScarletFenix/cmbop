@@ -272,6 +272,192 @@ class PublisherRoleMoveTest extends TestCase
         $this->assertSame('Earnings Moved for Spending', $in->typeLabel());
     }
 
+    public function test_only_withdrawable_cash_moves_and_publisher_bonus_stays(): void
+    {
+        $user = $this->publisherWithWallets([
+            'publisher_balance' => 25,
+            'publisher_bonus' => 10,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 15])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('publisher.spendable', 10)
+            ->assertJsonPath('publisher.withdrawable', 0)
+            ->assertJsonPath('publisher.bonus', 10)
+            ->assertJsonPath('advertiser.spendable', 35)
+            ->assertJsonPath('advertiser.withdrawable', 15)
+            ->assertJsonPath('advertiser.bonus', 20);
+
+        $publisher = Wallet::where('user_id', $user->id)
+            ->where('role_id', Wallet::publisherRoleId())
+            ->firstOrFail();
+        $this->assertSame(10.0, (float) $publisher->balance);
+        $this->assertSame(10.0, (float) $publisher->bonus_balance);
+    }
+
+    public function test_amount_above_withdrawable_is_rejected_when_cash_remains(): void
+    {
+        $user = $this->publisherWithWallets([
+            'publisher_balance' => 25,
+            'publisher_bonus' => 10,
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 15.01])
+            ->assertStatus(422)
+            ->assertJsonPath('code', 'insufficient_withdrawable');
+
+        $this->assertSame(
+            25.0,
+            (float) Wallet::where('user_id', $user->id)
+                ->where('role_id', Wallet::publisherRoleId())
+                ->value('balance')
+        );
+        $this->assertSame(0, BalanceTransfer::count());
+    }
+
+    public function test_minimum_one_cent_move_succeeds(): void
+    {
+        $user = $this->publisherWithWallets(['publisher_balance' => 25]);
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 0.01])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('amount', 0.01)
+            ->assertJsonPath('fee', 0)
+            ->assertJsonPath('publisher.withdrawable', 24.99);
+    }
+
+    public function test_sequential_moves_debit_publisher_twice(): void
+    {
+        $user = $this->publisherWithWallets(['publisher_balance' => 25]);
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 10])
+            ->assertOk();
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 5])
+            ->assertOk()
+            ->assertJsonPath('publisher.withdrawable', 10)
+            ->assertJsonPath('advertiser.spendable', 35)
+            ->assertJsonPath('advertiser.bonus', 20);
+
+        $this->assertSame(2, BalanceTransfer::where('user_id', $user->id)->count());
+        $this->assertSame(2, WalletTransaction::where('type', WalletTransaction::TYPE_ROLE_MOVE_IN)->count());
+    }
+
+    public function test_guests_cannot_move(): void
+    {
+        $response = $this->postJson(route('publisher.balance.transfer'), ['amount' => 5]);
+
+        $this->assertContains($response->status(), [401, 302]);
+        $this->assertSame(0, BalanceTransfer::count());
+    }
+
+    public function test_advertiser_only_cannot_post_publisher_move(): void
+    {
+        $advertiser = Role::firstOrCreate(['name' => 'advertiser']);
+        Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiser->id,
+        ]);
+        $user->roles()->attach($advertiser->id);
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $advertiser->id,
+            'balance' => 50,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 5])
+            ->assertForbidden();
+
+        $this->assertSame(0, BalanceTransfer::count());
+    }
+
+    public function test_activity_can_filter_to_role_move_in_with_icon(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 10])
+            ->assertOk();
+
+        $response = $this->actingAs($user->fresh())
+            ->getJson(route('advertiser.balance.transactions', ['type' => WalletTransaction::TYPE_ROLE_MOVE_IN]));
+
+        $response->assertOk();
+        $rows = collect($response->json('transactions'));
+        $this->assertNotEmpty($rows);
+        $this->assertTrue($rows->every(fn ($row) => $row['type'] === WalletTransaction::TYPE_ROLE_MOVE_IN));
+        $this->assertSame('Earnings Moved for Spending', $rows->first()['type_label']);
+        $this->assertSame('fa-exchange-alt', $rows->first()['icon']);
+    }
+
+    public function test_legacy_publisher_transfer_without_ledger_uses_role_move_in_label(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        BalanceTransfer::create([
+            'user_id' => $user->id,
+            'from_role' => 'publisher',
+            'to_role' => 'advertiser',
+            'amount' => 8,
+            'fee' => 0,
+            'net_amount' => 8,
+            'reference_code' => 'INT-TRF-LEGACY-1',
+            'status' => 'completed',
+        ]);
+
+        $response = $this->actingAs($user)
+            ->getJson(route('advertiser.balance.transactions'));
+
+        $response->assertOk();
+        $row = collect($response->json('transactions'))
+            ->firstWhere('reference', 'INT-TRF-LEGACY-1');
+
+        $this->assertNotNull($row);
+        $this->assertSame(WalletTransaction::TYPE_ROLE_MOVE_IN, $row['type']);
+        $this->assertSame('Earnings Moved for Spending', $row['type_label']);
+        $this->assertSame('credit', $row['direction']);
+        $this->assertSame(8.0, (float) $row['amount']);
+    }
+
+    public function test_balance_page_shows_updated_totals_after_move(): void
+    {
+        $user = $this->publisherWithWallets(['publisher_balance' => 25]);
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 10])
+            ->assertOk();
+
+        $html = $this->actingAs($user->fresh())
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/id="publisherBalance">€15\.00/', $html);
+        $this->assertMatchesRegularExpression('/id="advertiserBalance">€30\.00/', $html);
+        $this->assertStringContainsString('data-max="15.00"', $html);
+        $this->assertStringContainsString('data-can-move="1"', $html);
+    }
+
+    public function test_role_move_config_is_fee_free_with_cent_minimum(): void
+    {
+        $this->assertSame(0.01, round((float) config('billing.role_move.min_amount'), 2));
+        $this->assertSame(0.0, (float) config('billing.role_move.fee_percent'));
+        $this->assertGreaterThan(0.01, (float) config('billing.role_move.max_amount'));
+    }
+
     public function test_advertiser_to_publisher_transfer_stays_gone(): void
     {
         $user = $this->publisherWithWallets();
