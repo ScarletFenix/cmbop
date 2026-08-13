@@ -8,7 +8,6 @@ use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
-use App\Support\SiteImageUpload;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -18,6 +17,9 @@ use Symfony\Component\Mime\MimeTypes;
 
 class ContentUploadService
 {
+    /** Product cap for article .docx uploads (5 MB). */
+    public const MAX_KILOBYTES = 5120;
+
     public function __construct(
         private DocumentTextExtractor $extractor,
         private ArticleEvaluationService $evaluation,
@@ -29,10 +31,15 @@ class ContentUploadService
         $override = ContentModerationSetting::getValue('upload_config', []) ?: [];
 
         if (! is_array($override) || $override === []) {
+            $base['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($base['max_kilobytes'] ?? self::MAX_KILOBYTES));
+
             return $base;
         }
 
-        return array_replace_recursive($base, $override);
+        $merged = array_replace_recursive($base, $override);
+        $merged['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($merged['max_kilobytes'] ?? self::MAX_KILOBYTES));
+
+        return $merged;
     }
 
     /**
@@ -508,14 +515,13 @@ class ContentUploadService
     }
 
     /**
-     * App cap from config, clamped so we never accept more than PHP will store.
+     * Article cap is 5 MB. Never advertise less than that (old admin/PHP 2 MB clamps).
      */
     public function effectiveMaxKilobytes(?array $cfg = null): int
     {
         $cfg = $cfg ?? $this->effectiveConfig();
-        $configured = max(100, (int) ($cfg['max_kilobytes'] ?? 5120));
 
-        return max(100, min($configured, SiteImageUpload::phpUploadMaxKilobytes()));
+        return max(self::MAX_KILOBYTES, (int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
     }
 
     /**

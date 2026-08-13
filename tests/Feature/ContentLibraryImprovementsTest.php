@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -876,6 +877,33 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString("fd.set('file', file, file.name)", $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
+    }
+
+    public function test_library_upload_allows_five_megabyte_docx_not_two(): void
+    {
+        $advertiser = $this->advertiser();
+
+        ContentModerationSetting::setValue('upload_config', [
+            'max_kilobytes' => 2048,
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Max 5 MB', $html);
+        $this->assertStringNotContainsString('Max 2 MB', $html);
+        $this->assertMatchesRegularExpression('/maxKilobytes:\s*5120/', $html);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.config'))
+            ->assertOk()
+            ->assertJsonPath('config.max_kilobytes', 5120);
+
+        $htaccess = (string) file_get_contents(public_path('.htaccess'));
+        $this->assertStringContainsString('lsapi_module', $htaccess);
+        $this->assertStringContainsString('php_value upload_max_filesize 16M', $htaccess);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
