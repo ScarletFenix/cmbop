@@ -55,9 +55,14 @@ class ArticleHtmlSanitizer
                 if ($src === '') {
                     return '';
                 }
-                // Allow absolute https/http, site-relative /storage/, and data:image for editor paste
+                // Editor/preview may load /media (Hostinger fallback) then persist /storage.
+                if (str_starts_with($src, '/media/')) {
+                    $src = '/storage/'.substr($src, strlen('/media/'));
+                }
+                // Allow absolute https/http, site-relative /storage/ or /media/, and data:image for editor paste
                 $ok = preg_match('#^https?://#i', $src)
                     || str_starts_with($src, '/storage/')
+                    || str_starts_with($src, '/media/')
                     || str_starts_with($src, 'data:image/');
                 if (! $ok) {
                     return '';

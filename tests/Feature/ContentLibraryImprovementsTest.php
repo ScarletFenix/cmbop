@@ -779,6 +779,30 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotEmpty($fresh->articleHistory());
     }
 
+    public function test_editor_media_image_src_is_persisted_as_storage_path(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $html = '<p>Updated article body with a <a href="https://example.com/new-guide">helpful guide</a> for marketers.</p>'
+            .'<p><img src="/media/content-articles/demo.png" alt="Chart"></p>'
+            .'<p>More compliant content about software tools and productivity for digital teams worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => 'Media Path Title',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $submission->fresh();
+        $this->assertStringContainsString('src="/storage/content-articles/demo.png"', (string) $fresh->preview_html);
+        $this->assertStringNotContainsString('src="/media/content-articles/demo.png"', (string) $fresh->preview_html);
+    }
+
     public function test_preview_rewrites_absolute_storage_urls_to_relative(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -886,6 +910,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('img.is-broken', $css);
         $this->assertStringContainsString('function patchQuillImageSanitize', $js);
         $this->assertStringContainsString("value.startsWith('/storage/')", $js);
+        $this->assertStringContainsString("value.startsWith('/media/')", $js);
+        $this->assertStringContainsString('function publicDiskTwinSrc', $js);
+        $this->assertStringContainsString('function recoverPublicDiskImage', $js);
+        $this->assertStringContainsString('$1/media/', $js);
+        $this->assertStringContainsString('function parseLibraryJson', $js);
         $this->assertStringContainsString('function hideBootstrapModal', $js);
         $this->assertStringContainsString('function bindLibraryModalA11y', $js);
         $this->assertStringContainsString('data-no-tip', $js);

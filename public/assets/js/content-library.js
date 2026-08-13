@@ -431,11 +431,22 @@ function openPreviewModal(title, html, links, submissionId, editable) {
     bootstrap.Modal.getOrCreateInstance(document.getElementById('articlePreviewModal')).show();
 }
 
+async function parseLibraryJson(res) {
+    try {
+        return await res.json();
+    } catch (e) {
+        return null;
+    }
+}
+
 async function fetchSubmissionPayload(submissionId) {
     const res = await fetch(libraryPreviewUrlBase + '/' + submissionId + '/preview', {
         headers: { 'Accept': 'application/json' },
     });
-    const data = await res.json();
+    const data = await parseLibraryJson(res);
+    if (!data) {
+        throw new Error('Could not load article');
+    }
     if (!res.ok || !data.success) {
         throw new Error((data && data.message) || 'Could not load article');
     }
@@ -588,33 +599,78 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
  * Rewrite absolute /storage/... image URLs onto the current origin so previews
  * still work when APP_URL differs from the browser host.
  */
+/**
+ * Hostinger often 404s /storage when the public symlink is missing; /media
+ * streams the same public-disk file. Catalog already walks that chain.
+ */
+function publicDiskTwinSrc(src) {
+    const value = String(src || '').trim();
+    const storage = value.match(/^(https?:\/\/[^/]+)?(\/storage\/)(.+)$/i);
+    if (storage) {
+        return (storage[1] || '') + '/media/' + storage[3];
+    }
+    const media = value.match(/^(https?:\/\/[^/]+)?(\/media\/)(.+)$/i);
+    if (media) {
+        return (media[1] || '') + '/storage/' + media[3];
+    }
+    return null;
+}
+
+function recoverPublicDiskImage(img) {
+    if (!img || img.dataset.diskFallback === '1') {
+        return false;
+    }
+    const next = publicDiskTwinSrc(img.getAttribute('src') || '');
+    if (!next) {
+        return false;
+    }
+    img.dataset.diskFallback = '1';
+    img.setAttribute('src', next);
+    return true;
+}
+
+function markBrokenLibraryImage(img) {
+    if (!img) return;
+    img.classList.add('is-broken');
+    if (!img.getAttribute('alt')) {
+        img.setAttribute('alt', 'Image failed to load');
+    }
+    img.style.outline = '1px dashed #e2e8f0';
+    img.style.minHeight = '48px';
+    img.style.background = '#f8fafc';
+}
+
 function fixPreviewImages(root) {
     if (!root) return;
     root.querySelectorAll('img').forEach(function (img) {
         const src = img.getAttribute('src') || '';
-        const match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
+        const match = src.match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i)
+            || src.match(/^(?:https?:)?\/\/[^/]+(\/media\/.+)$/i);
         if (match) {
             img.setAttribute('src', match[1]);
         }
+        const rooted = img.getAttribute('src') || '';
+        if (rooted.indexOf('/storage/') === 0) {
+            img.setAttribute('src', '/media/' + rooted.slice('/storage/'.length));
+        }
         img.addEventListener('error', function () {
-            if (img.dataset.fallbackApplied) return;
-            img.dataset.fallbackApplied = '1';
-            // Last resort: if relative path failed and we still have an absolute, try same-origin.
-            const again = (img.getAttribute('src') || '').match(/^(?:https?:)?\/\/[^/]+(\/storage\/.+)$/i);
-            if (again) {
-                img.setAttribute('src', again[1]);
+            if (recoverPublicDiskImage(img)) {
                 return;
             }
-            img.alt = 'Image failed to load';
-            img.style.outline = '1px dashed #e2e8f0';
-            img.style.minHeight = '48px';
-            img.style.background = '#f8fafc';
+            markBrokenLibraryImage(img);
         });
+        if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+            if (!recoverPublicDiskImage(img)) {
+                markBrokenLibraryImage(img);
+            }
+        }
     });
 }
 
 function rewriteStorageUrlsInHtml(html) {
-    return String(html || '').replace(/(?:https?:)?\/\/[^"'>\s]+(\/storage\/[^"'\s>]+)/gi, '$1');
+    return String(html || '')
+        .replace(/(?:https?:)?\/\/[^"'>\s]+(\/storage\/[^"'\s>]+)/gi, '$1')
+        .replace(/(src\s*=\s*["'])\/storage\//gi, '$1/media/');
 }
 
 function hideImageRemoveOverlay() {
@@ -713,11 +769,15 @@ function bindBrokenEditorImages() {
         if (img.dataset.errorBound === '1') return;
         img.dataset.errorBound = '1';
         img.addEventListener('error', function () {
-            img.classList.add('is-broken');
-            if (!img.getAttribute('alt')) img.setAttribute('alt', 'Image failed to load');
+            if (recoverPublicDiskImage(img)) {
+                return;
+            }
+            markBrokenLibraryImage(img);
         });
         if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
-            img.classList.add('is-broken');
+            if (!recoverPublicDiskImage(img)) {
+                markBrokenLibraryImage(img);
+            }
         }
     });
 }
@@ -1019,8 +1079,8 @@ function ensureArticleQuill() {
                     headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
                     body: fd,
                 });
-                const data = await res.json();
-                if (!res.ok || !data.success || !data.url) {
+                const data = await parseLibraryJson(res);
+                if (!data || !res.ok || !data.success || !data.url) {
                     setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Image upload failed'));
                     return;
                 }
@@ -1178,7 +1238,12 @@ async function saveArticleEditor() {
                 articleEditorRightsPayload()
             )),
         });
-        const data = await res.json();
+        const data = await parseLibraryJson(res);
+        if (!data) {
+            setFeedbackHtml(feedback, false, 'Could not save article.');
+            btn.disabled = false;
+            return;
+        }
         if (!res.ok || !data.success) {
             setFeedbackHtml(feedback, false, data.message || 'Could not save article.');
             // Images were added without a declaration that covers them — reveal
