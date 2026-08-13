@@ -243,6 +243,7 @@ class PublisherMySitesPageTest extends TestCase
         $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
         $this->assertStringContainsString('Featuring still works; advertisers may trust it less.', $js);
         $this->assertStringContainsString('promoBetterOfNote', $js);
+        $this->assertStringNotContainsString('btn-discount-clear', $js);
     }
 
     public function test_ajax_metrics_keep_traffic_out_of_market_column(): void
