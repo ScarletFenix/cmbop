@@ -790,7 +790,30 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-container.ql-snow', $css);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.ql-container\.ql-snow \{[^}]*height:\s*0/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*height:\s*auto/s',
+            $css
+        );
         $this->assertStringContainsString('overscroll-behavior: contain', $css);
+        $this->assertStringContainsString('overscroll-behavior: none', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-body \{[^}]*overflow:\s*hidden/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog-scrollable[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
+        $this->assertStringContainsString('function syncEditorActions', $js);
+        $this->assertStringContainsString("saveBtn.classList.toggle('btn-outline-primary', canOrder)", $js);
+        $this->assertStringContainsString('class="btn btn-primary d-none" id="articleEditorOrderBtn"', $library);
+        $this->assertStringNotContainsString('btn-success d-none" id="articleEditorOrderBtn"', $library);
         $this->assertStringContainsString('overscroll-behavior: none', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
         $this->assertMatchesRegularExpression(

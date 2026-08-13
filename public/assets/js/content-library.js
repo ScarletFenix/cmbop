@@ -760,6 +760,7 @@ function bindEditorImageChrome() {
     });
 
     articleQuill.root.addEventListener('scroll', syncSelectedImageOverlay);
+    articleQuill.root.parentElement?.addEventListener('scroll', syncSelectedImageOverlay);
     document.querySelector('#articleEditorModal .modal-body')?.addEventListener('scroll', syncSelectedImageOverlay);
 
     document.getElementById('articleImageRemoveBtn')?.addEventListener('click', function (e) {
@@ -925,16 +926,26 @@ function openArticleEditor(submission) {
     loadArticleHtml(submission.preview_html || '<p><br></p>');
     const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
     syncEditorImageRights(needsRights);
+    syncEditorActions(submission);
+    showArticleEditorAfterUploadModal();
+}
+
+function syncEditorActions(submission) {
     const orderBtn = document.getElementById('articleEditorOrderBtn');
+    const saveBtn = document.getElementById('articleEditorSaveBtn');
+    const canOrder = !!(submission && submission.can_order);
     if (orderBtn) {
-        if (submission.can_order) {
+        if (canOrder && submission.id) {
             orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
             orderBtn.classList.remove('d-none');
         } else {
             orderBtn.classList.add('d-none');
         }
     }
-    showArticleEditorAfterUploadModal();
+    if (saveBtn) {
+        saveBtn.classList.toggle('btn-primary', !canOrder);
+        saveBtn.classList.toggle('btn-outline-primary', canOrder);
+    }
 }
 
 /**
