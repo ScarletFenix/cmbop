@@ -523,38 +523,71 @@ code.font-monospace {
   border: 1px solid var(--brand-primary-border);
 }
 
-/* Upload article — light blue secondary verb (distinct from teal Order/Pay) */
+/* Upload article — filled blue (distinct from teal Order/Pay) */
 .btn-upload {
-  --bs-btn-color: #1d4ed8;
-  --bs-btn-bg: #eff6ff;
-  --bs-btn-border-color: #93c5fd;
-  --bs-btn-hover-color: #1e3a8a;
-  --bs-btn-hover-bg: #dbeafe;
-  --bs-btn-hover-border-color: #60a5fa;
-  --bs-btn-focus-shadow-rgb: 59, 130, 246;
+  --bs-btn-color: #fff;
+  --bs-btn-bg: #2563eb;
+  --bs-btn-border-color: #1d4ed8;
+  --bs-btn-hover-color: #fff;
+  --bs-btn-hover-bg: #1d4ed8;
+  --bs-btn-hover-border-color: #1e40af;
+  --bs-btn-focus-shadow-rgb: 37, 99, 235;
   --bs-btn-active-color: #fff;
-  --bs-btn-active-bg: #3b82f6;
-  --bs-btn-active-border-color: #2563eb;
-  --bs-btn-disabled-color: #93c5fd;
-  --bs-btn-disabled-bg: #eff6ff;
-  --bs-btn-disabled-border-color: #bfdbfe;
+  --bs-btn-active-bg: #1e40af;
+  --bs-btn-active-border-color: #1e3a8a;
+  display: inline-flex;
+  align-items: center;
+  gap: .5rem;
   color: var(--bs-btn-color);
   background-color: var(--bs-btn-bg);
   border-color: var(--bs-btn-border-color);
   font-weight: 600;
-  transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast);
+  border-radius: var(--btn-radius-pill, 999px);
+  box-shadow: 0 1px 2px rgba(37, 99, 235, .28);
+  transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .btn-upload:hover,
 .btn-upload:focus {
   color: var(--bs-btn-hover-color);
   background-color: var(--bs-btn-hover-bg);
   border-color: var(--bs-btn-hover-border-color);
+  box-shadow: 0 2px 8px rgba(37, 99, 235, .35);
 }
 .btn-upload:active,
 .btn-upload.active {
   color: var(--bs-btn-active-color);
   background-color: var(--bs-btn-active-bg);
   border-color: var(--bs-btn-active-border-color);
+}
+.btn-upload:has(.btn-upload__icon) {
+  padding: .4rem 1rem .4rem .4rem;
+}
+.btn-upload__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .2);
+  flex-shrink: 0;
+}
+.btn-upload__hint {
+  font-size: .7rem;
+  font-weight: 600;
+  letter-spacing: .02em;
+  padding: .12rem .4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .18);
+  color: #eff6ff;
+}
+.btn-sm.btn-upload:has(.btn-upload__icon) {
+  padding: .25rem .75rem .25rem .25rem;
+}
+.btn-sm.btn-upload .btn-upload__icon {
+  width: 1.4rem;
+  height: 1.4rem;
+  font-size: .75rem;
 }
 
 /* Soft blue strip for content-intake zones (not a card — marks upload context) */

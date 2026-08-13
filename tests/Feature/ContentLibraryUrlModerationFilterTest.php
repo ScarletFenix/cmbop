@@ -263,7 +263,10 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
 
         $this->assertStringContainsString('Browse publishers', $html);
         $this->assertStringContainsString('id="openUploadModalBtn"', $html);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('library-browse-link', $html);
         $this->assertStringNotContainsString('id="openUploadModalBtnTop"', $html);
+        $this->assertStringNotContainsString('library-page-actions upload-zone', $html);
     }
 
     public function test_evaluation_service_flags_cloaked_url_directly(): void

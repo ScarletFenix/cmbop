@@ -127,32 +127,21 @@
     @include('advertiser.partials.ordering-path', [
         'step' => 3,
         'title' => 'Place a guest post · Content',
-        'subtitle' => 'One job here: upload and approve articles. Any approved article can be placed on any catalog site.',
+        'subtitle' => 'Upload and approve articles here. You can also browse publishers first and upload when you pick a site.',
         'linkAll' => true,
         'contentRoute' => route('advertiser.content-library'),
-        'actions' => '<a href="'.e(route('advertiser.catalog')).'" class="btn btn-sm btn-outline-secondary">Browse publishers</a>',
     ])
 
     <div class="mb-3">
         <h2 class="mb-1 fw-semibold">Content Library</h2>
-        <p class="text-muted mb-0 small">
-            Upload a .docx (choose language and country yourself) → wait for approval → browse any publishers → assign in cart → pay.
-            Multi-site orders need a different approved article for each website — language does not have to match the site.
-        </p>
-        <div class="library-page-actions upload-zone">
-            @if($uploadsEnabled)
-                <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
-                    <i class="fa fa-upload me-1"></i> Upload article
-                </button>
-            @else
-                <button type="button" class="btn btn-upload" id="openUploadModalBtn" disabled title="Uploads are temporarily turned off">
-                    <i class="fa fa-upload me-1"></i> Uploads disabled
-                </button>
-            @endif
-            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
-                <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
+        <div class="library-page-actions">
+            @include('advertiser.partials.upload-article-button', [
+                'id' => 'openUploadModalBtn',
+                'uploadsEnabled' => $uploadsEnabled,
+            ])
+            <a href="{{ route('advertiser.catalog') }}" class="btn btn-link btn-sm library-browse-link" id="libraryBrowsePublishersBtn">
+                Browse publishers
             </a>
-            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload · use Order on a row to place an approved article</span>
         </div>
     </div>
 
@@ -545,18 +534,9 @@
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
-                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                    message="Upload a .docx to get your first approved article. Or browse publishers now and upload when you pick a site."
                                 >
-                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        @if($uploadsEnabled)
-                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                                <i class="fa fa-upload me-1"></i> Upload article
-                                            </button>
-                                        @endif
-                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
-                                            Guided placement
-                                        </a>
-                                    </div>
+                                    @include('advertiser.partials.library-empty-actions', ['uploadsEnabled' => $uploadsEnabled])
                                 </x-ui.empty-state>
                             @elseif(($availabilityFilter ?? 'all') === 'archived')
                                 <x-ui.empty-state
@@ -601,18 +581,9 @@
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
-                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                    message="Upload a .docx to get your first approved article. Or browse publishers now and upload when you pick a site."
                                 >
-                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        @if($uploadsEnabled)
-                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                                <i class="fa fa-upload me-1"></i> Upload article
-                                            </button>
-                                        @endif
-                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
-                                            Guided placement
-                                        </a>
-                                    </div>
+                                    @include('advertiser.partials.library-empty-actions', ['uploadsEnabled' => $uploadsEnabled])
                                 </x-ui.empty-state>
                             @endif
                         </td>

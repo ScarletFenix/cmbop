@@ -288,6 +288,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('.mod-count.is-zero', $css);
         $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
+        $this->assertStringContainsString('.library-browse-link', $css);
+        $this->assertStringNotContainsString('.library-page-actions.upload-zone', $css);
         $boxPos = strpos($css, '.library-status-box {');
         $mediaPos = strpos($css, '@media (max-width: 575.98px)');
         $this->assertNotFalse($boxPos);
@@ -519,10 +521,40 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('articlePreviewLinksList', $html);
         $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
         $this->assertStringContainsString('Browse publishers', $html);
-        $this->assertStringContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringContainsString('btn-upload__hint', $html);
+        $this->assertStringContainsString('class="library-page-actions"', $html);
+        $this->assertStringNotContainsString('library-page-actions upload-zone', $html);
+        $this->assertStringNotContainsString('btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringNotContainsString('btn-sm btn-outline-secondary">Browse publishers', $html);
+        $this->assertStringNotContainsString('One job here: upload and approve articles', $html);
+        $this->assertStringNotContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringContainsString('browse publishers first and upload when you pick a site', $html);
         $this->assertStringNotContainsString('library-order-soon', $html);
         $this->assertStringNotContainsString('Order your article', $html);
         $this->assertStringNotContainsString('Coming soon', $html);
+    }
+
+    public function test_empty_library_offers_upload_and_catalog_path(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('No articles yet', false)
+            ->assertSee('Upload a .docx to get your first approved article', false)
+            ->assertSee('browse publishers now and upload when you pick a site', false)
+            ->assertSee('Upload article', false)
+            ->assertSee('Browse publishers', false)
+            ->assertSee(route('advertiser.catalog'), false)
+            ->assertDontSee('Upload a .docx here. After approval, assign it in your cart and checkout.', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('library-browse-link', $html);
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'Browse publishers'));
+        $this->assertStringContainsString('Guided placement', $html);
+        $this->assertStringNotContainsString('btn btn-outline-secondary">Guided placement', $html);
     }
 
     public function test_advertiser_can_save_multiple_detected_links_from_preview(): void

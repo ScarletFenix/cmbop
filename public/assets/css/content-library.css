@@ -582,12 +582,21 @@
         min-height: 31px;
     }
     .library-filter-bar .form-select { min-width: 0; width: 100%; }
-    .library-page-actions { margin-top: .75rem; }
-    .library-page-actions.upload-zone {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: .75rem;
+    .library-page-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .5rem 1rem;
+        margin-top: .75rem;
+    }
+    .library-browse-link {
+        font-weight: 600;
+        text-decoration: none;
+        padding-left: .15rem;
+    }
+    .library-browse-link:hover,
+    .library-browse-link:focus-visible {
+        text-decoration: underline;
     }
     .article-docs-shell {
         border: 1px solid #e2e8f0;
