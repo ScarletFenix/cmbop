@@ -520,6 +520,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotFalse($headingPos);
         $this->assertNotFalse($uploadPos);
         $this->assertGreaterThan($headingPos, $uploadPos);
+        $this->assertMatchesRegularExpression(
+            '/<button type="button"\s+class="btn btn-upload"[\s\S]*?id="openUploadModalBtn"[\s\S]*?btn-upload__label">Upload article<\/span>/',
+            $html
+        );
         $this->assertStringContainsString('articleQuillEditor', $html);
         $this->assertStringContainsString('Edit article', $html);
         $this->assertStringContainsString('article-preview-tools.js', $html);
@@ -540,6 +544,34 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('library-order-soon', $html);
         $this->assertStringNotContainsString('Order your article', $html);
         $this->assertStringNotContainsString('Coming soon', $html);
+    }
+
+    public function test_library_browse_publishers_is_secondary_not_in_stepper(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('href="'.route('advertiser.catalog').'"', $html);
+
+        $chrome = $this->extractHtmlBetween($html, 'class="wizard-chrome"', 'class="library-page-actions"');
+        $this->assertNotSame('', $chrome);
+        $this->assertStringNotContainsString('id="libraryBrowsePublishersBtn"', $chrome);
+        $this->assertStringNotContainsString('id="openUploadModalBtn"', $chrome);
+        $this->assertDoesNotMatchRegularExpression('/>\s*Browse publishers\s*</', $chrome);
+
+        $actions = $this->extractHtmlBetween($html, 'class="library-page-actions"', 'id="libraryFlash"');
+        $this->assertNotSame('', $actions);
+        $this->assertStringContainsString('id="openUploadModalBtn"', $actions);
+        $this->assertStringContainsString('class="btn btn-upload"', $actions);
+        $this->assertStringContainsString('btn-upload__label">Upload article</span>', $actions);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $actions);
+        $this->assertStringContainsString('library-browse-link', $actions);
+        $this->assertStringContainsString('btn btn-link', $actions);
     }
 
     public function test_empty_library_offers_upload_and_catalog_path(): void
@@ -707,6 +739,15 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('id="articlePreviewBody" contenteditable', $library);
         $this->assertDoesNotMatchRegularExpression('/id="articlePreviewBody"[^>]*contenteditable/', $library);
 
+        $previewHeader = $this->extractHtmlBetween(
+            $library,
+            'id="articlePreviewModal"',
+            'id="articlePreviewBody"'
+        );
+        $this->assertNotSame('', $previewHeader);
+        $this->assertStringContainsString('id="articlePreviewEditBtn"', $previewHeader);
+        $this->assertStringContainsString('>Edit article</button>', $previewHeader);
+
         $js = file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('dangerouslyPasteHTML', $js);
         $this->assertStringContainsString('history.clear', $js);
@@ -722,6 +763,17 @@ class ContentLibraryImprovementsTest extends TestCase
         $css = file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.article-img-remove', $css);
         $this->assertStringContainsString('img.is-selected', $css);
+    }
+
+    private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
+    {
+        $start = strpos($html, $startNeedle);
+        $end = strpos($html, $endNeedle);
+        if ($start === false || $end === false || $end <= $start) {
+            return '';
+        }
+
+        return substr($html, $start, $end - $start);
     }
 
     private function makeOrder(User $advertiser): Order
