@@ -567,6 +567,19 @@ class ContentLibraryImprovementsTest extends TestCase
         ]);
         $this->assertFalse($ordered->fresh()->isJustApproved());
 
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->update(['title' => 'Archived Just Approved Piece', 'evaluated_at' => now()]);
+        $archived->archive();
+        $this->assertFalse($archived->fresh()->isJustApproved());
+
+        $evaluating = $this->createApprovedSubmission($advertiser);
+        $evaluating->update([
+            'title' => 'Still Evaluating Piece',
+            'moderation_status' => ContentSubmission::STATUS_PROCESSING,
+            'evaluated_at' => now(),
+        ]);
+        $this->assertFalse($evaluating->fresh()->isJustApproved());
+
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'approved', 'availability' => 'available']))
             ->assertOk()

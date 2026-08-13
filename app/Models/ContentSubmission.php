@@ -171,6 +171,12 @@ class ContentSubmission extends Model
         }
 
         $days = (int) abs($this->evaluated_at->copy()->startOfDay()->diffInDays(now()->copy()->startOfDay()));
+        if ($days <= 0) {
+            return 'Approved today';
+        }
+        if ($days === 1) {
+            return 'Approved yesterday';
+        }
 
         return 'Approved '.$days.' days ago';
     }
