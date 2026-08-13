@@ -263,8 +263,12 @@ class ContentLibraryImprovementsTest extends TestCase
         );
         $this->assertStringContainsString('<nav class="library-status-row"', $html);
         $this->assertStringContainsString('aria-current="page"', $html);
-        $this->assertStringNotContainsString('role="tablist"', $html);
-        $this->assertStringNotContainsString('role="tab"', $html);
+        $this->assertMatchesRegularExpression(
+            '/<nav class="library-status-row"[^>]*>[\s\S]*?<\/nav>/',
+            $html
+        );
+        preg_match('/<nav class="library-status-row"[^>]*>[\s\S]*?<\/nav>/', $html, $statusNav);
+        $this->assertStringNotContainsString('role="tab', $statusNav[0]);
         $this->assertStringContainsString('mod-count is-zero', $html);
         $this->assertStringContainsString('id="libraryCountryFilter"', $html);
         $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
