@@ -767,9 +767,15 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function patchQuillImageSanitize', $js);
         $this->assertStringContainsString("value.startsWith('/storage/')", $js);
         $this->assertStringContainsString('function hideBootstrapModal', $js);
+        $this->assertStringContainsString('function bindLibraryModalA11y', $js);
         $this->assertStringContainsString('data-no-tip', $js);
         $this->assertStringContainsString('imgRect.top - shellRect.top + 8', $js);
         $this->assertStringNotContainsString('imgRect.bottom - shellRect.top - 36', $js);
+        $this->assertStringContainsString('handlers: {', $js);
+        $this->assertStringContainsString('undo: function () {', $js);
+        $this->assertStringContainsString('redo: function () {', $js);
+        $this->assertStringNotContainsString("toolbar.addHandler('undo'", $js);
+        $this->assertStringNotContainsString("toolbar.addHandler('redo'", $js);
         $this->assertDoesNotMatchRegularExpression(
             '/\.library-expiry-hint \{\s*font-size:[^}]*color: #b45309/',
             $css
