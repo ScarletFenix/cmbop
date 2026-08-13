@@ -13,6 +13,7 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
@@ -1018,6 +1019,14 @@ class SiteController extends Controller
     // UPDATE (supports partial + full updates safely)
     public function update(Request $request, $id)
     {
+        try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        } catch (\Throwable $e) {
+            Log::warning('Admin site schema ensure failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $site = Site::findOrFail($id);
         $user = auth()->user();
         $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());

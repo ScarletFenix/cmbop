@@ -1528,6 +1528,19 @@ class Site extends Model
     }
 
     /**
+     * Count listings that offer homepage placement.
+     * Returns 0 when Hostinger skipped the placement migration (do not WHERE a missing column).
+     */
+    public static function countWithHomepagePlacement(): int
+    {
+        if (! static::hasSitesColumn('homepage_placement_prices')) {
+            return 0;
+        }
+
+        return (int) static::query()->whereNotNull('homepage_placement_prices')->count();
+    }
+
+    /**
      * Forget cached category column metadata (tests / after schema changes).
      */
     public static function flushSchemaColumnCache(): void
