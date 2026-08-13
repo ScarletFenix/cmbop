@@ -140,6 +140,44 @@ class ContentLibraryPreviewExpiryTest extends TestCase
         $this->assertStringContainsString('id="replaceIdInput" value=""', $bootHtml);
     }
 
+    public function test_expiry_instant_is_preview_only_and_cannot_be_ordered(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $at = now()->startOfSecond();
+        $submission->update([
+            'title' => 'Expires Now',
+            'expires_at' => $at,
+        ]);
+        $this->travelTo($at);
+
+        $fresh = $submission->fresh();
+        $this->assertTrue($fresh->isExpired());
+        $this->assertFalse($fresh->canBeOrdered());
+        $this->assertFalse($fresh->canEditArticle());
+        $this->assertFalse($fresh->canDownloadOriginal());
+        $this->assertSame('expired', $fresh->libraryAvailability());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.content-library'))
+            ->assertSessionHas('error', 'Expired articles are preview only and cannot be ordered.');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'expired']))
+            ->assertOk()
+            ->assertSee('Expires Now');
+    }
+
+    public function test_library_js_blocks_editor_when_payload_is_not_editable(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('if (!payload.editable)', $js);
+        $this->assertStringContainsString('Expired articles are preview only.', $js);
+        $this->assertStringContainsString('const canEdit = previewModalState.editable;', $js);
+        $this->assertStringNotContainsString('!!articleEditorSubmissionId && Number(articleEditorSubmissionId) === Number(previewModalState.submissionId)', $js);
+    }
+
     public function test_replace_upload_rejects_expired_articles_on_both_endpoints(): void
     {
         Storage::fake('local');

@@ -230,7 +230,10 @@ class ContentSubmission extends Model
 
     public function isExpired(): bool
     {
-        return $this->expires_at !== null && $this->expires_at->isPast();
+        // Match content:purge-expired (`expires_at <= now()`). Carbon isPast() is
+        // strictly before now, which would leave the exact expiry instant orderable
+        // in the UI while the nightly strip already treats it as expired.
+        return $this->expires_at !== null && ! $this->expires_at->isFuture();
     }
 
     public function hasStoredFile(): bool
@@ -281,7 +284,7 @@ class ContentSubmission extends Model
             return null;
         }
 
-        if ($this->expires_at->isPast()) {
+        if ($this->isExpired()) {
             return 0;
         }
 

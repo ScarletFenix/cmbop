@@ -146,7 +146,7 @@ class ContentLibraryController extends Controller
             } elseif ($availability === 'expired') {
                 $query->whereNull('order_id')
                     ->whereNotNull('expires_at')
-                    ->where('expires_at', '<', now());
+                    ->where('expires_at', '<=', now());
             } elseif ($availability === 'needs_fix') {
                 $query->whereIn('moderation_status', [
                     ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
@@ -268,7 +268,7 @@ class ContentLibraryController extends Controller
             'expired' => (int) (clone $countScope)
                 ->whereNull('order_id')
                 ->whereNotNull('expires_at')
-                ->where('expires_at', '<', now())
+                ->where('expires_at', '<=', now())
                 ->count(),
             'needs_fix' => (int) (clone $countScope)
                 ->whereIn('moderation_status', [
@@ -466,9 +466,13 @@ class ContentLibraryController extends Controller
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if (! $submission->canBeOrdered()) {
+            $message = $submission->isExpired()
+                ? 'Expired articles are preview only and cannot be ordered.'
+                : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.';
+
             return redirect()
                 ->route('advertiser.content-library')
-                ->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+                ->with('error', $message);
         }
 
         // Keep existing cart sites; this article attaches when assigned in cart/checkout.

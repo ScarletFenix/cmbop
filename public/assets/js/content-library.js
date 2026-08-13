@@ -407,8 +407,7 @@ function openPreviewModal(title, html, links, submissionId, editable) {
     if (saveBtn) saveBtn.classList.toggle('d-none', !previewModalState.editable);
     const editBtn = document.getElementById('articlePreviewEditBtn');
     if (editBtn) {
-        const canEdit = previewModalState.editable
-            || (!!articleEditorSubmissionId && Number(articleEditorSubmissionId) === Number(previewModalState.submissionId));
+        const canEdit = previewModalState.editable;
         editBtn.classList.toggle('d-none', !canEdit);
     }
     if (help) {
@@ -467,7 +466,7 @@ document.querySelectorAll('.js-open-editor').forEach(function (btn) {
         btn.disabled = true;
         try {
             const payload = await fetchSubmissionPayload(id);
-            if (payload.editable === false) {
+            if (!payload.editable) {
                 showLibraryFlash('Expired articles are preview only.', false);
                 return;
             }
@@ -1103,6 +1102,10 @@ function returnToEditorFromPreview() {
         }
         if (!id) return;
         fetchSubmissionPayload(id).then(function (payload) {
+            if (!payload.editable) {
+                showLibraryFlash('Expired articles are preview only.', false);
+                return;
+            }
             openArticleEditor(Object.assign({}, payload, {
                 id: payload.id || id,
                 preview_html: payload.preview_html || payload.html || '',

@@ -181,6 +181,15 @@ class ContentLibraryPhases36Test extends TestCase
 
         $this->assertDatabaseHas('content_submissions', ['id' => $linked->id]);
         $this->assertTrue($linked->fresh()->hasStoredFile());
+        $this->assertTrue($linked->fresh()->canDownloadOriginal());
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $linked))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-submissions.download', $linked))
+            ->assertOk();
     }
 
     public function test_completed_row_keeps_live_url_clickable_without_pointer_events_none(): void
