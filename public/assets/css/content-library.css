@@ -228,16 +228,8 @@
         margin-bottom: 1rem;
         max-width: 100%;
     }
-    @media (max-width: 575.98px) {
-        .library-status-box {
-            flex: 1 1 calc(50% - .5rem);
-            max-width: none;
-            min-width: 0;
-            white-space: normal;
-        }
-    }
     .library-status-box {
-        flex: 1 1 9.25rem;
+        flex: 0 1 auto;
         min-width: 8.5rem;
         max-width: 18rem;
         min-height: 2.75rem;
@@ -381,24 +373,28 @@
         opacity: .45;
         background: transparent;
     }
-    .library-status-box.is-active .mod-count {
+    .library-status-box.is-active .mod-count:not(.is-zero) {
         opacity: 1;
     }
-    .library-status-box--approved .mod-count:not(.is-zero),
-    .library-status-box--approved.is-active .mod-count {
+    .library-status-box--approved .mod-count:not(.is-zero) {
         background: rgba(26, 88, 94, .12);
     }
-    .library-status-box--in_progress .mod-count:not(.is-zero),
-    .library-status-box--in_progress.is-active .mod-count {
+    .library-status-box--in_progress .mod-count:not(.is-zero) {
         background: rgba(180, 83, 9, .16);
     }
-    .library-status-box--needs_fix .mod-count:not(.is-zero),
-    .library-status-box--needs_fix.is-active .mod-count {
+    .library-status-box--needs_fix .mod-count:not(.is-zero) {
         background: rgba(185, 28, 28, .14);
     }
-    .library-status-box--completed .mod-count:not(.is-zero),
-    .library-status-box--completed.is-active .mod-count {
+    .library-status-box--completed .mod-count:not(.is-zero) {
         background: rgba(29, 78, 216, .12);
+    }
+    @media (max-width: 575.98px) {
+        .library-status-box {
+            flex: 1 1 calc(50% - .5rem);
+            max-width: none;
+            min-width: 0;
+            white-space: normal;
+        }
     }
 
     .library-scores { font-variant-numeric: tabular-nums; white-space: nowrap; color: #475569; }

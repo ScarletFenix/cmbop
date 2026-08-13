@@ -281,6 +281,18 @@ class ContentLibraryImprovementsTest extends TestCase
             '/library-filter-bar[\s\S]*?btn-primary[\s\S]*?>Apply</',
             $html
         );
+
+        $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertStringContainsString('.library-status-row', $css);
+        $this->assertStringContainsString('flex-wrap: wrap', $css);
+        $this->assertStringContainsString('.mod-count.is-zero', $css);
+        $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
+        $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
+        $boxPos = strpos($css, '.library-status-box {');
+        $mediaPos = strpos($css, '@media (max-width: 575.98px)');
+        $this->assertNotFalse($boxPos);
+        $this->assertNotFalse($mediaPos);
+        $this->assertGreaterThan($boxPos, $mediaPos);
     }
 
     public function test_completed_filter_empty_state(): void
