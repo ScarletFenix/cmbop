@@ -1989,6 +1989,25 @@ function reloadSitesAfterPromo() {
     reloadPublisherSitesTable();
 }
 
+function promoDaysLeft(iso) {
+    if (!iso) return 0;
+    const end = Date.parse(iso);
+    if (Number.isNaN(end)) return 0;
+    const ms = end - Date.now();
+    if (ms <= 0) return 0;
+    return Math.max(1, Math.ceil(ms / 86400000));
+}
+
+function promoFormatDate(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function promoBetterOfNote() {
+    return 'Advertisers get the better of a timed sale or bulk — they are not added together.';
+}
+
 async function startFeatureStripeCheckout(siteId) {
     const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
         method: 'POST',
@@ -2004,8 +2023,13 @@ async function startFeatureStripeCheckout(siteId) {
 }
 
 $(document).on('click', '.btn-feature-site', async function () {
-    const id = $(this).data('id');
-    const name = promoEscapeHtml($(this).data('name'));
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const name = promoEscapeHtml($btn.data('name'));
+    const featuredUntil = $btn.attr('data-featured-until') || '';
+    const daysLeft = promoDaysLeft(featuredUntil);
+    const isLive = daysLeft > 0;
+    const isVerified = String($btn.attr('data-verified') ?? '1') === '1';
     const cfg = window.PublisherWebsitesConfig || { routes: {} };
     let wallet = {
         feature_price: 10,
@@ -2020,10 +2044,20 @@ $(document).on('click', '.btn-feature-site', async function () {
     } catch (e) {}
 
     const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
+    const featureDays = Number(wallet.feature_days || 7);
+    const featurePrice = Number(wallet.feature_price || 10).toFixed(2);
+    const unverifiedNote = isVerified
+        ? ''
+        : '<p class="small text-muted">This site is active but not verified. Featuring still works; advertisers may trust it less.</p>';
+    const body = isLive
+        ? `<p><strong>${name}</strong> is already featured until <strong>${promoEscapeHtml(promoFormatDate(featuredUntil))}</strong> (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).</p>
+           <p>Paying <strong>€${featurePrice}</strong> adds another <strong>${featureDays} days</strong>.</p>`
+        : `<p>Feature <strong>${name}</strong> for <strong>${featureDays} days</strong> to boost catalog visibility.</p>
+           <p class="mb-1">Cost: <strong>€${featurePrice}</strong></p>`;
     const result = await Swal.fire({
-        title: 'Feature this website?',
-        html: `<p>Feature <strong>${name}</strong> for <strong>${wallet.feature_days || 7} days</strong> to boost catalog visibility.</p>
-               <p class="mb-1">Cost: <strong>€${Number(wallet.feature_price || 10).toFixed(2)}</strong></p>
+        title: isLive ? 'Extend featuring?' : 'Feature this website?',
+        html: `${body}
+               ${unverifiedNote}
                <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
                <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
         showDenyButton: !!wallet.stripe_available,
@@ -2079,28 +2113,49 @@ $(document).on('click', '.btn-feature-site', async function () {
 });
 
 $(document).on('click', '.btn-discount-site', async function () {
-    const id = $(this).data('id');
-    const name = promoEscapeHtml($(this).data('name'));
-    const current = $(this).data('percent');
-    const { value: form } = await Swal.fire({
-        title: 'Set timed discount',
-        html: `<p class="small text-muted">Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.</p>
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const name = promoEscapeHtml($btn.data('name'));
+    const current = $btn.attr('data-percent') || $btn.data('percent') || 15;
+    const endsAt = $btn.attr('data-ends') || '';
+    const remaining = promoDaysLeft(endsAt);
+    const isLive = $btn.hasClass('is-on') || remaining > 0;
+    const daysPrefill = isLive ? Math.min(90, Math.max(1, remaining || 7)) : 7;
+    const result = await Swal.fire({
+        title: isLive ? 'Update timed sale' : 'Set timed discount',
+        html: `<p class="small text-muted">${isLive
+            ? `Sale on <strong>${name}</strong> has about <strong>${daysPrefill}</strong> day${daysPrefill === 1 ? '' : 's'} left. Change the percent or remaining days, or end it now.`
+            : `Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.`}</p>
+               <p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
                <label for="swal-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount percent (1–70)</label>
-               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${current || 15}">
+               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${promoEscapeHtml(current)}">
                <label for="swal-days" class="small fw-semibold d-block text-start ms-3 mb-0 mt-2">Days active (1–90)</label>
-               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="7">`,
+               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="${daysPrefill}">`,
+        showDenyButton: isLive,
         showCancelButton: true,
-        confirmButtonText: 'Publish discount',
+        confirmButtonText: isLive ? 'Update sale' : 'Publish sale',
+        denyButtonText: isLive ? 'End sale now' : undefined,
+        customClass: isLive ? { denyButton: 'slb-swal-danger' } : undefined,
         preConfirm: () => ({
             percent: document.getElementById('swal-pct').value,
             days: document.getElementById('swal-days').value,
         }),
     });
-    if (!form) return;
+    if (result.isDenied) {
+        const res = await fetch(`/publisher/sites/${id}/discount`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        if (data.success) { reloadSitesAfterPromo(); }
+        return;
+    }
+    if (!result.isConfirmed || !result.value) return;
     const res = await fetch(`/publisher/sites/${id}/discount`, {
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify(result.value),
     });
     const data = await res.json().catch(() => ({}));
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
@@ -2127,35 +2182,38 @@ $(document).on('click', '.btn-discount-clear', async function () {
     if (data.success) { reloadSitesAfterPromo(); }
 });
 
-$(document).on('click', '.btn-bulk-join', async function () {
-    const id = $(this).data('id');
-    const { value: percent } = await Swal.fire({
-        title: 'Join bulk discount program',
-        input: 'number',
-        inputLabel: 'Discount % for 3–5 articles (10–15)',
-        inputValue: 10,
-        inputAttributes: { min: 10, max: 15, step: 1 },
+$(document).on('click', '.btn-bulk-site', async function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const joined = String($btn.attr('data-joined')) === '1';
+    const currentPct = Number($btn.attr('data-percent') || 10);
+    const result = await Swal.fire({
+        title: joined ? `Bulk −${currentPct}% is on` : 'Join bulk discount program',
+        html: `<p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
+               <label for="swal-bulk-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount % for 3–5 articles (10–15)</label>
+               <input id="swal-bulk-pct" type="number" min="10" max="15" step="1" class="swal2-input" value="${joined ? currentPct : 10}">`,
+        showDenyButton: joined,
         showCancelButton: true,
-        confirmButtonText: 'Join',
+        confirmButtonText: joined ? 'Update percent' : 'Join',
+        denyButtonText: joined ? 'Leave programme' : undefined,
+        customClass: joined ? { denyButton: 'slb-swal-danger' } : undefined,
+        preConfirm: () => document.getElementById('swal-bulk-pct')?.value,
     });
-    if (percent === undefined || percent === null || percent === '') return;
+    if (result.isDenied) {
+        const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        if (data.success) { reloadSitesAfterPromo(); }
+        return;
+    }
+    if (!result.isConfirmed || result.value === undefined || result.value === null || result.value === '') return;
     const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
         method: 'POST',
         headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ percent }),
-    });
-    const data = await res.json().catch(() => ({}));
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { reloadSitesAfterPromo(); }
-});
-
-$(document).on('click', '.btn-bulk-leave', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'Leave bulk program?', showCancelButton: true, confirmButtonText: 'Leave' });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        body: JSON.stringify({ percent: result.value }),
     });
     const data = await res.json().catch(() => ({}));
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });

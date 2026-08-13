@@ -159,6 +159,85 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('__publisherSitesList', $js);
         $this->assertStringContainsString('reloadSitesAfterPromo', $js);
         $this->assertStringContainsString('promoEscapeHtml', $js);
+        $this->assertStringContainsString('Extend featuring', $js);
+        $this->assertStringContainsString('adds another', $js);
+        $this->assertStringContainsString("attr('data-featured-until')", $js);
+        $this->assertStringContainsString("attr('data-ends')", $js);
+        $this->assertStringContainsString('function promoDaysLeft', $js);
+        $this->assertStringContainsString('Update timed sale', $js);
+        $this->assertStringContainsString('End sale now', $js);
+        $this->assertStringContainsString('Publish sale', $js);
+        $this->assertStringContainsString('Leave programme', $js);
+        $this->assertStringContainsString('Update percent', $js);
+        $this->assertStringContainsString("$(document).on('click', '.btn-bulk-site'", $js);
+        $this->assertStringNotContainsString("$(document).on('click', '.btn-bulk-join'", $js);
+    }
+
+    public function test_offer_dialogs_keep_get_verified_on_manage_and_note_unverified_feature(): void
+    {
+        $unverified = $this->makeSite([
+            'site_name' => 'Unverified Live',
+            'site_url' => 'https://unverified-live.example',
+            'domain' => 'unverified-live.example',
+            'verified' => false,
+            'active' => true,
+            'price' => 80,
+        ]);
+        $featured = $this->makeSite([
+            'site_name' => 'Featured Sale',
+            'site_url' => 'https://featured-sale.example',
+            'domain' => 'featured-sale.example',
+            'verified' => true,
+            'active' => true,
+            'price' => 100,
+            'featured_until' => now()->addDays(4),
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+            'bulk_discount_enabled' => true,
+            'bulk_discount_percent' => 12,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-verified="0"', $html);
+        $this->assertStringContainsString(
+            'This site is active but not verified. Featuring still works; advertisers may trust it less.',
+            $html
+        );
+        $this->assertStringContainsString('data-featured-until=', $html);
+        $this->assertStringContainsString('data-ends=', $html);
+        $this->assertStringContainsString('btn-bulk-site', $html);
+        $this->assertStringContainsString('data-joined="1"', $html);
+        $this->assertStringContainsString('Edit or leave bulk', $html);
+        $this->assertStringNotContainsString('btn-discount-clear', $html);
+        $this->assertStringNotContainsString('btn-bulk-join', $html);
+        $this->assertStringNotContainsString('btn-bulk-leave', $html);
+
+        $this->assertStringContainsString('Get Verified', $html);
+        $this->assertMatchesRegularExpression(
+            '/site-row-actions__manage[\s\S]*btn-verify-site[\s\S]*Get Verified[\s\S]*<\/div>\s*<div class="site-row-actions__offers"/',
+            $html,
+            'Get Verified must stay on the manage row, before Offers.'
+        );
+
+        $blade = file_get_contents(resource_path('views/publisher/sites/partials/table.blade.php'));
+        $verifyInBlade = strpos($blade, 'Get Verified');
+        $offersInBlade = strpos($blade, 'site-row-actions__offers');
+        $manageInBlade = strpos($blade, 'site-row-actions__manage');
+        $this->assertNotFalse($verifyInBlade);
+        $this->assertGreaterThan($manageInBlade, $verifyInBlade);
+        $this->assertLessThan($offersInBlade, $verifyInBlade);
+
+        $this->assertStringContainsString((string) $unverified->id, $html);
+        $this->assertStringContainsString((string) $featured->id, $html);
+
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringContainsString('Featuring still works; advertisers may trust it less.', $js);
+        $this->assertStringContainsString('promoBetterOfNote', $js);
     }
 
     public function test_ajax_metrics_keep_traffic_out_of_market_column(): void

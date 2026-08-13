@@ -1204,13 +1204,14 @@
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
                         data-featured-until="{{ optional($site->featured_until)?->toIso8601String() }}"
+                        data-verified="{{ $site->verified ? '1' : '0' }}"
                         aria-pressed="{{ $site->isFeatured() ? 'true' : 'false' }}"
                         aria-label="{{ $site->isFeatured() ? 'Featured' : 'Feature' }}"
                         data-glass-tip
                         data-glass-tip-title="{{ $site->isFeatured() ? 'Featured' : 'Feature this site' }}"
                         data-glass-tip-body="{{ $site->isFeatured()
                             ? 'Featured until '.optional($site->featured_until)->timezone(config('app.timezone'))->format('j M').'. Click to add another '.$featureDaysCfg.' days (€'.$featurePriceLabel.').'
-                            : 'Pin it higher in the advertiser catalog for '.$featureDaysCfg.' days. Paid from publisher balance or card (€'.$featurePriceLabel.').' }}"
+                            : 'Pin it higher in the advertiser catalog for '.$featureDaysCfg.' days. Paid from publisher balance or card (€'.$featurePriceLabel.').' }}{{ ! $site->verified ? ' This site is active but not verified. Featuring still works; advertisers may trust it less.' : '' }}"
                         data-glass-tip-placement="top">
                     <i class="fa fa-bolt" aria-hidden="true"></i>
                     <span class="site-offer-chip__label">{{ $site->isFeatured()
@@ -1236,34 +1237,28 @@
                         ? 'Sale −'.$fmtPct($pubCustomPct).'%'
                         : 'Sale' }}</span>
                 </button>
-                @if($site->hasActiveCustomDiscount())
-                <button type="button" class="btn-text-quiet is-danger btn-discount-clear"
-                        data-id="{{ $site->id }}"
-                        data-glass-tip
-                        data-glass-tip-body="End this timed sale now"
-                        data-glass-tip-placement="top">
-                    End
-                </button>
-                @endif
                 @if($site->joinsBulkDiscount())
                 <button type="button"
-                        class="site-offer-chip is-on btn-bulk-leave"
+                        class="site-offer-chip is-on btn-bulk-site"
                         data-id="{{ $site->id }}"
+                        data-name="{{ $site->site_name }}"
                         data-percent="{{ $pubBulkPct }}"
+                        data-joined="1"
                         aria-pressed="true"
-                        aria-label="Leave bulk"
+                        aria-label="Edit or leave bulk"
                         data-glass-tip
                         data-glass-tip-title="Bulk −{{ $fmtPct($pubBulkPct) }}% is on"
-                        data-glass-tip-body="{{ $bulkMinQty }}–{{ $bulkMaxQty }} articles. Click to leave the programme. Exclusive with a timed sale — not stacked."
+                        data-glass-tip-body="{{ $bulkMinQty }}–{{ $bulkMaxQty }} articles. Click to change the percent or leave. Exclusive with a timed sale — not stacked."
                         data-glass-tip-placement="top">
                     <i class="fa fa-layer-group" aria-hidden="true"></i>
                     <span class="site-offer-chip__label">Bulk −{{ $fmtPct($pubBulkPct) }}%</span>
                 </button>
                 @else
                 <button type="button"
-                        class="site-offer-chip btn-bulk-join"
+                        class="site-offer-chip btn-bulk-site"
                         data-id="{{ $site->id }}"
                         data-name="{{ $site->site_name }}"
+                        data-joined="0"
                         aria-pressed="false"
                         aria-label="Join bulk"
                         data-glass-tip
