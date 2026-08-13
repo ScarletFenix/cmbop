@@ -702,8 +702,10 @@
                     <div id="articleQuillEditor"></div>
                     <button type="button"
                             class="btn btn-sm btn-dark article-img-remove d-none"
-                            id="articleImageRemoveBtn">
-                        <i class="fa fa-trash me-1" aria-hidden="true"></i>Remove
+                            id="articleImageRemoveBtn"
+                            aria-label="Remove image"
+                            title="Remove image">
+                        <i class="fa fa-trash" aria-hidden="true"></i>
                     </button>
                 </div>
 
