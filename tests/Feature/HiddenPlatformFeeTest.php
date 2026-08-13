@@ -154,6 +154,42 @@ class HiddenPlatformFeeTest extends TestCase
         $this->assertEquals(103.5, (float) $payload['cart'][0]['price']);
     }
 
+    public function test_sale_floor_at_publisher_payout_matches_cart(): void
+    {
+        // Distinct from the owner-fee bug: a deep sale can floor the *pay* price
+        // at the publisher base (€90) while the struck list stays €103.50. Cart
+        // must charge that same floored €90 — not jump back to full list.
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($publisher, 90);
+        $site->forceFill([
+            'custom_discount_percent' => 25,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ])->save();
+
+        $expected = app(CartPricingService::class)->priceForAdvertiser($site->fresh());
+        $this->assertSame(103.5, $expected['base']);
+        $this->assertSame(90.0, $expected['total']);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('base-price-display">€90.00', $html);
+        $this->assertStringContainsString('>€103.50<', $html);
+        $this->assertStringContainsString('data-base-price="103.5"', $html);
+        $this->assertStringContainsString('data-publisher-price="90"', $html);
+
+        $payload = $this->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
+            ->assertOk()
+            ->json();
+
+        $this->assertEquals(90.0, (float) $payload['cart'][0]['price']);
+    }
+
     public function test_checkout_snapshots_publisher_price_and_payout_uses_it(): void
     {
         $publisher = $this->userWithRole('publisher');
