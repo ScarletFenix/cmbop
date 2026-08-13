@@ -102,6 +102,16 @@ class ContentUploadService
             return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Market required', 'message' => $marketError];
         }
 
+        if ($replace?->isExpired()) {
+            return [
+                'ok' => false,
+                'accepted' => false,
+                'approved' => false,
+                'title' => 'Expired',
+                'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+            ];
+        }
+
         $country = strtolower(trim((string) ($country ?: $replace?->country)));
         $language = strtolower(trim((string) ($language ?: $replace?->language)));
 

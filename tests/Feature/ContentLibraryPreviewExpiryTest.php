@@ -9,6 +9,7 @@ use App\Services\ContentUpload\ArticlePreviewImage;
 use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -38,8 +39,10 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             ->assertOk()
             ->getContent();
 
+        $this->assertStringContainsString('Max 10 MB', $html);
         $this->assertStringContainsString('kept 6 months', $html);
         $this->assertStringContainsString('preview stays in Expired', $html);
+        $this->assertStringNotContainsString('Max 5 MB', $html);
     }
 
     public function test_expired_library_is_preview_only(): void
@@ -119,6 +122,13 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             ->assertOk()
             ->assertDontSee('Rejected Then Expired');
 
+        $chipHtml = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('aria-label="Needs corrections, 0 articles"', $chipHtml);
+        $this->assertStringContainsString('aria-label="Expired, 1 article"', $chipHtml);
+
         $bootHtml = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', [
                 'edit' => $submission->id,
@@ -128,6 +138,48 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('editSubmission: null', $bootHtml);
         $this->assertStringContainsString('id="replaceIdInput" value=""', $bootHtml);
+    }
+
+    public function test_replace_upload_rejects_expired_articles_on_both_endpoints(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['expires_at' => now()->subDay()]);
+
+        $path = sys_get_temp_dir().'/replace-expired-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path);
+
+        foreach ([
+            'advertiser.content-library.upload',
+            'advertiser.content-submissions.upload',
+        ] as $routeName) {
+            $this->actingAs($advertiser)
+                ->postJson(route($routeName), [
+                    'file' => new UploadedFile(
+                        $path,
+                        'revised.docx',
+                        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                        null,
+                        true
+                    ),
+                    'country' => 'us',
+                    'language' => 'en',
+                    'replace_id' => $submission->id,
+                    'image_rights' => ContentSubmission::IMAGE_RIGHTS_NONE,
+                ])
+                ->assertStatus(422)
+                ->assertJsonPath('success', false)
+                ->assertJsonPath('title', 'Expired');
+        }
+
+        @unlink($path);
+
+        $this->assertTrue($submission->fresh()->hasStoredFile());
+        $this->assertSame(1, ContentSubmission::query()->where('user_id', $advertiser->id)->count());
     }
 
     public function test_editor_image_stores_webp_on_public_disk_not_private(): void

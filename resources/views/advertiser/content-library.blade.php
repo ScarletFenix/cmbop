@@ -59,7 +59,7 @@
         ],
         'needs_fix' => [
             'label' => 'Needs corrections',
-            'count' => (int) ($moderationCounts['needs_fix'] ?? $availabilityCounts['needs_fix'] ?? 0),
+            'count' => (int) ($availabilityCounts['needs_fix'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],
         'completed' => [

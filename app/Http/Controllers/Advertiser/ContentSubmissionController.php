@@ -100,6 +100,13 @@ class ContentSubmissionController extends Controller
                 ->where('user_id', auth()->id())
                 ->whereNull('order_id')
                 ->first();
+            if ($replace?->isExpired()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Expired',
+                    'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
         }
 
         $result = $this->uploads->uploadAndProcess(
