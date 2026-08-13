@@ -172,9 +172,12 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('Update percent', $js);
         $this->assertStringContainsString("$(document).on('click', '.btn-bulk-site'", $js);
         $this->assertStringNotContainsString("$(document).on('click', '.btn-bulk-join'", $js);
-        $this->assertStringContainsString('bulkMaxPercent || 80', $js);
+        $this->assertStringContainsString('cfg.bulkMinPercent', $js);
+        $this->assertStringContainsString('cfg.bulkMaxPercent', $js);
+        $this->assertStringContainsString('Enter a percent from', $js);
         $this->assertStringNotContainsString('Discount % for 3–5 articles (10–15)', $js);
         $this->assertStringContainsString('bulkMaxPercent: 80', $page);
+        $this->assertDoesNotMatchRegularExpression('/routes:\s*\{[^}]*bulkMaxPercent/', $page);
     }
 
     public function test_offer_dialogs_keep_get_verified_on_manage_and_note_unverified_feature(): void
