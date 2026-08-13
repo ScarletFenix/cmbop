@@ -213,4 +213,27 @@ class UiConsistencyGuardTest extends TestCase
             $this->assertStringContainsString("setAttribute('aria-live'", $markup);
         }
     }
+
+    public function test_shell_and_dashboards_keep_recent_orders_clear_of_the_footer(): void
+    {
+        $css = file_get_contents(public_path('assets/css/app-shell.css'));
+        $this->assertStringContainsString('--shell-footer-clearance:', $css);
+        $this->assertStringContainsString('padding: 20px 28px var(--shell-footer-clearance)', $css);
+        $this->assertStringContainsString('.dash-recent-col', $css);
+        $this->assertStringContainsString('.dash-page-end', $css);
+
+        $advertiser = file_get_contents(resource_path('views/advertiser/dashboard.blade.php'));
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.recent-orders-glass\s*\{[^}]*\bheight:\s*100%/',
+            $advertiser,
+            'height:100% on Recent orders overflowed the spend strip into the footer'
+        );
+        $this->assertStringContainsString('col-lg-8 dash-recent-col', $advertiser);
+        $this->assertStringContainsString('dash-page-end', $advertiser);
+
+        $publisher = file_get_contents(resource_path('views/publisher/dashboard.blade.php'));
+        $this->assertStringContainsString('container-fluid dash-page-end', $publisher);
+        $this->assertStringContainsString('dash-recent-col', $publisher);
+        $this->assertStringContainsString('Recent tasks', $publisher);
+    }
 }
