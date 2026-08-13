@@ -197,7 +197,7 @@ class Wallet extends Model
     }
 
     /**
-     * Funds that may be withdrawn or transferred to another role wallet.
+     * Cash that may be withdrawn. Bonus is excluded; reserved funds already left balance.
      */
     public function withdrawableBalance(): float
     {
