@@ -205,6 +205,36 @@ class Wallet extends Model
     }
 
     /**
+     * Role-wallet figures for Balance / Add Funds overviews.
+     *
+     * @return array{spendable: float, withdrawable: float, bonus: float, reserved: float, debt: float}
+     */
+    public function roleSnapshot(): array
+    {
+        return [
+            'spendable' => round((float) $this->balance, 2),
+            'withdrawable' => $this->withdrawableBalance(),
+            'bonus' => $this->lockedBonusBalance(),
+            'reserved' => round((float) $this->reserved_balance, 2),
+            'debt' => $this->debtBalance(),
+        ];
+    }
+
+    /**
+     * @return array{spendable: float, withdrawable: float, bonus: float, reserved: float, debt: float}
+     */
+    public static function emptyRoleSnapshot(): array
+    {
+        return [
+            'spendable' => 0.0,
+            'withdrawable' => 0.0,
+            'bonus' => 0.0,
+            'reserved' => 0.0,
+            'debt' => 0.0,
+        ];
+    }
+
+    /**
      * Credit a spend-only welcome / promo amount (also increases balance).
      */
     public function creditBonus(float $amount): void

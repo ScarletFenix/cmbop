@@ -95,4 +95,31 @@ class WalletTest extends TestCase
 
         $wallet->releaseReserved(11);
     }
+
+    public function test_role_snapshot_splits_spendable_bonus_and_withdrawable(): void
+    {
+        $wallet = $this->makeWallet(45);
+        $wallet->forceFill([
+            'bonus_balance' => 20,
+            'bonus_reserved' => 0,
+            'reserved_balance' => 5,
+            'debt_balance' => 1.5,
+        ])->save();
+
+        $this->assertSame([
+            'spendable' => 45.0,
+            'withdrawable' => 25.0,
+            'bonus' => 20.0,
+            'reserved' => 5.0,
+            'debt' => 1.5,
+        ], $wallet->fresh()->roleSnapshot());
+
+        $this->assertSame([
+            'spendable' => 0.0,
+            'withdrawable' => 0.0,
+            'bonus' => 0.0,
+            'reserved' => 0.0,
+            'debt' => 0.0,
+        ], Wallet::emptyRoleSnapshot());
+    }
 }
