@@ -77,7 +77,7 @@
             <div class="af-role-strip__main">
                 <span class="af-role-strip__label">Publisher earnings</span>
                 <span class="af-role-strip__value" id="publisherEarningsKpi">€{{ number_format((float) $publisher['withdrawable'], 2) }}</span>
-                <p class="af-role-strip__note mb-0">Withdrawable. Publisher earnings cannot be moved into this advertiser wallet here.</p>
+                <p class="af-role-strip__note mb-0">Withdrawable. Open Balance to move earnings here for catalog spend (no fee).</p>
             </div>
             <div class="af-role-strip__actions">
                 <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
@@ -600,6 +600,7 @@
                         <option value="refund">Refund</option>
                         <option value="withdrawal">Withdrawal</option>
                         <option value="transfer_out">Transfer Out</option>
+                        <option value="role_move_in">Earnings Moved for Spending</option>
                         <option value="adjustment">Adjustment</option>
                     </select>
                 </div>

@@ -5,7 +5,7 @@
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
         <div>
             <h4 class="mb-1 fw-bold">Wallet ledger</h4>
-            <p class="text-muted mb-0 small">All wallet_transactions — deposits, purchases, refunds, withdrawals, bonuses, publisher earnings (transfer_in).</p>
+            <p class="text-muted mb-0 small">All wallet_transactions — deposits, purchases, refunds, withdrawals, bonuses, publisher earnings (transfer_in), and role moves.</p>
         </div>
         <a href="{{ route('admin.finance') }}" class="btn btn-sm btn-outline-secondary">
             <i class="fa fa-chart-pie me-1"></i> Finance overview
@@ -24,7 +24,7 @@
                     <select name="type" class="form-select form-select-sm">
                         <option value="">All types</option>
                         @foreach($types as $type)
-                            <option value="{{ $type }}" @selected(request('type') === $type)>{{ str_replace('_', ' ', $type) }}</option>
+                            <option value="{{ $type }}" @selected(request('type') === $type)>{{ (new \App\Models\WalletTransaction(['type' => $type]))->typeLabel() }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -75,7 +75,7 @@
                                 <div class="fw-semibold small">{{ $tx->user?->name ?? '—' }}</div>
                                 <div class="text-muted small">{{ $tx->user?->email }}</div>
                             </td>
-                            <td><span class="badge bg-light text-dark border text-capitalize">{{ str_replace('_', ' ', $tx->type) }}</span></td>
+                            <td><span class="badge bg-light text-dark border">{{ $tx->typeLabel() }}</span></td>
                             <td>
                                 @if($tx->direction === 'credit')
                                     <span class="text-success small fw-semibold">credit</span>

@@ -66,7 +66,13 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringContainsString('Publisher earnings', $html);
         $this->assertStringContainsString('Withdrawable', $html);
         $this->assertStringContainsString('€7.64', $html);
-        $this->assertStringContainsString('Internal wallet transfers are no longer offered', $html);
+        $this->assertStringContainsString('Use for spending', $html);
+        $this->assertStringContainsString('id="roleMoveForm"', $html);
+        $this->assertStringContainsString('id="roleMoveAmount"', $html);
+        $this->assertStringContainsString('id="roleMoveBtn"', $html);
+        $this->assertStringContainsString(route('publisher.balance.transfer'), $html);
+        $this->assertStringContainsString('Move withdrawable earnings into your advertiser wallet', $html);
+        $this->assertStringContainsString('assets/js/publisher-balance.js', $html);
         $this->assertStringNotContainsString('Transfer to Advertiser Wallet', $html);
         $this->assertStringNotContainsString('0% Transfer Fee', $html);
         $this->assertStringNotContainsString('id="transferBtn"', $html);
@@ -74,7 +80,7 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringNotContainsString('function renderTransferHistory', $html);
         $this->assertStringNotContainsString('Transfer History', $html);
         $this->assertStringNotContainsString('Ready to transfer or withdraw', $html);
-        $this->assertStringNotContainsString('/publisher/balance/transfer', $html);
+        $this->assertStringNotContainsString('Internal wallet transfers are no longer offered', $html);
         $this->assertStringNotContainsString('Showing 0 to 0 of 0', $html);
         $this->assertStringNotContainsString('after bonus, amounts on hold, and clawback debt', $html);
     }
@@ -96,10 +102,11 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringContainsString('Bonus', $html);
         $this->assertStringContainsString('(purchases only)', $html);
         $this->assertStringContainsString(Wallet::PROMOTIONAL_BONUS_MESSAGE, $html);
-        $this->assertStringContainsString('Publisher earnings cannot be moved into this wallet here', $html);
+        $this->assertStringContainsString('Moved earnings arrive here as Money and can be spent in Catalog.', $html);
+        $this->assertStringNotContainsString('Publisher earnings cannot be moved into this wallet here', $html);
         $this->assertStringContainsString(route('advertiser.add-funds'), $html);
         $this->assertStringContainsString(route('advertiser.catalog'), $html);
-        $this->assertStringContainsString('Clawback debt blocks withdrawals; it does not reduce this number', $html);
+        $this->assertStringContainsString('Clawback debt blocks withdrawals and moves; it does not reduce this number', $html);
     }
 
     public function test_publisher_only_balance_hides_advertiser_card(): void
@@ -117,6 +124,9 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringNotContainsString('Advertiser spendable', $html);
         $this->assertStringNotContainsString('id="advertiserBalance"', $html);
         $this->assertStringNotContainsString('id="addFundsCta"', $html);
+        $this->assertStringNotContainsString('id="roleMoveForm"', $html);
+        $this->assertStringNotContainsString('Use for spending', $html);
+        $this->assertStringContainsString('Catalog spend uses an advertiser wallet', $html);
     }
 
     public function test_withdraw_cta_is_disabled_below_minimum(): void
@@ -132,6 +142,13 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringContainsString('You need at least €20.00 withdrawable balance', $html);
         $this->assertStringContainsString('Available now: €7.64', $html);
         $this->assertStringNotContainsString('Ready to withdraw', $html);
+        $this->assertStringContainsString('id="roleMoveForm"', $html);
+        $this->assertDoesNotMatchRegularExpression('/<button[^>]*id="roleMoveBtn"[^>]*disabled/', $html);
+        $this->assertStringContainsString('id="roleMoveAllBtn"', $html);
+        $this->assertStringContainsString('data-can-move="1"', $html);
+        $this->assertStringContainsString('data-min="0.01"', $html);
+        $this->assertStringContainsString('data-max="7.64"', $html);
+        $this->assertStringContainsString('The €20 payout minimum does not apply', $html);
     }
 
     public function test_withdraw_cta_is_disabled_when_publisher_has_debt(): void
@@ -150,8 +167,11 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->assertStringContainsString('€12.50', $html);
         $this->assertStringContainsString('Debt', $html);
         $this->assertStringContainsString('Withdrawals are blocked while you have outstanding clawback debt', $html);
+        $this->assertStringContainsString('Moves are blocked while you have outstanding clawback debt', $html);
+        $this->assertStringContainsString('Withdrawals and moves to your advertiser wallet are blocked', $html);
         $this->assertStringNotContainsString('Ready to withdraw', $html);
         $this->assertMatchesRegularExpression('/<button[^>]*id="withdrawCta"[^>]*disabled/', $html);
+        $this->assertMatchesRegularExpression('/<button[^>]*id="roleMoveBtn"[^>]*disabled/', $html);
     }
 
     public function test_withdraw_cta_is_enabled_when_withdrawable_meets_minimum(): void
@@ -243,22 +263,43 @@ class PublisherBalanceHistoryUiTest extends TestCase
             ->assertSee('€7.64', false);
     }
 
-    public function test_publisher_role_transfer_endpoint_stays_gone(): void
+    public function test_publisher_role_transfer_endpoint_is_no_longer_gone(): void
     {
-        $user = $this->publisherWithWallets();
+        $user = $this->publisherWithWallets(['publisher_balance' => 25]);
 
         $this->actingAs($user)
             ->postJson(route('publisher.balance.transfer'), ['amount' => 5])
-            ->assertStatus(410)
-            ->assertJsonPath('success', false)
-            ->assertJsonPath('code', 'transfers_disabled');
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('publisher.withdrawable', 20)
+            ->assertJsonPath('advertiser.spendable', 25);
+    }
 
-        $this->assertSame(
-            7.64,
-            (float) Wallet::where('user_id', $user->id)
-                ->where('role_id', Wallet::publisherRoleId())
-                ->value('balance')
-        );
+    public function test_bonus_only_earnings_disable_the_move_form(): void
+    {
+        $user = $this->publisherWithWallets([
+            'publisher_balance' => 20,
+            'publisher_bonus' => 20,
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<button[^>]*id="roleMoveBtn"[^>]*disabled/', $html);
+        $this->assertStringContainsString('No withdrawable earnings to move. Bonus credit cannot be moved.', $html);
+    }
+
+    public function test_role_move_script_uses_shared_confirm_and_http_helpers(): void
+    {
+        $js = file_get_contents(public_path('assets/js/publisher-balance.js'));
+
+        $this->assertStringContainsString('window.slbConfirm', $js);
+        $this->assertStringContainsString('slbHandleHttpError', $js);
+        $this->assertStringNotContainsString('!moveBtn.disabled', $js);
+        $this->assertStringNotContainsString('Swal.fire', $js);
+        $this->assertDoesNotMatchRegularExpression('/(?<![\w.$])(?:window\.)?(alert|confirm)\s*\(/', $js);
     }
 
     public function test_favicon_partial_points_at_existing_public_assets(): void
