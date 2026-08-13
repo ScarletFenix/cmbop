@@ -790,6 +790,22 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor.ql-container', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
+        $this->assertStringContainsString('flex: 1 1 0%', $css);
+        $this->assertStringContainsString('min-height: 12rem', $css);
+        $this->assertStringContainsString('function applyArticleEditorScrollport', $js);
+        $this->assertStringContainsString('function bindArticleEditorScrollport', $js);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow-y:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*height:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \{[^}]*flex:\s*1 1 0%/s',
+            $css
+        );
         $this->assertMatchesRegularExpression(
             '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow-y:\s*auto/s',
             $css
