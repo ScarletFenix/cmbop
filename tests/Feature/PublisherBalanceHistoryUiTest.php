@@ -215,7 +215,11 @@ class PublisherBalanceHistoryUiTest extends TestCase
         $this->actingAs($user)
             ->get(route('advertiser.add-funds'))
             ->assertOk()
-            ->assertSee('Add funds', false);
+            ->assertSee('Add funds', false)
+            ->assertSee('id="publisherRoleStrip"', false)
+            ->assertSee('€7.64', false)
+            ->assertSee(route('publisher.balance'), false)
+            ->assertSee(route('publisher.withdraw'), false);
 
         $this->assertSame('advertiser', $user->fresh()->activeRole());
 

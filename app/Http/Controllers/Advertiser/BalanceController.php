@@ -143,10 +143,12 @@ class BalanceController extends Controller
             ]);
 
             $user = auth()->user();
-            $advertiserRoleId = Wallet::advertiserRoleId() ?? 1;
-            $wallet = Wallet::where('user_id', $user->id)
-                ->where('role_id', $advertiserRoleId)
-                ->first();
+            $advertiserRoleId = Wallet::advertiserRoleId();
+            $wallet = $advertiserRoleId
+                ? Wallet::where('user_id', $user->id)
+                    ->where('role_id', $advertiserRoleId)
+                    ->first()
+                : null;
 
             if (! $wallet) {
                 return response()->json([

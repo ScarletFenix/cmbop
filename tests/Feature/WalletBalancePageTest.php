@@ -92,6 +92,64 @@ class WalletBalancePageTest extends TestCase
         $this->assertStringNotContainsString('PayPal Coming Soon', $html);
         $this->assertStringContainsString('ref-code', $html);
         $this->assertStringContainsString('Recent activity', $html);
+        $this->assertStringContainsString('id="publisherRoleStrip"', $html);
+        $this->assertStringContainsString(route('publisher.balance'), $html);
+        $this->assertStringContainsString(route('publisher.withdraw'), $html);
+    }
+
+    public function test_add_funds_publisher_strip_shows_withdrawable_earnings(): void
+    {
+        Wallet::where('user_id', $this->user->id)
+            ->where('role_id', Wallet::publisherRoleId())
+            ->update(['balance' => 7.64]);
+
+        $html = $this->actingAs($this->user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="publisherRoleStrip"', $html);
+        $this->assertStringContainsString('Publisher earnings', $html);
+        $this->assertStringContainsString('id="publisherEarningsKpi">€7.64', $html);
+        $this->assertStringContainsString('cannot be moved into this advertiser wallet', $html);
+        $this->assertStringContainsString('id="publisherBalanceCta"', $html);
+        $this->assertStringContainsString('id="publisherWithdrawCta"', $html);
+        $this->assertStringNotContainsString('Transfer to Publisher Wallet', $html);
+    }
+
+    public function test_add_funds_hides_publisher_strip_without_publisher_role(): void
+    {
+        $this->user->roles()->detach(Wallet::publisherRoleId());
+
+        $html = $this->actingAs($this->user->fresh())
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('id="publisherRoleStrip"', $html);
+        $this->assertStringNotContainsString('id="publisherBalanceCta"', $html);
+        $this->assertStringNotContainsString(route('publisher.balance'), $html);
+    }
+
+    public function test_dual_role_advertiser_can_open_publisher_balance_and_withdraw(): void
+    {
+        $this->assertSame('advertiser', $this->user->activeRole());
+
+        $this->actingAs($this->user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->assertSee('Publisher earnings', false);
+
+        $this->assertSame('publisher', $this->user->fresh()->activeRole());
+
+        $this->user->forceFill(['active_role_id' => Wallet::advertiserRoleId()])->save();
+
+        $this->actingAs($this->user->fresh())
+            ->get(route('publisher.withdraw'))
+            ->assertOk()
+            ->assertSee('Withdraw Funds', false);
+
+        $this->assertSame('publisher', $this->user->fresh()->activeRole());
     }
 
     public function test_brand_colors_use_icon_signal_caution_and_teal_code(): void
