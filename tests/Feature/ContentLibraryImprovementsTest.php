@@ -788,6 +788,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
         $this->assertStringContainsString('overscroll-behavior: contain', $css);
         $this->assertStringContainsString('.library-row--focus', $css);
+        $this->assertStringContainsString('.library-row--focus > td', $css);
         $this->assertStringContainsString('function goToLibraryResult', $js);
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);

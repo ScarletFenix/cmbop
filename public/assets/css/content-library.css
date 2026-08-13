@@ -18,9 +18,17 @@
         border-bottom-width: 1px;
         white-space: nowrap;
     }
-    .library-row--focus {
+    .library-row--focus > td {
+        background: #e6f5f5 !important;
+    }
+    .library-row--focus > td:first-child {
         box-shadow: inset 3px 0 0 #1a585e;
-        background: #e6f5f5;
+    }
+    .library-table .table-hover > tbody > tr.library-row--focus:hover > td {
+        background: #d7eeee !important;
+    }
+    tr[id^="library-row-"] {
+        scroll-margin-top: 5.5rem;
     }
     .library-title { font-weight: 600; color: #0f172a; max-width: 280px; }
     .library-live-link {
