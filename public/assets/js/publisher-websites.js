@@ -48,7 +48,8 @@ window.publisherSitePreviewOnError = window.publisherSitePreviewOnError || funct
  * Legacy dual-load: websites.blade.php still ships a full inline script.
  * When that flag is set, skip this file's form/table boot to avoid
  * re-binding selects and double-fetching the sites table.
- * Accept / Decline / Get Verified always bind below (outside this gate).
+ * Accept / Decline / Get Verified / Feature / Discount / Bulk always bind below
+ * (outside this gate).
  */
 if (window.__publisherWebsitesInlineLoaded) {
     // no-op — Blade inline owns form/table behaviour.
@@ -1298,6 +1299,10 @@ function initSitePreviewZoom(root) {
 }
 
 function fetchSites(page = 1, query = '', opts = {}) {
+    window.__publisherSitesList = {
+        page: parseInt(page, 10) || 1,
+        query: query == null ? '' : String(query),
+    };
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
@@ -1652,186 +1657,24 @@ $(document).on('click', '.btn-edit', function() {
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
 });
-
-/* —— Site promotions: Feature / Discount / Bulk —— */
-const promoCsrf = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken) || '';
-
-async function startFeatureStripeCheckout(siteId) {
-    const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (data.success && data.checkout_url) {
-        window.location.href = data.checkout_url;
-        return;
-    }
-    Swal.fire({ icon: 'error', title: 'Checkout unavailable', text: data.message || 'Could not start card payment.' });
-}
-
-$(document).on('click', '.btn-feature-site', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name');
-    let wallet = { feature_price: 10, feature_days: 7, balance: 0, top_up_url: (window.PublisherWebsitesConfig.routes.balance), stripe_available: true };
-    try {
-        const w = await fetch((window.PublisherWebsitesConfig.routes.promotionsWallet), { headers: { 'Accept': 'application/json' }});
-        wallet = await w.json();
-    } catch (e) {}
-
-    const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
-    const result = await Swal.fire({
-        title: 'Feature this website?',
-        html: `<p>Feature <strong>${name}</strong> for <strong>${wallet.feature_days || 7} days</strong> to boost catalog visibility.</p>
-               <p class="mb-1">Cost: <strong>€${Number(wallet.feature_price || 10).toFixed(2)}</strong></p>
-               <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
-               <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
-        showDenyButton: !!wallet.stripe_available,
-        showCancelButton: true,
-        confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
-        denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
-    });
-
-    if (result.isDenied) {
-        return startFeatureStripeCheckout(id);
-    }
-    if (!result.isConfirmed) return;
-    if (!canWallet) {
-        return Swal.fire({
-            icon: 'info',
-            title: 'Insufficient balance',
-            html: `Top up your wallet or pay by card.<br><br>
-                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard">Pay by card</button>
-                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url}">Add Funds</a>`,
-            didOpen: () => {
-                document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id));
-            },
-            showConfirmButton: false,
-            showCancelButton: true,
-        });
-    }
-
-    const res = await fetch(`/publisher/sites/${id}/feature`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({}),
-    });
-    const data = await res.json();
-    if (data.success) {
-        Swal.fire({ icon: 'success', title: 'Featured!', text: data.message });
-        if (data.success) { fetchSites(); }
-    } else if (data.needs_top_up) {
-        Swal.fire({
-            icon: 'info',
-            title: 'Top up or pay by card',
-            html: `${(typeof escapeHtml === 'function' ? escapeHtml(data.message || '') : String(data.message || '').replace(/</g,'&lt;'))}<br><br>
-                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (€${Number(wallet.feature_price || 10).toFixed(2)})</button>
-                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url}">Add Funds</a>`,
-            didOpen: () => {
-                document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id));
-            },
-            showConfirmButton: false,
-            showCancelButton: true,
-        });
-    } else {
-        Swal.fire({ icon: 'error', title: 'Could not feature', text: data.message || 'Failed' });
-    }
-});
-
-$(document).on('click', '.btn-discount-site', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name');
-    const current = $(this).data('percent');
-    const { value: form } = await Swal.fire({
-        title: 'Set timed discount',
-        html: `<p class="mb-2" style="font-size:14px;color:#334155;line-height:1.45;">
-                   Lower the price of <strong>${name}</strong> for a limited time so advertisers see a clear sale in the catalog.
-               </p>
-               <p class="small text-muted mb-2">Ends automatically after the days you choose. You’ll get an email when it ends.</p>
-               <label for="swal-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount percent (1–70)</label>
-               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="e.g. 15" value="${current || 15}" aria-label="Discount percent">
-               <label for="swal-days" class="small fw-semibold d-block text-start ms-3 mb-0 mt-2">Days active (1–90)</label>
-               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="e.g. 7" value="7" aria-label="Days active">`,
-        showCancelButton: true,
-        confirmButtonText: 'Publish discount',
-        preConfirm: () => ({
-            percent: document.getElementById('swal-pct').value,
-            days: document.getElementById('swal-days').value,
-        }),
-    });
-    if (!form) return;
-    const res = await fetch(`/publisher/sites/${id}/discount`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
-});
-
-$(document).on('click', '.btn-discount-clear', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'End this discount now?', showCancelButton: true, confirmButtonText: 'End discount', customClass: { confirmButton: 'slb-swal-danger' } });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
-});
-
-$(document).on('click', '.btn-bulk-join', async function () {
-    const id = $(this).data('id');
-    const { value: percent } = await Swal.fire({
-        title: 'Join bulk discount program',
-        input: 'number',
-        inputLabel: 'Discount % for 3–5 articles (10–15)',
-        inputValue: 10,
-        inputAttributes: { min: 10, max: 15, step: 1 },
-        showCancelButton: true,
-        confirmButtonText: 'Join',
-    });
-    if (percent === undefined || percent === null || percent === '') return;
-    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
-        method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ percent }),
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
-});
-
-$(document).on('click', '.btn-bulk-leave', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'Leave bulk program?', showCancelButton: true, confirmButtonText: 'Leave' });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
-});
 })(); // publisherWebsitesExternalBoot
 }
 
 /*
  * Always-on row actions: Blade sets __publisherWebsitesInlineLoaded and skips the
- * form/table boot above, but Accept / Decline / Get Verified still need handlers.
+ * form/table boot above, but Accept / Decline / Get Verified / promotions still need handlers.
  */
 (function publisherWebsitesAlwaysOnActions() {
 'use strict';
 
 function reloadPublisherSitesTable(page) {
-    const q = (window.jQuery && $('#siteSearch').length) ? $('#siteSearch').val() : '';
+    const last = window.__publisherSitesList || { page: 1, query: '' };
+    const q = (window.jQuery && $('#siteSearch').length)
+        ? $('#siteSearch').val()
+        : last.query;
+    const p = page || last.page || 1;
     if (typeof window.loadSites === 'function') {
-        window.loadSites(page || 1, q);
-        return;
+        window.loadSites(p, q);
     }
 }
 
@@ -2122,6 +1965,261 @@ $(document).on('click', '.btn-reject-assignment', async function () {
         Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
     }
 });
+
+/* —— Site promotions: Feature / Discount / Bulk (single path) —— */
+if (!window.__publisherPromoHandlersBound) {
+window.__publisherPromoHandlersBound = true;
+
+function promoEscapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function promoCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
+        || '';
+}
+
+function reloadSitesAfterPromo() {
+    reloadPublisherSitesTable();
+}
+
+function promoDaysLeft(iso) {
+    if (!iso) return 0;
+    const end = Date.parse(iso);
+    if (Number.isNaN(end)) return 0;
+    const ms = end - Date.now();
+    if (ms <= 0) return 0;
+    return Math.max(1, Math.ceil(ms / 86400000));
+}
+
+function promoFormatDate(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function promoBetterOfNote() {
+    return 'Advertisers get the better of a timed sale or bulk — they are not added together.';
+}
+
+async function startFeatureStripeCheckout(siteId) {
+    const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.success && data.checkout_url) {
+        window.location.href = data.checkout_url;
+        return;
+    }
+    Swal.fire({ icon: 'error', title: 'Checkout unavailable', text: data.message || 'Could not start card payment.' });
+}
+
+$(document).on('click', '.btn-feature-site', async function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const name = promoEscapeHtml($btn.data('name'));
+    const featuredUntil = $btn.attr('data-featured-until') || '';
+    const daysLeft = promoDaysLeft(featuredUntil);
+    const isLive = daysLeft > 0;
+    const isVerified = String($btn.attr('data-verified') ?? '1') === '1';
+    const cfg = window.PublisherWebsitesConfig || { routes: {} };
+    let wallet = {
+        feature_price: 10,
+        feature_days: 7,
+        balance: 0,
+        top_up_url: cfg.routes.balance,
+        stripe_available: true,
+    };
+    try {
+        const w = await fetch(cfg.routes.promotionsWallet, { headers: { 'Accept': 'application/json' } });
+        wallet = await w.json();
+    } catch (e) {}
+
+    const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
+    const featureDays = Number(wallet.feature_days || 7);
+    const featurePrice = Number(wallet.feature_price || 10).toFixed(2);
+    const unverifiedNote = isVerified
+        ? ''
+        : '<p class="small text-muted">This site is active but not verified. Featuring still works; advertisers may trust it less.</p>';
+    const body = isLive
+        ? `<p><strong>${name}</strong> is already featured until <strong>${promoEscapeHtml(promoFormatDate(featuredUntil))}</strong> (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).</p>
+           <p>Paying <strong>€${featurePrice}</strong> adds another <strong>${featureDays} days</strong>.</p>`
+        : `<p>Feature <strong>${name}</strong> for <strong>${featureDays} days</strong> to boost catalog visibility.</p>
+           <p class="mb-1">Cost: <strong>€${featurePrice}</strong></p>`;
+    const result = await Swal.fire({
+        title: isLive ? 'Extend featuring?' : 'Feature this website?',
+        html: `${body}
+               ${unverifiedNote}
+               <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
+               <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
+        showDenyButton: !!wallet.stripe_available,
+        showCancelButton: true,
+        confirmButtonText: canWallet ? 'Pay from wallet' : 'Use card / top up',
+        denyButtonText: wallet.stripe_available ? 'Pay by card' : undefined,
+    });
+
+    if (result.isDenied) {
+        return startFeatureStripeCheckout(id);
+    }
+    if (!result.isConfirmed) return;
+    if (!canWallet) {
+        return Swal.fire({
+            icon: 'info',
+            title: 'Insufficient balance',
+            html: `Top up your wallet or pay by card.<br><br>
+                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard">Pay by card</button>
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url || '#'}">Add Funds</a>`,
+            didOpen: () => {
+                document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id));
+            },
+            showConfirmButton: false,
+            showCancelButton: true,
+        });
+    }
+
+    const res = await fetch(`/publisher/sites/${id}/feature`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.success) {
+        Swal.fire({ icon: 'success', title: 'Featured!', text: data.message });
+        reloadSitesAfterPromo();
+    } else if (data.needs_top_up) {
+        Swal.fire({
+            icon: 'info',
+            title: 'Top up or pay by card',
+            html: `${promoEscapeHtml(data.message || '')}<br><br>
+                   <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (€${Number(wallet.feature_price || 10).toFixed(2)})</button>
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url || '#'}">Add Funds</a>`,
+            didOpen: () => {
+                document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id));
+            },
+            showConfirmButton: false,
+            showCancelButton: true,
+        });
+    } else {
+        Swal.fire({ icon: 'error', title: 'Could not feature', text: data.message || 'Failed' });
+    }
+});
+
+$(document).on('click', '.btn-discount-site', async function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const name = promoEscapeHtml($btn.data('name'));
+    const current = $btn.attr('data-percent') || $btn.data('percent') || 15;
+    const endsAt = $btn.attr('data-ends') || '';
+    const remaining = promoDaysLeft(endsAt);
+    const isLive = $btn.hasClass('is-on') || remaining > 0;
+    const daysPrefill = isLive ? Math.min(90, Math.max(1, remaining || 7)) : 7;
+    const result = await Swal.fire({
+        title: isLive ? 'Update timed sale' : 'Set timed discount',
+        html: `<p class="small text-muted">${isLive
+            ? `Sale on <strong>${name}</strong> has about <strong>${daysPrefill}</strong> day${daysPrefill === 1 ? '' : 's'} left. Change the percent or remaining days, or end it now.`
+            : `Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.`}</p>
+               <p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
+               <label for="swal-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount percent (1–70)</label>
+               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${promoEscapeHtml(current)}">
+               <label for="swal-days" class="small fw-semibold d-block text-start ms-3 mb-0 mt-2">Days active (1–90)</label>
+               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="${daysPrefill}">`,
+        showDenyButton: isLive,
+        showCancelButton: true,
+        confirmButtonText: isLive ? 'Update sale' : 'Publish sale',
+        denyButtonText: isLive ? 'End sale now' : undefined,
+        customClass: isLive ? { denyButton: 'slb-swal-danger' } : undefined,
+        preConfirm: () => ({
+            percent: document.getElementById('swal-pct').value,
+            days: document.getElementById('swal-days').value,
+        }),
+    });
+    if (result.isDenied) {
+        const res = await fetch(`/publisher/sites/${id}/discount`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        if (data.success) { reloadSitesAfterPromo(); }
+        return;
+    }
+    if (!result.isConfirmed || !result.value) return;
+    const res = await fetch(`/publisher/sites/${id}/discount`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.value),
+    });
+    const data = await res.json().catch(() => ({}));
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { reloadSitesAfterPromo(); }
+});
+
+$(document).on('click', '.btn-discount-clear', async function () {
+    const id = $(this).data('id');
+    const ok = await Swal.fire({
+        title: 'End this discount now?',
+        showCancelButton: true,
+        confirmButtonText: 'End discount',
+        customClass: { confirmButton: 'slb-swal-danger' },
+        reverseButtons: true,
+        focusCancel: true,
+    });
+    if (!ok.isConfirmed) return;
+    const res = await fetch(`/publisher/sites/${id}/discount`, {
+        method: 'DELETE',
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+    });
+    const data = await res.json().catch(() => ({}));
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { reloadSitesAfterPromo(); }
+});
+
+$(document).on('click', '.btn-bulk-site', async function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const joined = String($btn.attr('data-joined')) === '1';
+    const currentPct = Number($btn.attr('data-percent') || 10);
+    const result = await Swal.fire({
+        title: joined ? `Bulk −${currentPct}% is on` : 'Join bulk discount program',
+        html: `<p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
+               <label for="swal-bulk-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount % for 3–5 articles (10–15)</label>
+               <input id="swal-bulk-pct" type="number" min="10" max="15" step="1" class="swal2-input" value="${joined ? currentPct : 10}">`,
+        showDenyButton: joined,
+        showCancelButton: true,
+        confirmButtonText: joined ? 'Update percent' : 'Join',
+        denyButtonText: joined ? 'Leave programme' : undefined,
+        customClass: joined ? { denyButton: 'slb-swal-danger' } : undefined,
+        preConfirm: () => document.getElementById('swal-bulk-pct')?.value,
+    });
+    if (result.isDenied) {
+        const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        if (data.success) { reloadSitesAfterPromo(); }
+        return;
+    }
+    if (!result.isConfirmed || result.value === undefined || result.value === null || result.value === '') return;
+    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+        method: 'POST',
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percent: result.value }),
+    });
+    const data = await res.json().catch(() => ({}));
+    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+    if (data.success) { reloadSitesAfterPromo(); }
+});
+}
 
 })(); // publisherWebsitesAlwaysOnActions
 
