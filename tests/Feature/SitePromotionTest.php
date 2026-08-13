@@ -139,6 +139,24 @@ class SitePromotionTest extends TestCase
         $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
     }
 
+    public function test_updating_bulk_percent_says_updated_not_joined(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 10])
+            ->assertOk();
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 80])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['message' => 'Updated bulk discount to 80% on 3–5 articles. Exclusive better-of with any timed sale — not stacked; advertisers see the post-fee-floor rate.']);
+
+        $this->assertSame(80.0, (float) $site->fresh()->bulk_discount_percent);
+    }
+
     public function test_bulk_percent_outside_ten_to_eighty_is_rejected(): void
     {
         $publisher = $this->publisherWithWallet();

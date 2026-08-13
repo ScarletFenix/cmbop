@@ -2167,8 +2167,8 @@ $(document).on('click', '.btn-bulk-site', async function () {
     const id = $btn.data('id');
     const joined = String($btn.attr('data-joined')) === '1';
     const cfg = window.PublisherWebsitesConfig || {};
-    const bulkMin = Number(cfg.bulkMinPercent || 10);
-    const bulkMax = Number(cfg.bulkMaxPercent || 80);
+    const bulkMin = Number(cfg.bulkMinPercent ?? cfg.routes?.bulkMinPercent ?? 10);
+    const bulkMax = Number(cfg.bulkMaxPercent ?? cfg.routes?.bulkMaxPercent ?? 80);
     const currentPct = Number($btn.attr('data-percent') || bulkMin);
     const result = await Swal.fire({
         title: joined ? `Bulk −${currentPct}% is on` : 'Join bulk discount program',
@@ -2180,7 +2180,14 @@ $(document).on('click', '.btn-bulk-site', async function () {
         confirmButtonText: joined ? 'Update percent' : 'Join',
         denyButtonText: joined ? 'Leave programme' : undefined,
         customClass: joined ? { denyButton: 'slb-swal-danger' } : undefined,
-        preConfirm: () => document.getElementById('swal-bulk-pct')?.value,
+        preConfirm: () => {
+            const n = Number(document.getElementById('swal-bulk-pct')?.value);
+            if (!Number.isFinite(n) || n < bulkMin || n > bulkMax) {
+                Swal.showValidationMessage(`Enter a percent from ${bulkMin} to ${bulkMax}.`);
+                return false;
+            }
+            return n;
+        },
     });
     if (result.isDenied) {
         const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {

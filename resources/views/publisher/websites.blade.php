@@ -1547,9 +1547,9 @@ window.PublisherWebsitesConfig = {
         login: @json(route('login')),
         balance: @json(route('publisher.balance')),
         promotionsWallet: @json(route('publisher.promotions.wallet')),
-        bulkMinPercent: {{ (int) config('site_promotions.bulk.min_percent', 10) }},
-        bulkMaxPercent: {{ (int) config('site_promotions.bulk.max_percent', 80) }},
     },
+    bulkMinPercent: {{ (int) config('site_promotions.bulk.min_percent', 10) }},
+    bulkMaxPercent: {{ (int) config('site_promotions.bulk.max_percent', 80) }},
 };
 </script>
 <script>
