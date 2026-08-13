@@ -5,7 +5,6 @@ const boot = window.ContentLibraryBoot || {};
 const libraryUpdateUrl = boot.libraryUpdateUrl;
 const libraryContentUrl = boot.libraryContentUrl;
 const libraryImageUploadUrl = boot.libraryImageUploadUrl;
-const libraryOrderUrlBase = boot.libraryOrderUrlBase;
 const libraryPreviewUrlBase = boot.libraryPreviewUrlBase;
 const libraryCsrf = boot.libraryCsrf;
 const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
@@ -24,6 +23,11 @@ let previewModalState = { title: '', submissionId: null, editable: false, html: 
 let pendingLibraryLanding = null;
 let skipEditorListLanding = false;
 let skipPreviewListLanding = false;
+let libraryUploadAbort = null;
+let libraryUploadHandoff = false;
+let libraryUploadClosingForEditor = false;
+let libraryUploadHandoffTimer = null;
+let libraryUploadSavedSubmission = null;
 
 function refreshLibraryLanguages(preferredLanguage) {
     const countrySelect = document.getElementById('libraryCountry');
@@ -81,11 +85,16 @@ document.addEventListener('DOMContentLoaded', function () {
     refreshLibraryLanguages(libraryPreferredLanguage);
     bindLibraryDropzone();
     bindLibraryModalA11y();
+    bindLibraryUploadCancel();
     bindLibraryResultLanding();
     applyLibraryResultFocus();
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
     refreshLibraryLanguages(libraryPreferredLanguage || document.getElementById('libraryLanguage')?.value || '');
+    if (!libraryUploadAbort && !libraryUploadHandoff) {
+        const btn = document.getElementById('libraryUploadBtn');
+        if (btn) btn.disabled = false;
+    }
 });
 
 function selectedOptionLabel(select) {
@@ -804,6 +813,95 @@ function hideBootstrapModal(el) {
     bootstrap.Modal.getOrCreateInstance(el).hide();
 }
 
+function resetLibraryUploadUi() {
+    const btn = document.getElementById('libraryUploadBtn');
+    const feedback = document.getElementById('libraryUploadFeedback');
+    const progress = document.getElementById('libraryUploadProgress');
+    const bar = progress ? progress.querySelector('.progress-bar') : null;
+    if (btn) btn.disabled = false;
+    if (feedback) feedback.textContent = '';
+    progress?.classList.add('d-none');
+    if (bar) bar.style.width = '0%';
+}
+
+function abortLibraryUpload() {
+    if (!libraryUploadAbort) return;
+    try { libraryUploadAbort.abort(); } catch (e) { /* ignore */ }
+    libraryUploadAbort = null;
+}
+
+function clearLibraryUploadHandoffTimer() {
+    if (!libraryUploadHandoffTimer) return;
+    window.clearTimeout(libraryUploadHandoffTimer);
+    libraryUploadHandoffTimer = null;
+}
+
+function isLibraryUploadAbortError(err) {
+    return !!(err && (err.name === 'AbortError' || err.code === 20));
+}
+
+/**
+ * Cancel/X/Escape must always get the user out of Upload article — including
+ * the "Opening editor…" window after the POST already returned. Bootstrap can
+ * no-op hide() if a previous hide stalled mid-transition.
+ */
+function forceDismissUploadModal() {
+    const el = document.getElementById('uploadContentModal');
+    if (!el) return;
+    hideBootstrapModal(el);
+    window.setTimeout(function () {
+        const editorOpen = document.getElementById('articleEditorModal')?.classList.contains('show');
+        const stillVisible = el.classList.contains('show') || el.style.display === 'block';
+        if (editorOpen || !stillVisible) return;
+        el.classList.remove('show');
+        el.style.display = 'none';
+        el.setAttribute('aria-hidden', 'true');
+        el.removeAttribute('aria-modal');
+        document.body.classList.remove('modal-open');
+        document.body.style.removeProperty('overflow');
+        document.body.style.removeProperty('padding-right');
+        document.querySelectorAll('.modal-backdrop').forEach(function (backdrop) {
+            backdrop.remove();
+        });
+    }, 400);
+}
+
+function dismissLibraryUploadByUser() {
+    const saved = libraryUploadSavedSubmission;
+    libraryUploadHandoff = false;
+    libraryUploadClosingForEditor = false;
+    libraryUploadSavedSubmission = null;
+    clearLibraryUploadHandoffTimer();
+    abortLibraryUpload();
+    resetLibraryUploadUi();
+    forceDismissUploadModal();
+    if (saved && saved.id) {
+        showLibraryFlash('Article uploaded. It is in your library.', true);
+    }
+}
+
+function bindLibraryUploadCancel() {
+    const el = document.getElementById('uploadContentModal');
+    if (!el || el.dataset.uploadCancelBound === '1') return;
+    el.dataset.uploadCancelBound = '1';
+    el.addEventListener('click', function (e) {
+        if (!e.target.closest('[data-bs-dismiss="modal"]')) return;
+        dismissLibraryUploadByUser();
+    });
+    el.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        dismissLibraryUploadByUser();
+    });
+    el.addEventListener('hide.bs.modal', function () {
+        abortLibraryUpload();
+        if (libraryUploadClosingForEditor) return;
+        libraryUploadHandoff = false;
+        libraryUploadSavedSubmission = null;
+        clearLibraryUploadHandoffTimer();
+        resetLibraryUploadUi();
+    });
+}
+
 function blurIfInside(el) {
     if (el && el.contains(document.activeElement) && document.activeElement.blur) {
         document.activeElement.blur();
@@ -915,59 +1013,76 @@ function ensureArticleQuill() {
 }
 
 function openArticleEditor(submission) {
-    if (!submission || !submission.id) return;
-    articleEditorSubmissionId = submission.id;
-    articleEditorDetectedLinks = Array.isArray(submission.detected_links) ? submission.detected_links : [];
-    ensureArticleQuill();
-    document.getElementById('articleEditorTitle').value = submission.title || '';
-    const market = ((submission.country || '') + '/' + (submission.language || '')).toUpperCase();
-    const status = submission.moderation_status || '';
-    document.getElementById('articleEditorMeta').textContent =
-        market + (status ? ' · ' + status.replace(/_/g, ' ') : '') +
-        (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
-    document.getElementById('articleEditorFeedback').textContent = '';
-    loadArticleHtml(submission.preview_html || '<p><br></p>');
-    const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
-    syncEditorImageRights(needsRights);
-    syncEditorActions(submission);
-    showArticleEditorAfterUploadModal();
-}
-
-function syncEditorActions(submission) {
-    const orderBtn = document.getElementById('articleEditorOrderBtn');
-    const saveBtn = document.getElementById('articleEditorSaveBtn');
-    const canOrder = !!(submission && submission.can_order);
-    if (orderBtn) {
-        if (canOrder && submission.id) {
-            orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
-            orderBtn.classList.remove('d-none');
-        } else {
-            orderBtn.classList.add('d-none');
-        }
+    if (!submission || !submission.id) {
+        libraryUploadHandoff = false;
+        resetLibraryUploadUi();
+        return;
     }
-    if (saveBtn) {
-        saveBtn.classList.toggle('btn-primary', !canOrder);
-        saveBtn.classList.toggle('btn-outline-primary', canOrder);
+    try {
+        articleEditorSubmissionId = submission.id;
+        articleEditorDetectedLinks = Array.isArray(submission.detected_links) ? submission.detected_links : [];
+        ensureArticleQuill();
+        document.getElementById('articleEditorTitle').value = submission.title || '';
+        const market = ((submission.country || '') + '/' + (submission.language || '')).toUpperCase();
+        const status = submission.moderation_status || '';
+        document.getElementById('articleEditorMeta').textContent =
+            market + (status ? ' · ' + status.replace(/_/g, ' ') : '') +
+            (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
+        document.getElementById('articleEditorFeedback').textContent = '';
+        loadArticleHtml(submission.preview_html || '<p><br></p>');
+        const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
+        syncEditorImageRights(needsRights);
+        showArticleEditorAfterUploadModal();
+    } catch (e) {
+        libraryUploadHandoff = false;
+        libraryUploadClosingForEditor = false;
+        resetLibraryUploadUi();
+        setFeedbackHtml(
+            document.getElementById('libraryUploadFeedback'),
+            false,
+            'Could not open the editor. Try again.'
+        );
     }
 }
 
 /**
  * Bootstrap cannot show a second modal while the upload dialog is still
  * hiding — the backdrop sticks and the editor never becomes usable.
+ * Cancel during "Opening editor…" must not leave that overlay stuck, and
+ * must not open the editor after the user dismissed Upload article.
  */
 function showArticleEditorAfterUploadModal() {
     const editorEl = document.getElementById('articleEditorModal');
     const uploadModalEl = document.getElementById('uploadContentModal');
     const showEditor = function () {
+        clearLibraryUploadHandoffTimer();
+        if (!libraryUploadHandoff) {
+            resetLibraryUploadUi();
+            return;
+        }
+        libraryUploadHandoff = false;
+        libraryUploadClosingForEditor = false;
+        libraryUploadSavedSubmission = null;
+        libraryUploadAbort = null;
+        resetLibraryUploadUi();
         if (!editorEl || typeof bootstrap === 'undefined') return;
         bootstrap.Modal.getOrCreateInstance(editorEl).show();
     };
+    libraryUploadHandoff = true;
     if (uploadModalEl && uploadModalEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
-        uploadModalEl.addEventListener('hidden.bs.modal', function onUploadHidden() {
+        const onUploadHidden = function () {
             uploadModalEl.removeEventListener('hidden.bs.modal', onUploadHidden);
             showEditor();
-        });
+        };
+        uploadModalEl.addEventListener('hidden.bs.modal', onUploadHidden);
+        libraryUploadClosingForEditor = true;
         hideBootstrapModal(uploadModalEl);
+        clearLibraryUploadHandoffTimer();
+        libraryUploadHandoffTimer = window.setTimeout(function () {
+            if (!libraryUploadHandoff) return;
+            uploadModalEl.removeEventListener('hidden.bs.modal', onUploadHidden);
+            showEditor();
+        }, 500);
         return;
     }
     showEditor();
@@ -1333,6 +1448,10 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
 
     const fd = new FormData(this);
     fd.set('file', file, file.name);
+    abortLibraryUpload();
+    libraryUploadAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    libraryUploadHandoff = false;
+    libraryUploadSavedSubmission = null;
     if (btn) btn.disabled = true;
     progress?.classList.remove('d-none');
     if (bar) bar.style.width = '40%';
@@ -1344,6 +1463,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
             body: fd,
+            signal: libraryUploadAbort ? libraryUploadAbort.signal : undefined,
         });
         if (bar) bar.style.width = '100%';
         let data = {};
@@ -1354,12 +1474,15 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             return;
         }
         if (!data.success) {
+            libraryUploadAbort = null;
             setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Upload failed. Use a Word .docx and try again.'));
             return;
         }
+        libraryUploadAbort = null;
         setFeedbackHtml(feedback, true, 'Opening editor…');
         if (data.submission) {
             openedEditor = true;
+            libraryUploadSavedSubmission = data.submission;
             rememberLibraryLanding(
                 data.submission,
                 data.message,
@@ -1372,6 +1495,10 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             goToLibraryResult({}, data.message || 'Article uploaded.', !!data.approved);
         }
     } catch (err) {
+        if (isLibraryUploadAbortError(err)) {
+            resetLibraryUploadUi();
+            return;
+        }
         setFeedbackHtml(feedback, false, 'Network error while uploading.');
     } finally {
         if (!openedEditor && btn) btn.disabled = false;

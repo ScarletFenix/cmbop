@@ -672,9 +672,12 @@
         overscroll-behavior: none;
     }
     #articleEditorModal .modal-dialog {
-        height: calc(100vh - 1.75rem);
-        max-height: calc(100vh - 1.75rem);
-        margin: .75rem auto;
+        /* Fullscreen so library-row Order buttons cannot sit beside the editor. */
+        height: 100%;
+        max-height: 100%;
+        width: 100%;
+        max-width: none;
+        margin: 0;
         overflow: hidden;
     }
     #articleEditorModal .modal-content {
@@ -712,21 +715,20 @@
         flex-direction: column;
         overflow: hidden;
     }
-    #articleEditorModal .article-docs-shell #articleQuillEditor {
-        flex: 1 1 auto;
-        min-height: 0;
-        height: 0;
-        display: flex;
-        flex-direction: column;
-        overflow: hidden;
-    }
     #articleEditorModal .article-docs-shell .ql-toolbar.ql-snow {
         flex: 0 0 auto;
     }
-    #articleEditorModal .article-docs-shell .ql-container.ql-snow {
+    /*
+     * Quill Snow inserts the toolbar as a sibling and turns #articleQuillEditor
+     * into .ql-container. Two-ID overflow:hidden on that node beat overflow-y:auto
+     * on .ql-container, so long articles were clipped at the bottom with no scroll.
+     */
+    #articleEditorModal .article-docs-shell #articleQuillEditor.ql-container {
         flex: 1 1 auto;
         min-height: 0;
         height: 0;
+        display: block;
+        overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
@@ -736,6 +738,7 @@
         max-height: none;
         min-height: 100%;
         overflow: visible;
+        padding-bottom: 2.75rem;
     }
     .article-editor-meta {
         font-size: .8rem;

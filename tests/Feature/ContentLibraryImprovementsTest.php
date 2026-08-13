@@ -788,15 +788,22 @@ class ContentLibraryImprovementsTest extends TestCase
         );
         $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
-        $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor.ql-container', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
-        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-container.ql-snow', $css);
         $this->assertMatchesRegularExpression(
-            '/#articleEditorModal \.article-docs-shell \.ql-container\.ql-snow \{[^}]*height:\s*0/s',
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow-y:\s*auto/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor(?:\.ql-container)? \{[^}]*overflow:\s*hidden/s',
             $css
         );
         $this->assertMatchesRegularExpression(
             '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*height:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.ql-editor \{[^}]*padding-bottom:\s*2\.75rem/s',
             $css
         );
         $this->assertStringContainsString('overscroll-behavior: contain', $css);
@@ -810,10 +817,27 @@ class ContentLibraryImprovementsTest extends TestCase
             '/id="articleEditorModal"[\s\S]*?modal-dialog-scrollable[\s\S]*?id="articleQuillEditor"/',
             $library
         );
-        $this->assertStringContainsString('function syncEditorActions', $js);
-        $this->assertStringContainsString("saveBtn.classList.toggle('btn-outline-primary', canOrder)", $js);
-        $this->assertStringContainsString('class="btn btn-primary d-none" id="articleEditorOrderBtn"', $library);
-        $this->assertStringNotContainsString('btn-success d-none" id="articleEditorOrderBtn"', $library);
+        $this->assertStringNotContainsString('function syncEditorActions', $js);
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $library);
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $js);
+        $this->assertStringNotContainsString('libraryOrderUrlBase', $js);
+        $this->assertStringNotContainsString("saveBtn.classList.toggle('btn-outline-primary', canOrder)", $js);
+        $this->assertMatchesRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog modal-fullscreen[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
+        $editorModal = $this->extractHtmlBetween(
+            $library,
+            'id="articleEditorModal"',
+            'id="articlePreviewModal"'
+        );
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $editorModal);
+        $this->assertStringNotContainsString('>Order</a>', $editorModal);
+        $this->assertStringContainsString('id="articleEditorSaveBtn"', $editorModal);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-dialog \{[^}]*height:\s*100%/s',
+            $css
+        );
         $this->assertStringContainsString('overscroll-behavior: none', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
         $this->assertMatchesRegularExpression(
@@ -901,6 +925,17 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString("fd.set('file', file, file.name)", $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
+        $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
+        $this->assertStringContainsString('function resetLibraryUploadUi', $js);
+        $this->assertStringContainsString('function bindLibraryUploadCancel', $js);
+        $this->assertStringContainsString('function abortLibraryUpload', $js);
+        $this->assertStringContainsString('AbortController', $js);
+        $this->assertStringContainsString('isLibraryUploadAbortError', $js);
+        $this->assertStringContainsString('if (!libraryUploadHandoff)', $js);
+        $this->assertStringContainsString('libraryUploadSavedSubmission', $js);
+        $this->assertStringContainsString('id="libraryUploadCancelBtn"', $html);
+        $this->assertStringContainsString('Could not open the editor. Try again.', $js);
+        $this->assertStringContainsString('Article uploaded. It is in your library.', $js);
     }
 
     public function test_library_upload_allows_ten_megabyte_docx(): void
