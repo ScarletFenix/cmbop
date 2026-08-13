@@ -4,6 +4,8 @@
 
 namespace App\Mail;
 
+use App\Services\Billing\WithdrawalPayoutStatementService;
+
 class WithdrawalStatusUpdated extends PlatformMailable
 {
     public $withdrawal;
@@ -30,6 +32,23 @@ class WithdrawalStatusUpdated extends PlatformMailable
 
     public function build()
     {
+        $statementUrl = null;
+        $hasStatement = false;
+
+        if ($this->newStatus === 'completed') {
+            try {
+                $statement = app(WithdrawalPayoutStatementService::class)
+                    ->find($this->withdrawal);
+                if ($statement) {
+                    $hasStatement = true;
+                    $statementUrl = route('publisher.billing.download', $statement);
+                }
+            } catch (\Throwable) {
+                $hasStatement = false;
+                $statementUrl = null;
+            }
+        }
+
         return $this->subject('Withdrawal Request '.ucfirst($this->newStatus))
             ->markdown('emails.publisher.withdrawal-status-updated')
             ->with([
@@ -37,6 +56,8 @@ class WithdrawalStatusUpdated extends PlatformMailable
                 'oldStatus' => $this->oldStatus,
                 'newStatus' => $this->newStatus,
                 'notes' => $this->notes,
+                'statementUrl' => $statementUrl,
+                'hasStatement' => $hasStatement,
             ]);
     }
 }

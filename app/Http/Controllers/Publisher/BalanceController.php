@@ -1,66 +1,114 @@
 <?php
 
-// app/Http/Controllers/Publisher/BalanceController.php
-
 namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
 use App\Models\BalanceTransfer;
 use App\Models\Wallet;
+use App\Services\Wallet\WalletRoleMoveException;
+use App\Services\Wallet\WalletRoleMoveService;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 class BalanceController extends Controller
 {
+    public function __construct(
+        private WalletRoleMoveService $roleMoves,
+    ) {}
+
     /**
-     * Display balance page for publisher
-     * Role IDs: 2 = Publisher, 1 = Advertiser
+     * Display balance page for publisher.
      */
     public function index()
     {
         $user = auth()->user();
-
-        // Role IDs: 2 = Publisher, 1 = Advertiser
-        $publisherRoleId = 2;
-        $advertiserRoleId = 1;
-
-        // Get publisher wallet balance (role_id = 2)
         $publisherWallet = Wallet::where('user_id', $user->id)
-            ->where('role_id', $publisherRoleId)
+            ->where('role_id', Wallet::publisherRoleId())
             ->first();
-        $publisherBalance = $publisherWallet ? $publisherWallet->balance : 0;
-        $publisherDebt = $publisherWallet ? $publisherWallet->debtBalance() : 0;
-
-        // Get advertiser wallet balance (role_id = 1)
         $advertiserWallet = Wallet::where('user_id', $user->id)
-            ->where('role_id', $advertiserRoleId)
+            ->where('role_id', Wallet::advertiserRoleId())
             ->first();
-        $advertiserBalance = $advertiserWallet ? $advertiserWallet->balance : 0;
 
-        return view('publisher.balance', compact('publisherBalance', 'advertiserBalance', 'publisherDebt'));
+        $publisher = $publisherWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+        $advertiser = $advertiserWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+        $minWithdrawalAmount = max(0.01, round((float) config('billing.withdrawal_min_amount', 20), 2));
+        $roleMoveMinAmount = max(0.01, round((float) config('billing.role_move.min_amount', 0.01), 2));
+        $canWithdraw = $publisher['debt'] <= 0 && $publisher['withdrawable'] >= $minWithdrawalAmount;
+        $showAdvertiserWallet = $user->hasRole('advertiser');
+        $canMove = $showAdvertiserWallet
+            && $publisher['debt'] <= 0
+            && $publisher['withdrawable'] >= $roleMoveMinAmount;
+
+        return view('publisher.balance', [
+            'publisher' => $publisher,
+            'advertiser' => $advertiser,
+            'publisherBalance' => $publisher['spendable'],
+            'advertiserBalance' => $advertiser['spendable'],
+            'publisherDebt' => $publisher['debt'],
+            'minWithdrawalAmount' => $minWithdrawalAmount,
+            'roleMoveMinAmount' => $roleMoveMinAmount,
+            'canWithdraw' => $canWithdraw,
+            'canMove' => $canMove,
+            'showAdvertiserWallet' => $showAdvertiserWallet,
+        ]);
     }
 
     /**
-     * Role-to-role transfers are disabled.
+     * Move publisher withdrawable cash into the advertiser wallet for catalog spend.
+     * Advertiser → publisher remains disabled.
      */
     public function transferToAdvertiser(Request $request)
     {
-        return response()->json([
-            'success' => false,
-            'code' => 'transfers_disabled',
-            'message' => 'Role-to-role fund transfers have been disabled. Available funds can be spent on the marketplace or withdrawn. Bonus credit can only be used for purchases on this website.',
-        ], 410);
+        $min = round((float) config('billing.role_move.min_amount', 0.01), 2);
+        $max = round((float) config('billing.role_move.max_amount', 999999.99), 2);
+
+        $data = $request->validate([
+            'amount' => ['required', 'numeric', 'min:'.$min, 'max:'.$max],
+        ]);
+
+        try {
+            $result = $this->roleMoves->publisherToAdvertiser(auth()->user(), (float) $data['amount']);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Earnings moved to your advertiser wallet.',
+                'reference' => $result['reference'],
+                'amount' => $result['amount'],
+                'fee' => $result['fee'],
+                'net_amount' => $result['net_amount'],
+                'publisher' => $result['publisher'],
+                'advertiser' => $result['advertiser'],
+            ]);
+        } catch (WalletRoleMoveException $e) {
+            return response()->json([
+                'success' => false,
+                'code' => $e->errorCode,
+                'message' => $e->userMessage,
+            ], $e->httpStatus);
+        } catch (\Throwable $e) {
+            Log::error('Publisher role move failed', [
+                'user_id' => auth()->id(),
+                'exception' => $e::class,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'code' => 'role_move_failed',
+                'message' => UserFacingError::message($e, 'Could not move earnings to your advertiser wallet. Please try again.'),
+            ], 500);
+        }
     }
 
     /**
-     * Get transfer history - ONLY show transfers FROM Publisher
+     * Get transfer history — leftover endpoint; the Balance page no longer lists transfers.
      */
     public function getTransferHistory(Request $request)
     {
         try {
             $userId = auth()->id();
 
-            // Only show transfers where from_role = 'publisher'
             $transfers = BalanceTransfer::where('user_id', $userId)
                 ->where('from_role', 'publisher')
                 ->orderBy('created_at', 'desc')

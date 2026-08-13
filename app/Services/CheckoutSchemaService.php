@@ -102,6 +102,10 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'completion_notes', 'text NULL');
         $this->addColumn('order_items', 'live_url', 'varchar(1000) NULL');
         $this->addColumn('order_items', 'live_url_submitted_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'homepage_days', 'int unsigned NULL');
+        $this->addColumn('order_items', 'homepage_price', 'decimal(10,2) NULL DEFAULT 0');
+        $this->addColumn('order_items', 'social_channels', 'json NULL');
+        $this->addColumn('order_items', 'social_post_urls', 'json NULL');
         $this->addColumn('order_items', 'modification_requested', 'varchar(10) NULL');
         $this->addColumn('order_items', 'modification_requested_at', 'timestamp NULL');
         $this->addColumn('order_items', 'content_revision_requested', "varchar(10) NULL DEFAULT 'no'");

@@ -2,6 +2,10 @@
 
 namespace App\Models;
 
+use App\Services\CartPricingService;
+use App\Services\Catalog\CatalogCountryInventory;
+use App\Services\Catalog\CatalogLanguageFilter;
+use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
@@ -12,6 +16,13 @@ use Illuminate\Support\Facades\Schema;
 
 class Site extends Model
 {
+    protected static function booted(): void
+    {
+        $bustInventory = static fn () => CatalogCountryInventory::forget();
+        static::saved($bustInventory);
+        static::deleted($bustInventory);
+    }
+
     protected $fillable = [
         'publisher_id',
         'publisher_accepted_at',
@@ -48,6 +59,8 @@ class Site extends Model
         'as_you_prefer',
         'description',
         'sensitive_prices',
+        'homepage_placement_prices',
+        'social_promotion',
         'verified',
         'active',
         'archived_at',
@@ -79,6 +92,9 @@ class Site extends Model
 
     protected $casts = [
         'verified' => 'boolean',
+        'verified_at' => 'datetime',
+        'verify_token_created_at' => 'datetime',
+        'publisher_accepted_at' => 'datetime',
         'active' => 'boolean',
         'sponsored' => 'boolean',
         'partner_material' => 'boolean',
@@ -89,6 +105,8 @@ class Site extends Model
         'price' => 'decimal:2',
         'publication_time' => 'string',
         'sensitive_prices' => 'array',
+        'homepage_placement_prices' => 'array',
+        'social_promotion' => 'array',
         'categories' => 'array',
         'countries' => 'array',
         'languages' => 'array',
@@ -111,6 +129,328 @@ class Site extends Model
         'custom_discount_notified_at' => 'datetime',
         'status_reason_at' => 'datetime',
     ];
+
+    public function awaitsPublisherDetails(): bool
+    {
+        return $this->onboarding_status === self::ONBOARDING_AWAITING_DETAILS;
+    }
+
+    public function hasDetailsComplete(): bool
+    {
+        return $this->onboarding_status === self::ONBOARDING_DETAILS_COMPLETE;
+    }
+
+    /**
+     * Bulk draft still owned by the publisher (filling forms or reviewing before submit).
+     */
+    public function isPendingPublisherBulkSubmit(): bool
+    {
+        return $this->awaitsPublisherDetails() || $this->hasDetailsComplete();
+    }
+
+    /**
+     * Whether required listing details look complete (used to heal stale awaiting_details).
+     * example_url is optional — publishers often leave it blank.
+     */
+    public function hasCompletedPublisherDetails(): bool
+    {
+        $description = trim((string) ($this->description ?? ''));
+        $niches = collect($this->categories_array ?? [])
+            ->map(fn ($v) => trim((string) $v))
+            ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
+            ->values()
+            ->all();
+
+        if (strlen($description) < 50) {
+            return false;
+        }
+
+        if (str_starts_with($description, 'Please replace')) {
+            return false;
+        }
+
+        if ($niches === []) {
+            return false;
+        }
+
+        if (trim((string) ($this->turnaround_time ?? '')) === '') {
+            return false;
+        }
+
+        if (trim((string) ($this->publication_time ?? '')) === '') {
+            return false;
+        }
+
+        if (trim((string) ($this->link_type ?? '')) === '') {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
+     * Promote stale bulk drafts to ready_for_review when details are already filled.
+     */
+    public function promoteFromAwaitingDetailsIfComplete(): bool
+    {
+        if (! $this->awaitsPublisherDetails()) {
+            return false;
+        }
+
+        if (! $this->hasCompletedPublisherDetails()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    /**
+     * Admin explicit approve/activate: drop the awaiting_details lock.
+     */
+    public function clearAwaitingDetailsForAdmin(): bool
+    {
+        if (! $this->awaitsPublisherDetails()) {
+            return false;
+        }
+
+        return $this->clearAwaitingDetailsOnboarding();
+    }
+
+    private function clearAwaitingDetailsOnboarding(): bool
+    {
+        $ok = $this->markReadyForAdminReview();
+
+        if ($ok && $this->bulk_site_request_id) {
+            $this->bulkSiteRequest?->refreshProgressStatus();
+        }
+
+        return $ok;
+    }
+
+    /**
+     * Move a bulk draft into the admin review queue.
+     * Hostinger may still have a narrow ENUM/VARCHAR that rejects ready_for_review;
+     * NULL is treated as queue-eligible by needsAdminReview().
+     */
+    public function markReadyForAdminReview(): bool
+    {
+        self::ensureOnboardingStatusColumnAcceptsValues();
+
+        $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
+
+        try {
+            $this->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            if (! str_contains($e->getMessage(), 'onboarding_status')) {
+                throw $e;
+            }
+
+            Log::warning('Could not set onboarding_status=ready_for_review; falling back to null', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $this->onboarding_status = null;
+            $this->save();
+
+            return true;
+        }
+    }
+
+    public function markDetailsComplete(): bool
+    {
+        self::ensureOnboardingStatusColumnAcceptsValues();
+
+        $previous = $this->onboarding_status;
+        $this->onboarding_status = self::ONBOARDING_DETAILS_COMPLETE;
+
+        try {
+            $this->save();
+
+            return true;
+        } catch (\Throwable $e) {
+            if (! str_contains($e->getMessage(), 'onboarding_status')) {
+                throw $e;
+            }
+
+            Log::warning('Could not set onboarding_status=details_complete', [
+                'site_id' => $this->id,
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
+            ]);
+
+            $this->onboarding_status = $previous;
+
+            return false;
+        }
+    }
+
+    /**
+     * Ensure status_reason / status_reason_at / status_reason_by exist so admin
+     * unverify/deactivate can persist a reason on older Hostinger DBs.
+     */
+    public static function ensureStatusReasonColumns(): bool
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return Schema::hasColumn('sites', 'status_reason')
+                && Schema::hasColumn('sites', 'status_reason_at')
+                && Schema::hasColumn('sites', 'status_reason_by');
+        }
+        $ensured = true;
+
+        try {
+            if (! Schema::hasTable('sites')) {
+                return false;
+            }
+
+            $driver = Schema::getConnection()->getDriverName();
+            $needsReason = ! Schema::hasColumn('sites', 'status_reason');
+            $needsAt = ! Schema::hasColumn('sites', 'status_reason_at');
+            $needsBy = ! Schema::hasColumn('sites', 'status_reason_by');
+
+            if (! $needsReason && ! $needsAt && ! $needsBy) {
+                return true;
+            }
+
+            if (in_array($driver, ['mysql', 'mariadb'], true)) {
+                if ($needsReason) {
+                    DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason` TEXT NULL');
+                }
+                if ($needsAt) {
+                    DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason_at` TIMESTAMP NULL DEFAULT NULL');
+                }
+                if ($needsBy) {
+                    try {
+                        DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason_by` BIGINT UNSIGNED NULL DEFAULT NULL');
+                        DB::statement('ALTER TABLE `sites` ADD CONSTRAINT `sites_status_reason_by_foreign` FOREIGN KEY (`status_reason_by`) REFERENCES `users` (`id`) ON DELETE SET NULL');
+                    } catch (\Throwable $e) {
+                        // Column may exist without FK — still usable.
+                        Log::warning('sites.status_reason_by added without FK or already present', [
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
+                }
+            } else {
+                Schema::table('sites', function ($table) use ($needsReason, $needsAt, $needsBy) {
+                    if ($needsReason) {
+                        $table->text('status_reason')->nullable();
+                    }
+                    if ($needsAt) {
+                        $table->timestamp('status_reason_at')->nullable();
+                    }
+                    if ($needsBy) {
+                        $table->foreignId('status_reason_by')->nullable()->constrained('users')->nullOnDelete();
+                    }
+                });
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Could not add sites status_reason columns', [
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/add_sites_status_reason.sql in phpMyAdmin',
+            ]);
+        }
+
+        return Schema::hasColumn('sites', 'status_reason')
+            && Schema::hasColumn('sites', 'status_reason_at')
+            && Schema::hasColumn('sites', 'status_reason_by');
+    }
+
+    public static function ensureOnboardingStatusColumnAcceptsValues(): void
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return;
+        }
+        $ensured = true;
+
+        try {
+            $driver = Schema::getConnection()->getDriverName();
+            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+                return;
+            }
+
+            if (! Schema::hasTable('sites') || ! Schema::hasColumn('sites', 'onboarding_status')) {
+                return;
+            }
+
+            $row = DB::selectOne("SHOW COLUMNS FROM `sites` WHERE Field = 'onboarding_status'");
+            $type = strtolower((string) ($row->Type ?? ''));
+
+            $needsWiden = str_starts_with($type, 'enum(')
+                || (preg_match('/^varchar\((\d+)\)$/', $type, $m) === 1 && (int) $m[1] < 32);
+
+            if (! $needsWiden) {
+                return;
+            }
+
+            DB::statement('ALTER TABLE `sites` MODIFY `onboarding_status` VARCHAR(32) NULL');
+        } catch (\Throwable $e) {
+            Log::warning('Could not widen sites.onboarding_status', [
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
+            ]);
+        }
+    }
+
+    /**
+     * Marketing may delete pending / not-live sites only (never verified or active portal listings).
+     */
+    public function canBeDeletedByMarketing(): bool
+    {
+        return ! (bool) $this->verified && ! (bool) $this->active;
+    }
+
+    public function isReadyForAdminReview(): bool
+    {
+        // details_complete = publisher preview stage; not admin-queueable yet.
+        return $this->onboarding_status === null
+            || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
+    }
+
+    /**
+     * Open admin review queue: not verified, not live, details ready
+     * (excludes awaiting_details and details_complete publisher drafts).
+     * Cleared from the queue when admin verifies and/or activates (or deletes).
+     */
+    public function needsAdminReview(): bool
+    {
+        return ! (bool) $this->verified
+            && ! (bool) $this->active
+            && $this->isReadyForAdminReview()
+            && $this->isAcceptedByPublisher();
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeNeedsAdminReview($query)
+    {
+        $query = $query
+            ->where(function ($q) {
+                $q->where('verified', 0)->orWhereNull('verified');
+            })
+            ->where(function ($q) {
+                $q->where('active', 0)->orWhereNull('active');
+            })
+            ->where(function ($q) {
+                $q->whereNull('onboarding_status')
+                    ->orWhere('onboarding_status', self::ONBOARDING_READY_FOR_REVIEW);
+            });
+
+        // Staff-assigned listings wait on publisher accept before the review queue.
+        if (static::hasSitesColumn('publisher_accepted_at')) {
+            $query->where(function ($q) {
+                $q->whereNotNull('publisher_accepted_at')
+                    ->orWhereNull('assigned_by_user_id');
+            });
+        }
+
+        return $query;
+    }
 
     public function enrichmentRuns()
     {
@@ -274,6 +614,26 @@ class Site extends Model
         return $this->featured_until !== null && $this->featured_until->isFuture();
     }
 
+    /**
+     * Live custom Sale −% only (not bulk packs). Used by catalog On sale filter
+     * and new-site digests.
+     */
+    public function scopeOnDiscount(Builder $query): Builder
+    {
+        if (! static::hasSitesColumn('custom_discount_percent')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereNotNull('custom_discount_percent')
+            ->where('custom_discount_percent', '>', 0)
+            ->whereNotNull('custom_discount_ends_at')
+            ->where('custom_discount_ends_at', '>', now())
+            ->where(function (Builder $q) {
+                $q->whereNull('custom_discount_starts_at')
+                    ->orWhere('custom_discount_starts_at', '<=', now());
+            });
+    }
+
     public function hasActiveCustomDiscount(): bool
     {
         if (! static::hasSitesColumn('custom_discount_percent')) {
@@ -332,6 +692,93 @@ class Site extends Model
         }
 
         return 'Last published '.$at->diffForHumans();
+    }
+
+    /**
+     * How long a guest post stays live (catalog / My Sites display).
+     */
+    public function publicationDurationLabel(?string $fallback = null): ?string
+    {
+        $raw = trim((string) ($this->publication_time ?? ''));
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        return match (strtolower($raw)) {
+            '6months', '6 months' => '6 months',
+            '1year', '1 year' => '1 year',
+            'permanent' => 'Permanent',
+            default => preg_match('/^(\d+)\s*days?$/i', $raw, $m)
+                ? ((int) $m[1] === 1 ? '1 day' : ((int) $m[1]).' days')
+                : $raw,
+        };
+    }
+
+    /**
+     * Typical publisher turnaround once an order is accepted.
+     */
+    public function turnaroundLabel(?string $fallback = null): ?string
+    {
+        $raw = trim((string) ($this->turnaround_time ?? ''));
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        return match (strtolower($raw)) {
+            '24h' => '24 hours',
+            '48h' => '48 hours',
+            '3days', '3 days' => '3 days',
+            '5days', '5 days' => '5 days',
+            '7days', '7 days' => '7 days',
+            default => $raw,
+        };
+    }
+
+    /**
+     * The turnaround the publisher promised, in hours.
+     *
+     * turnaround_time is a short enum on the listing forms (24h, 48h, 3days,
+     * 5days, 7days) but older rows hold free text like "7 days", so parse
+     * rather than map. Returns null when it cannot be read, which callers treat
+     * as "no deadline to hold them to".
+     */
+    public function turnaroundHours(): ?int
+    {
+        $raw = strtolower(trim((string) ($this->turnaround_time ?? '')));
+
+        if ($raw === '') {
+            return null;
+        }
+
+        if (! preg_match('/(\d+)\s*(h|hour|hours|d|day|days|w|week|weeks)?/', $raw, $m)) {
+            return null;
+        }
+
+        $value = max(1, (int) $m[1]);
+        $unit = $m[2] ?? 'd';
+
+        return match (true) {
+            str_starts_with($unit, 'h') => $value,
+            str_starts_with($unit, 'w') => $value * 24 * 7,
+            default => $value * 24,
+        };
+    }
+
+    /**
+     * Link attribute label for chips / tags (DoFollow / NoFollow).
+     */
+    public function linkTypeLabel(?string $fallback = null): ?string
+    {
+        $raw = strtolower(trim((string) ($this->link_type ?? '')));
+        if ($raw === '') {
+            return $fallback;
+        }
+
+        return match ($raw) {
+            'dofollow' => 'DoFollow',
+            'nofollow' => 'NoFollow',
+            default => ucfirst($raw),
+        };
     }
 
     /**
@@ -767,6 +1214,69 @@ class Site extends Model
         return $this->archived_at !== null;
     }
 
+    public function assignedBy()
+    {
+        return $this->belongsTo(User::class, 'assigned_by_user_id');
+    }
+
+    /**
+     * Staff-assigned listing waiting for publisher Accept/Decline.
+     * Requires publisher_accepted_at IS NULL and assigned_by_user_id set
+     * (plain publisher drafts are not invites).
+     */
+    public function isPendingPublisherAcceptance(): bool
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return false;
+        }
+
+        return $this->publisher_accepted_at === null
+            && filled($this->assigned_by_user_id);
+    }
+
+    public function isAcceptedByPublisher(): bool
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return true;
+        }
+
+        // Legacy / self-created rows are accepted; only staff-assigned nulls wait.
+        if ($this->publisher_accepted_at !== null) {
+            return true;
+        }
+
+        return blank($this->assigned_by_user_id);
+    }
+
+    /**
+     * Sites the publisher has accepted (or created themselves).
+     */
+    public function scopeAcceptedByPublisher($query)
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->whereNotNull('publisher_accepted_at')
+                ->orWhereNull('assigned_by_user_id');
+        });
+    }
+
+    /**
+     * Staff-assigned sites awaiting Accept/Decline.
+     */
+    public function scopePendingPublisherAcceptance($query)
+    {
+        if (! static::hasSitesColumn('publisher_accepted_at')) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query
+            ->whereNull('publisher_accepted_at')
+            ->whereNotNull('assigned_by_user_id');
+    }
+
     public function claims()
     {
         return $this->hasMany(SiteClaim::class);
@@ -816,29 +1326,14 @@ class Site extends Model
             })
             ->when($filters['country'] ?? null, function ($query, $country) {
                 $codes = is_array($country) ? $country : [$country];
-                $query->where(function ($q) use ($codes) {
-                    foreach ($codes as $code) {
-                        $code = strtolower(trim((string) $code));
-                        if ($code === '') {
-                            continue;
-                        }
-                        $q->orWhere('country', $code)
-                            ->orWhereJsonContains('countries', $code);
-                    }
-                });
+                // Primary country only — same rule as advertiser catalog filters.
+                app(CatalogCountryInventory::class)
+                    ->constrainQueryToPrimaryCountries($query, $codes);
             })
             ->when($filters['language'] ?? null, function ($query, $language) {
                 $codes = is_array($language) ? $language : [$language];
-                $query->where(function ($q) use ($codes) {
-                    foreach ($codes as $code) {
-                        $code = strtolower(trim((string) $code));
-                        if ($code === '') {
-                            continue;
-                        }
-                        $q->orWhere('language', $code)
-                            ->orWhereJsonContains('languages', $code);
-                    }
-                });
+                // Option A: all sites offering these languages (same as catalog listing).
+                app(CatalogLanguageFilter::class)->constrainQuery($query, $codes);
             })
             ->when($filters['category'] ?? null, function ($query, $category) {
                 $query->where(function ($q) use ($category) {
@@ -900,41 +1395,187 @@ class Site extends Model
     }
 
     /**
+     * Root-relative URL for a public-disk path.
+     * Prefer /media (Laravel disk stream) so Hostinger broken public/storage
+     * symlinks do not blank My Sites / catalog previews.
+     */
+    public static function publicDiskUrl(?string $path): ?string
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $trimmed = trim($path);
+        // Already an absolute / protocol-relative URL — leave it alone.
+        if (preg_match('#^(https?:)?//#i', $trimmed) === 1) {
+            return $trimmed;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $trimmed), '/');
+        // Strip accidental storage/ or media/ prefixes (avoid /media/media/...).
+        foreach (['storage/', 'media/'] as $prefix) {
+            if (str_starts_with($normalized, $prefix)) {
+                $normalized = ltrim(substr($normalized, strlen($prefix)), '/');
+            }
+        }
+        if ($normalized === '') {
+            return null;
+        }
+
+        return '/media/'.$normalized;
+    }
+
+    /**
+     * /media then /storage for client onerror recovery.
+     *
+     * @return list<string>
+     */
+    public static function publicDiskUrlFallbacks(?string $path): array
+    {
+        $primary = static::publicDiskUrl($path);
+        if ($primary === null) {
+            return [];
+        }
+
+        // Absolute URLs have no /storage twin.
+        if (preg_match('#^(https?:)?//#i', $primary) === 1) {
+            return [$primary];
+        }
+
+        $normalized = ltrim(substr($primary, strlen('/media/')), '/');
+
+        return array_values(array_unique([
+            '/media/'.$normalized,
+            '/storage/'.$normalized,
+        ]));
+    }
+
+    /**
+     * Failed screenshot captures store gray *-placeholder.webp files that still
+     * HTTP 200 — prefer real uploads/captures over those when building chains.
+     */
+    public static function isPlaceholderPreviewPath(?string $path): bool
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return false;
+        }
+
+        return str_contains(strtolower($path), '-placeholder');
+    }
+
+    /**
+     * Build /media+/storage URL chain from ordered disk paths.
+     * Skips placeholder captures when any non-placeholder candidate exists.
+     *
+     * @param  list<mixed>  $candidates
+     * @return list<string>
+     */
+    public function previewUrlChainFrom(array $candidates): array
+    {
+        $usable = [];
+        $placeholders = [];
+        foreach ($candidates as $candidate) {
+            if (! is_string($candidate) || trim($candidate) === '') {
+                continue;
+            }
+            if (static::isPlaceholderPreviewPath($candidate)) {
+                $placeholders[] = $candidate;
+            } else {
+                $usable[] = $candidate;
+            }
+        }
+
+        $ordered = $usable !== [] ? $usable : $placeholders;
+        $urls = [];
+        foreach ($ordered as $path) {
+            foreach (static::publicDiskUrlFallbacks($path) as $url) {
+                if (! in_array($url, $urls, true)) {
+                    $urls[] = $url;
+                }
+            }
+        }
+
+        return $urls;
+    }
+
+    /**
+     * Catalog Site Details homepage preview: full → thumb → cover.
+     *
+     * @return list<string>
+     */
+    public function homepagePreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->screenshot_path,
+            $this->screenshot_thumb_path,
+            $this->site_image,
+        ]);
+    }
+
+    /**
+     * Publisher My Sites / staff list thumbs: uploaded cover first (matches admin),
+     * then screenshot thumb/full. Auto-screenshots and gray placeholders must not
+     * hide a real admin/marketing cover upload.
+     *
+     * @return list<string>
+     */
+    public function listingPreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->site_image,
+            $this->screenshot_thumb_path,
+            $this->screenshot_path,
+        ]);
+    }
+
+    /**
+     * Hover/detail zoom: full capture → cover → thumb.
+     *
+     * @return list<string>
+     */
+    public function zoomPreviewUrlChain(): array
+    {
+        return $this->previewUrlChainFrom([
+            $this->screenshot_path,
+            $this->site_image,
+            $this->screenshot_thumb_path,
+        ]);
+    }
+
+    /**
      * Accessor for full image URL.
      */
     public function getImageUrlAttribute(): ?string
     {
-        if ($this->site_image) {
-            return asset('storage/'.$this->site_image);
-        }
-
-        return null;
+        return static::publicDiskUrl(
+            is_string($this->site_image) ? $this->site_image : null
+        );
     }
 
     public function getScreenshotUrlAttribute(): ?string
     {
         $path = $this->screenshot_path ?: $this->site_image;
-        if (! $path) {
+        if (! is_string($path) || $path === '') {
             return null;
         }
 
-        return asset('storage/'.$path);
+        return static::publicDiskUrl($path);
     }
 
     public function getScreenshotThumbUrlAttribute(): ?string
     {
         $path = $this->screenshot_thumb_path ?: $this->screenshot_path ?: $this->site_image;
-        if (! $path) {
+        if (! is_string($path) || $path === '') {
             return null;
         }
 
-        return asset('storage/'.$path);
+        return static::publicDiskUrl($path);
     }
 
     public function getLogoUrlAttribute(): ?string
     {
         if ($this->favicon_path) {
-            return asset('storage/'.$this->favicon_path);
+            return static::publicDiskUrl($this->favicon_path);
         }
 
         return $this->image_url;
@@ -1023,9 +1664,9 @@ class Site extends Model
 
     public function primaryCountryCode(): ?string
     {
-        $codes = $this->countryCodes();
-
-        return $codes[0] ?? null;
+        // Scalar sites.country wins (same as catalog inventory / country filter).
+        return app(CatalogCountryInventory::class)
+            ->primaryCountryCode($this->country, $this->countries);
     }
 
     public function primaryLanguageCode(): ?string
@@ -1074,8 +1715,248 @@ class Site extends Model
             if (! static::hasSitesColumn($column)) {
                 continue;
             }
+            if ($column === 'description' && is_string($value)) {
+                $value = app(SiteDescriptionSanitizer::class)->sanitize($value);
+            }
             $this->{$column} = $value;
         }
+    }
+
+    /**
+     * HTML-safe description for Blade {!! !!} rendering (also cleans legacy rows).
+     */
+    public function safeDescriptionHtml(): string
+    {
+        return app(SiteDescriptionSanitizer::class)
+            ->sanitize((string) ($this->description ?? ''));
+    }
+
+    /**
+     * Publisher-entered article price (EUR), ignoring any in-memory advertiser markup.
+     */
+    public function publisherBasePrice(): float
+    {
+        $raw = $this->getRawOriginal('price');
+        if ($raw !== null && $raw !== '') {
+            return round((float) $raw, 2);
+        }
+
+        if (isset($this->original_price) && is_numeric($this->original_price)) {
+            return round((float) $this->original_price, 2);
+        }
+
+        return round((float) $this->price, 2);
+    }
+
+    /**
+     * Advertiser catalog/cart unit prices for this listing (hidden fee + sale floor).
+     *
+     * Always recomputes from the publisher base so a catalog row cannot show €40
+     * while add-to-cart charges the fee-marked total.
+     *
+     * @return array<string, mixed>
+     */
+    public function advertiserCatalogPricing(?string $sensitiveType = null, int $quantity = 1): array
+    {
+        $forCart = clone $this;
+        $forCart->setAttribute('price', $this->publisherBasePrice());
+
+        return app(CartPricingService::class)
+            ->priceForAdvertiser($forCart, $sensitiveType, $quantity);
+    }
+
+    /**
+     * True when this listing belongs to the given user (dual-role publisher shopping as advertiser).
+     *
+     * Matches publisher_id (who listed it) and owner_id (post-verification owner).
+     */
+    public function isOwnedBy(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $uid = (int) $user->id;
+        if ($uid <= 0) {
+            return false;
+        }
+
+        if ((int) $this->publisher_id === $uid) {
+            return true;
+        }
+
+        $ownerId = (int) ($this->getAttribute('owner_id') ?? 0);
+
+        return $ownerId > 0 && $ownerId === $uid;
+    }
+
+    /**
+     * Catalog/cart IDs this user must not order.
+     *
+     * @return list<int>
+     */
+    public static function ownedIdsFor(?User $user): array
+    {
+        if ($user === null || (int) $user->id <= 0) {
+            return [];
+        }
+
+        $uid = (int) $user->id;
+
+        return static::query()
+            ->where(function ($q) use ($uid) {
+                $q->where('publisher_id', $uid);
+                if (Schema::hasColumn('sites', 'owner_id')) {
+                    $q->orWhere('owner_id', $uid);
+                }
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Copy for own-listing catalog/cart surfaces. Does not mention the platform fee.
+     */
+    public static function cannotOrderOwnListingMessage(): string
+    {
+        return 'This is your listing — you can’t order it.';
+    }
+
+    /**
+     * Prices painted on the advertiser catalog for this viewer.
+     *
+     * Own listings show the entered publisher price (no hidden fee) because they
+     * cannot be added to cart. Everyone else sees fee-inclusive cart pricing.
+     *
+     * @return array{owned: bool, list: float, publisher: float, sale: float|null, sale_percent: float|null, sale_percent_nominal: float|null}
+     */
+    public function catalogPricesForViewer(?User $user): array
+    {
+        $owned = $this->isOwnedBy($user);
+        $nominal = $this->activeCustomDiscountPercent();
+
+        if ($owned) {
+            $base = $this->publisherBasePrice();
+
+            return [
+                'owned' => true,
+                'list' => $base,
+                'publisher' => $base,
+                'sale' => null,
+                'sale_percent' => null,
+                'sale_percent_nominal' => $nominal,
+            ];
+        }
+
+        $pricing = $this->advertiserCatalogPricing();
+        $list = (float) $pricing['base'];
+        $sale = null;
+        $salePercent = null;
+        if (($pricing['discount_amount'] ?? 0) > 0
+            && (float) $pricing['article_total'] < $list) {
+            $sale = (float) $pricing['article_total'];
+            $salePercent = (float) $pricing['discount_percent'];
+        }
+
+        return [
+            'owned' => false,
+            'list' => $list,
+            'publisher' => (float) $pricing['publisher_price'],
+            'sale' => $sale,
+            'sale_percent' => $salePercent,
+            'sale_percent_nominal' => $nominal,
+        ];
+    }
+
+    /**
+     * Offered homepage placement durations (days => fee EUR). Empty = not offered.
+     *
+     * @return array<int, float>
+     */
+    public function homepagePlacementOptions(): array
+    {
+        // Read the cast attribute directly. Do not gate on Schema::hasColumn —
+        // Hostinger SQL patches can add columns before Schema cache refreshes,
+        // and a false-negative would hide offers in catalog Site Details.
+        $raw = $this->homepage_placement_prices;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($raw) || $raw === []) {
+            return [];
+        }
+
+        $allowed = config('site_placement.homepage_days', [1, 7, 30]);
+        $out = [];
+        foreach ($raw as $days => $price) {
+            $daysInt = (int) $days;
+            if (! in_array($daysInt, $allowed, true)) {
+                continue;
+            }
+            if (! is_numeric($price) || (float) $price < 0) {
+                continue;
+            }
+            $out[$daysInt] = round((float) $price, 2);
+        }
+        ksort($out);
+
+        return $out;
+    }
+
+    public function offersHomepagePlacement(): bool
+    {
+        return $this->homepagePlacementOptions() !== [];
+    }
+
+    /**
+     * Longest free (€0) homepage duration, if any.
+     */
+    public function longestFreeHomepageDays(): ?int
+    {
+        $free = [];
+        foreach ($this->homepagePlacementOptions() as $days => $price) {
+            if ((float) $price <= 0) {
+                $free[] = (int) $days;
+            }
+        }
+
+        return $free === [] ? null : max($free);
+    }
+
+    /**
+     * Social channels the publisher offers (always €0). Empty = not offered.
+     *
+     * @return list<string>
+     */
+    public function enabledSocialChannels(): array
+    {
+        // Same as homepagePlacementOptions(): trust attributes over Schema::hasColumn.
+        $raw = $this->social_promotion;
+        if (is_string($raw) && $raw !== '') {
+            $decoded = json_decode($raw, true);
+            $raw = is_array($decoded) ? $decoded : null;
+        }
+        if (! is_array($raw) || $raw === []) {
+            return [];
+        }
+
+        $allowed = config('site_placement.social_channels', ['facebook', 'instagram', 'x']);
+        $out = [];
+        foreach ($allowed as $channel) {
+            if (! empty($raw[$channel])) {
+                $out[] = $channel;
+            }
+        }
+
+        return $out;
+    }
+
+    public function offersSocialPromotion(): bool
+    {
+        return $this->enabledSocialChannels() !== [];
     }
 
     /**
@@ -1111,6 +1992,19 @@ class Site extends Model
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * Count listings that offer homepage placement.
+     * Returns 0 when Hostinger skipped the placement migration (do not WHERE a missing column).
+     */
+    public static function countWithHomepagePlacement(): int
+    {
+        if (! static::hasSitesColumn('homepage_placement_prices')) {
+            return 0;
+        }
+
+        return (int) static::query()->whereNotNull('homepage_placement_prices')->count();
     }
 
     /**
@@ -1247,6 +2141,42 @@ class Site extends Model
         }
 
         return array_values(array_unique(array_filter($codes)));
+    }
+
+    public function hasMarketplaceCountry(): bool
+    {
+        return $this->countryCodes() !== [];
+    }
+
+    /**
+     * Sites with no usable country / countries value (invisible to catalog country filters).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeMissingMarketplaceCountry($query)
+    {
+        return $query
+            ->where(function ($q) {
+                $q->whereNull('country')->orWhere('country', '');
+            })
+            ->where(function ($q) {
+                $q->whereNull('countries')
+                    ->orWhere('countries', '')
+                    ->orWhere('countries', '[]')
+                    ->orWhere('countries', 'null');
+            });
+    }
+
+    /**
+     * Active listings missing a marketplace country (ops hygiene queue).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeActiveMissingMarketplaceCountry($query)
+    {
+        return $query->where('active', 1)->missingMarketplaceCountry();
     }
 
     /**

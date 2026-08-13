@@ -79,7 +79,9 @@ class ChatController extends Controller
                 $publisherItems = OrderItem::whereHas('site', function ($q) use ($user) {
                     $q->where('publisher_id', $user->id);
                 })->whereHas('order', function ($q) {
-                    $q->whereIn('status', ['pending', 'processing', 'review']);
+                    // Match Tasks list: only paid orders appear in My Tasks.
+                    $q->where('payment_status', 'paid')
+                        ->whereIn('status', ['pending', 'processing', 'review']);
                 });
 
                 $needsActionQuery = (clone $publisherItems)->whereHas('order', function ($q) {
@@ -457,6 +459,10 @@ class ChatController extends Controller
             'link_type' => $linkType,
             'df_links' => $dfLinks,
             'sensitive_type' => $item?->sensitive_type,
+            'homepage_days' => $item?->homepage_days !== null ? (int) $item->homepage_days : null,
+            'homepage_price' => (float) ($item?->homepage_price ?? 0),
+            'social_channels' => $item ? $item->enabledSocialChannels() : [],
+            'social_post_urls' => $item ? $item->socialPostUrls() : [],
             'content_link' => $item?->content_link,
             'live_url' => $item?->live_url,
             'live_url_check_ok' => $item?->live_url_check_ok,

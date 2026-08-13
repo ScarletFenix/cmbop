@@ -7,6 +7,7 @@ use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -17,7 +18,8 @@ class GuestPostWizardController extends Controller
     public const SESSION_KEY = 'guest_post_wizard';
 
     public function __construct(
-        private LanguageCountryMap $languageCountryMap
+        private LanguageCountryMap $languageCountryMap,
+        private CountryLanguagePairs $countryLanguagePairs,
     ) {}
 
     /**
@@ -28,7 +30,7 @@ class GuestPostWizardController extends Controller
     public function start(Request $request)
     {
         $state = $this->state();
-        if (! empty($state['language'])) {
+        if (! empty($state['language']) && ! empty($state['country'])) {
             return redirect()->route('advertiser.wizard.publishers');
         }
 
@@ -39,14 +41,18 @@ class GuestPostWizardController extends Controller
     {
         $state = $this->state();
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
+        $countries = Country::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = $this->languageCountryMap->map();
+        $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
         $categories = $this->nicheCategories();
 
         return view('advertiser.wizard.market', [
             'step' => 1,
             'state' => $state,
             'languages' => $languages,
+            'countries' => $countries,
             'languageCountryMap' => $languageCountryMap,
+            'countryLanguageMap' => $countryLanguageMap,
             'categories' => $categories,
         ]);
     }
@@ -54,21 +60,19 @@ class GuestPostWizardController extends Controller
     public function saveMarket(Request $request)
     {
         $data = $request->validate([
+            'country' => ['required', 'string', 'max:16'],
             'language' => ['required', 'string', 'max:16'],
             'categories' => ['nullable', 'array'],
             'categories.*' => ['string', 'max:120'],
-            'country' => ['nullable', 'string', 'max:16'],
         ]);
 
         $language = strtolower(trim($data['language']));
-        $country = isset($data['country']) && $data['country'] !== ''
-            ? strtolower(trim($data['country']))
-            : null;
+        $country = strtolower(trim($data['country']));
 
-        if ($country && ! $this->languageCountryMap->languageAcceptsCountry($language, $country)) {
+        if (! $this->countryLanguagePairs->isAllowedPair($country, $language)) {
             return back()
                 ->withInput()
-                ->withErrors(['country' => 'That country is not available for the selected language.']);
+                ->withErrors(['language' => 'That language is not allowed for the selected country.']);
         }
 
         $categories = collect($data['categories'] ?? [])

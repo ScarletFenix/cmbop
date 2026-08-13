@@ -13,6 +13,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
 use App\Support\OrderLifecycleMailSuppressor;
+use App\Support\PublicStorageLink;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
@@ -48,6 +49,8 @@ class AppServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        $this->assertConfiguredMediaPath();
+
         // App shells use Bootstrap, not Tailwind. Laravel's default Tailwind
         // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities
         // are missing — switch to Bootstrap 5 views sitewide (catalog + admin).
@@ -201,5 +204,45 @@ class AppServiceProvider extends ServiceProvider
 
             $view->with('footerRecentBlogs', $posts);
         });
+    }
+
+    /**
+     * When MEDIA_PATH is set (Hostinger durable media), fail loudly if the
+     * directory is missing or not writable so uploads do not silently die.
+     * Also warn when public/storage does not resolve to MEDIA_PATH (blank
+     * admin previews after a "successful" upload).
+     * Unset MEDIA_PATH keeps the default storage/app/public (local/CI).
+     */
+    private function assertConfiguredMediaPath(): void
+    {
+        $configured = config('filesystems.media_path');
+        if (! is_string($configured) || trim($configured) === '') {
+            return;
+        }
+
+        $path = rtrim($configured, DIRECTORY_SEPARATOR);
+        $ok = is_dir($path) && is_writable($path);
+        if (! $ok) {
+            $message = 'MEDIA_PATH is set to ['.$path.'] but that directory is missing or not writable. '
+                .'Create it (and ownership for the PHP user) or clear MEDIA_PATH. See docs/hostinger-media.md.';
+
+            Log::critical($message);
+
+            throw new \RuntimeException($message);
+        }
+
+        if (app()->runningUnitTests()) {
+            return;
+        }
+
+        // Best-effort: recreate public/storage → MEDIA_PATH when it drifted after a deploy.
+        $ensure = PublicStorageLink::ensure();
+        if (! $ensure['ok']) {
+            Log::warning('public/storage does not point at MEDIA_PATH — site images may look blank after upload. '
+                .'Run: php artisan media:ensure-link', [
+                    'media_path' => $path,
+                    'ensure' => $ensure,
+                ]);
+        }
     }
 }

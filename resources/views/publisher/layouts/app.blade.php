@@ -93,6 +93,10 @@
             </span>
         </a>
 
+        <a href="{{ route('publisher.balance') }}" class="{{ request()->routeIs('publisher.balance') ? 'active' : '' }}">
+            <i class="fa fa-wallet" aria-hidden="true"></i> <span class="nav-label">Balance</span>
+        </a>
+
         <!-- withdraw -->
         <a href="{{ route('publisher.withdraw') }}" class="{{ request()->routeIs('publisher.withdraw') || request()->routeIs('publisher.withdrawals.*') ? 'active' : '' }}">
             <i class="fa fa-money-bill-wave" aria-hidden="true"></i> <span class="nav-label">Withdraw</span>
@@ -131,17 +135,30 @@
     <div class="d-flex align-items-center gap-2">
 
         @php
-            $activeWallet = auth()->user()->activeWallet();
-            $availableBalance = (float) ($activeWallet?->balance ?? 0);
-            $reservedBalance = (float) ($activeWallet?->reserved_balance ?? 0);
-            $headerWithdrawable = $activeWallet ? $activeWallet->withdrawableBalance() : 0;
-            $headerBalanceTitle = 'Spendable: €' . number_format($availableBalance, 2)
-                . ' · Withdrawable: €' . number_format($headerWithdrawable, 2)
-                . ($reservedBalance > 0 ? ' · On hold: €' . number_format($reservedBalance, 2) : '');
+            $headerUser = auth()->user();
+            $headerPublisherRoleId = \App\Models\Wallet::publisherRoleId();
+            $headerAdvertiserRoleId = \App\Models\Wallet::advertiserRoleId();
+            $headerWallets = $headerUser->wallets()
+                ->whereIn('role_id', array_filter([$headerPublisherRoleId, $headerAdvertiserRoleId]))
+                ->get()
+                ->keyBy(fn ($wallet) => (int) $wallet->role_id);
+            $headerPublisherWallet = $headerPublisherRoleId ? $headerWallets->get((int) $headerPublisherRoleId) : null;
+            $headerAdvertiserWallet = ($headerAdvertiserRoleId && $headerUser->hasRole('advertiser'))
+                ? $headerWallets->get((int) $headerAdvertiserRoleId)
+                : null;
+            $headerEarnings = (float) ($headerPublisherWallet?->balance ?? 0);
+            $headerWithdrawable = $headerPublisherWallet ? $headerPublisherWallet->withdrawableBalance() : 0;
+            $headerReserved = (float) ($headerPublisherWallet?->reserved_balance ?? 0);
+            $headerBalanceTitle = 'Earnings €'.number_format($headerEarnings, 2)
+                .' · Withdrawable €'.number_format($headerWithdrawable, 2)
+                .($headerReserved > 0 ? ' · On hold €'.number_format($headerReserved, 2) : '')
+                .($headerAdvertiserWallet
+                    ? ' · Advertiser spendable €'.number_format((float) $headerAdvertiserWallet->balance, 2)
+                    : '');
         @endphp
-        <a href="{{ route('publisher.balance') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Spendable balance {{ number_format($availableBalance, 2) }} euros, withdrawable {{ number_format($headerWithdrawable, 2) }}">
-            <span class="balance-label">Spendable</span>
-            <span class="balance-amount">€{{ number_format($availableBalance, 2) }}</span>
+        <a href="{{ route('publisher.balance') }}" class="balance-block text-decoration-none" data-glass-tip data-glass-tip-body="{{ $headerBalanceTitle }}" data-glass-tip-placement="bottom" aria-label="Publisher earnings {{ number_format($headerEarnings, 2) }} euros, withdrawable {{ number_format($headerWithdrawable, 2) }}">
+            <span class="balance-label">Earnings</span>
+            <span class="balance-amount">€{{ number_format($headerEarnings, 2) }}</span>
         </a>
 
         @include('partials.notification-center')

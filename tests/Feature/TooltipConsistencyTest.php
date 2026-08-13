@@ -125,4 +125,31 @@ class TooltipConsistencyTest extends TestCase
         // A second copy under public/js drifted out of sync and was never loaded.
         $this->assertFileDoesNotExist(public_path('js/glass-tip.js'));
     }
+
+    public function test_catalog_action_tips_open_away_from_add_to_cart(): void
+    {
+        $js = $this->glassTipJs();
+
+        $this->assertStringContainsString("closest('.catalog-row-actions, .catalog-td-action, .catalog-card-buy')", $js);
+        $this->assertStringContainsString("return 'left'", $js);
+        $this->assertStringContainsString('.buy-now, .btn-claim-site, .favorite-btn, .blacklist-btn', $js);
+        $this->assertStringContainsString('overflow += 500', $js);
+        $this->assertStringContainsString("pointerEvents = isHoverOnlyTip(trigger) ? 'none' : ''", $js);
+
+        $markup = file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
+        $this->assertGreaterThanOrEqual(2, substr_count($markup, 'class="btn-icon-quiet blacklist-btn'));
+        $this->assertGreaterThanOrEqual(2, substr_count($markup, 'class="btn-icon-quiet favorite-btn'));
+
+        preg_match_all('/class="btn-icon-quiet blacklist-btn[\s\S]*?<\/button>/', $markup, $blacklistBtns);
+        $this->assertNotEmpty($blacklistBtns[0]);
+        foreach ($blacklistBtns[0] as $button) {
+            $this->assertStringContainsString('data-glass-tip-placement="left"', $button);
+        }
+
+        preg_match_all('/class="btn-icon-quiet favorite-btn[\s\S]*?<\/button>/', $markup, $favoriteBtns);
+        $this->assertNotEmpty($favoriteBtns[0]);
+        foreach ($favoriteBtns[0] as $button) {
+            $this->assertStringContainsString('data-glass-tip-placement="left"', $button);
+        }
+    }
 }

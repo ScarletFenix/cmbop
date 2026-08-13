@@ -196,6 +196,8 @@
 
 <script>
 const STAFF_BASE = @json(staff_base_path());
+const SITE_IMAGE_MAX_KB = {{ (int) \App\Support\SiteImageUpload::maxKilobytes() }};
+const CSRF_TOKEN = @json(csrf_token());
 const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
 const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
 const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
@@ -431,7 +433,7 @@ function editSiteWithImage(siteId) {
 
     Swal.fire({
         title: 'Edit Site',
-        width: 640,
+        width: 960,
         showCancelButton: true,
         confirmButtonText: 'Update',
         showLoaderOnConfirm: true,
@@ -439,20 +441,20 @@ function editSiteWithImage(siteId) {
         allowEscapeKey: () => !Swal.isLoading(),
         html: `
             <div style="text-align: left;">
+                <label style="font-weight:600; margin-bottom:5px; display:block;">Site Image (Upload)</label>
+                <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
+                <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
+                    ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
+                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" data-media-fallback="${escapeHtml(siteMediaUrl(site.site_image) || '')}" onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">`
+                        : '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>'}
+                </div>
+                <small class="text-muted" style="display:block; margin-top:5px; margin-bottom:12px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
+
                 <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
                 <input id="swal-site_name" class="swal2-input" value="${escapeHtml(site.site_name ?? '')}" placeholder="Site Name">
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site URL</label>
                 <input id="swal-site_url" class="swal2-input" value="${escapeHtml(site.site_url ?? '')}" placeholder="Site URL">
-                
-                <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Site Image (Upload)</label>
-                <input type="file" id="swal-site_image" class="swal2-file" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
-                <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
-                    ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
-                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" onerror="this.parentElement.classList.add('is-empty'); this.remove();">`
-                        : '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>'}
-                </div>
-                <small class="text-muted" style="display:block; margin-top:5px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">DA (Domain Authority)</label>
                 <input id="swal-da" class="swal2-input" type="number" value="${site.da ?? ''}" placeholder="0-100" min="0" max="100" step="1">
@@ -474,8 +476,8 @@ function editSiteWithImage(siteId) {
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
                     if (file) {
-                        if (file.size > 10 * 1024 * 1024) {
-                            Swal.showValidationMessage('Site image must be under 10 MB');
+                        if (file.size > SITE_IMAGE_MAX_KB * 1024) {
+                            Swal.showValidationMessage('Site image must be under ' + Math.floor(SITE_IMAGE_MAX_KB / 1024) + ' MB');
                             this.value = '';
                             return;
                         }
@@ -493,7 +495,7 @@ function editSiteWithImage(siteId) {
                         previewContainer.innerHTML = `<img src="${existingSrc}" alt="Current site image">`;
                     } else {
                         previewContainer.classList.add('is-empty');
-                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (JPEG/PNG/WebP)</span>';
+                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>';
                     }
                 });
             }
@@ -519,12 +521,18 @@ function editSiteWithImage(siteId) {
             const fileInput = document.getElementById('swal-site_image');
             const file = fileInput?.files?.[0];
             let imagePath = null;
+            let imageUrl = null;
 
             // Upload first when a new file is chosen (persists even before metrics update).
             if (file) {
+                if (file.size > SITE_IMAGE_MAX_KB * 1024) {
+                    Swal.showValidationMessage('Site image must be under ' + Math.floor(SITE_IMAGE_MAX_KB / 1024) + ' MB');
+                    return false;
+                }
+
                 const uploadFormData = new FormData();
                 uploadFormData.append('site_image', file);
-                uploadFormData.append('_token', '{{ csrf_token() }}');
+                uploadFormData.append('_token', CSRF_TOKEN);
 
                 try {
                     const uploadResponse = await fetch(`${STAFF_BASE}/sites/${siteId}/upload-image`, {
@@ -533,6 +541,7 @@ function editSiteWithImage(siteId) {
                         headers: {
                             'Accept': 'application/json',
                             'X-Requested-With': 'XMLHttpRequest',
+                            'X-CSRF-TOKEN': CSRF_TOKEN,
                         },
                         credentials: 'same-origin',
                     });
@@ -552,6 +561,22 @@ function editSiteWithImage(siteId) {
                     }
 
                     imagePath = uploadResult.image_path || null;
+                    imageUrl = uploadResult.image_url || null;
+                    if (imagePath || imageUrl) {
+                        site.site_image = imagePath || site.site_image;
+                        if (imageUrl) {
+                            site.image_url = imageUrl;
+                            // Keep list/hover in sync until fetchUserSites refreshes rows.
+                            site.preview_thumb_url = imageUrl;
+                            site.preview_full_url = imageUrl;
+                            const prior = Array.isArray(site.preview_fallback_urls)
+                                ? site.preview_fallback_urls
+                                : [];
+                            site.preview_fallback_urls = [imageUrl].concat(
+                                prior.filter((u) => u && u !== imageUrl)
+                            );
+                        }
+                    }
                 } catch (error) {
                     Swal.showValidationMessage('Error uploading image: ' + error.message);
                     return false;
@@ -581,13 +606,17 @@ async function submitSiteUpdate(siteId, updateData) {
     const imageAlreadySaved = !!(updateData && updateData._imageUploaded);
     const payload = { ...(updateData || {}) };
     delete payload._imageUploaded;
+    // Path already persisted by upload-image — omit so a partial PUT cannot clobber it.
+    if (imageAlreadySaved) {
+        delete payload.site_image;
+    }
 
     try {
         const response = await fetch(`${STAFF_BASE}/sites/${siteId}`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-TOKEN': '{{ csrf_token() }}',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
                 'X-HTTP-Method-Override': 'PUT',
                 'Accept': 'application/json',
                 'X-Requested-With': 'XMLHttpRequest',
@@ -925,10 +954,25 @@ function escapeHtml(str) {
 function siteStorageUrl(path) {
     if (!path) return null;
     const raw = String(path);
-    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/')) {
+    if (/^https?:\/\//i.test(raw) || raw.startsWith('/storage/') || raw.startsWith('/media/') || raw.includes('/sites/media/')) {
         return raw;
     }
     return `/storage/${raw.replace(/^\/+/, '')}`;
+}
+
+function siteMediaUrl(path) {
+    if (!path) return null;
+    const raw = String(path);
+    if (/^https?:\/\//i.test(raw) || raw.includes('/sites/media/')) {
+        return raw;
+    }
+    if (raw.startsWith('/storage/')) {
+        return `${STAFF_BASE}/sites/media/${raw.slice('/storage/'.length)}`;
+    }
+    if (raw.startsWith('/media/')) {
+        return `${STAFF_BASE}/sites/media/${raw.slice('/media/'.length)}`;
+    }
+    return `${STAFF_BASE}/sites/media/${raw.replace(/^\/+/, '')}`;
 }
 
 function sitePreviewPaths(site) {
@@ -939,6 +983,12 @@ function sitePreviewPaths(site) {
         const u = String(url);
         if (u && !chain.includes(u)) chain.push(u);
     };
+
+    const uploaded = site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image);
+    // Prefer staff media stream first (Hostinger /storage often 404s).
+    push(siteMediaUrl(site.site_image));
+    push(uploaded);
+    push(siteStorageUrl(site.site_image));
 
     const apiFallbacks = Array.isArray(site.preview_fallback_urls)
         ? site.preview_fallback_urls
@@ -951,6 +1001,8 @@ function sitePreviewPaths(site) {
         push(site.screenshot_thumb_url);
         push(site.screenshot_url);
         push(site.image_url);
+        push(siteMediaUrl(site.site_image));
+        push(siteStorageUrl(site.site_image));
     } else {
         // Legacy payload without disk checks.
         push(site.preview_thumb_url);
@@ -958,13 +1010,16 @@ function sitePreviewPaths(site) {
         push(site.screenshot_thumb_url);
         push(site.screenshot_url);
         push(site.image_url);
+        push(siteMediaUrl(site.screenshot_thumb_path));
         push(siteStorageUrl(site.screenshot_thumb_path));
+        push(siteMediaUrl(site.screenshot_path));
         push(siteStorageUrl(site.screenshot_path));
+        push(siteMediaUrl(site.site_image));
         push(siteStorageUrl(site.site_image));
     }
 
-    const thumb = site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
-    const full = site.preview_full_url || site.screenshot_url || site.image_url || thumb || null;
+    const thumb = siteMediaUrl(site.site_image) || uploaded || site.preview_thumb_url || site.screenshot_thumb_url || chain[0] || null;
+    const full = site.preview_full_url || site.screenshot_url || siteMediaUrl(site.site_image) || uploaded || thumb || null;
 
     if (thumb) push(thumb);
     if (full) push(full);
@@ -1009,7 +1064,7 @@ function sitePreviewHtml(site) {
     const zoomAttr = paths.full ? ` data-zoom-src="${escapeHtml(paths.full)}" tabindex="0"` : '';
     // Prefer thumb → upload → full so a missing thumb recovers without fetching the desktop shot first.
     const chain = [];
-    [paths.thumb, site.image_url || siteStorageUrl(site.site_image), paths.full]
+    [paths.thumb, siteMediaUrl(site.site_image), site.image_url || siteStorageUrl(site.site_image), paths.full]
         .concat(paths.chain || [])
         .forEach(function (url) {
             if (url && !chain.includes(url)) chain.push(url);
@@ -1020,7 +1075,7 @@ function sitePreviewHtml(site) {
         <span class="site-row-preview"
               role="img"
               aria-label="${name} preview"${zoomAttr}>
-            <img src="${escapeHtml(paths.thumb)}"
+            <img src="${escapeHtml(chain[0] || paths.thumb)}"
                  alt="${name} preview"
                  loading="lazy"
                  decoding="async"
@@ -1037,6 +1092,30 @@ function hydrateSiteDetailImages(scope) {
         if (!src || img.getAttribute('src')) return;
         img.setAttribute('src', src);
         img.removeAttribute('data-detail-src');
+        // If staff/storage URL 404s, retry via the other known public paths.
+        if (!img.getAttribute('onerror')) {
+            img.onerror = function () {
+                const src = String(this.src || '');
+                if (!this.dataset.triedStaff && src.includes('/storage/')) {
+                    this.dataset.triedStaff = '1';
+                    this.src = src.replace('/storage/', (typeof STAFF_BASE !== 'undefined' ? STAFF_BASE : '/admin') + '/sites/media/');
+                    return;
+                }
+                if (!this.dataset.triedPublicMedia && src.includes('/sites/media/')) {
+                    this.dataset.triedPublicMedia = '1';
+                    this.src = '/media/' + src.split('/sites/media/').pop();
+                    return;
+                }
+                if (!this.dataset.triedStorage && src.includes('/media/') && !src.includes('/sites/media/')) {
+                    this.dataset.triedStorage = '1';
+                    this.src = src.replace('/media/', '/storage/');
+                    return;
+                }
+                if (this.parentElement) {
+                    this.parentElement.style.display = 'none';
+                }
+            };
+        }
     });
 }
 
@@ -1128,6 +1207,9 @@ function renderSites(data){
             const inviteBadge = site.pending_publisher_acceptance
                 ? `<span class="badge text-bg-info badge-needs-review ms-1">Awaiting accept</span>`
                 : '';
+            const csvMetricsBadge = site.csv_metrics_spot_check
+                ? `<span class="badge text-bg-light border badge-needs-review ms-1" title="Publisher-supplied DA/DR/traffic from agency CSV — spot-check before activate">CSV metrics — spot-check</span>`
+                : '';
 
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
@@ -1139,6 +1221,7 @@ function renderSites(data){
                             ${reviewBadge}
                             ${awaitingBadge}
                             ${inviteBadge}
+                            ${csvMetricsBadge}
                         </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}
@@ -1243,7 +1326,7 @@ function renderSites(data){
                                     <div class="col-md-4"><strong>Sponsored</strong><div>${site.sponsored ? 'Yes':'No'}</div></div>
                                     <div class="col-md-4"><strong>Price</strong><div>€${site.price ?? '-'}</div></div>
                                     <div class="col-12"><strong>Description</strong><div class="slb-text-break">${escapeHtml(site.description ?? '-')}</div></div>
-                                    ${(site.image_url || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async" onerror="this.parentElement.style.display='none'"></div></div>` : ''}
+                                    ${(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image)) ? `<div class="col-12"><strong>Site Image</strong><div class="site-preview-detail"><img data-detail-src="${escapeHtml(site.image_url || siteMediaUrl(site.site_image) || siteStorageUrl(site.site_image))}" alt="Site image" loading="lazy" decoding="async"></div></div>` : ''}
                                 </div>
                             </div>
                         </div>

@@ -118,7 +118,7 @@
 }
 .recent-orders-glass {
     position: relative;
-    height: 100%;
+    flex: 1 1 auto;
     border-radius: 18px;
     border: 1px solid rgba(255, 255, 255, 0.55);
     background: linear-gradient(145deg, rgba(255,255,255,0.72), rgba(240,251,251,0.55));
@@ -259,7 +259,7 @@
 </div>
 
 @if($isNewAdvertiser)
-    <div class="row g-4">
+    <div class="row g-4 dash-page-end">
         <div class="col-lg-7">
             <div class="dash-panel h-100">
                 <h5 class="mb-1">Get started</h5>
@@ -337,7 +337,7 @@
         linear-gradient(180deg, #e6f5f5 0%, #f8f9fa 100%);
 }
 </style>
-<div class="dash-command-surface mb-1">
+<div class="dash-command-surface mb-4 dash-page-end">
     @if($needsAction > 0)
         <div class="alert alert-warning d-flex flex-wrap align-items-center justify-content-between gap-2 mx-1 mt-1 mb-3" role="status">
             <div>
@@ -569,7 +569,7 @@
         </div>
 
         <!-- Recent orders + spend -->
-        <div class="col-lg-8">
+        <div class="col-lg-8 dash-recent-col">
             <div class="dash-spend-strip mb-3">
                 <div class="dw-item">
                     <span class="dw-label">Net spend</span>
@@ -679,7 +679,7 @@
         </div>
     </div>
 
-    <div class="help-secondary mx-1 mb-1">
+    <div class="help-secondary mx-1 mb-3">
         <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
             <div>
                 <strong>Need assistance?</strong>

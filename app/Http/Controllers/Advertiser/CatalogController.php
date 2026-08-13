@@ -14,7 +14,6 @@ use App\Models\Order;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
-use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
@@ -26,6 +25,7 @@ use App\Services\Advertiser\AdvertiserOrderSearchQuery;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
+use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
@@ -36,6 +36,7 @@ use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Services\LiveUrlHealthChecker;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
@@ -68,30 +69,15 @@ class CatalogController extends Controller
     }
 
     /**
-     * Get price based on user role
-     * - Publishers see original price
-     * - Advertisers see base + hidden tiered portal fee
-     * - Sensitive prices are NOT marked up
+     * Advertiser-facing catalog list price (publisher base + hidden tiered portal fee).
+     *
+     * Used for other people's listings (bulk rail, etc.). Own listings are not
+     * orderable and show the entered publisher price instead.
      */
-    private function getPriceForUser($originalPrice, $sitePublisherId = null)
+    private function advertiserCatalogListPrice(float|int|string $publisherBase): float
     {
-        $user = auth()->user();
-
-        // Check if user is a publisher and owns this site
-        if ($user && $sitePublisherId && $user->id == $sitePublisherId) {
-            // Publisher viewing their own site - show original price
-            return $originalPrice;
-        }
-
-        // Check if user has publisher role (but not owner of this specific site)
-        $role = Role::find($user->active_role_id ?? 0);
-        if ($role && $role->name === 'publisher') {
-            // Publisher viewing someone else's site - show original price
-            return $originalPrice;
-        }
-
         return app(PlatformFeeService::class)
-            ->advertiserBase((float) $originalPrice);
+            ->advertiserBase((float) $publisherBase);
     }
 
     /**
@@ -338,8 +324,8 @@ class CatalogController extends Controller
     /**
      * Active bulk-discount sites for the catalog rail.
      *
-     * When country= is set, uses the same legacy country / JSON countries OR
-     * as the listing filter. With no country, returns the global top packs.
+     * When country= / language= are set, uses the same constraints as the
+     * main listing (primary country; language offers that code).
      *
      * @param  array<int, int>  $blacklist
      * @return Collection<int, Site>
@@ -354,6 +340,21 @@ class CatalogController extends Controller
             ->where('active', 1)
             ->where('bulk_discount_enabled', 1)
             ->whereNotNull('bulk_discount_percent');
+
+        // Dual-role publishers cannot order their own listings.
+        if (auth()->id()) {
+            $uid = (int) auth()->id();
+            $query->where(function ($q) use ($uid) {
+                $q->whereNull('publisher_id')
+                    ->orWhere('publisher_id', '!=', $uid);
+            });
+            if (Schema::hasColumn('sites', 'owner_id')) {
+                $query->where(function ($q) use ($uid) {
+                    $q->whereNull('owner_id')
+                        ->orWhere('owner_id', '!=', $uid);
+                });
+            }
+        }
 
         // Same blacklist browse modes as the main listing.
         if ($showBlacklistedOnly) {
@@ -371,16 +372,16 @@ class CatalogController extends Controller
                 return strtolower(trim($c));
             }, explode(',', (string) $request->country))));
             if ($countries !== []) {
-                $hasCountriesJson = Schema::hasColumn('sites', 'countries');
-                $query->where(function ($q) use ($countries, $hasCountriesJson) {
-                    foreach ($countries as $code) {
-                        $q->orWhere('country', $code);
-                        if ($hasCountriesJson) {
-                            $q->orWhereJsonContains('countries', $code);
-                        }
-                    }
-                });
+                // Primary country only (scalar sites.country) — matches catalog flag.
+                app(CatalogCountryInventory::class)
+                    ->constrainQueryToPrimaryCountries($query, $countries);
             }
+        }
+
+        if ($request->filled('language') && ! empty($request->language)) {
+            // Option A: all sites offering these languages (AND with country above).
+            app(CatalogLanguageFilter::class)
+                ->constrainQuery($query, explode(',', (string) $request->language));
         }
 
         $bulkDeals = $query
@@ -388,7 +389,9 @@ class CatalogController extends Controller
             ->orderByDesc('dr')
             // Enough for several 6-deal batches without loading the whole catalog.
             ->limit(36)
-            ->get();
+            ->get()
+            ->reject(fn (Site $site) => $site->isOwnedBy(auth()->user()))
+            ->values();
 
         foreach ($bulkDeals as $dealSite) {
             // Pack totals use CartPricingService so the rail “now” price floors
@@ -406,7 +409,7 @@ class CatalogController extends Controller
                 ? 'sale'
                 : 'bulk';
             $dealSite->original_price = $dealSite->price;
-            $dealSite->price = $this->getPriceForUser($dealSite->price, $dealSite->publisher_id);
+            $dealSite->price = $this->advertiserCatalogListPrice($dealSite->price);
         }
 
         return $bulkDeals;
@@ -424,13 +427,16 @@ class CatalogController extends Controller
      */
     private function buildCatalogListing(Request $request): array
     {
+        // Hostinger often deploys without migrate — ensure placement JSON columns exist
+        // so Site Details can show Homepage promotions + Social when publishers offer them.
+        try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        } catch (\Throwable $e) {
+            Log::warning('Catalog schema ensure failed', ['error' => $e->getMessage()]);
+        }
+
         $userId = auth()->id();
         $currentUser = auth()->user();
-
-        $userRole = null;
-        if ($currentUser && $currentUser->active_role_id) {
-            $userRole = Role::find($currentUser->active_role_id);
-        }
 
         $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
         $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
@@ -557,51 +563,43 @@ class CatalogController extends Controller
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
             }, explode(',', $request->country))));
-            $hasCountriesJson = Schema::hasColumn('sites', 'countries');
-            $query->where(function ($q) use ($countries, $hasCountriesJson) {
-                foreach ($countries as $code) {
-                    $q->orWhere('country', $code);
-                    if ($hasCountriesJson) {
-                        $q->orWhereJsonContains('countries', $code);
-                    }
-                }
-            });
+            // Primary country only (scalar sites.country) — matches catalog flag /
+            // inventory counts. Do not match JSON countries "contains".
+            app(CatalogCountryInventory::class)
+                ->constrainQueryToPrimaryCountries($query, $countries);
         }
 
         if ($request->filled('language') && ! empty($request->language)) {
-            $languages = array_values(array_filter(array_map(function ($l) {
-                return strtolower(trim($l));
-            }, explode(',', $request->language))));
-            $hasLanguagesJson = Schema::hasColumn('sites', 'languages');
-            $query->where(function ($q) use ($languages, $hasLanguagesJson) {
-                foreach ($languages as $code) {
-                    $q->orWhere('language', $code);
-                    if ($hasLanguagesJson) {
-                        $q->orWhereJsonContains('languages', $code);
-                    }
+            // Option A: language-only → all sites offering these languages (any country).
+            // With country= also set, constraints AND. Never auto-sets country.
+            // When country is set, drop language codes that are not paired with those countries.
+            $languageCodes = explode(',', (string) $request->language);
+            if ($request->filled('country') && ! empty($request->country)) {
+                $countryCodes = array_values(array_filter(array_map(
+                    static fn ($c) => strtolower(trim((string) $c)),
+                    explode(',', (string) $request->country)
+                )));
+                $allowed = app(CountryLanguagePairs::class)
+                    ->languageCodesForCountries($countryCodes);
+                if ($allowed !== []) {
+                    $languageCodes = array_values(array_intersect(
+                        array_map(static fn ($l) => strtolower(trim((string) $l)), $languageCodes),
+                        $allowed
+                    ));
                 }
-            });
+            }
+            if ($languageCodes !== []) {
+                app(CatalogLanguageFilter::class)->constrainQuery($query, $languageCodes);
+            }
         }
 
+        $advPriceSql = app(PlatformFeeService::class)->advertiserBaseSqlExpression('price');
+
         if ($request->filled('price_min')) {
-            $minPrice = $request->price_min;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) >= ?", [$minPrice]);
-            } else {
-                $query->where('price', '>=', $minPrice);
-            }
+            $query->whereRaw("({$advPriceSql}) >= ?", [$request->price_min]);
         }
         if ($request->filled('price_max')) {
-            $maxPrice = $request->price_max;
-            if ($userRole && $userRole->name === 'advertiser') {
-                $advPriceSql = app(PlatformFeeService::class)
-                    ->advertiserBaseSqlExpression('price');
-                $query->whereRaw("({$advPriceSql}) <= ?", [$maxPrice]);
-            } else {
-                $query->where('price', '<=', $maxPrice);
-            }
+            $query->whereRaw("({$advPriceSql}) <= ?", [$request->price_max]);
         }
 
         if ($request->filled('sponsored') && $request->sponsored == 1) {
@@ -642,8 +640,8 @@ class CatalogController extends Controller
             'da_asc' => $query->orderBy('da')->orderByDesc('id'),
             'dr_asc' => $query->orderBy('dr')->orderByDesc('id'),
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
-            'price_asc' => $query->orderBy('price')->orderByDesc('id'),
-            'price_desc' => $query->orderByDesc('price')->orderByDesc('id'),
+            'price_asc' => $query->orderByRaw($advPriceSql.' ASC')->orderByDesc('id'),
+            'price_desc' => $query->orderByRaw($advPriceSql.' DESC')->orderByDesc('id'),
             'newest' => $query->latest('created_at')->orderByDesc('id'),
             'rating_desc' => Site::hasSitesColumn('rating_avg')
                 ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
@@ -660,7 +658,11 @@ class CatalogController extends Controller
 
         foreach ($sites as $site) {
             $site->original_price = $site->price;
-            $site->price = $this->getPriceForUser($site->price, $site->publisher_id);
+            // Own listings stay at the entered publisher price so leftover
+            // Add-to-cart markup cannot paint a fee-inclusive number.
+            if (! $site->isOwnedBy(auth()->user())) {
+                $site->price = $this->advertiserCatalogListPrice($site->price);
+            }
 
             if ($site->sensitive_prices) {
                 $sensitivePrices = is_string($site->sensitive_prices)
@@ -816,6 +818,56 @@ class CatalogController extends Controller
     }
 
     /**
+     * Cart line identity: site + sensitive topic + homepage duration.
+     * Homepage days empty string means “no homepage placement”.
+     */
+    private function cartIdentityKey(array $row): string
+    {
+        $id = (int) ($row['id'] ?? 0);
+        $sensitive = (string) ($row['sensitive_type'] ?? '');
+        $homepage = $row['homepage_days'] ?? null;
+        $homepagePart = ($homepage === null || $homepage === '' || (int) $homepage === 0)
+            ? ''
+            : (string) (int) $homepage;
+
+        return $id.'|'.$sensitive.'|'.$homepagePart;
+    }
+
+    /**
+     * Normalize a requested homepage duration for matching (null = none).
+     */
+    private function normalizeHomepageDaysKey(int|string|null $homepageDays): ?int
+    {
+        if ($homepageDays === null || $homepageDays === '' || $homepageDays === 'none' || $homepageDays === '0' || $homepageDays === 0) {
+            return null;
+        }
+
+        return (int) $homepageDays;
+    }
+
+    /**
+     * @param  array<string, mixed>  $item
+     */
+    private function cartLineMatches(
+        array $item,
+        int $siteId,
+        ?string $sensitiveType,
+        int|string|null $homepageDays = null,
+    ): bool {
+        if ((int) ($item['id'] ?? 0) !== $siteId) {
+            return false;
+        }
+
+        $itemSensitive = $item['sensitive_type'] ?? null;
+        if (($itemSensitive ?: null) != ($sensitiveType ?: null)) {
+            return false;
+        }
+
+        return $this->normalizeHomepageDaysKey($item['homepage_days'] ?? null)
+            === $this->normalizeHomepageDaysKey($homepageDays);
+    }
+
+    /**
      * Clamp bulk-pack quantities to the configured 3–5 band, resize article slots,
      * and reprice from the live listing so the discount cannot vanish silently.
      *
@@ -850,18 +902,54 @@ class CatalogController extends Controller
             $sensitiveType = null;
         }
 
+        $hasHomepageKey = array_key_exists('homepage_days', $line);
+        $homepageInput = $hasHomepageKey
+            ? (($line['homepage_days'] === null || $line['homepage_days'] === '')
+                ? 'none'
+                : $line['homepage_days'])
+            : null;
+
         try {
-            $pricing = $this->cartPricing()->priceForAdvertiser($site, $sensitiveType, $qty);
-        } catch (\InvalidArgumentException) {
-            $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty);
-            $line['additional_price'] = 0;
-            $sensitiveType = null;
+            $pricing = $this->cartPricing()->priceForAdvertiser(
+                $site,
+                $sensitiveType,
+                $qty,
+                $homepageInput,
+                ! $hasHomepageKey
+            );
+        } catch (\InvalidArgumentException $e) {
+            // Invalid sensitive and/or homepage — drop the bad choice and retry.
+            $message = $e->getMessage();
+            if (str_contains(strtolower($message), 'homepage')) {
+                $homepageInput = 'none';
+                $hasHomepageKey = true;
+            } else {
+                $sensitiveType = null;
+                $line['additional_price'] = 0;
+            }
+            try {
+                $pricing = $this->cartPricing()->priceForAdvertiser(
+                    $site,
+                    $sensitiveType,
+                    $qty,
+                    $homepageInput,
+                    ! $hasHomepageKey
+                );
+            } catch (\InvalidArgumentException) {
+                $pricing = $this->cartPricing()->priceForAdvertiser($site, null, $qty, 'none', false);
+                $sensitiveType = null;
+                $line['additional_price'] = 0;
+            }
         }
 
         $line['price'] = $pricing['total'];
         $line['base_price'] = $pricing['base'];
         $line['additional_price'] = $pricing['additional'];
         $line['sensitive_type'] = $pricing['sensitive_type'] ?? $sensitiveType;
+        $line['homepage_days'] = $pricing['homepage_days'];
+        $line['homepage_price'] = $pricing['homepage_price'];
+        $line['social_channels'] = $pricing['social_channels'];
+        $line['article_total'] = $pricing['article_total'];
         $line['list_total'] = $pricing['list_total'];
         $line['discount_percent'] = $pricing['discount_percent'];
         $line['name'] = $line['name'] ?? $site->site_name;
@@ -903,33 +991,45 @@ class CatalogController extends Controller
     }
 
     /**
-     * Drop session cart lines whose sites are missing or inactive.
+     * Drop session cart lines whose sites are missing, inactive, or owned by the shopper.
      *
      * @param  array<int, array<string, mixed>>  $cart
-     * @return array{cart: array<int, array<string, mixed>>, removed_inactive: list<string>, changed: bool}
+     * @return array{
+     *     cart: array<int, array<string, mixed>>,
+     *     removed_inactive: list<string>,
+     *     removed_owned: list<string>,
+     *     changed: bool
+     * }
      */
     private function pruneInactiveCartLines(array $cart): array
     {
         $cart = array_values($cart);
         if ($cart === []) {
-            return ['cart' => [], 'removed_inactive' => [], 'changed' => false];
+            return ['cart' => [], 'removed_inactive' => [], 'removed_owned' => [], 'changed' => false];
         }
 
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
             : Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
+        $buyer = auth()->user();
 
         $kept = [];
         $removed = [];
+        $removedOwned = [];
         foreach ($cart as $line) {
             $site = $sites->get((int) ($line['id'] ?? 0));
+            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+            if ($name === '') {
+                $name = 'A website';
+            }
             if (! $site || (int) $site->active !== 1) {
-                $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
-                if ($name === '') {
-                    $name = 'A website';
-                }
                 $removed[] = $name;
+
+                continue;
+            }
+            if ($site->isOwnedBy($buyer)) {
+                $removedOwned[] = $name;
 
                 continue;
             }
@@ -937,11 +1037,13 @@ class CatalogController extends Controller
         }
 
         $removed = array_values(array_unique($removed));
+        $removedOwned = array_values(array_unique($removedOwned));
         $changed = count($kept) !== count($cart);
 
         return [
             'cart' => $kept,
             'removed_inactive' => $removed,
+            'removed_owned' => $removedOwned,
             'changed' => $changed,
         ];
     }
@@ -965,8 +1067,10 @@ class CatalogController extends Controller
     {
         $cart = array_values(session()->get('cart', []));
         $removedInactive = [];
+        $removedOwned = [];
+        $buyer = auth()->user();
 
-        // Refresh site market metadata; drop missing/inactive lines from the session cart.
+        // Refresh site market metadata; drop missing/inactive/own-listing lines.
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
@@ -975,12 +1079,17 @@ class CatalogController extends Controller
         $kept = [];
         foreach ($cart as $line) {
             $site = $sites->get((int) ($line['id'] ?? 0));
+            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+            if ($name === '') {
+                $name = 'A website';
+            }
             if (! $site || (int) $site->active !== 1) {
-                $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
-                if ($name === '') {
-                    $name = 'A website';
-                }
                 $removedInactive[] = $name;
+
+                continue;
+            }
+            if ($site->isOwnedBy($buyer)) {
+                $removedOwned[] = $name;
 
                 continue;
             }
@@ -988,9 +1097,10 @@ class CatalogController extends Controller
             $kept[] = $this->normalizeCartLineForSite($site, $line);
         }
         $removedInactive = array_values(array_unique($removedInactive));
+        $removedOwned = array_values(array_unique($removedOwned));
         $cart = $kept;
         // Repriced lines (sensitive add-ons / live listing) should persist.
-        $cartChanged = $removedInactive !== [] || $cart !== array_values(session()->get('cart', []));
+        $cartChanged = $removedInactive !== [] || $removedOwned !== [] || $cart !== array_values(session()->get('cart', []));
 
         $approved = ContentSubmission::query()
             ->where('user_id', auth()->id())
@@ -1054,7 +1164,7 @@ class CatalogController extends Controller
             }
         }
 
-        if ($cartChanged || $removedInactive !== []) {
+        if ($cartChanged || $removedInactive !== [] || $removedOwned !== []) {
             session()->put('cart', array_values($cart));
             $cart = array_values(session()->get('cart', []));
         }
@@ -1094,48 +1204,10 @@ class CatalogController extends Controller
             'content_library_url' => route('advertiser.content-library', ['upload' => 1]),
             'removed_inactive' => $removedInactive,
             'removed_inactive_count' => count($removedInactive),
+            'removed_owned' => $removedOwned,
+            'removed_owned_count' => count($removedOwned),
             'require_same_language' => $requireSame,
         ];
-    }
-
-    /**
-     * Helper method to determine if current user is viewing as advertiser
-     */
-    private function isAdvertiserView()
-    {
-        $user = auth()->user();
-
-        // Check if user has advertiser role
-        if ($user && $user->active_role_id) {
-            $role = Role::find($user->active_role_id);
-            if ($role && $role->name === 'advertiser') {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Helper method to determine if current user is publisher viewing their own site
-     */
-    private function isPublisherOwner($sitePublisherId)
-    {
-        $user = auth()->user();
-
-        if (! $user || ! $sitePublisherId) {
-            return false;
-        }
-
-        // Check if user has publisher role and is the owner
-        if ($user->active_role_id) {
-            $role = Role::find($user->active_role_id);
-            if ($role && $role->name === 'publisher' && $user->id == $sitePublisherId) {
-                return true;
-            }
-        }
-
-        return false;
     }
 
     /**
@@ -1291,8 +1363,7 @@ class CatalogController extends Controller
                 if (! is_array($row)) {
                     continue;
                 }
-                $key = ((int) ($row['id'] ?? 0)).'|'.((string) ($row['sensitive_type'] ?? ''));
-                $existingByKey[$key] = $row;
+                $existingByKey[$this->cartIdentityKey($row)] = $row;
             }
 
             $siteIds = collect($incoming)->pluck('id')->filter()->unique()->values();
@@ -1309,7 +1380,7 @@ class CatalogController extends Controller
                 if (! $site) {
                     continue;
                 }
-                $key = ((int) $row['id']).'|'.((string) ($row['sensitive_type'] ?? ''));
+                $key = $this->cartIdentityKey($row);
                 $prev = $existingByKey[$key] ?? [];
                 if (empty($row['content_submission_ids']) && ! empty($prev['content_submission_ids'])) {
                     $row['content_submission_ids'] = $prev['content_submission_ids'];
@@ -1325,6 +1396,9 @@ class CatalogController extends Controller
                 }
                 if (empty($row['bulk_pack']) && ! empty($prev['bulk_pack'])) {
                     $row['bulk_pack'] = true;
+                }
+                if (! array_key_exists('homepage_days', $row) && array_key_exists('homepage_days', $prev)) {
+                    $row['homepage_days'] = $prev['homepage_days'];
                 }
                 $merged[] = $this->normalizeCartLineForSite($site, $row);
             }
@@ -1356,20 +1430,28 @@ class CatalogController extends Controller
         $data = $request->validate([
             'id' => ['required', 'integer'],
             'sensitive_type' => ['nullable', 'string', 'max:50'],
+            'homepage_days' => ['nullable'],
             'content_submission_id' => ['nullable', 'integer'],
             'copy_index' => ['nullable', 'integer', 'min:0'],
         ]);
 
         $siteId = (int) $data['id'];
         $sensitiveType = $data['sensitive_type'] ?? null;
+        $hasHomepageInput = array_key_exists('homepage_days', $data) || $request->exists('homepage_days');
+        $homepageDays = $hasHomepageInput
+            ? ($data['homepage_days'] ?? $request->input('homepage_days'))
+            : null;
         $submissionId = isset($data['content_submission_id']) ? (int) $data['content_submission_id'] : 0;
         $copyIndex = max(0, (int) ($data['copy_index'] ?? 0));
 
         $cart = session()->get('cart', []);
         $lineKey = null;
         foreach ($cart as $key => $item) {
-            if ((int) ($item['id'] ?? 0) === $siteId
-                && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null))) {
+            $matches = $hasHomepageInput
+                ? $this->cartLineMatches($item, $siteId, $sensitiveType, $homepageDays)
+                : ((int) ($item['id'] ?? 0) === $siteId
+                    && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+            if ($matches) {
                 $lineKey = $key;
                 break;
             }
@@ -1474,6 +1556,9 @@ class CatalogController extends Controller
                 $sensitiveType = trim((string) $sensitiveType);
             }
 
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageInput = $hasHomepageInput ? $request->input('homepage_days') : null;
+
             $site = Site::query()->notArchived()->where('id', $id)->where('active', 1)->first();
             if (! $site) {
                 return response()->json([
@@ -1481,6 +1566,28 @@ class CatalogController extends Controller
                     'error' => 'Site not found or inactive.',
                 ], 404);
             }
+
+            if ($site->isOwnedBy(auth()->user())) {
+                return response()->json([
+                    'success' => false,
+                    'error' => Site::cannotOrderOwnListingMessage(),
+                ], 403);
+            }
+
+            // Resolve homepage up-front so re-adds merge onto the same identity key.
+            try {
+                $homepageResolved = $this->cartPricing()->resolveHomepageSelection(
+                    $site,
+                    $hasHomepageInput ? $homepageInput : null,
+                    ! $hasHomepageInput
+                );
+            } catch (\InvalidArgumentException $e) {
+                return response()->json([
+                    'success' => false,
+                    'error' => UserFacingError::message($e, 'That homepage promotion option is not available for this site.'),
+                ], 422);
+            }
+            $resolvedHomepageDays = $homepageResolved['days'];
 
             $cart = session()->get('cart', []);
             $attachArticleId = null;
@@ -1540,7 +1647,7 @@ class CatalogController extends Controller
             $existingItem = null;
             $currentQty = 0;
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)) {
+                if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
                     $existingItem = $key;
                     $currentQty = max(1, (int) ($item['quantity'] ?? 1));
                     break;
@@ -1571,6 +1678,7 @@ class CatalogController extends Controller
             if ($existingItem !== null) {
                 $line = $cart[$existingItem];
                 $line['quantity'] = $nextQty;
+                $line['homepage_days'] = $resolvedHomepageDays;
                 if ($isBulkPackAdd || ! empty($line['bulk_pack']) || ($site->joinsBulkDiscount() && $nextQty >= $minBulk)) {
                     $line['bulk_pack'] = true;
                 }
@@ -1600,6 +1708,7 @@ class CatalogController extends Controller
                     'url' => $site->site_url,
                     'quantity' => $nextQty,
                     'sensitive_type' => $sensitiveType,
+                    'homepage_days' => $resolvedHomepageDays,
                     'bulk_pack' => $isBulkPackAdd || ($site->joinsBulkDiscount() && $nextQty >= $minBulk),
                     'link_type' => $site->link_type,
                     'country' => $site->country,
@@ -1680,10 +1789,19 @@ class CatalogController extends Controller
         try {
             $id = $request->id;
             $sensitiveType = $request->sensitive_type;
+            if ($sensitiveType === '') {
+                $sensitiveType = null;
+            }
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
 
             foreach ($cart as $key => $item) {
-                if ($item['id'] == $id && ($item['sensitive_type'] ?? null) == $sensitiveType) {
+                $matches = $hasHomepageInput
+                    ? $this->cartLineMatches($item, (int) $id, $sensitiveType, $homepageDays)
+                    : ((int) ($item['id'] ?? 0) === (int) $id
+                        && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+                if ($matches) {
                     unset($cart[$key]);
                     break;
                 }
@@ -1711,11 +1829,16 @@ class CatalogController extends Controller
             if ($sensitiveType === '') {
                 $sensitiveType = null;
             }
+            $hasHomepageInput = $request->exists('homepage_days');
+            $homepageDays = $hasHomepageInput ? $request->input('homepage_days') : null;
             $cart = session()->get('cart', []);
 
             foreach ($cart as $key => $item) {
-                if ((int) ($item['id'] ?? 0) !== $id
-                    || (($item['sensitive_type'] ?? null) != ($sensitiveType ?: null))) {
+                $matches = $hasHomepageInput
+                    ? $this->cartLineMatches($item, $id, $sensitiveType, $homepageDays)
+                    : ((int) ($item['id'] ?? 0) === $id
+                        && (($item['sensitive_type'] ?? null) == ($sensitiveType ?: null)));
+                if (! $matches) {
                     continue;
                 }
 
@@ -1770,7 +1893,7 @@ class CatalogController extends Controller
         $cart = session()->get('cart', []);
 
         if (empty($cart)) {
-            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
+            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
         $partition = $this->partitionCartByCheckoutReadiness($cart);
@@ -1778,12 +1901,12 @@ class CatalogController extends Controller
         $deferredCart = $partition['deferred'];
 
         try {
-            $allCheckout = $this->cartPricing()->buildCheckoutItems($cart);
+            $allCheckout = $this->cartPricing()->buildCheckoutItems($cart, auth()->id());
             $payableCheckout = $payableCart !== []
-                ? $this->cartPricing()->buildCheckoutItems($payableCart)
+                ? $this->cartPricing()->buildCheckoutItems($payableCart, auth()->id())
                 : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
             $deferredCheckout = $deferredCart !== []
-                ? $this->cartPricing()->buildCheckoutItems($deferredCart)
+                ? $this->cartPricing()->buildCheckoutItems($deferredCart, auth()->id())
                 : ['items' => [], 'total' => 0.0, 'savings' => 0.0];
         } catch (\InvalidArgumentException $e) {
             return redirect()->route('advertiser.catalog')->with('error', UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.'));
@@ -1798,12 +1921,12 @@ class CatalogController extends Controller
         $total = (float) ($payableCheckout['total'] ?? 0);
         $savings = (float) ($payableCheckout['savings'] ?? 0);
         $payableSiteKeys = collect($payableCart)->mapWithKeys(function ($row) {
-            $key = (int) ($row['id'] ?? 0).'|'.($row['sensitive_type'] ?? '');
+            $key = $this->cartIdentityKey($row);
 
             return [$key => true];
         })->all();
         $cartItems = collect($cartItems)->map(function (array $item) use ($payableSiteKeys) {
-            $key = (int) ($item['id'] ?? 0).'|'.($item['sensitive_type'] ?? '');
+            $key = $this->cartIdentityKey($item);
             $item['paying_now'] = isset($payableSiteKeys[$key]);
 
             return $item;
@@ -1812,7 +1935,7 @@ class CatalogController extends Controller
         if (empty($cartItems)) {
             session()->forget(['cart', 'checkout_content_submission_id', 'checkout_schedule', GuestPostWizardController::SESSION_KEY]);
 
-            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains inactive sites.');
+            return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
         $librarySubmission = $this->resolveLibrarySubmissionForCheckout($cart);
@@ -1890,6 +2013,7 @@ class CatalogController extends Controller
         }
 
         try {
+            $this->syncPrunedSessionCart();
             // Get cart from session
             $cart = session()->get('cart', []);
 
@@ -2048,6 +2172,9 @@ class CatalogController extends Controller
                     $orderItem = $line['orderItem'];
                     $submission = $line['submission'];
                     $site = $orderItem['site'];
+                    if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                        continue;
+                    }
                     $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                     $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                         'user_id' => $userId,
@@ -2113,6 +2240,9 @@ class CatalogController extends Controller
             $orderItem = $line['orderItem'];
             $submission = $line['submission'];
             $site = $orderItem['site'];
+            if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                continue;
+            }
             $packageLines[] = [
                 'site_id' => $site->id,
                 'site_name' => $site->site_name,
@@ -2120,6 +2250,10 @@ class CatalogController extends Controller
                 'price' => $orderItem['price'],
                 'sensitive_type' => $orderItem['sensitive_type'] ?? null,
                 'additional_price' => $orderItem['additional_price'] ?? 0,
+                'homepage_days' => $orderItem['homepage_days'] ?? null,
+                'homepage_price' => $orderItem['homepage_price'] ?? 0,
+                'social_channels' => $orderItem['social_channels']
+                    ?? ($site->enabledSocialChannels() ?: []),
                 'publisher_price' => $orderItem['publisher_price'] ?? null,
                 'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
                 'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -2309,6 +2443,9 @@ class CatalogController extends Controller
                 $orderItem = $line['orderItem'];
                 $submission = $line['submission'];
                 $site = $orderItem['site'];
+                if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                    continue;
+                }
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
                 $order = Order::create($schema->filterExistingColumns('orders', array_merge([
@@ -2450,6 +2587,9 @@ class CatalogController extends Controller
                 $orderItem = $line['orderItem'];
                 $submission = $line['submission'];
                 $site = $orderItem['site'];
+                if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
+                    continue;
+                }
                 $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
 
                 $order = Order::create(array_merge([
@@ -3762,7 +3902,7 @@ class CatalogController extends Controller
     private function resolveCheckoutContent(array $cart, ?array $contentSubmissions, array $scheduleInput): array|JsonResponse
     {
         try {
-            $expandedOrders = $this->cartPricing()->expandCart($cart);
+            $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.')]);
         }
@@ -3780,15 +3920,16 @@ class CatalogController extends Controller
             $site = $orderItem['site'];
             $copyIndex = max(0, ((int) ($orderItem['copy_number'] ?? 1)) - 1);
             $sensitiveType = $orderItem['sensitive_type'] ?? null;
+            $homepageDays = $orderItem['homepage_days'] ?? null;
 
             // Prefer per-cart content_submission_id, then request map, then library session
-            $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType) {
-                if ((int) ($row['id'] ?? 0) !== (int) $site->id) {
-                    return false;
-                }
-                $rowSensitive = $row['sensitive_type'] ?? null;
-
-                return $rowSensitive == $sensitiveType;
+            $cartLine = collect($cart)->first(function ($row) use ($site, $sensitiveType, $homepageDays) {
+                return $this->cartLineMatches(
+                    is_array($row) ? $row : [],
+                    (int) $site->id,
+                    $sensitiveType,
+                    $homepageDays
+                );
             });
 
             // Each placement (copy) needs its own article — never reuse scalar/library ID for copyIndex > 0.
@@ -3916,6 +4057,10 @@ class CatalogController extends Controller
             'moderation_status' => $submission->moderation_status,
             'sensitive_type' => $orderItem['sensitive_type'],
             'additional_price' => $orderItem['additional_price'],
+            'homepage_days' => $orderItem['homepage_days'] ?? null,
+            'homepage_price' => $orderItem['homepage_price'] ?? 0,
+            'social_channels' => $orderItem['social_channels']
+                ?? ($site->enabledSocialChannels() ?: []),
             'publisher_price' => $orderItem['publisher_price'] ?? null,
             'platform_fee_percent' => $orderItem['platform_fee_percent'] ?? null,
             'platform_fee_amount' => $orderItem['platform_fee_amount'] ?? null,
@@ -4061,6 +4206,9 @@ class CatalogController extends Controller
 
                 continue;
             }
+            if ($site->isOwnedBy(auth()->user())) {
+                continue;
+            }
 
             $quantity = max(1, (int) ($item['quantity'] ?? 1));
             $lineReady = true;
@@ -4150,12 +4298,15 @@ class CatalogController extends Controller
     {
         $paidKeys = [];
         foreach ($orders as $order) {
-            $sensitive = $order->sensitive_type ?? null;
             foreach ($order->items as $item) {
                 if (! $item->site_id) {
                     continue;
                 }
-                $paidKeys[(int) $item->site_id.'|'.($sensitive ?? '')] = true;
+                $paidKeys[$this->cartIdentityKey([
+                    'id' => $item->site_id,
+                    'sensitive_type' => $item->sensitive_type ?? $order->sensitive_type ?? null,
+                    'homepage_days' => $item->homepage_days ?? null,
+                ])] = true;
             }
         }
 
@@ -4177,7 +4328,7 @@ class CatalogController extends Controller
             if (! is_array($row)) {
                 continue;
             }
-            $key = (int) ($row['id'] ?? 0).'|'.($row['sensitive_type'] ?? '');
+            $key = $this->cartIdentityKey($row);
             if (! isset($paidKeys[$key])) {
                 $remaining[] = $row;
             }

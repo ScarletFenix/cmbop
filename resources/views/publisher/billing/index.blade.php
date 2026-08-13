@@ -24,11 +24,11 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">From</label>
-                    <input type="date" name="from" value="{{ request('from') }}" class="form-control form-control-sm">
+                    <input type="date" name="from" value="{{ $filterFrom ?? request('from') }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">To</label>
-                    <input type="date" name="to" value="{{ request('to') }}" class="form-control form-control-sm">
+                    <input type="date" name="to" value="{{ $filterTo ?? request('to') }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-12 d-flex gap-2">
                     <button type="submit" class="btn btn-sm btn-primary">Filter</button>
@@ -59,10 +59,11 @@
                                 <td class="small">{{ $doc->reference_code }}</td>
                                 <td class="small">{{ optional($doc->invoice_date)->format('M j, Y') }}</td>
                                 <td class="fw-semibold">€{{ number_format((float) $doc->total_amount, 2) }}</td>
-                                <td class="small">{{ ucfirst((string) $doc->payment_method) }}</td>
+                                <td class="small">{{ \App\Models\Invoice::paymentMethodLabel($doc->payment_method) }}</td>
                                 <td class="text-end">
                                     <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
                                         <a href="{{ route('publisher.billing.show', $doc) }}" class="btn btn-sm btn-outline-secondary">View</a>
+                                        <a href="{{ route('publisher.billing.view', $doc) }}" class="btn btn-sm btn-outline-secondary" target="_blank" rel="noopener">View PDF</a>
                                         <a href="{{ route('publisher.billing.download', $doc) }}" class="btn btn-sm btn-primary">Download PDF</a>
                                     </div>
                                 </td>

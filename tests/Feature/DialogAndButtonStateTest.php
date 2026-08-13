@@ -210,4 +210,19 @@ class DialogAndButtonStateTest extends TestCase
             $this->assertSame([], $offenders, "{$alias} was defined but never used; found in:\n".implode("\n", $offenders));
         }
     }
+
+    public function test_publisher_tasks_uses_bootstrap5_modal_api(): void
+    {
+        $tasks = file_get_contents(resource_path('views/publisher/tasks.blade.php'));
+
+        $this->assertStringContainsString('function showTasksModal', $tasks);
+        $this->assertStringContainsString('bootstrap.Modal.getOrCreateInstance', $tasks);
+        $this->assertStringNotContainsString(".modal('show')", $tasks);
+        $this->assertStringNotContainsString(".modal('hide')", $tasks);
+        // Layout shell: chat include must not be followed by stray closing divs.
+        $this->assertDoesNotMatchRegularExpression(
+            "/@include\('partials\.order-chat-modal'\)\s*<\/div>\s*<\/div>/s",
+            $tasks
+        );
+    }
 }

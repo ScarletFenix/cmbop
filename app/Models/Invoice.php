@@ -156,4 +156,58 @@ class Invoice extends Model
     {
         return $this->type === self::TYPE_WITHDRAWAL_PAYOUT;
     }
+
+    public static function paymentMethodLabel(?string $method): string
+    {
+        $key = strtolower(trim((string) $method));
+
+        return match ($key) {
+            'bank', 'bank_transfer' => 'Bank Transfer',
+            'paypal' => 'PayPal',
+            'wise' => 'Wise',
+            'crypto' => 'Cryptocurrency',
+            '' => '—',
+            default => ucfirst(str_replace('_', ' ', $key)),
+        };
+    }
+
+    public static function maskedPayoutDestination(mixed $details, ?string $method): ?string
+    {
+        if (! is_array($details) || $details === []) {
+            return null;
+        }
+
+        $key = strtolower(trim((string) $method));
+
+        if (in_array($key, ['paypal', 'wise'], true)) {
+            $email = (string) ($details['email'] ?? $details['paypal_email'] ?? $details['wise_email'] ?? '');
+            if ($email === '' || ! str_contains($email, '@')) {
+                return null;
+            }
+            $at = strpos($email, '@');
+
+            return substr($email, 0, 1).'***'.substr($email, $at);
+        }
+
+        if ($key === 'bank' || $key === 'bank_transfer') {
+            $account = preg_replace('/\s+/', '', (string) ($details['account_number'] ?? $details['iban'] ?? $details['bank_account'] ?? ''));
+            if ($account === '') {
+                return null;
+            }
+
+            return '···'.substr($account, -4);
+        }
+
+        if ($key === 'crypto') {
+            $wallet = (string) ($details['wallet_address'] ?? $details['crypto_wallet'] ?? '');
+            $coin = (string) ($details['crypto_type'] ?? 'Crypto');
+            if ($wallet === '') {
+                return $coin !== '' ? $coin : null;
+            }
+
+            return $coin.' · ···'.substr($wallet, -4);
+        }
+
+        return null;
+    }
 }

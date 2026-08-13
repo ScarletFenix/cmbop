@@ -53,6 +53,12 @@ class PublisherRuntimeSyntaxFixesTest extends TestCase
         $this->actingAs($publisher)
             ->get(route('publisher.withdraw'))
             ->assertOk();
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->assertSee('Publisher earnings', false)
+            ->assertSee('balance-label">Earnings', false);
     }
 
     public function test_advertiser_dashboard_renders_without_site_syntax_error(): void
@@ -90,5 +96,73 @@ class PublisherRuntimeSyntaxFixesTest extends TestCase
         $this->actingAs($advertiser)
             ->get(route('advertiser.dashboard'))
             ->assertOk();
+    }
+
+    public function test_advertiser_content_library_renders_without_count_scope_fatal(): void
+    {
+        $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $advertiser->roles()->attach($advertiserRole->id);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk();
+    }
+
+    public function test_site_safe_description_html_is_available(): void
+    {
+        $site = new Site(['description' => '<p onclick="x">Hello <strong>world</strong></p>']);
+        $html = $site->safeDescriptionHtml();
+
+        $this->assertStringContainsString('Hello', $html);
+        $this->assertStringContainsString('<strong>world</strong>', $html);
+        $this->assertStringNotContainsString('onclick', $html);
+    }
+
+    public function test_advertiser_catalog_renders_without_safe_description_fatal(): void
+    {
+        $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $advertiser->roles()->attach($advertiserRole->id);
+
+        $site = Site::create([
+            'publisher_id' => User::factory()->create(['email_verified_at' => now()])->id,
+            'site_name' => 'Catalog List Site',
+            'site_url' => 'https://catalog-list.example',
+            'domain' => 'catalog-list.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 80,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => '<p>Catalog <strong>list</strong> description.</p>',
+            'verified' => true,
+            'active' => true,
+            'completed_orders_count' => 2,
+        ]);
+
+        // Advertiser → Catalog renders catalog-results, which calls safeDescriptionHtml().
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('Catalog List Site');
+
+        // Dashboard recommended-site cards deep-link into the same catalog view.
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', ['site' => $site->id]))
+            ->assertOk()
+            ->assertSee('Catalog List Site');
     }
 }

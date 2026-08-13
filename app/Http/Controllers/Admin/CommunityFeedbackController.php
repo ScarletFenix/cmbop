@@ -4,16 +4,18 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Models\ProblemReport;
-use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\Suggestion;
 use App\Models\WebsiteSuggestion;
 use App\Services\ActivityLogger;
+use App\Services\SiteClaimTransferService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\ValidationException;
 
 class CommunityFeedbackController extends Controller
 {
+    public function __construct(private SiteClaimTransferService $claimTransfers) {}
+
     public function index(Request $request)
     {
         $tab = $request->get('tab', 'problems');
@@ -97,13 +99,25 @@ class CommunityFeedbackController extends Controller
             'claims' => SiteClaim::where('status', 'pending')->count(),
         ];
 
+        // Open (in-flight) order / dispute counts per pending claim so the approve dialog can warn.
+        $claimOpenOrders = [];
+        $claimOpenDisputes = [];
+        foreach ($claims as $claim) {
+            if ($claim->status === 'pending' && $claim->site) {
+                $claimOpenOrders[$claim->id] = $this->claimTransfers->openOrderItemsCount($claim->site);
+                $claimOpenDisputes[$claim->id] = $this->claimTransfers->openDisputesCount($claim->site);
+            }
+        }
+
         return view('admin.community.index', compact(
             'tab',
             'problems',
             'suggestions',
             'websites',
             'claims',
-            'counts'
+            'counts',
+            'claimOpenOrders',
+            'claimOpenDisputes'
         ));
     }
 
@@ -133,43 +147,20 @@ class CommunityFeedbackController extends Controller
             'admin_notes' => 'nullable|string|max:2000',
         ]);
 
-        DB::transaction(function () use ($claim, $data) {
-            $site = Site::lockForUpdate()->findOrFail($claim->site_id);
-            $previousPublisherId = $site->publisher_id;
-
-            $site->publisher_id = $claim->claimer_id;
-            $site->save();
-
-            $claim->forceFill([
-                'status' => 'approved',
-                'admin_notes' => $data['admin_notes'] ?? $claim->admin_notes,
-                'reviewed_at' => now(),
-                'reviewed_by' => auth()->id(),
-            ])->save();
-
-            SiteClaim::query()
-                ->where('site_id', $site->id)
-                ->where('id', '!=', $claim->id)
-                ->where('status', 'pending')
-                ->update([
-                    'status' => 'rejected',
-                    'admin_notes' => 'Closed because another claim was approved.',
-                    'reviewed_at' => now(),
-                    'reviewed_by' => auth()->id(),
-                ]);
-
-            ActivityLogger::log(
-                'site.claim_approved',
-                auth()->user()->name.' approved site claim #'.$claim->id.' (publisher '.$previousPublisherId.' → '.$claim->claimer_id.')',
-                $site,
-                [
-                    'claim_id' => $claim->id,
-                    'previous_publisher_id' => $previousPublisherId,
-                    'new_publisher_id' => $claim->claimer_id,
-                ],
-                $site->site_name
-            );
-        });
+        try {
+            $this->claimTransfers->approve($claim, $request->user(), $data['admin_notes'] ?? null);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'This claim could not be approved.',
+                'open_orders' => $claim->site
+                    ? $this->claimTransfers->openOrderItemsCount($claim->site)
+                    : 0,
+                'open_disputes' => $claim->site
+                    ? $this->claimTransfers->openDisputesCount($claim->site)
+                    : 0,
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,
@@ -179,7 +170,7 @@ class CommunityFeedbackController extends Controller
 
     public function rejectClaim(Request $request, int $id)
     {
-        $claim = SiteClaim::findOrFail($id);
+        $claim = SiteClaim::with('site')->findOrFail($id);
         if ($claim->status !== 'pending') {
             return response()->json(['success' => false, 'message' => 'This claim was already reviewed.'], 422);
         }
@@ -188,20 +179,14 @@ class CommunityFeedbackController extends Controller
             'admin_notes' => 'nullable|string|max:2000',
         ]);
 
-        $claim->forceFill([
-            'status' => 'rejected',
-            'admin_notes' => $data['admin_notes'] ?? $claim->admin_notes,
-            'reviewed_at' => now(),
-            'reviewed_by' => auth()->id(),
-        ])->save();
-
-        ActivityLogger::log(
-            'site.claim_rejected',
-            auth()->user()->name.' rejected site claim #'.$claim->id,
-            $claim->site,
-            ['claim_id' => $claim->id],
-            $claim->website_name
-        );
+        try {
+            $this->claimTransfers->reject($claim, $request->user(), $data['admin_notes'] ?? null);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => $e->validator->errors()->first() ?: 'This claim could not be rejected.',
+            ], 422);
+        }
 
         return response()->json([
             'success' => true,

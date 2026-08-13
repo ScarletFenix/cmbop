@@ -36,12 +36,16 @@ use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
 use App\Mail\RefundReceiptMail;
+use App\Mail\SiteClaimOwnershipTransferred;
+use App\Mail\SiteClaimReviewed;
+use App\Mail\SiteClaimSubmitted;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
 use App\Mail\TrustpilotReviewRequest;
 use App\Mail\WeeklyActivitySummary;
 use App\Mail\WelcomeEmail;
+use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
 use App\Models\DepositRequest;
@@ -49,6 +53,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Site;
+use App\Models\SiteClaim;
 use App\Models\User;
 use App\Models\Withdrawal;
 use Illuminate\Mail\Mailable;
@@ -237,6 +242,13 @@ class EmailCatalog
                 'mailable' => WithdrawalStatusUpdated::class,
                 'status' => 'active',
             ],
+            'withdrawal_requested_confirmation' => [
+                'name' => 'Withdrawal Request Confirmation',
+                'description' => 'Publisher confirmation that a withdrawal request was submitted.',
+                'category' => 'Billing',
+                'mailable' => WithdrawalRequestedConfirmation::class,
+                'status' => 'active',
+            ],
             'new_site' => [
                 'name' => 'New Site Submitted',
                 'description' => 'Admins notified when a publisher submits/updates a site.',
@@ -279,6 +291,27 @@ class EmailCatalog
                 'description' => 'Admins notified when a new user registers.',
                 'category' => 'Admin',
                 'mailable' => AdminNewUserRegistered::class,
+                'status' => 'active',
+            ],
+            'site_claim_submitted' => [
+                'name' => 'Site Claim Submitted',
+                'description' => 'Admins notified when a user claims ownership of a catalog listing, with a review CTA.',
+                'category' => 'Admin',
+                'mailable' => SiteClaimSubmitted::class,
+                'status' => 'active',
+            ],
+            'site_claim_reviewed' => [
+                'name' => 'Site Claim Reviewed',
+                'description' => 'Claimer notified when their ownership claim is approved or rejected.',
+                'category' => 'Publishers',
+                'mailable' => SiteClaimReviewed::class,
+                'status' => 'active',
+            ],
+            'site_claim_ownership_transferred' => [
+                'name' => 'Site Claim Ownership Transferred',
+                'description' => 'Previous publisher notified when an approved claim moves a listing to another account.',
+                'category' => 'Publishers',
+                'mailable' => SiteClaimOwnershipTransferred::class,
                 'status' => 'active',
             ],
             'publisher_add_site_reminder' => [
@@ -466,6 +499,7 @@ class EmailCatalog
             'deposit_approved' => new DepositApproved(self::sampleDeposit()),
             'deposit_rejected' => new DepositRejected(self::sampleDeposit()),
             'withdrawal_request' => new WithdrawalRequestNotification(self::sampleWithdrawal(), $user),
+            'withdrawal_requested_confirmation' => new WithdrawalRequestedConfirmation(self::sampleWithdrawal()),
             'withdrawal_status' => new WithdrawalStatusUpdated(
                 self::sampleWithdrawal(),
                 'pending',
@@ -487,6 +521,9 @@ class EmailCatalog
             ),
             'trustpilot_review' => new TrustpilotReviewRequest($user, $order),
             'admin_new_user' => new AdminNewUserRegistered($user, $user),
+            'site_claim_submitted' => new SiteClaimSubmitted(self::sampleSiteClaim()),
+            'site_claim_reviewed' => new SiteClaimReviewed(self::sampleSiteClaim('approved')),
+            'site_claim_ownership_transferred' => new SiteClaimOwnershipTransferred(self::sampleSiteClaim('approved'), $user),
             'publisher_add_site_reminder' => new PublisherAddSiteReminderMail($user, PublisherAddSiteReminderMail::STEP_DAY3),
             'deposit_reminder' => new DepositReminderMail($user, DepositReminderMail::STEP_DAY14),
             'publisher_accept_nudge' => new PublisherAcceptNudge($user, $order, $item, $site, 2, 36),
@@ -584,7 +621,12 @@ class EmailCatalog
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
             'site_url' => 'https://example.com',
-            'price' => 99.00,
+            'price' => 138.00,
+            'additional_price' => 0,
+            'homepage_days' => 7,
+            'homepage_price' => 25.00,
+            'social_channels' => ['facebook', 'x'],
+            'content_link' => 'https://example.com/content.docx',
         ]);
         $item->setRelation('site', self::sampleSite());
 
@@ -610,6 +652,34 @@ class EmailCatalog
         $site->setRelation('publisher', $user);
 
         return $site;
+    }
+
+    protected static function sampleSiteClaim(string $status = 'pending'): SiteClaim
+    {
+        $claim = SiteClaim::query()->with(['site', 'claimer'])->latest('id')->first();
+        if ($claim) {
+            return $claim;
+        }
+
+        $site = self::sampleSite();
+        $user = self::sampleUser();
+        $claim = new SiteClaim([
+            'site_id' => $site->id,
+            'claimer_id' => $user->id ?? 0,
+            'website_name' => $site->site_name ?: 'Sample Site',
+            'website_url' => $site->site_url ?: 'https://example.com',
+            'domain' => $site->domain ?: 'example.com',
+            'name_matches' => true,
+            'proof_message' => 'Sample ownership proof for email preview.',
+            'contact_email' => $user->email ?? 'sample@example.com',
+            'status' => $status,
+            'admin_notes' => $status === 'approved' ? 'Verified via domain email (preview).' : null,
+        ]);
+        $claim->id = 0;
+        $claim->setRelation('site', $site);
+        $claim->setRelation('claimer', $user);
+
+        return $claim;
     }
 
     protected static function sampleDeposit(): DepositRequest

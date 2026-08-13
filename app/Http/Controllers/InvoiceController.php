@@ -130,12 +130,15 @@ class InvoiceController extends Controller
         $orderItems = [];
         $totalBaseAmount = 0;
         $totalSensitiveAmount = 0;
+        $totalHomepageAmount = 0;
 
         foreach ($order->items as $item) {
-            $additionalPrice = $item->additional_price ?? 0;
-            $basePrice = $item->price - $additionalPrice;
+            $additionalPrice = (float) ($item->additional_price ?? 0);
+            $homepagePrice = (float) ($item->homepage_price ?? 0);
+            $basePrice = max(0, (float) $item->price - $additionalPrice - $homepagePrice);
             $totalBaseAmount += $basePrice;
             $totalSensitiveAmount += $additionalPrice;
+            $totalHomepageAmount += $homepagePrice;
 
             $orderItems[] = [
                 'site_name' => $item->site_name,
@@ -143,6 +146,9 @@ class InvoiceController extends Controller
                 'price' => $item->price,
                 'base_price' => $basePrice,
                 'additional_price' => $additionalPrice,
+                'homepage_days' => $item->homepage_days,
+                'homepage_price' => $homepagePrice,
+                'social_channels' => $item->enabledSocialChannels(),
                 'sensitive_type' => $item->sensitive_type,
                 'content_link' => $item->content_link,
                 'live_url' => $item->live_url ?? '',
@@ -170,6 +176,7 @@ class InvoiceController extends Controller
             'orderItems' => $orderItems,
             'totalBaseAmount' => $totalBaseAmount,
             'totalSensitiveAmount' => $totalSensitiveAmount,
+            'totalHomepageAmount' => $totalHomepageAmount,
         ];
     }
 }

@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
+use App\Mail\WithdrawalRequestedConfirmation;
 use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\EmailNotificationService;
@@ -12,6 +13,8 @@ use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\ValidationException;
 
 class WithdrawalController extends Controller
@@ -25,12 +28,18 @@ class WithdrawalController extends Controller
         return (float) config('billing.withdrawal_fee_percent', 0);
     }
 
+    private function minWithdrawalAmount(): float
+    {
+        return max(0.01, round((float) config('billing.withdrawal_min_amount', 20), 2));
+    }
+
     public function index()
     {
         $user = auth()->user();
 
         return view('publisher.withdraw', [
             'platformChargePercent' => $this->platformChargePercent(),
+            'minWithdrawalAmount' => $this->minWithdrawalAmount(),
             'payoutProfile' => $user->payoutProfile(),
             'payoutLocked' => $user->payoutProfileLocked(),
             'availableMethods' => $this->payoutProfiles->availableMethods($user),
@@ -41,11 +50,6 @@ class WithdrawalController extends Controller
     public function requestWithdrawal(Request $request)
     {
         try {
-            $request->validate([
-                'amount' => 'required|numeric|min:0.01|max:999999.99',
-                'payment_method' => 'required|in:bank,paypal,wise,crypto',
-            ]);
-
             $user = auth()->user();
             $wallet = $user->activeWallet();
 
@@ -56,9 +60,8 @@ class WithdrawalController extends Controller
                 ]);
             }
 
-            $amount = $request->amount;
-            $availableBalance = $wallet->withdrawableBalance();
-
+            // Debt blocks all withdrawals — check before amount/min validation so
+            // indebted publishers always get a clear wallet_debt response.
             if ($wallet->hasDebt()) {
                 return response()->json([
                     'success' => false,
@@ -70,11 +73,25 @@ class WithdrawalController extends Controller
                 ], 422);
             }
 
-            if ($amount <= 0) {
+            $min = $this->minWithdrawalAmount();
+
+            $request->validate([
+                'amount' => 'required|numeric|min:'.$min.'|max:999999.99',
+                'payment_method' => 'required|in:bank,paypal,wise,crypto',
+            ], [
+                'amount.min' => 'Minimum withdrawal amount is €'.number_format($min, 2).'.',
+            ]);
+
+            $amount = round((float) $request->amount, 2);
+            $availableBalance = $wallet->withdrawableBalance();
+
+            if ($amount < $min) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Please enter a valid amount greater than 0.',
-                ]);
+                    'code' => 'below_minimum',
+                    'message' => 'Minimum withdrawal amount is €'.number_format($min, 2).'.',
+                    'min_amount' => $min,
+                ], 422);
             }
 
             if ($amount > $availableBalance) {
@@ -84,7 +101,7 @@ class WithdrawalController extends Controller
                         'code' => 'bonus_not_withdrawable',
                         'message' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
                         'available_for_withdrawal' => $availableBalance,
-                    ]);
+                    ], 422);
                 }
 
                 $promoNote = $wallet->lockedBonusBalance() > 0
@@ -95,11 +112,11 @@ class WithdrawalController extends Controller
                     'success' => false,
                     'code' => $wallet->lockedBonusBalance() > 0 ? 'bonus_not_withdrawable' : 'insufficient_balance',
                     'message' => 'Insufficient withdrawable balance for this withdrawal. Available to withdraw: €'.number_format($availableBalance, 2).'.'.$promoNote,
-                ]);
+                ], 422);
             }
 
-            $fee = ($amount * $this->platformChargePercent()) / 100;
-            $netAmount = $amount - $fee;
+            $fee = round(($amount * $this->platformChargePercent()) / 100, 2);
+            $netAmount = round($amount - $fee, 2);
 
             $wasLocked = $user->payoutProfileLocked();
             $paymentDetails = $this->payoutProfiles->validatedPaymentDetails(
@@ -107,12 +124,6 @@ class WithdrawalController extends Controller
                 $user,
                 requireConfirm: ! $wasLocked
             );
-
-            if (! $wasLocked) {
-                $this->payoutProfiles->persistAndLock($user, (string) $request->payment_method, $paymentDetails);
-            } else {
-                $this->payoutProfiles->setPreferredMethod($user, (string) $request->payment_method);
-            }
 
             DB::beginTransaction();
 
@@ -138,13 +149,13 @@ class WithdrawalController extends Controller
                         'success' => false,
                         'code' => 'bonus_not_withdrawable',
                         'message' => Wallet::PROMOTIONAL_BONUS_MESSAGE,
-                    ]);
+                    ], 422);
                 }
 
                 return response()->json([
                     'success' => false,
                     'message' => 'Insufficient withdrawable balance for this withdrawal. Available to withdraw: €'.number_format($available, 2),
-                ]);
+                ], 422);
             }
 
             $withdrawal = Withdrawal::create([
@@ -169,6 +180,13 @@ class WithdrawalController extends Controller
 
             DB::commit();
 
+            // Lock / prefer method only after a successful withdrawal.
+            if (! $wasLocked) {
+                $this->payoutProfiles->persistAndLock($user, (string) $request->payment_method, $paymentDetails);
+            } else {
+                $this->payoutProfiles->setPreferredMethod($user, (string) $request->payment_method);
+            }
+
             Log::info('Withdrawal request submitted', [
                 'user_id' => $user->id,
                 'withdrawal_id' => $withdrawal->id,
@@ -180,11 +198,15 @@ class WithdrawalController extends Controller
             ]);
 
             $this->sendAdminNotification($withdrawal, $user);
+            $this->sendPublisherConfirmation($withdrawal);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Withdrawal request submitted successfully! Amount: €'.number_format($amount, 2),
                 'payout_locked' => true,
+                'withdrawal_id' => $withdrawal->id,
+                'fee' => $fee,
+                'net_amount' => $netAmount,
             ]);
         } catch (ValidationException $e) {
             return response()->json([
@@ -217,6 +239,21 @@ class WithdrawalController extends Controller
         }
     }
 
+    private function sendPublisherConfirmation(Withdrawal $withdrawal): void
+    {
+        try {
+            $user = $withdrawal->user;
+            if ($user?->email) {
+                Mail::to($user->email)->send(new WithdrawalRequestedConfirmation($withdrawal->fresh(['user'])));
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to send publisher withdrawal confirmation', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function getHistory(Request $request)
     {
         try {
@@ -224,25 +261,32 @@ class WithdrawalController extends Controller
 
             $query = Withdrawal::where('user_id', $user->id);
 
-            if ($request->has('status') && in_array($request->status, ['pending', 'processing', 'completed', 'cancelled'])) {
+            if ($request->has('status') && in_array($request->status, ['pending', 'processing', 'completed', 'cancelled'], true)) {
                 $query->where('status', $request->status);
             }
 
-            if ($request->has('from_date')) {
+            if ($request->filled('from_date')) {
                 $query->whereDate('created_at', '>=', $request->from_date);
             }
-            if ($request->has('to_date')) {
+            if ($request->filled('to_date')) {
                 $query->whereDate('created_at', '<=', $request->to_date);
             }
 
-            $withdrawals = $query->orderBy('created_at', 'desc')->paginate(20);
+            $withdrawals = $query->orderBy('created_at', 'desc')->paginate(10);
 
             $withdrawals->getCollection()->transform(function ($w) {
                 return [
                     'id' => $w->id,
-                    'amount' => $w->amount,
+                    'reference' => 'WD-'.$w->id,
+                    'amount' => (float) $w->amount,
+                    'fee' => (float) $w->fee,
+                    'net_amount' => (float) $w->net_amount,
                     'payment_method' => $w->payment_method,
+                    'destination_snippet' => $w->destination_snippet,
+                    'destination_copy_text' => $w->destination_copy_text,
                     'status' => $w->status,
+                    'status_label' => $w->publisher_status_label,
+                    'cancellable' => $w->isCancellableByPublisher(),
                     'created_at' => $w->created_at,
                     'processed_at' => $w->processed_at,
                 ];
@@ -272,7 +316,7 @@ class WithdrawalController extends Controller
                 ->sum('net_amount');
 
             $pendingWithdrawals = Withdrawal::where('user_id', $user->id)
-                ->where('status', 'pending')
+                ->whereIn('status', ['pending', 'processing'])
                 ->sum('amount');
 
             $withdrawalCount = Withdrawal::where('user_id', $user->id)->count();
@@ -300,21 +344,10 @@ class WithdrawalController extends Controller
         try {
             $user = auth()->user();
 
-            $withdrawal = Withdrawal::where('user_id', $user->id)
-                ->where('id', $id)
-                ->where('status', 'pending')
-                ->first();
-
-            if (! $withdrawal) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Withdrawal request not found or cannot be cancelled',
-                ]);
-            }
-
             DB::beginTransaction();
 
-            $withdrawal = Withdrawal::where('id', $withdrawal->id)
+            $withdrawal = Withdrawal::where('user_id', $user->id)
+                ->where('id', $id)
                 ->where('status', 'pending')
                 ->lockForUpdate()
                 ->first();
@@ -325,7 +358,7 @@ class WithdrawalController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Withdrawal request not found or cannot be cancelled',
-                ]);
+                ], 404);
             }
 
             $wallet = $user->activeWallet();
@@ -333,10 +366,35 @@ class WithdrawalController extends Controller
                 $wallet = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
                 if ($wallet) {
                     $wallet->credit((float) $withdrawal->amount);
+                    try {
+                        app(WalletLedgerService::class)->recordAdjustment(
+                            $wallet,
+                            (float) $withdrawal->amount,
+                            'credit',
+                            $withdrawal,
+                            'WD-'.$withdrawal->id.'-cancel',
+                            'Withdrawal cancelled — funds returned to wallet',
+                            [
+                                'withdrawal_id' => $withdrawal->id,
+                                'reason' => 'withdrawal_cancelled_by_user',
+                            ]
+                        );
+                    } catch (\Throwable $e) {
+                        Log::warning('Failed to record withdrawal cancel ledger credit', [
+                            'withdrawal_id' => $withdrawal->id,
+                            'error' => $e->getMessage(),
+                        ]);
+                    }
                 }
             }
 
             $withdrawal->status = 'cancelled';
+            if (Schema::hasColumn('withdrawals', 'cancelled_by')) {
+                $withdrawal->cancelled_by = Withdrawal::CANCELLED_BY_USER;
+            }
+            if (Schema::hasColumn('withdrawals', 'cancelled_at')) {
+                $withdrawal->cancelled_at = now();
+            }
             $withdrawal->save();
 
             DB::commit();

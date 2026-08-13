@@ -83,26 +83,56 @@ class CatalogHomepagePreviewTest extends TestCase
 
         $this->assertStringContainsString('Homepage preview', $html);
         $this->assertStringContainsString('site-preview-zoom', $html);
-        $this->assertStringContainsString('storage/site-screenshots/home-full.webp', $html);
-        $this->assertStringNotContainsString('storage/sites/admin-upload.webp', $html);
-        // Eager src so Safari loads captures that start inside display:none expand rows.
+        // Previews live in Site Details expand only — not on catalog rows.
+        $this->assertStringNotContainsString('catalog-th-preview', $html);
+        $this->assertStringNotContainsString('site-row-preview', $html);
+        $this->assertStringNotContainsString('catalog-preview-cell', $html);
+        $this->assertStringContainsString('colspan="7"', $html);
+        $this->assertStringNotContainsString('colspan="8"', $html);
+        // Expand preview carries My Sites–style floating zoom attrs.
         $this->assertMatchesRegularExpression(
-            '/site-preview-zoom[\s\S]*?<img[^>]+src="[^"]*site-screenshots\/home-full\.webp"/',
+            '/site-preview-zoom[^>]*data-zoom-src="/',
+            $html
+        );
+        $this->assertStringContainsString('data-zoom-chain', $html);
+        $this->assertStringContainsString('media/site-screenshots/home-full.webp', $html);
+        $this->assertStringContainsString('/storage/site-screenshots/home-full.webp', $html);
+        $this->assertStringContainsString('data-preview-chain', $html);
+        // Cover is last in the onerror chain only — primary data-src must be the homepage capture.
+        $this->assertMatchesRegularExpression(
+            '/data-src="[^"]*\/media\/site-screenshots\/home-full\.webp"/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/data-src="[^"]*sites\/admin-upload\.webp"/',
+            $html
+        );
+        // Deferred data-src; hydrateExpandScreenshots promotes it on first open (Safari-safe).
+        $this->assertMatchesRegularExpression(
+            '/site-preview-zoom[\s\S]*?<img[^>]+data-src="[^"]*site-screenshots\/home-full\.webp"/',
             $html
         );
         $this->assertMatchesRegularExpression(
-            '/site-preview-zoom[\s\S]*?<img[^>]+loading="eager"/',
+            '/site-preview-zoom[\s\S]*?<img[^>]+class="[^"]*catalog-deferred-preview/',
             $html
         );
         // First open still hydrates any deferred data-src imgs (assets must exist).
         $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
         $this->assertStringContainsString('function hydrateExpandScreenshots', $js);
         $this->assertStringContainsString('img.catalog-deferred-preview[data-src]', $js);
+        $this->assertStringContainsString('window.catalogSitePreviewOnError', $js);
+        $this->assertStringNotContainsString('window.catalogRowPreviewOnError', $js);
+        $this->assertStringContainsString('function initCatalogExpandPreviewZoom', $js);
+        $this->assertStringContainsString('.site-preview-zoom[data-zoom-src]', $js);
         $this->assertStringContainsString('hydrateExpandScreenshots(expandedRow)', $js);
+        $this->assertStringContainsString('function syncDefaultHomepagePrices', $js);
+        $this->assertStringContainsString('syncDefaultHomepagePrices()', $js);
 
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
         $this->assertStringContainsString('padding-top: 62.5%', $css);
         $this->assertStringContainsString('.site-preview-zoom img', $css);
+        $this->assertStringNotContainsString('.catalog-page .site-row-preview', $css);
+        $this->assertStringContainsString('.site-preview-zoom-pop', $css);
         $this->assertStringContainsString('object-fit: contain', $css);
         // Hover zoom restored, gated for fine pointers + reduced-motion (Safari-safe).
         $this->assertStringContainsString('@media (hover: hover) and (pointer: fine)', $css);
@@ -123,8 +153,9 @@ class CatalogHomepagePreviewTest extends TestCase
 
         $this->assertStringContainsString(
             'site-screenshots/thumb-only.webp',
-            (string) $thumbOnly->screenshot_url
+            (string) $thumbOnly->screenshot_thumb_url
         );
+        $this->assertStringStartsWith('/media/', (string) $thumbOnly->screenshot_thumb_url);
 
         $uploadOnly = $this->makeSite([
             'site_name' => 'Upload Only',
@@ -138,22 +169,55 @@ class CatalogHomepagePreviewTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('storage/site-screenshots/thumb-only.webp', $html);
-        $this->assertStringContainsString('storage/sites/cover-only.webp', $html);
+        $this->assertStringContainsString('media/site-screenshots/thumb-only.webp', $html);
+        $this->assertStringContainsString('/storage/site-screenshots/thumb-only.webp', $html);
+        $this->assertStringContainsString('media/sites/cover-only.webp', $html);
+        $this->assertStringContainsString('/storage/sites/cover-only.webp', $html);
     }
 
     public function test_broken_preview_fallback_beats_bootstrap_d_none(): void
     {
         $css = (string) file_get_contents(public_path('assets/css/catalog.css'));
-        // Preview markup moved into the shared results partial (Phase 1).
-        $blade = (string) file_get_contents(resource_path('views/advertiser/catalog.blade.php'))
-            ."\n"
-            .(string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
+        $blade = (string) file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
+        $js = (string) file_get_contents(public_path('assets/js/catalog.js'));
 
         $this->assertStringContainsString(
             '.site-preview-zoom.is-broken + .site-preview-fallback { display: inline-flex !important; }',
             $css
         );
-        $this->assertStringContainsString("f.classList.remove('d-none')", $blade);
+        $this->assertStringContainsString('catalogSitePreviewOnError', $blade);
+        $this->assertStringNotContainsString('catalogRowPreviewOnError', $blade);
+        $this->assertStringContainsString('window.catalogSitePreviewOnError', $js);
+        $this->assertStringNotContainsString('window.catalogRowPreviewOnError', $js);
+        $this->assertStringContainsString("f.classList.remove('d-none')", $js);
+        $this->assertStringContainsString('data-preview-chain', $blade);
+        $this->assertStringContainsString('initCatalogExpandPreviewZoom', $js);
+    }
+
+    public function test_expand_preview_emits_zoom_chain_full_first(): void
+    {
+        $this->makeSite([
+            'site_name' => 'Zoom Expand',
+            'site_url' => 'https://zoom-expand.example',
+            'domain' => 'zoom-expand.example',
+            'site_image' => 'sites/row-cover.webp',
+            'screenshot_path' => 'site-screenshots/row-full.webp',
+            'screenshot_thumb_path' => 'site-screenshots/row-thumb.webp',
+        ]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('site-row-preview', $html);
+        $this->assertMatchesRegularExpression(
+            '/site-preview-zoom[^>]*data-zoom-src="\/media\/site-screenshots\/row-full\.webp"/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/data-src="[^"]*\/media\/site-screenshots\/row-full\.webp"/',
+            $html
+        );
     }
 }

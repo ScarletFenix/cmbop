@@ -69,19 +69,26 @@
   position: relative;
   width: min(120px, 100%);
   max-width: 120px;
-  aspect-ratio: var(--site-preview-ratio);
   height: auto;
   border-radius: 10px;
   overflow: hidden;
   border: 1px solid var(--border-subtle);
   background: linear-gradient(145deg, #f8fafb 0%, #eef2f5 100%);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+  display: block;
   flex-shrink: 0;
   cursor: zoom-in;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  min-height: 64px;
+}
+
+/* Padding-top frame: absolute <img> does not contribute height; aspect-ratio alone
+   was collapsing thumbs to blank in some admin table layouts. */
+.site-row-preview::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 62.5%; /* 10 / 16 */
 }
 
 .site-row-preview:hover,
@@ -91,10 +98,14 @@
   outline: none;
 }
 
+/* contain = full desktop homepage in the 16:10 frame (cover crops/zooms). */
 .site-row-preview img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  max-width: none;
+  object-fit: contain;
   object-position: center top;
   display: block;
   background: #f8fafc;
@@ -112,45 +123,72 @@
   cursor: default;
 }
 
+.site-row-preview.is-empty > i {
+  position: absolute;
+  inset: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .site-row-preview.is-empty:hover img,
 .site-row-preview.is-empty:focus-visible img {
   transform: none;
 }
 
 .site-preview-detail {
-  width: min(100%, 220px);
-  aspect-ratio: 16 / 10;
+  position: relative;
+  width: min(100%, 360px);
   overflow: hidden;
   border-radius: var(--radius-sm, 8px);
   margin-top: 4px;
   border: 1px solid var(--border-subtle);
   background: #f8fafc;
+  min-height: 120px;
+}
+
+.site-preview-detail::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 62.5%;
 }
 
 .site-preview-detail img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: cover;
+  max-width: none;
+  object-fit: contain;
   object-position: center top;
   display: block;
 }
 
-/* Admin / marketing site-edit upload preview (desktop 16:10 frame). */
+/* Admin / marketing site-edit upload preview — full desktop 16:10 frame.
+   Use padding-top for height (not aspect-ratio alone): absolute <img> children
+   do not contribute to parent height, and Swal flex layouts were collapsing the
+   frame to 0px → “blank image” after select/upload. */
 .site-image-desktop-preview {
   position: relative;
-  width: min(100%, 360px);
+  width: 100%;
+  max-width: 720px;
   margin-top: 0.75rem;
   overflow: hidden;
   border-radius: 10px;
   border: 1px solid #e2e8f0;
   background: #f8fafc;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  flex-shrink: 0;
+  align-self: stretch;
+  min-height: 180px;
 }
 
 .site-image-desktop-preview::before {
   content: '';
   display: block;
   width: 100%;
-  padding-top: 62.5%; /* 10 / 16 — Safari-safe vs aspect-ratio alone */
+  padding-top: 62.5%; /* 10 / 16 */
 }
 
 .site-image-desktop-preview img {
@@ -162,6 +200,7 @@
   object-fit: contain;
   object-position: center top;
   display: block;
+  background: #f8fafc;
 }
 
 .site-image-desktop-preview.is-empty {
@@ -177,6 +216,75 @@
   justify-content: center;
   padding: 0.75rem;
   text-align: center;
+}
+
+/* SweetAlert portals to body as display:flex — keep the frame full-width. */
+.swal2-popup .site-image-desktop-preview,
+.swal2-html-container .site-image-desktop-preview {
+  max-width: none;
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+}
+
+.swal2-html-container .site-image-desktop-preview {
+  margin-top: 0.5rem;
+}
+
+/* Floating hover zoom for Sites Management row thumbs (desktop 16:10). */
+.site-preview-zoom-pop {
+  position: fixed;
+  z-index: 1200;
+  width: min(520px, calc(100vw - 24px));
+  max-height: min(340px, calc(100vh - 24px));
+  padding: 6px;
+  border-radius: 12px;
+  border: 1px solid rgba(26, 88, 94, 0.18);
+  background: rgba(255, 255, 255, 0.94);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
+  pointer-events: none;
+  opacity: 0;
+  transform: translateY(4px) scale(0.98);
+  transition: opacity .16s ease, transform .16s ease;
+  overflow: hidden;
+}
+
+.site-preview-zoom-pop.is-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.site-preview-zoom-pop::before {
+  content: '';
+  display: block;
+  width: 100%;
+  padding-top: 62.5%;
+}
+
+.site-preview-zoom-pop img {
+  position: absolute;
+  inset: 6px;
+  width: calc(100% - 12px);
+  height: calc(100% - 12px);
+  max-width: none;
+  object-fit: contain;
+  object-position: center top;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: block;
+}
+
+@media (hover: none) {
+  .site-preview-zoom-pop { display: none !important; }
+  .site-row-preview { cursor: default; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-preview-zoom-pop {
+    transition: none;
+  }
 }
 
 .site-details {

@@ -1,9 +1,60 @@
 /* Publisher My Sites — expects window.PublisherWebsitesConfig */
 (function () {
     if (!window.PublisherWebsitesConfig) {
-        window.PublisherWebsitesConfig = { csrfToken: '', maxBulkRows: 200, routes: {}, old: {}, languageCountryMap: {} };
+        window.PublisherWebsitesConfig = {
+            csrfToken: '',
+            maxBulkRows: 200,
+            routes: {},
+            old: {},
+            countryLanguageMap: {},
+            languageCountryMap: {},
+        };
     }
 })();
+
+/**
+ * Row preview onerror: /media → /storage chain (Hostinger symlink recovery).
+ * Safe to redefine; Blade inline may set this first when dual-loaded.
+ */
+window.publisherSitePreviewOnError = window.publisherSitePreviewOnError || function (img) {
+    if (!img) return;
+    var chain = [];
+    try {
+        chain = JSON.parse(img.getAttribute('data-preview-chain') || '[]');
+    } catch (e) {
+        chain = [];
+    }
+    if (!Array.isArray(chain)) chain = [];
+    var i = parseInt(img.getAttribute('data-preview-i') || '0', 10);
+    if (isNaN(i) || i < 0) i = 0;
+    var next = i + 1;
+    if (next < chain.length && chain[next]) {
+        img.setAttribute('data-preview-i', String(next));
+        img.src = chain[next];
+        return;
+    }
+    img.onerror = null;
+    img.removeAttribute('src');
+    var wrap = img.closest('.site-row-preview');
+    if (wrap) {
+        wrap.classList.add('is-empty');
+        wrap.removeAttribute('data-zoom-src');
+        wrap.removeAttribute('data-zoom-chain');
+        wrap.innerHTML = '<i class="fa fa-image" aria-hidden="true"></i>';
+    }
+};
+
+/*
+ * Legacy dual-load: websites.blade.php still ships a full inline script.
+ * When that flag is set, skip this file's form/table boot to avoid
+ * re-binding selects and double-fetching the sites table.
+ * Accept / Decline / Get Verified / Feature / Discount / Bulk always bind below
+ * (outside this gate).
+ */
+if (window.__publisherWebsitesInlineLoaded) {
+    // no-op — Blade inline owns form/table behaviour.
+} else {
+(function publisherWebsitesExternalBoot() {
 
 const addBtn = $('#showFormBtn');
 const bulkBtn = $('#showBulkRequestBtn');
@@ -109,6 +160,65 @@ $('#sensitiveDisclosureBtn').on('click', function () {
     $(this).attr('aria-expanded', open ? 'true' : 'false');
     $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
 });
+
+$('#placementDisclosureBtn').on('click', function () {
+    const panel = $('#placementDisclosurePanel');
+    const open = panel.prop('hidden');
+    panel.prop('hidden', !open);
+    $(this).attr('aria-expanded', open ? 'true' : 'false');
+    $(this).find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+});
+
+function setPlacementDisclosureOpen(open) {
+    const panel = $('#placementDisclosurePanel');
+    const btn = $('#placementDisclosureBtn');
+    if (!panel.length || !btn.length) return;
+    panel.prop('hidden', !open);
+    btn.attr('aria-expanded', open ? 'true' : 'false');
+    btn.find('i').toggleClass('fa-chevron-right', !open).toggleClass('fa-chevron-down', open);
+}
+
+function clearHomepageSocialFields() {
+    $('.homepage-checkbox').prop('checked', false);
+    $('.homepage-price').val('');
+    $('.social-checkbox').prop('checked', false);
+}
+
+function fillHomepageSocialFromSite(site) {
+    clearHomepageSocialFields();
+    let hasPlacement = false;
+
+    let homepage = site.homepage_placement_prices || null;
+    if (typeof homepage === 'string') {
+        try { homepage = JSON.parse(homepage); } catch (e) { homepage = null; }
+    }
+    if (homepage && typeof homepage === 'object') {
+        Object.keys(homepage).forEach(function (days) {
+            const $cb = $(`#homepage${days}`);
+            if (!$cb.length) return;
+            $cb.prop('checked', true);
+            $(`input[name="price_homepage[${days}]"]`).val(homepage[days]);
+            hasPlacement = true;
+        });
+    }
+
+    let social = site.social_promotion || null;
+    if (typeof social === 'string') {
+        try { social = JSON.parse(social); } catch (e) { social = null; }
+    }
+    if (social && typeof social === 'object') {
+        ['facebook', 'instagram', 'x'].forEach(function (channel) {
+            if (!social[channel]) return;
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', true);
+            hasPlacement = true;
+        });
+    }
+
+    if (hasPlacement) {
+        setPlacementDisclosureOpen(true);
+    }
+}
 
 // FR3 — inline validation on blur
 function markFieldValidity(el) {
@@ -290,94 +400,98 @@ function initSingleSelect(wrapperId, inputId, dropdownId, optionsId, hiddenInput
 // Categories use shared Catalog-parity multi-select (public/js/multi-select.js):
 // Enter adds sole/focused match, Backspace peels last chip, empty state, max 7.
 
-window.languageCountryMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.languageCountryMap) || {};
-const languageCountryMap = window.languageCountryMap;
+window.countryLanguageMap = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.countryLanguageMap)
+    || window.countryLanguageMap
+    || {};
+const countryLanguageMap = window.countryLanguageMap;
 
-// Single language + single country (country list filtered by language)
-let languageSingleSelect = initSingleSelect(
-    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
-    'selectedLanguage', 'languageSearch', 'languageValue', 'Select language...'
-);
+// Country first → language list filtered by allowed pairs
 let countrySingleSelect = initSingleSelect(
     'countryWrapper', 'countryInput', 'countryDropdown', 'countryOptions',
-    'selectedCountry', 'countrySearch', 'countryValue', 'Select language first...'
+    'selectedCountry', 'countrySearch', 'countryValue', 'Select country...'
+);
+let languageSingleSelect = initSingleSelect(
+    'languageWrapper', 'languageInput', 'languageDropdown', 'languageOptions',
+    'selectedLanguage', 'languageSearch', 'languageValue', 'Select country first...'
 );
 
-function relatedCountryCodesForLanguage(langCode) {
+function relatedLanguageCodesForCountry(countryCode) {
     const related = [];
-    (languageCountryMap[langCode] || []).forEach(item => {
+    (countryLanguageMap[countryCode] || []).forEach(item => {
         const code = typeof item === 'string' ? item : (item.code || '');
         if (code) related.push(String(code).toLowerCase());
     });
     return Array.from(new Set(related));
 }
 
-function applyLanguageCountryFilter(langCode, { clearCountry = true } = {}) {
-    const hint = $('#relatedCountriesHint');
-    if (!langCode) {
-        // No language yet: all countries visible but not selectable
-        countrySingleSelect.setAllowedValues([]);
-        countrySingleSelect.setPlaceholder('Select language first...');
-        if (clearCountry) countrySingleSelect.clearSelection();
-        hint.text('Select a language first.');
+function applyCountryLanguageFilter(countryCode, { clearLanguage = true, preferLanguage = null } = {}) {
+    const hint = $('#relatedLanguagesHint');
+    if (!countryCode) {
+        languageSingleSelect.setAllowedValues([]);
+        languageSingleSelect.setPlaceholder('Select country first...');
+        if (clearLanguage) languageSingleSelect.clearSelection();
+        if (hint.length) hint.text('Select a country first.');
         return;
     }
 
-    const relatedCodes = relatedCountryCodesForLanguage(langCode);
-    // Fade non-matching countries (keep them visible, non-selectable)
-    countrySingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
-    countrySingleSelect.setPlaceholder('Select country...');
-    if (clearCountry) countrySingleSelect.clearSelection();
+    const relatedCodes = relatedLanguageCodesForCountry(countryCode);
+    languageSingleSelect.setAllowedValues(relatedCodes.length ? relatedCodes : null);
+    languageSingleSelect.setPlaceholder('Select language...');
+    if (clearLanguage) languageSingleSelect.clearSelection();
 
-    if (relatedCodes.length) {
+    if (relatedCodes.length === 1) {
+        const only = relatedCodes[0];
+        const opt = $(`#languageOptions .single-select-option[data-value="${only}"]`);
+        if (opt.length) {
+            languageSingleSelect.setSelectedValue(only, opt.data('label'));
+        }
+        if (hint.length) hint.text('Language locked to ' + (opt.data('label') || only.toUpperCase()) + ' for this country.');
+    } else if (relatedCodes.length) {
+        if (preferLanguage && relatedCodes.indexOf(String(preferLanguage).toLowerCase()) !== -1) {
+            const code = String(preferLanguage).toLowerCase();
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
+            if (opt.length) languageSingleSelect.setSelectedValue(code, opt.data('label'));
+        }
         const labels = relatedCodes.map(code => {
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
             return opt.length ? opt.data('label') : code.toUpperCase();
         });
-        hint.text('Suggested: ' + labels.join(', '));
-    } else {
-        hint.text('All markets selectable for this language.');
+        if (hint.length) hint.text('Allowed: ' + labels.join(', '));
+    } else if (hint.length) {
+        hint.text('No paired languages for this country.');
     }
 }
 
-let syncingLanguageCountry = false;
-$('#selectedLanguage').on('change', function() {
-    if (syncingLanguageCountry) return;
-    applyLanguageCountryFilter($(this).val() || '', { clearCountry: true });
+let syncingCountryLanguage = false;
+$('#selectedCountry').on('change', function() {
+    if (syncingCountryLanguage) return;
+    applyCountryLanguageFilter($(this).val() || '', { clearLanguage: true });
 });
 
-// Start with countries locked until language is chosen
-applyLanguageCountryFilter('', { clearCountry: false });
+// Start with languages locked until country is chosen
+applyCountryLanguageFilter('', { clearLanguage: false });
 
 
 // Restore validation-old values from Blade config (if any)
 (function hydratePublisherSiteFormOld() {
     const old = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.old) || {};
-    if (old.language) {
-        (function() {
-            const code = String(old.language).toLowerCase();
-            const opt = $(`#languageOptions .single-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                syncingLanguageCountry = true;
-                languageSingleSelect.setSelectedValue(code, opt.data('label'));
-                applyLanguageCountryFilter(code, { clearCountry: false });
-                syncingLanguageCountry = false;
-            }
-        })();
-    }
     if (old.country) {
-        (function() {
-            const code = String(old.country).toLowerCase();
-            const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
-            if (opt.length) {
-                countrySingleSelect.setSelectedValue(code, opt.data('label'));
-            }
-        })();
+        const code = String(old.country).toLowerCase();
+        const opt = $(`#countryOptions .single-select-option[data-value="${code}"]`);
+        if (opt.length) {
+            syncingCountryLanguage = true;
+            countrySingleSelect.setSelectedValue(code, opt.data('label'));
+            applyCountryLanguageFilter(code, {
+                clearLanguage: false,
+                preferLanguage: old.language ? String(old.language).toLowerCase() : null
+            });
+            syncingCountryLanguage = false;
+        }
     }
 })();
 
 // Initialize Category Multi Select (max 7) — guard so a missing multi-select.js
-// cannot abort this file before Get Verified / feature handlers register.
+// never throws and breaks country/language selects further down this file.
 let categoryMultiSelect = null;
 try {
     if (typeof window.initMultiSelect === 'function') {
@@ -463,12 +577,23 @@ function saveSiteDraft() {
             siteDescription: quill ? quill.root.innerHTML : ($('#siteDescription').val() || ''),
             sensitive: {},
             price_sensitive: {},
+            homepage: {},
+            price_homepage: {},
+            social: {},
             step: wizardStep,
             savedAt: Date.now()
         };
         ['crypto','trading','CBD','forex'].forEach(topic => {
             draft.sensitive[topic] = $(`#sensitive${topic}`).is(':checked');
             draft.price_sensitive[topic] = $(`input[name="price_sensitive[${topic}]"]`).val();
+        });
+        [1, 7, 30].forEach(days => {
+            draft.homepage[days] = $(`#homepage${days}`).is(':checked');
+            draft.price_homepage[days] = $(`input[name="price_homepage[${days}]"]`).val();
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            draft.social[channel] = $(id).is(':checked');
         });
         localStorage.setItem(SITE_DRAFT_KEY, JSON.stringify(draft));
         $('#wizardDraftHint').text('Draft saved');
@@ -518,18 +643,36 @@ function loadSiteDraft() {
             $(`#sensitive${topic}`).prop('checked', !!(draft.sensitive && draft.sensitive[topic]));
             $(`input[name="price_sensitive[${topic}]"]`).val((draft.price_sensitive && draft.price_sensitive[topic]) || '');
         });
-
-        if (draft.language) {
-            const langOpt = $(`#languageOptions .single-select-option[data-value="${draft.language}"]`);
-            if (langOpt.length) {
-                languageSingleSelect.setSelectedValue(draft.language, langOpt.data('label'));
-            }
+        let hasPlacementDraft = false;
+        [1, 7, 30].forEach(days => {
+            const on = !!(draft.homepage && draft.homepage[days]);
+            $(`#homepage${days}`).prop('checked', on);
+            $(`input[name="price_homepage[${days}]"]`).val((draft.price_homepage && draft.price_homepage[days]) || '');
+            if (on) hasPlacementDraft = true;
+        });
+        ['facebook', 'instagram', 'x'].forEach(channel => {
+            const on = !!(draft.social && draft.social[channel]);
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            $(id).prop('checked', on);
+            if (on) hasPlacementDraft = true;
+        });
+        if (hasPlacementDraft) {
+            setPlacementDisclosureOpen(true);
         }
+
         if (draft.country) {
             const countryOpt = $(`#countryOptions .single-select-option[data-value="${draft.country}"]`);
             if (countryOpt.length) {
+                syncingCountryLanguage = true;
                 countrySingleSelect.setSelectedValue(draft.country, countryOpt.data('label'));
+                applyCountryLanguageFilter(draft.country, {
+                    clearLanguage: false,
+                    preferLanguage: draft.language || null
+                });
+                syncingCountryLanguage = false;
             }
+        } else {
+            applyCountryLanguageFilter('', { clearLanguage: true });
         }
         if (draft.categories) {
             const raw = String(draft.categories);
@@ -585,13 +728,13 @@ function validateWizardStep(step) {
     }
 
     if (step === 2) {
-        if (!languageSingleSelect.getSelectedValue()) {
-            ok = false;
-            message = message || 'Please select a language.';
-        }
         if (!countrySingleSelect.getSelectedValue()) {
             ok = false;
             message = message || 'Please select a country / market.';
+        }
+        if (!languageSingleSelect.getSelectedValue()) {
+            ok = false;
+            message = message || 'Please select a language.';
         }
         if (categoryMultiSelect.getSelectedItems().length === 0) {
             ok = false;
@@ -658,7 +801,7 @@ addBtn.on('click', function() {
         // Reset selects
         languageSingleSelect.clearSelection();
         countrySingleSelect.clearSelection();
-        applyLanguageCountryFilter('', { clearCountry: false });
+        applyCountryLanguageFilter('', { clearLanguage: true });
         categoryMultiSelect.clearSelections();
         
         // Enable site name and URL for create
@@ -722,6 +865,33 @@ function previewNiches() {
         .split('|')
         .map(function (name) { return $.trim(name); })
         .filter(Boolean)
+        .join(', ');
+}
+
+function previewHomepagePromotions() {
+    const parts = [];
+    [1, 7, 30].forEach(function (days) {
+        if (!$('#homepage' + days).is(':checked')) return;
+        const raw = $.trim($('input[name="price_homepage[' + days + ']"]').val() || '');
+        const fee = raw === '' ? 0 : parseFloat(raw);
+        const label = days + ' day' + (days > 1 ? 's' : '');
+        if (!Number.isFinite(fee) || fee <= 0) {
+            parts.push(label + ' — Free');
+        } else {
+            parts.push(label + ' — +€' + fee.toFixed(2));
+        }
+    });
+    return parts.join('; ');
+}
+
+function previewSocialChannels() {
+    const labels = { facebook: 'Facebook', instagram: 'Instagram', x: 'X' };
+    return ['facebook', 'instagram', 'x']
+        .filter(function (channel) {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            return $(id).is(':checked');
+        })
+        .map(function (channel) { return labels[channel] || channel; })
         .join(', ');
 }
 
@@ -806,6 +976,8 @@ function buildSitePreview() {
     html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
     html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
     html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Homepage promotions', previewHomepagePromotions(), { emptyLabel: 'None', optional: true });
+    html += previewRow('Social', previewSocialChannels(), { emptyLabel: 'None', optional: true });
     html += '</div>';
 
     html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
@@ -1127,6 +1299,10 @@ function initSitePreviewZoom(root) {
 }
 
 function fetchSites(page = 1, query = '', opts = {}) {
+    window.__publisherSitesList = {
+        page: parseInt(page, 10) || 1,
+        query: query == null ? '' : String(query),
+    };
     $('#sitesTableWrapper').html('<div class="text-muted">Loading...</div>');
 
     $.ajax({
@@ -1304,11 +1480,13 @@ closeBtn.on('click', function(){
     $('.tag-checkbox').prop('checked', false);
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     
     // Reset selects
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    applyLanguageCountryFilter('', { clearCountry: false });
+    applyCountryLanguageFilter('', { clearLanguage: true });
     categoryMultiSelect.clearSelections();
     
     $('#siteName').prop('disabled', false);
@@ -1412,6 +1590,8 @@ $(document).on('click', '.btn-edit', function() {
     // Sensitive topics
     $('.sensitive-checkbox').prop('checked', false);
     $('.sensitive-price').val('');
+    clearHomepageSocialFields();
+    setPlacementDisclosureOpen(false);
     
     if (site.sensitive_prices) {
         let prices = typeof site.sensitive_prices === 'string' ? JSON.parse(site.sensitive_prices) : site.sensitive_prices;
@@ -1420,30 +1600,29 @@ $(document).on('click', '.btn-edit', function() {
             $(`input[name="price_sensitive[${key}]"]`).val(prices[key]);
         }
     }
+
+    fillHomepageSocialFromSite(site);
     
-    // Set Language (1) then Country (1) filtered by that language
+    // Country first, then paired language
     const langCode = (site.language || site.language_code || (Array.isArray(site.languages) ? site.languages[0] : null) || '').toString().toLowerCase();
     const countryCode = (site.country || site.country_code || (Array.isArray(site.countries) ? site.countries[0] : null) || '').toString().toLowerCase();
 
-    syncingLanguageCountry = true;
+    syncingCountryLanguage = true;
     languageSingleSelect.clearSelection();
     countrySingleSelect.clearSelection();
-    if (langCode) {
-        const langOpt = $(`#languageOptions .single-select-option[data-value="${langCode}"]`);
-        if (langOpt.length) {
-            languageSingleSelect.setSelectedValue(langCode, langOpt.data('label'));
-            applyLanguageCountryFilter(langCode, { clearCountry: false });
-        }
-    } else {
-        applyLanguageCountryFilter('', { clearCountry: false });
-    }
     if (countryCode) {
         const countryOpt = $(`#countryOptions .single-select-option[data-value="${countryCode}"]`);
         if (countryOpt.length) {
             countrySingleSelect.setSelectedValue(countryCode, countryOpt.data('label'));
+            applyCountryLanguageFilter(countryCode, {
+                clearLanguage: false,
+                preferLanguage: langCode || null
+            });
         }
+    } else {
+        applyCountryLanguageFilter('', { clearLanguage: true });
     }
-    syncingLanguageCountry = false;
+    syncingCountryLanguage = false;
     
     // Set Categories
     categoryMultiSelect.clearSelections();
@@ -1478,6 +1657,32 @@ $(document).on('click', '.btn-edit', function() {
         scrollTop: $("#formCard").offset().top - 100
     }, 500);
 });
+})(); // publisherWebsitesExternalBoot
+}
+
+/*
+ * Always-on row actions: Blade sets __publisherWebsitesInlineLoaded and skips the
+ * form/table boot above, but Accept / Decline / Get Verified / promotions still need handlers.
+ */
+(function publisherWebsitesAlwaysOnActions() {
+'use strict';
+
+function reloadPublisherSitesTable(page) {
+    const last = window.__publisherSitesList || { page: 1, query: '' };
+    const q = (window.jQuery && $('#siteSearch').length)
+        ? $('#siteSearch').val()
+        : last.query;
+    const p = page || last.page || 1;
+    if (typeof window.loadSites === 'function') {
+        window.loadSites(p, q);
+    }
+}
+
+function setPublisherSitesFilter(status) {
+    if (typeof window.setSitesStatusFilter === 'function') {
+        window.setSitesStatusFilter(status);
+    }
+}
 
 /* —— File-based site verification —— */
 function verificationCsrfToken() {
@@ -1600,8 +1805,7 @@ async function openSiteVerificationDialog(siteId, siteName) {
 
     if (data.verified) {
         await Swal.fire({ icon: 'success', title: 'Already verified', text: data.message || 'This website is already verified.' });
-        if (typeof window.loadSites === 'function') window.loadSites();
-        else if (typeof fetchSites === 'function') fetchSites();
+        reloadPublisherSitesTable();
         return;
     }
     if (!data.success || !data.token) {
@@ -1681,8 +1885,7 @@ async function openSiteVerificationDialog(siteId, siteName) {
                 title: 'Verified!',
                 text: result.message || 'Your Verified badge is now live.',
             });
-            if (typeof window.loadSites === 'function') window.loadSites();
-            else if (typeof fetchSites === 'function') fetchSites();
+            reloadPublisherSitesTable();
             break;
         }
 
@@ -1694,6 +1897,8 @@ async function openSiteVerificationDialog(siteId, siteName) {
         });
     }
 }
+
+window.openSiteVerificationDialog = openSiteVerificationDialog;
 
 $(document).on('click', '.btn-verify-site', function () {
     const id = $(this).data('id');
@@ -1733,8 +1938,8 @@ $(document).on('click', '.btn-accept-assignment', async function () {
     try {
         const data = await postSiteAssignment(`/publisher/sites/${id}/accept-assignment`);
         Swal.fire({ icon: 'success', title: data.message || 'Accepted', timer: 2200, showConfirmButton: false });
-        sitesStatusFilter = 'pending';
-        fetchSites(1, $('#siteSearch').val());
+        setPublisherSitesFilter('pending');
+        reloadPublisherSitesTable(1);
     } catch (e) {
         Swal.fire({ icon: 'error', title: e.message || 'Could not accept' });
     }
@@ -1755,19 +1960,58 @@ $(document).on('click', '.btn-reject-assignment', async function () {
     try {
         const data = await postSiteAssignment(`/publisher/sites/${id}/reject-assignment`);
         Swal.fire({ icon: 'success', title: data.message || 'Declined', timer: 2200, showConfirmButton: false });
-        fetchSites(1, $('#siteSearch').val());
+        reloadPublisherSitesTable(1);
     } catch (e) {
         Swal.fire({ icon: 'error', title: e.message || 'Could not decline' });
     }
 });
 
-/* —— Site promotions: Feature / Discount / Bulk —— */
-const promoCsrf = (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken) || '';
+/* —— Site promotions: Feature / Discount / Bulk (single path) —— */
+if (!window.__publisherPromoHandlersBound) {
+window.__publisherPromoHandlersBound = true;
+
+function promoEscapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function promoCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content')
+        || (window.PublisherWebsitesConfig && window.PublisherWebsitesConfig.csrfToken)
+        || '';
+}
+
+function reloadSitesAfterPromo() {
+    reloadPublisherSitesTable();
+}
+
+function promoDaysLeft(iso) {
+    if (!iso) return 0;
+    const end = Date.parse(iso);
+    if (Number.isNaN(end)) return 0;
+    const ms = end - Date.now();
+    if (ms <= 0) return 0;
+    return Math.max(1, Math.ceil(ms / 86400000));
+}
+
+function promoFormatDate(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function promoBetterOfNote() {
+    return 'Advertisers get the better of a timed sale or bulk — they are not added together.';
+}
 
 async function startFeatureStripeCheckout(siteId) {
     const res = await fetch(`/publisher/sites/${siteId}/feature/checkout`, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
     });
     const data = await res.json().catch(() => ({}));
@@ -1779,19 +2023,41 @@ async function startFeatureStripeCheckout(siteId) {
 }
 
 $(document).on('click', '.btn-feature-site', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name');
-    let wallet = { feature_price: 10, feature_days: 7, balance: 0, top_up_url: (window.PublisherWebsitesConfig.routes.balance), stripe_available: true };
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const name = promoEscapeHtml($btn.data('name'));
+    const featuredUntil = $btn.attr('data-featured-until') || '';
+    const daysLeft = promoDaysLeft(featuredUntil);
+    const isLive = daysLeft > 0;
+    const isVerified = String($btn.attr('data-verified') ?? '1') === '1';
+    const cfg = window.PublisherWebsitesConfig || { routes: {} };
+    let wallet = {
+        feature_price: 10,
+        feature_days: 7,
+        balance: 0,
+        top_up_url: cfg.routes.balance,
+        stripe_available: true,
+    };
     try {
-        const w = await fetch((window.PublisherWebsitesConfig.routes.promotionsWallet), { headers: { 'Accept': 'application/json' }});
+        const w = await fetch(cfg.routes.promotionsWallet, { headers: { 'Accept': 'application/json' } });
         wallet = await w.json();
     } catch (e) {}
 
     const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
+    const featureDays = Number(wallet.feature_days || 7);
+    const featurePrice = Number(wallet.feature_price || 10).toFixed(2);
+    const unverifiedNote = isVerified
+        ? ''
+        : '<p class="small text-muted">This site is active but not verified. Featuring still works; advertisers may trust it less.</p>';
+    const body = isLive
+        ? `<p><strong>${name}</strong> is already featured until <strong>${promoEscapeHtml(promoFormatDate(featuredUntil))}</strong> (${daysLeft} day${daysLeft === 1 ? '' : 's'} left).</p>
+           <p>Paying <strong>€${featurePrice}</strong> adds another <strong>${featureDays} days</strong>.</p>`
+        : `<p>Feature <strong>${name}</strong> for <strong>${featureDays} days</strong> to boost catalog visibility.</p>
+           <p class="mb-1">Cost: <strong>€${featurePrice}</strong></p>`;
     const result = await Swal.fire({
-        title: 'Feature this website?',
-        html: `<p>Feature <strong>${name}</strong> for <strong>${wallet.feature_days || 7} days</strong> to boost catalog visibility.</p>
-               <p class="mb-1">Cost: <strong>€${Number(wallet.feature_price || 10).toFixed(2)}</strong></p>
+        title: isLive ? 'Extend featuring?' : 'Feature this website?',
+        html: `${body}
+               ${unverifiedNote}
                <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
                <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
         showDenyButton: !!wallet.stripe_available,
@@ -1810,7 +2076,7 @@ $(document).on('click', '.btn-feature-site', async function () {
             title: 'Insufficient balance',
             html: `Top up your wallet or pay by card.<br><br>
                    <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard">Pay by card</button>
-                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url}">Add Funds</a>`,
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url || '#'}">Add Funds</a>`,
             didOpen: () => {
                 document.getElementById('swalPayCard')?.addEventListener('click', () => startFeatureStripeCheckout(id));
             },
@@ -1821,20 +2087,20 @@ $(document).on('click', '.btn-feature-site', async function () {
 
     const res = await fetch(`/publisher/sites/${id}/feature`, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({}),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     if (data.success) {
         Swal.fire({ icon: 'success', title: 'Featured!', text: data.message });
-        if (data.success) { fetchSites(); }
+        reloadSitesAfterPromo();
     } else if (data.needs_top_up) {
         Swal.fire({
             icon: 'info',
             title: 'Top up or pay by card',
-            html: `${(typeof escapeHtml === 'function' ? escapeHtml(data.message || '') : String(data.message || '').replace(/</g,'&lt;'))}<br><br>
+            html: `${promoEscapeHtml(data.message || '')}<br><br>
                    <button type="button" class="btn btn-sm btn-primary me-1" id="swalPayCard2">Pay by card (€${Number(wallet.feature_price || 10).toFixed(2)})</button>
-                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url}">Add Funds</a>`,
+                   <a class="btn btn-sm btn-outline-secondary" href="${wallet.top_up_url || wallet.balance_url || '#'}">Add Funds</a>`,
             didOpen: () => {
                 document.getElementById('swalPayCard2')?.addEventListener('click', () => startFeatureStripeCheckout(id));
             },
@@ -1847,81 +2113,335 @@ $(document).on('click', '.btn-feature-site', async function () {
 });
 
 $(document).on('click', '.btn-discount-site', async function () {
-    const id = $(this).data('id');
-    const name = $(this).data('name');
-    const current = $(this).data('percent');
-    const { value: form } = await Swal.fire({
-        title: 'Set timed discount',
-        html: `<p class="mb-2" style="font-size:14px;color:#334155;line-height:1.45;">
-                   Lower the price of <strong>${name}</strong> for a limited time so advertisers see a clear sale in the catalog.
-               </p>
-               <p class="small text-muted mb-2">Ends automatically after the days you choose. You’ll get an email when it ends.</p>
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const name = promoEscapeHtml($btn.data('name'));
+    const current = $btn.attr('data-percent') || $btn.data('percent') || 15;
+    const endsAt = $btn.attr('data-ends') || '';
+    const remaining = promoDaysLeft(endsAt);
+    const isLive = $btn.hasClass('is-on') || remaining > 0;
+    const daysPrefill = isLive ? Math.min(90, Math.max(1, remaining || 7)) : 7;
+    const result = await Swal.fire({
+        title: isLive ? 'Update timed sale' : 'Set timed discount',
+        html: `<p class="small text-muted">${isLive
+            ? `Sale on <strong>${name}</strong> has about <strong>${daysPrefill}</strong> day${daysPrefill === 1 ? '' : 's'} left. Change the percent or remaining days, or end it now.`
+            : `Discount for <strong>${name}</strong>. Ends automatically; you’ll get an email when it ends.`}</p>
+               <p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
                <label for="swal-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount percent (1–70)</label>
-               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="e.g. 15" value="${current || 15}" aria-label="Discount percent">
+               <input id="swal-pct" type="number" min="1" max="70" class="swal2-input" placeholder="Percent (1–70)" value="${promoEscapeHtml(current)}">
                <label for="swal-days" class="small fw-semibold d-block text-start ms-3 mb-0 mt-2">Days active (1–90)</label>
-               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="e.g. 7" value="7" aria-label="Days active">`,
+               <input id="swal-days" type="number" min="1" max="90" class="swal2-input" placeholder="Days active" value="${daysPrefill}">`,
+        showDenyButton: isLive,
         showCancelButton: true,
-        confirmButtonText: 'Publish discount',
+        confirmButtonText: isLive ? 'Update sale' : 'Publish sale',
+        denyButtonText: isLive ? 'End sale now' : undefined,
+        customClass: isLive ? { denyButton: 'slb-swal-danger' } : undefined,
         preConfirm: () => ({
             percent: document.getElementById('swal-pct').value,
             days: document.getElementById('swal-days').value,
         }),
     });
-    if (!form) return;
+    if (result.isDenied) {
+        const res = await fetch(`/publisher/sites/${id}/discount`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        if (data.success) { reloadSitesAfterPromo(); }
+        return;
+    }
+    if (!result.isConfirmed || !result.value) return;
     const res = await fetch(`/publisher/sites/${id}/discount`, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(result.value),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
+    if (data.success) { reloadSitesAfterPromo(); }
 });
 
-$(document).on('click', '.btn-discount-clear', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'End this discount now?', showCancelButton: true, confirmButtonText: 'End discount', customClass: { confirmButton: 'slb-swal-danger' } });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
-});
-
-$(document).on('click', '.btn-bulk-join', async function () {
-    const id = $(this).data('id');
-    const { value: percent } = await Swal.fire({
-        title: 'Join bulk discount program',
-        input: 'number',
-        inputLabel: 'Discount % for 3–5 articles (10–15)',
-        inputValue: 10,
-        inputAttributes: { min: 10, max: 15, step: 1 },
+$(document).on('click', '.btn-bulk-site', async function () {
+    const $btn = $(this);
+    const id = $btn.data('id');
+    const joined = String($btn.attr('data-joined')) === '1';
+    const cfg = window.PublisherWebsitesConfig || {};
+    const bulkMin = Number(cfg.bulkMinPercent ?? cfg.routes?.bulkMinPercent ?? 10);
+    const bulkMax = Number(cfg.bulkMaxPercent ?? cfg.routes?.bulkMaxPercent ?? 80);
+    const currentPct = Number($btn.attr('data-percent') || bulkMin);
+    const result = await Swal.fire({
+        title: joined ? `Bulk −${currentPct}% is on` : 'Join bulk discount program',
+        html: `<p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
+               <label for="swal-bulk-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount % for 3–5 articles (${bulkMin}–${bulkMax})</label>
+               <input id="swal-bulk-pct" type="number" min="${bulkMin}" max="${bulkMax}" step="1" class="swal2-input" value="${joined ? currentPct : bulkMin}">`,
+        showDenyButton: joined,
         showCancelButton: true,
-        confirmButtonText: 'Join',
+        confirmButtonText: joined ? 'Update percent' : 'Join',
+        denyButtonText: joined ? 'Leave programme' : undefined,
+        customClass: joined ? { denyButton: 'slb-swal-danger' } : undefined,
+        preConfirm: () => {
+            const n = Number(document.getElementById('swal-bulk-pct')?.value);
+            if (!Number.isFinite(n) || n < bulkMin || n > bulkMax) {
+                Swal.showValidationMessage(`Enter a percent from ${bulkMin} to ${bulkMax}.`);
+                return false;
+            }
+            return n;
+        },
     });
-    if (percent === undefined || percent === null || percent === '') return;
+    if (result.isDenied) {
+        const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
+            method: 'DELETE',
+            headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json' },
+        });
+        const data = await res.json().catch(() => ({}));
+        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
+        if (data.success) { reloadSitesAfterPromo(); }
+        return;
+    }
+    if (!result.isConfirmed || result.value === undefined || result.value === null || result.value === '') return;
     const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
         method: 'POST',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json', 'Content-Type': 'application/json' },
-        body: JSON.stringify({ percent }),
+        headers: { 'X-CSRF-TOKEN': promoCsrfToken(), 'Accept': 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify({ percent: result.value }),
     });
-    const data = await res.json();
+    const data = await res.json().catch(() => ({}));
     Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
+    if (data.success) { reloadSitesAfterPromo(); }
+});
+}
+
+})(); // publisherWebsitesAlwaysOnActions
+
+/*
+ * Listing preview before submit — always-on so it works when Blade owns the form.
+ * Blade calls window.showSiteListingPreview() from the inline submit gate.
+ */
+(function publisherWebsitesListingPreview() {
+'use strict';
+
+window.sitePreviewConfirmed = false;
+
+function previewEscape(str) {
+    return String(str === null || str === undefined ? '' : str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+}
+
+function previewValue(selector) {
+    const $el = $(selector);
+    if (!$el.length) return '';
+    if ($el.is('select')) {
+        const label = $el.find('option:selected').text();
+        return $.trim(label || $el.val() || '');
+    }
+    return $.trim($el.val() || '');
+}
+
+function previewLabelFor(hiddenSelector, optionsSelector) {
+    const value = $.trim($(hiddenSelector).val() || '');
+    if (!value) return '';
+
+    const $option = $(optionsSelector).find('[data-value="' + value.replace(/"/g, '\\"') + '"]').first();
+    return $.trim($option.data('label') || $option.text() || value);
+}
+
+function previewNiches() {
+    return $.trim($('#selectedCategories').val() || '')
+        .split('|')
+        .map(function (name) { return $.trim(name); })
+        .filter(Boolean)
+        .join(', ');
+}
+
+function previewHomepagePromotions() {
+    const parts = [];
+    [1, 7, 30].forEach(function (days) {
+        if (!$('#homepage' + days).is(':checked')) return;
+        const raw = $.trim($('input[name="price_homepage[' + days + ']"]').val() || '');
+        const fee = raw === '' ? 0 : parseFloat(raw);
+        const label = days + ' day' + (days > 1 ? 's' : '');
+        if (!Number.isFinite(fee) || fee <= 0) {
+            parts.push(label + ' — Free');
+        } else {
+            parts.push(label + ' — +€' + fee.toFixed(2));
+        }
+    });
+    return parts.join('; ');
+}
+
+function previewSocialChannels() {
+    const labels = { facebook: 'Facebook', instagram: 'Instagram', x: 'X' };
+    return ['facebook', 'instagram', 'x']
+        .filter(function (channel) {
+            const id = '#social' + channel.charAt(0).toUpperCase() + channel.slice(1);
+            return $(id).is(':checked');
+        })
+        .map(function (channel) { return labels[channel] || channel; })
+        .join(', ');
+}
+
+function previewRow(label, value, opts) {
+    opts = opts || {};
+    const missing = !value;
+    const shown = missing ? (opts.emptyLabel || 'Not set') : value;
+    const cls = missing ? (opts.optional ? 'text-muted' : 'text-danger fst-italic') : '';
+    return '<div class="row g-2 py-2 border-bottom">' +
+        '<div class="col-5 col-md-4 text-muted small">' + previewEscape(label) + '</div>' +
+        '<div class="col-7 col-md-8 ' + cls + '">' + previewEscape(shown) + '</div>' +
+        '</div>';
+}
+
+function previewDescriptionBlock(description) {
+    if (!description) {
+        return '<div class="border rounded-3 p-3 mb-3"><span class="text-danger fst-italic">Not set</span></div>';
+    }
+
+    return '<div class="border rounded-3 p-3 mb-3 site-preview-desc-wrap">' +
+        '<div class="site-preview-desc is-clamped">' + previewEscape(description) + '</div>' +
+        '<button type="button" class="btn btn-link btn-sm px-0 mt-1 site-preview-desc-toggle d-none" ' +
+            'aria-expanded="false">Show more</button>' +
+        '</div>';
+}
+
+function syncSitePreviewDescToggles(root) {
+    if (!root) return;
+    root.querySelectorAll('.site-preview-desc-wrap').forEach(function (wrap) {
+        const desc = wrap.querySelector('.site-preview-desc');
+        const btn = wrap.querySelector('.site-preview-desc-toggle');
+        if (!desc || !btn) return;
+
+        const wasExpanded = !desc.classList.contains('is-clamped');
+        desc.classList.add('is-clamped');
+        const needsToggle = desc.scrollHeight > desc.clientHeight + 1;
+        if (!needsToggle) {
+            desc.classList.remove('is-clamped');
+            btn.classList.add('d-none');
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+            return;
+        }
+
+        btn.classList.remove('d-none');
+        if (wasExpanded) {
+            desc.classList.remove('is-clamped');
+            btn.setAttribute('aria-expanded', 'true');
+            btn.textContent = 'Show less';
+        } else {
+            btn.setAttribute('aria-expanded', 'false');
+            btn.textContent = 'Show more';
+        }
+    });
+}
+
+function publisherQuill() {
+    if (typeof window.getPublisherQuill === 'function') {
+        return window.getPublisherQuill();
+    }
+    return null;
+}
+
+function buildSitePreview() {
+    const price = previewValue('#addSiteForm [name="price"]');
+    const q = publisherQuill();
+    const description = q
+        ? $.trim($(q.root).text())
+        : $.trim($('<div>').html($('#siteDescription').val() || '').text());
+
+    let html = '<div class="mb-3">' +
+        '<div class="fw-semibold fs-5">' + previewEscape(previewValue('#addSiteForm [name="siteName"]') || 'Untitled site') + '</div>' +
+        '<div class="text-muted small">' + previewEscape(previewValue('#addSiteForm [name="siteUrl"]')) + '</div>' +
+        '</div>';
+
+    html += '<div class="border rounded-3 p-3 mb-3">';
+    html += previewRow('Price advertisers pay', price ? '€' + price : '');
+    html += previewRow('Domain Authority (DA)', previewValue('#addSiteForm [name="da"]'));
+    html += previewRow('Domain Rating (DR)', previewValue('#addSiteForm [name="dr"]'));
+    html += previewRow('Monthly traffic', previewValue('#addSiteForm [name="traffic"]'));
+    html += previewRow('Country', previewLabelFor('#selectedCountry', '#countryOptions'));
+    html += previewRow('Language', previewLabelFor('#selectedLanguage', '#languageOptions'));
+    html += previewRow('Niches', previewNiches());
+    html += previewRow('Link type', previewValue('#addSiteForm [name="link_type"]'));
+    html += previewRow('Turnaround time', previewValue('#addSiteForm [name="turnaround_time"]'));
+    html += previewRow('Publication time', previewValue('#addSiteForm [name="publicationTime"]'));
+    html += previewRow('Site tag', previewValue('#addSiteForm [name="site_tag"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Example post', previewValue('#addSiteForm [name="exampleUrl"]'), { emptyLabel: 'None', optional: true });
+    html += previewRow('Homepage promotions', previewHomepagePromotions(), { emptyLabel: 'None', optional: true });
+    html += previewRow('Social', previewSocialChannels(), { emptyLabel: 'None', optional: true });
+    html += '</div>';
+
+    html += '<div class="text-muted small mb-1">Description advertisers will read</div>';
+    html += previewDescriptionBlock(description);
+
+    const turnaround = previewValue('#addSiteForm [name="turnaround_time"]');
+    if (turnaround) {
+        html += '<div class="alert alert-light border small mb-0">' +
+            'Once you accept an order we will expect the article live within <strong>' +
+            previewEscape(turnaround) + '</strong>, and will remind you as that deadline approaches.' +
+            '</div>';
+    }
+
+    return html;
+}
+
+window.showSiteListingPreview = function showSiteListingPreview() {
+    const body = document.getElementById('sitePreviewBody');
+    const modalEl = document.getElementById('sitePreviewModal');
+    if (!body || !modalEl || !window.bootstrap) {
+        console.warn('Site listing preview modal is missing');
+        return;
+    }
+    body.innerHTML = buildSitePreview();
+    const previewModal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    previewModal.show();
+    requestAnimationFrame(function () {
+        syncSitePreviewDescToggles(body);
+    });
+};
+
+function resetPublisherSubmitButton() {
+    const isEdit = $('#methodField').val() === 'PUT';
+    $('#submitBtn').prop('disabled', false).text(isEdit ? 'Review & update' : 'Review & submit');
+}
+
+$('#sitePreviewConfirmBtn').on('click', function () {
+    window.sitePreviewConfirmed = true;
+    const q = publisherQuill();
+    if (q) {
+        $('#siteDescription').val(q.root.innerHTML);
+    }
+    if ($('#methodField').val() !== 'PUT' && typeof window.clearSiteDraft === 'function') {
+        window.clearSiteDraft();
+    }
+    const modalEl = document.getElementById('sitePreviewModal');
+    const instance = modalEl && bootstrap.Modal.getInstance(modalEl);
+    if (instance) instance.hide();
+
+    const formEl = document.getElementById('addSiteForm');
+    $('#submitBtn').prop('disabled', true).html('<span class="loading-spinner"></span> Saving...');
+    if (formEl) {
+        HTMLFormElement.prototype.submit.call(formEl);
+    }
 });
 
-$(document).on('click', '.btn-bulk-leave', async function () {
-    const id = $(this).data('id');
-    const ok = await Swal.fire({ title: 'Leave bulk program?', showCancelButton: true, confirmButtonText: 'Leave' });
-    if (!ok.isConfirmed) return;
-    const res = await fetch(`/publisher/sites/${id}/bulk-discount`, {
-        method: 'DELETE',
-        headers: { 'X-CSRF-TOKEN': promoCsrf, 'Accept': 'application/json' },
-    });
-    const data = await res.json();
-    Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' });
-    if (data.success) { fetchSites(); }
+$('#sitePreviewBody').on('click', '.site-preview-desc-toggle', function () {
+    const wrap = this.closest('.site-preview-desc-wrap');
+    const desc = wrap ? wrap.querySelector('.site-preview-desc') : null;
+    if (!desc) return;
+    const expanded = desc.classList.toggle('is-clamped') === false;
+    this.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    this.textContent = expanded ? 'Show less' : 'Show more';
 });
+
+document.getElementById('sitePreviewModal')?.addEventListener('shown.bs.modal', function () {
+    syncSitePreviewDescToggles(document.getElementById('sitePreviewBody'));
+});
+
+window.addEventListener('pageshow', function () {
+    window.sitePreviewConfirmed = false;
+    resetPublisherSubmitButton();
+});
+
+})(); // publisherWebsitesListingPreview

@@ -107,6 +107,11 @@ class ManualWithdrawalSettlementService
                 $locked->admin_notes = $notes;
             }
 
+            if ($newStatus === 'cancelled') {
+                $locked->cancelled_by = Withdrawal::CANCELLED_BY_ADMIN;
+                $locked->cancelled_at = now();
+            }
+
             if ($newStatus === 'completed') {
                 $locked->processed_at = now();
             }
@@ -123,16 +128,16 @@ class ManualWithdrawalSettlementService
         });
 
         if (! $result['unchanged']) {
+            if ($result['new_status'] === 'completed') {
+                $this->issuePayoutStatement($result['withdrawal']);
+            }
+
             $this->notifyStatusChange(
                 $result['withdrawal'],
                 $result['old_status'],
                 $result['new_status'],
                 $notes
             );
-
-            if ($result['new_status'] === 'completed') {
-                $this->issuePayoutStatement($result['withdrawal']);
-            }
         }
 
         if (! $quiet && ! $result['unchanged']) {

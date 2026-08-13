@@ -13,8 +13,12 @@ use App\Models\Language;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
+use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\PublicStorageLink;
+use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -259,7 +263,9 @@ class SiteController extends Controller
      * @return array{thumb: ?string, full: ?string, fallbacks: list<string>}
      */
     /**
-     * Relative public URL for a path on the public disk (avoids APP_URL host mismatch).
+     * Staff preview URL for a public-disk path.
+     * Prefer /{admin|marketing}/sites/media/... (Laravel disk stream) so Hostinger
+     * broken public/storage symlinks do not blank row/detail previews.
      */
     private function staffPublicStorageUrl(?string $path): ?string
     {
@@ -273,10 +279,44 @@ class SiteController extends Controller
         }
 
         if (str_starts_with($normalized, 'storage/')) {
-            return '/'.$normalized;
+            $normalized = ltrim(substr($normalized, strlen('storage/')), '/');
+        }
+        if ($normalized === '') {
+            return null;
         }
 
-        return '/storage/'.$normalized;
+        return rtrim(staff_base_path(), '/').'/sites/media/'.$normalized;
+    }
+
+    /**
+     * Client onerror chain: staff media → /storage → public /media.
+     *
+     * @return list<string>
+     */
+    private function staffPublicStorageUrlFallbacks(?string $path): array
+    {
+        if (! is_string($path) || trim($path) === '') {
+            return [];
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $path), '/');
+        if ($normalized === '') {
+            return [];
+        }
+        if (str_starts_with($normalized, 'storage/')) {
+            $normalized = ltrim(substr($normalized, strlen('storage/')), '/');
+        }
+        if ($normalized === '') {
+            return [];
+        }
+
+        $staff = $this->staffPublicStorageUrl($normalized);
+
+        return array_values(array_unique(array_filter([
+            $staff,
+            '/storage/'.$normalized,
+            '/media/'.$normalized,
+        ])));
     }
 
     /**
@@ -297,25 +337,26 @@ class SiteController extends Controller
             return null;
         };
 
-        // List: prefer light thumb → upload → full desktop (full last so list stays light).
+        // List: prefer uploaded cover, then screenshot thumb, then full capture.
+        // Admin "Images" uploads must win over stale auto-screenshots or rows look blank.
         $thumbPath = $firstPath([
-            $site->screenshot_thumb_path,
             $site->site_image,
+            $site->screenshot_thumb_path,
             $site->screenshot_path,
         ]);
 
-        // Hover/detail: prefer full desktop → upload → thumb.
+        // Hover/detail: prefer full desktop capture, then upload, then thumb.
         $fullPath = $firstPath([
             $site->screenshot_path,
             $site->site_image,
             $site->screenshot_thumb_path,
         ]);
 
-        // onerror chain: thumb → upload → full (recover from stale screenshot paths quickly).
+        // onerror chain: upload → thumb → full
         $ordered = [];
         foreach ([
-            $site->screenshot_thumb_path,
             $site->site_image,
+            $site->screenshot_thumb_path,
             $site->screenshot_path,
         ] as $path) {
             if (! is_string($path) || trim($path) === '') {
@@ -328,9 +369,10 @@ class SiteController extends Controller
 
         $fallbacks = [];
         foreach ($ordered as $path) {
-            $url = $this->staffPublicStorageUrl($path);
-            if ($url && ! in_array($url, $fallbacks, true)) {
-                $fallbacks[] = $url;
+            foreach ($this->staffPublicStorageUrlFallbacks($path) as $url) {
+                if (! in_array($url, $fallbacks, true)) {
+                    $fallbacks[] = $url;
+                }
             }
         }
 
@@ -383,6 +425,10 @@ class SiteController extends Controller
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
+            'agency_site_import_id' => Site::hasSitesColumn('agency_site_import_id')
+                ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
+                : null,
+            'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
@@ -471,14 +517,33 @@ class SiteController extends Controller
             'site_image',
             'screenshot_path',
             'screenshot_thumb_path',
+            'agency_site_import_id',
+            'metrics_manual',
             'created_at',
             'updated_at',
         ];
 
         $select = array_values(array_filter(
             $columns,
-            static fn (string $column) => in_array($column, ['id', 'publisher_id', 'site_name', 'site_url', 'domain', 'da', 'dr', 'traffic', 'price', 'active', 'verified', 'country', 'language', 'category', 'link_type', 'sponsored', 'description', 'example_url', 'created_at', 'updated_at'], true)
-                || Site::hasSitesColumn($column)
+            static fn (string $column) => in_array($column, [
+                'id', 'publisher_id', 'site_name', 'site_url', 'domain',
+                'da', 'dr', 'traffic', 'price', 'active', 'verified',
+                'country', 'language', 'category', 'link_type', 'sponsored',
+                'description', 'example_url', 'created_at', 'updated_at',
+                // Always try to select image cols — blank row previews if omitted.
+                'site_image', 'screenshot_path', 'screenshot_thumb_path',
+            ], true) || Site::hasSitesColumn($column)
+        ));
+
+        $select = array_values(array_filter(
+            $select,
+            static function (string $column) {
+                if (! in_array($column, ['site_image', 'screenshot_path', 'screenshot_thumb_path'], true)) {
+                    return true;
+                }
+
+                return Site::hasSitesColumn($column);
+            }
         ));
 
         $sites = Site::query()
@@ -514,6 +579,7 @@ class SiteController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
         $selectedPublisherId = (int) $request->query('publisher', 0);
 
         return view('admin.site-create', compact(
@@ -521,6 +587,7 @@ class SiteController extends Controller
             'languages',
             'countries',
             'categories',
+            'countryLanguageMap',
             'selectedPublisherId'
         ));
     }
@@ -599,7 +666,7 @@ class SiteController extends Controller
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
         ], $this->siteImageValidationMessages());
 
-        $validator->after(function ($validator) use ($request, $domain) {
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -612,6 +679,15 @@ class SiteController extends Controller
 
             if (Site::where('domain', $domain)->exists()) {
                 $validator->errors()->add('site_url', 'This website domain is already registered.');
+            }
+
+            $country = $countryCodes[0] ?? null;
+            $language = $languageCodes[0] ?? null;
+            if ($country && $language && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
             }
         });
 
@@ -638,7 +714,16 @@ class SiteController extends Controller
 
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
-                    $imagePath = $request->file('site_image')->store('sites', 'public');
+                    $disk = Storage::disk('public');
+                    $disk->makeDirectory('sites');
+                    $stored = $request->file('site_image')->store('sites', 'public');
+                    if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                        throw ValidationException::withMessages([
+                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                        ]);
+                    }
+                    PublicStorageLink::ensure();
+                    $imagePath = $stored;
                 }
 
                 $da = (int) $request->input('da');
@@ -778,6 +863,7 @@ class SiteController extends Controller
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
+        $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
 
         // Load by absolute path so a stale `view:cache` manifest cannot report
         // "View [admin.site-edit] not found" when the Blade file is on disk.
@@ -788,7 +874,8 @@ class SiteController extends Controller
                 'isMarketingEditor',
                 'languages',
                 'countries',
-                'categories'
+                'categories',
+                'countryLanguageMap'
             ));
         }
 
@@ -820,7 +907,7 @@ class SiteController extends Controller
         }
 
         if (! $file->isValid()) {
-            $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+            $mb = $this->siteImageMaxMegabytesLabel();
             $message = match ($file->getError()) {
                 UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'The site image is too large. Use a file under '.$mb.' MB.',
                 UPLOAD_ERR_PARTIAL => 'The site image upload was interrupted. Try again.',
@@ -840,17 +927,68 @@ class SiteController extends Controller
         }
 
         $request->validate([
+            // Avoid flaky finfo `image` rule on Hostinger — mimes is enough.
             'site_image' => 'required|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
 
-        // Delete old image if exists
-        if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-            Storage::disk('public')->delete($site->site_image);
+        $disk = Storage::disk('public');
+        try {
+            $disk->makeDirectory('sites');
+        } catch (\Throwable $e) {
+            Log::error('Could not create sites media directory', [
+                'error' => $e->getMessage(),
+                'root' => config('filesystems.disks.public.root'),
+            ]);
+            $message = 'Could not prepare image storage. Check disk permissions and MEDIA_PATH.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
         }
 
-        // Store new image and persist on the site (admin + marketing).
+        $previous = is_string($site->site_image) ? $site->site_image : null;
+
+        // Store new image first — only delete the previous file after success.
         $path = $file->store('sites', 'public');
+        if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
+            $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
+
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
+        // Heal / verify public/storage. Hostinger open_basedir often makes is_file()
+        // fail even when the web server can serve the file — never roll back a good save.
+        $ensure = PublicStorageLink::ensure();
+        $publicLinked = PublicStorageLink::pathIsPubliclyReachable($path);
+        if (! $publicLinked) {
+            Log::warning('Site image stored; public/storage probe failed (kept upload)', [
+                'path' => $path,
+                'disk_root' => config('filesystems.disks.public.root'),
+                'public_storage' => public_path('storage'),
+                'media_path' => config('filesystems.media_path'),
+                'ensure' => $ensure,
+            ]);
+        }
+
         $site->update(['site_image' => $path]);
+
+        if ($previous && $previous !== $path && $disk->exists($previous)) {
+            $disk->delete($previous);
+        }
 
         ActivityLogger::log(
             'site.image_uploaded',
@@ -860,16 +998,35 @@ class SiteController extends Controller
             $site->site_name
         );
 
+        $imageUrl = $this->staffPublicStorageUrl($path);
+        // Cache-bust so browsers do not keep a prior broken/blank response.
+        $imageUrlWithBust = $imageUrl ? ($imageUrl.'?v='.time()) : null;
+
+        $message = 'Image uploaded successfully';
+        if (! $publicLinked) {
+            $message = 'Image saved. Preview uses a secure media URL; run php artisan media:ensure-link if /storage still 404s publicly.';
+        }
+
         return response()->json([
             'success' => true,
             'image_path' => $path,
-            'message' => 'Image uploaded successfully',
+            'image_url' => $imageUrlWithBust,
+            'storage_ok' => $publicLinked,
+            'message' => $message,
         ]);
     }
 
     // UPDATE (supports partial + full updates safely)
     public function update(Request $request, $id)
     {
+        try {
+            app(CheckoutSchemaService::class)->ensureCheckoutTables();
+        } catch (\Throwable $e) {
+            Log::warning('Admin site schema ensure failed', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+
         $site = Site::findOrFail($id);
         $user = auth()->user();
         $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
@@ -951,15 +1108,35 @@ class SiteController extends Controller
                     ]);
                 }
 
+                // mimes only — Hostinger finfo often rejects valid WebP/JPEG via `image`.
                 $request->validate([
                     'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
                 ], $this->siteImageValidationMessages());
 
-                if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                    Storage::disk('public')->delete($site->site_image);
+                $disk = Storage::disk('public');
+                $disk->makeDirectory('sites');
+                $previous = is_string($site->site_image) ? $site->site_image : null;
+
+                $stored = $upload->store('sites', 'public');
+                if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                    throw ValidationException::withMessages([
+                        'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
                 }
 
-                $data['site_image'] = $upload->store('sites', 'public');
+                PublicStorageLink::ensure();
+                if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                    Log::warning('Site image saved via update; public/storage probe failed (kept upload)', [
+                        'path' => $stored,
+                        'disk_root' => config('filesystems.disks.public.root'),
+                    ]);
+                }
+
+                if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                    $disk->delete($previous);
+                }
+
+                $data['site_image'] = $stored;
             } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
                 // JSON/AJAX path: image path already uploaded via upload-image.
                 $data['site_image'] = $request->site_image;
@@ -967,14 +1144,37 @@ class SiteController extends Controller
                 unset($data['site_image']);
             }
 
+            // Admin edit form: homepage/social offers shown to advertisers in Site Details.
+            $placementPatch = null;
+            if ($request->boolean('placement_offers_form')) {
+                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $placementPatch = [
+                    'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
+                    'social_promotion' => $this->collectSocialPromotion($request),
+                ];
+            }
+
             // Prevent overwriting NOT NULL fields with null
             $data = array_filter($data, function ($value) {
                 return $value !== null;
             });
 
+            if ($placementPatch !== null) {
+                // Allow null to clear offers when admin unchecks everything.
+                $data = array_merge($data, $placementPatch);
+            }
+
             if (isset($data['description']) && is_string($data['description'])) {
                 $data['description'] = app(SiteDescriptionSanitizer::class)
                     ->sanitize($data['description']);
+            }
+
+            $country = strtolower(trim((string) ($data['country'] ?? $site->country ?? '')));
+            $language = strtolower(trim((string) ($data['language'] ?? $site->language ?? '')));
+            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                throw ValidationException::withMessages([
+                    'language' => ['That language is not allowed for the selected country. Pick country first, then a paired language.'],
+                ]);
             }
         }
 
@@ -1061,6 +1261,12 @@ class SiteController extends Controller
             if ($country !== '' && ! in_array($country, $allowedCountries, true)) {
                 $validator->errors()->add('country', 'Choose a valid marketplace country.');
             }
+            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
+            }
 
             foreach ($unknownNiches as $cat) {
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
@@ -1114,22 +1320,98 @@ class SiteController extends Controller
                 return back()->withErrors(['site_image' => $message])->withInput();
             }
 
-            if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-                Storage::disk('public')->delete($site->site_image);
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
+            $previous = is_string($site->site_image) ? $site->site_image : null;
+
+            $stored = $upload->store('sites', 'public');
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 500);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
             }
 
-            $payload['site_image'] = $upload->store('sites', 'public');
+            PublicStorageLink::ensure();
+            if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                Log::warning('Site image saved via marketing update; public/storage probe failed (kept upload)', [
+                    'path' => $stored,
+                    'disk_root' => config('filesystems.disks.public.root'),
+                ]);
+            }
+
+            if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                $disk->delete($previous);
+            }
+
+            $payload['site_image'] = $stored;
+        } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
+            // JSON/AJAX path: image already persisted via upload-image.
+            $path = (string) $request->input('site_image');
+            if ($path !== '' && ! str_contains($path, '..')) {
+                $payload['site_image'] = ltrim(str_replace('\\', '/', $path), '/');
+            }
         }
 
         return $payload;
     }
 
     /**
-     * Max upload size for site cover images (kilobytes). Matches public/.user.ini.
+     * @return array<string, float>
+     */
+    private function collectHomepagePlacementPrices(Request $request): array
+    {
+        $out = [];
+        foreach (config('site_placement.homepage_days', [1, 7, 30]) as $days) {
+            if (! $request->boolean("homepage.$days")) {
+                continue;
+            }
+
+            $raw = $request->input("price_homepage.$days");
+            $price = ($raw === null || $raw === '') ? 0.0 : (float) $raw;
+            if ($price < 0) {
+                continue;
+            }
+
+            $out[(string) $days] = round($price, 2);
+        }
+
+        return $out;
+    }
+
+    /**
+     * @return array<string, true>|null
+     */
+    private function collectSocialPromotion(Request $request): ?array
+    {
+        $channels = [];
+        foreach (config('site_placement.social_channels', ['facebook', 'instagram', 'x']) as $channel) {
+            if ($request->boolean("social.$channel")) {
+                $channels[$channel] = true;
+            }
+        }
+
+        return $channels === [] ? null : $channels;
+    }
+
+    /**
+     * Max upload size for site cover images (kilobytes).
+     * App cap 10 MB, also clamped to PHP upload_max_filesize / post_max_size.
      */
     private function siteImageMaxKilobytes(): int
     {
-        return 10240; // 10 MB
+        return SiteImageUpload::maxKilobytes();
+    }
+
+    private function siteImageMaxMegabytesLabel(): int
+    {
+        return SiteImageUpload::maxMegabytesLabel();
     }
 
     /**
@@ -1137,7 +1419,7 @@ class SiteController extends Controller
      */
     private function siteImageValidationMessages(): array
     {
-        $mb = (int) floor($this->siteImageMaxKilobytes() / 1024);
+        $mb = $this->siteImageMaxMegabytesLabel();
 
         return [
             'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',

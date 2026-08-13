@@ -127,7 +127,11 @@
             <i class="fa fa-users"></i> <span>Users</span>
         </a>
         <a href="{{ route('admin.community.index') }}" class="{{ request()->routeIs('admin.community.*') ? 'active' : '' }}">
-            <i class="fa fa-comments"></i> <span>Community</span>
+            <i class="fa fa-comments"></i>
+            <span class="d-flex align-items-center w-100">
+                <span>Community</span>
+                <span id="navBadgeCommunity" class="badge bg-warning text-dark rounded-pill ms-auto" style="display:none;">0</span>
+            </span>
         </a>
 
         <div class="admin-nav-section">Growth</div>
@@ -302,6 +306,7 @@
             setNavBadge('navBadgeWithdrawals', data.pending_withdrawals || 0);
             setNavBadge('navBadgeSites', data.unverified_sites || 0);
             setNavBadge('navBadgePayments', data.pending_payments || 0);
+            setNavBadge('navBadgeCommunity', data.pending_claims || 0);
         })
         .catch(() => {});
     }
