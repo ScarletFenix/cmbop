@@ -3,444 +3,136 @@
 @section('title', 'Balance')
 
 @section('content')
+@php
+    $publisher = $publisher ?? \App\Models\Wallet::emptyRoleSnapshot();
+    $advertiser = $advertiser ?? \App\Models\Wallet::emptyRoleSnapshot();
+    $minWithdrawalAmount = (float) ($minWithdrawalAmount ?? config('billing.withdrawal_min_amount', 20));
+    $canWithdraw = (bool) ($canWithdraw ?? false);
+    $showAdvertiserWallet = (bool) ($showAdvertiserWallet ?? false);
+    $publisherDebt = (float) ($publisher['debt'] ?? $publisherDebt ?? 0);
+    $withdrawDisabledReason = $publisherDebt > 0
+        ? 'Withdrawals are blocked while you have outstanding clawback debt of €'.number_format($publisherDebt, 2).'. Contact support to resolve this before withdrawing.'
+        : 'You need at least €'.number_format($minWithdrawalAmount, 2).' withdrawable balance to request a payout. Available now: €'.number_format((float) $publisher['withdrawable'], 2).'.';
+@endphp
+<link rel="stylesheet" href="{{ asset('assets/css/publisher-balance.css') }}?v={{ @filemtime(public_path('assets/css/publisher-balance.css')) ?: '1' }}">
+
 <div class="container-fluid">
-    
-    <!-- HEADER -->
     <div class="row mb-4">
         <div class="col-md-12">
             <h1 class="mb-1 fw-semibold">Balance</h1>
             <p class="text-muted mb-0">
-                View your balances and transfer funds from Publisher to Advertiser wallet.
+                Publisher earnings on this wallet. Internal transfers to an Advertiser wallet are no longer offered.
             </p>
         </div>
     </div>
 
-    @if(($publisherDebt ?? 0) > 0)
+    @if($publisherDebt > 0)
         <div class="alert alert-danger border-0 shadow-sm mb-4" role="alert">
-            <strong>Outstanding clawback debt:</strong> €{{ number_format((float) $publisherDebt, 2) }}.
+            <strong>Outstanding clawback debt:</strong> €{{ number_format($publisherDebt, 2) }}.
             Withdrawals are blocked until support clears this debt.
         </div>
     @endif
 
-    <!-- Balance Cards -->
-    <div class="row">
-        <!-- Publisher Balance Card -->
-        <div class="col-md-4 mb-4">
-            <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white fw-semibold">
-                    <i class="fa fa-wallet me-2 text-primary"></i> 
-                    Your Balance
+    <div class="pb-wallet-grid mb-4">
+        <article class="pb-wallet-card" aria-labelledby="publisherEarningsLabel">
+            <div class="pb-wallet-card__header">
+                <span class="pb-wallet-card__label" id="publisherEarningsLabel">Publisher earnings</span>
+                <x-glass-tip
+                    title="Publisher earnings"
+                    body="Cash you can withdraw. Bonus is for purchases only and is not included. Amounts on hold have already left this total. Clawback debt blocks withdrawals; it does not reduce this number."
+                    label="About publisher earnings"
+                    placement="top" />
+            </div>
+            <div class="pb-wallet-card__value" id="publisherBalance">€{{ number_format((float) $publisher['withdrawable'], 2) }}</div>
+            <p class="pb-wallet-card__sub">Withdrawable</p>
+
+            @if((float) $publisher['reserved'] > 0 || (float) $publisher['bonus'] > 0 || (float) $publisher['debt'] > 0)
+                <div class="pb-wallet-card__chips">
+                    @if((float) $publisher['reserved'] > 0)
+                        <div class="pb-wallet-card__chip">
+                            <span class="pb-wallet-card__chip-label">On hold</span>
+                            <span class="pb-wallet-card__chip-value">€{{ number_format((float) $publisher['reserved'], 2) }}</span>
+                        </div>
+                    @endif
+                    @if((float) $publisher['bonus'] > 0)
+                        <div class="pb-wallet-card__chip pb-wallet-card__chip--bonus">
+                            <span class="pb-wallet-card__chip-label">Bonus</span>
+                            <span class="pb-wallet-card__chip-value">€{{ number_format((float) $publisher['bonus'], 2) }}</span>
+                        </div>
+                    @endif
+                    @if((float) $publisher['debt'] > 0)
+                        <div class="pb-wallet-card__chip pb-wallet-card__chip--debt">
+                            <span class="pb-wallet-card__chip-label">Debt</span>
+                            <span class="pb-wallet-card__chip-value">€{{ number_format((float) $publisher['debt'], 2) }}</span>
+                        </div>
+                    @endif
+                </div>
+            @endif
+
+            @if($canWithdraw)
+                <p class="pb-wallet-card__status pb-wallet-card__status--ready">Ready to withdraw</p>
+            @else
+                <p class="pb-wallet-card__status" id="withdrawBlockedReason">{{ $withdrawDisabledReason }}</p>
+            @endif
+
+            <div class="pb-wallet-card__actions">
+                @if($canWithdraw)
+                    <a href="{{ route('publisher.withdraw') }}" class="btn btn-primary" id="withdrawCta">
+                        Withdraw
+                    </a>
+                @else
+                    <span class="pb-disabled-wrap" tabindex="0" data-glass-tip data-glass-tip-body="{{ $withdrawDisabledReason }}" data-glass-tip-placement="top">
+                        <button type="button" class="btn btn-primary" id="withdrawCta" disabled>
+                            Withdraw
+                        </button>
+                    </span>
+                @endif
+            </div>
+        </article>
+
+        @if($showAdvertiserWallet)
+            <article class="pb-wallet-card" aria-labelledby="advertiserSpendableLabel">
+                <div class="pb-wallet-card__header">
+                    <span class="pb-wallet-card__label" id="advertiserSpendableLabel">Advertiser (spendable)</span>
                     <x-glass-tip
-                        class="ms-1"
-                        title="Your Balance"
-                        body="Money you earned. You can transfer it to your Advertiser wallet or withdraw it."
-                        label="About your balance"
+                        title="Advertiser spendable"
+                        body="Money you can spend on placements. Bonus is welcome credit for purchases only and cannot be withdrawn."
+                        label="About advertiser spendable"
                         placement="top" />
                 </div>
-                <div class="card-body text-center">
-                    <h2 class="mb-0" id="publisherBalance" style="color: #10b981;">€{{ number_format($publisherBalance, 2) }}</h2>
-                    <p class="text-muted small mt-2 mb-0">Ready to transfer or withdraw</p>
-                </div>
-            </div>
-        </div>
+                <div class="pb-wallet-card__value" id="advertiserBalance">€{{ number_format((float) $advertiser['spendable'], 2) }}</div>
+                <p class="pb-wallet-card__sub">Spendable</p>
 
-        <!-- Advertiser Balance Card -->
-        <!-- <div class="col-md-8 mb-4">
-            
-        </div> -->
+                <div class="pb-wallet-card__chips">
+                    <div class="pb-wallet-card__chip">
+                        <span class="pb-wallet-card__chip-label">Money</span>
+                        <span class="pb-wallet-card__chip-value">€{{ number_format((float) $advertiser['withdrawable'], 2) }}</span>
+                    </div>
+                    <div class="pb-wallet-card__chip pb-wallet-card__chip--bonus">
+                        <span class="pb-wallet-card__chip-label">Bonus</span>
+                        <span class="pb-wallet-card__chip-value">€{{ number_format((float) $advertiser['bonus'], 2) }}</span>
+                    </div>
+                </div>
+
+                @if((float) $advertiser['bonus'] > 0)
+                    <p class="pb-wallet-card__note">
+                        <strong>Bonus €{{ number_format((float) $advertiser['bonus'], 2) }}</strong>
+                        (purchases only) — {{ \App\Models\Wallet::PROMOTIONAL_BONUS_MESSAGE }}
+                    </p>
+                @endif
+
+                <p class="pb-wallet-card__note">Publisher earnings cannot be moved into this wallet here.</p>
+
+                <div class="pb-wallet-card__actions">
+                    <a href="{{ route('advertiser.add-funds') }}" class="btn btn-primary" id="addFundsCta">Add Funds</a>
+                    <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-secondary" id="catalogCta">Catalog</a>
+                </div>
+            </article>
+        @endif
     </div>
 
-    <!-- Transfer Section -->
-    <div class="card border-0 shadow-sm mb-4">
-        <div class="card-header bg-white fw-semibold">
-            <i class="fa fa-arrow-right-arrow-left me-2 text-info"></i> Transfer to Advertiser Wallet
-        </div>
-        <div class="card-body">
-            <div class="row">
-                <div class="col-md-12">
-                    <div class="alert alert-success mb-4">
-                        <i class="fa fa-check-circle me-2"></i>
-                        <strong>0% Transfer Fee!</strong> Full amount will be transferred instantly.
-                    </div>
-                </div>
-            </div>
-
-            <div class="row">
-                <div class="col-md-6 mx-auto">
-                    <div class="mb-4">
-                        <label class="form-label fw-semibold">Amount (€)</label>
-                        <div class="input-group input-group-lg">
-                            <span class="input-group-text bg-light">
-                                <i class="fa fa-euro-sign"></i>
-                            </span>
-                            <input type="number" id="amount" class="form-control" placeholder="0.00" step="0.01" min="1">
-                        </div>
-                        <small class="text-muted">Minimum transfer: €1.00</small>
-                    </div>
-
-                    <!-- Dynamic Balance Preview -->
-                    <div class="mb-4 p-3 bg-light rounded">
-    <div class="row align-items-center text-center">
-        <!-- Left Side: Publisher Balance (After Transfer) -->
-        <div class="col-md-5">
-            <small class="text-muted">Publisher Balance</small>
-            <div class="mt-2">
-                <span class="text-muted text-decoration-line-through" id="currentPublisherBalance">€{{ number_format($publisherBalance, 2) }}</span>
-                <i class="fa fa-minus-circle text-danger mx-1"></i>
-                <span class="fw-bold" id="subtractAmount">€0.00</span>
-                <i class="fa fa-equals text-muted mx-1"></i>
-                <span class="fw-bold text-primary fs-5" id="newPublisherBalance">€{{ number_format($publisherBalance, 2) }}</span>
-            </div>
-        </div>
-
-        <!-- Arrow Icon fa exchange-alt -->
-        <div class="col-md-2">
-            <i class="fa fa-exchange-alt fa-2x text-muted"></i>
-            <i class="fa fa-arrow-down fa-2x text-muted d-md-none mt-2"></i>
-        </div>
-
-        <!-- Right Side: Advertiser Balance (After Transfer) -->
-        <div class="col-md-5">
-            <small class="text-muted">Advertiser Balance</small>
-            <div class="mt-2">
-                <span class="text-muted text-decoration-line-through" id="currentAdvertiserBalance">€{{ number_format($advertiserBalance, 2) }}</span>
-                <i class="fa fa-plus-circle text-success mx-1"></i>
-                <span class="fw-bold" id="addAmount">€0.00</span>
-                <i class="fa fa-equals text-muted mx-1"></i>
-                <span class="fw-bold text-success fs-5" id="newAdvertiserBalance">€{{ number_format($advertiserBalance, 2) }}</span>
-            </div>
-        </div>
+    <div class="alert alert-light border mb-0" role="status">
+        Internal wallet transfers are no longer offered. Use Withdraw for payouts, or switch to Advertiser to spend or add funds.
     </div>
 </div>
-
-                    <div class="d-grid">
-                        <button class="btn btn-primary btn-lg" id="transferBtn" disabled>
-                            <i class="fa fa-exchange-alt me-2"></i> Transfer to Advertiser Wallet
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Transfer History -->
-    <div class="card border-0 shadow-sm">
-        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
-            <div>
-                <i class="fa fa-history me-2"></i> Transfer History
-            </div>
-            <div>
-                <small class="text-muted" id="historyCount"></small>
-            </div>
-        </div>
-        <div class="card-body p-0">
-            <div class="table-responsive">
-                <table class="table table-hover align-middle mb-0">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Date</th>
-                            <th>Reference</th>
-                            <th>From</th>
-                            <th>To</th>
-                            <th>Amount</th>
-                            <th>Fee</th>
-                            <th>Net</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody id="transferHistoryBody">
-                        <tr>
-                            <td colspan="8" class="text-center py-5">
-                                <div class="spinner-border text-primary" role="status">
-                                    <span class="visually-hidden">Loading...</span>
-                                </div>
-                                <p class="mt-2 text-muted">Loading transfer history...</p>
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-        </div>
-        <div class="card-footer bg-white">
-            <div class="d-flex justify-content-center">
-                <nav id="historyPagination"></nav>
-            </div>
-        </div>
-    </div>
-</div>
-
-<style>
-.card-header {
-    border-bottom: 1px solid #eee;
-}
-
-.status-badge {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 11px;
-    font-weight: 600;
-    display: inline-block;
-}
-
-.status-completed {
-    background-color: #d4edda;
-    color: #155724;
-}
-
-.amount-debit {
-    color: #ef4444;
-    font-weight: 600;
-}
-
-.amount-credit {
-    color: #10b981;
-    font-weight: 600;
-}
-</style>
-
-<script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
-<script>
-let currentPage = 1;
-let publisherBalance = parseFloat('{{ $publisherBalance }}');
-let advertiserBalance = parseFloat('{{ $advertiserBalance }}');
-const baseUrl = window.location.origin;
-
-$(document).ready(function() {
-    loadTransferHistory();
-    updatePreview();
-    
-    $('#amount').on('keyup change', function() {
-        updatePreview();
-        validateTransfer();
-    });
-    
-    $('#transferBtn').on('click', function() {
-        let amount = parseFloat($('#amount').val());
-        
-        if (!amount || amount < 1) {
-            Swal.fire('Error', 'Please enter a valid amount (minimum €1)', 'error');
-            return;
-        }
-        
-        if (amount > publisherBalance) {
-            Swal.fire('Error', `Insufficient balance. Your Publisher balance is €${publisherBalance.toFixed(2)}`, 'error');
-            return;
-        }
-        
-        Swal.fire({
-            title: 'Confirm Transfer',
-            html: `<div class="text-start">
-                <p><strong>From:</strong> Publisher Wallet</p>
-                <p><strong>To:</strong> Advertiser Wallet</p>
-                <p><strong>Amount:</strong> €${amount.toFixed(2)}</p>
-                <p><strong>Fee:</strong> €0.00 (0%)</p>
-            </div>`,
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Confirm Transfer',
-            cancelButtonText: 'Cancel',
-        }).then((result) => {
-            if (result.isConfirmed) {
-                $.ajax({
-                    url: baseUrl + '/publisher/balance/transfer',
-                    method: 'POST',
-                    data: {
-                        _token: '{{ csrf_token() }}',
-                        amount: amount
-                    },
-                    beforeSend: function() {
-                        $('#transferBtn').prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Processing...');
-                    },
-                    success: function(response) {
-                        if (response.success) {
-                            Swal.fire('Success!', response.message, 'success');
-                            publisherBalance = response.publisher_balance;
-                            advertiserBalance = response.advertiser_balance;
-                            $('#publisherBalance').html('€' + publisherBalance.toFixed(2));
-                            $('#advertiserBalance').html('€' + advertiserBalance.toFixed(2));
-                            $('#currentPublisherBalance').html('€' + publisherBalance.toFixed(2));
-                            $('#currentAdvertiserBalance').html('€' + advertiserBalance.toFixed(2));
-                            $('#amount').val('');
-                            updatePreview();
-                            loadTransferHistory();
-                        } else {
-                            Swal.fire('Error!', response.message, 'error');
-                        }
-                    },
-                    error: function(xhr) {
-                        let errorMsg = xhr.responseJSON?.message || 'Transfer failed';
-                        Swal.fire('Error!', errorMsg, 'error');
-                    },
-                    complete: function() {
-                        $('#transferBtn').prop('disabled', false).html('<i class="fa fa-exchange-alt me-2"></i> Transfer to Advertiser Wallet');
-                        validateTransfer();
-                    }
-                });
-            }
-        });
-    });
-});
-
-function updatePreview() {
-    let amount = parseFloat($('#amount').val()) || 0;
-    let fee = 0;
-    
-    let newPublisherBalance = publisherBalance - amount;
-    let newAdvertiserBalance = advertiserBalance + amount;
-    
-    $('#subtractAmount').html('€' + amount.toFixed(2));
-    $('#addAmount').html('€' + amount.toFixed(2));
-    $('#newPublisherBalance').html('€' + newPublisherBalance.toFixed(2));
-    $('#newAdvertiserBalance').html('€' + newAdvertiserBalance.toFixed(2));
-    
-    // Change color if negative
-    if (newPublisherBalance < 0) {
-        $('#newPublisherBalance').css('color', '#ef4444');
-    } else {
-        $('#newPublisherBalance').css('color', '#10b981');
-    }
-}
-
-function validateTransfer() {
-    let amount = parseFloat($('#amount').val()) || 0;
-    
-    if (amount >= 1 && amount <= publisherBalance) {
-        $('#transferBtn').prop('disabled', false);
-    } else {
-        $('#transferBtn').prop('disabled', true);
-    }
-}
-
-function loadTransferHistory(page = 1) {
-    currentPage = page;
-    
-    $.ajax({
-        url: baseUrl + '/publisher/balance/history?page=' + page,
-        method: 'GET',
-        success: function(response) {
-            if (response.success) {
-                renderTransferHistory(response.transfers);
-                renderPagination(response.pagination);
-                let from = response.pagination.from || 0;
-                let to = response.pagination.to || 0;
-                let total = response.pagination.total || 0;
-                $('#historyCount').html('Showing ' + from + ' to ' + to + ' of ' + total + ' entries');
-            } else {
-                console.error('Failed to load history:', response);
-                const $body = $('#transferHistoryBody');
-                if (!$body.length) return;
-                $body.html('\
-                    <tr>\
-                        <td colspan="8" class="text-center py-5 text-danger">\
-                            Failed to load transfer history\
-                        <\/td>\
-                    <\/tr>\
-                ');
-            }
-        },
-        error: function(xhr) {
-            console.error('AJAX Error:', xhr.status, xhr.statusText);
-            const $body = $('#transferHistoryBody');
-            if (!$body.length) return;
-            $body.html('\
-                <tr>\
-                    <td colspan="8" class="text-center py-5 text-danger">\
-                        Error loading transfer history (' + xhr.status + ')\
-                    <\/td>\
-                <\/tr>\
-            ');
-        }
-    });
-}
-
-function renderTransferHistory(transfers) {
-    const $body = $('#transferHistoryBody');
-    if (!$body.length) return;
-
-    if (!transfers || transfers.length === 0) {
-        $body.html('\
-            <tr>\
-                <td colspan="8" class="text-center py-5">\
-                    <i class="fa fa-inbox fa-3x text-muted"></i>\
-                    <p class="mt-2">No transfers found</p>\
-                <\/td>\
-            <\/tr>\
-        ');
-        return;
-    }
-    
-    let html = '';
-    
-    transfers.forEach(function(transfer) {
-        let statusClass = transfer.status === 'completed' ? 'status-completed' : '';
-        let statusText = transfer.status.charAt(0).toUpperCase() + transfer.status.slice(1);
-        
-        html += '<tr>' +
-            '<td><small>' + new Date(transfer.created_at).toLocaleDateString() + '</small></td>' +
-            '<td><code class="small">' + escapeHtml(transfer.reference_code) + '</code></td>' +
-            '<td><span class="badge bg-primary">PUBLISHER</span></td>' +
-            '<td><span class="badge bg-success">ADVERTISER</span></td>' +
-            '<td class="amount-debit">- €' + parseFloat(transfer.amount).toFixed(2) + '</td>' +
-            '<td class="text-muted">€' + parseFloat(transfer.fee).toFixed(2) + '</td>' +
-            '<td class="amount-credit">+ €' + parseFloat(transfer.net_amount).toFixed(2) + '</td>' +
-            '<td><span class="status-badge ' + statusClass + '">' + statusText + '</span></td>' +
-            '</tr>';
-    });
-    
-    $body.html(html);
-}
-
-function renderPagination(pagination) {
-    if (!pagination || pagination.last_page <= 1) {
-        $('#historyPagination').html('');
-        return;
-    }
-    
-    let paginationHtml = '<ul class="pagination justify-content-center mb-0">';
-    
-    if (pagination.current_page > 1) {
-        paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page - 1) + '">Previous</button></li>';
-    } else {
-        paginationHtml += '<li class="page-item disabled"><span class="page-link">Previous</span></li>';
-    }
-    
-    for (let i = 1; i <= pagination.last_page; i++) {
-        if (i === pagination.current_page) {
-            paginationHtml += '<li class="page-item active"><span class="page-link">' + i + '</span></li>';
-        } else if (i >= pagination.current_page - 2 && i <= pagination.current_page + 2) {
-            paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + i + '">' + i + '</button></li>';
-        }
-    }
-    
-    if (pagination.current_page < pagination.last_page) {
-        paginationHtml += '<li class="page-item"><button class="page-link" data-page="' + (pagination.current_page + 1) + '">Next</button></li>';
-    } else {
-        paginationHtml += '<li class="page-item disabled"><span class="page-link">Next</span></li>';
-    }
-    
-    paginationHtml += '</ul>';
-    $('#historyPagination').html(paginationHtml);
-    
-    $('.page-link[data-page]').off('click').on('click', function() {
-        let page = parseInt($(this).data('page'));
-        if (page) {
-            loadTransferHistory(page);
-            $('html, body').animate({ scrollTop: 0 }, 'fast');
-        }
-    });
-}
-
-function escapeHtml(str) {
-    if (str == null || str === '') return '';
-    return String(str)
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#39;');
-}
-</script>
-
 @endsection

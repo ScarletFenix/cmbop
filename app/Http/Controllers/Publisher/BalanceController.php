@@ -1,7 +1,5 @@
 <?php
 
-// app/Http/Controllers/Publisher/BalanceController.php
-
 namespace App\Http\Controllers\Publisher;
 
 use App\Http\Controllers\Controller;
@@ -13,31 +11,34 @@ use Illuminate\Support\Facades\Log;
 class BalanceController extends Controller
 {
     /**
-     * Display balance page for publisher
-     * Role IDs: 2 = Publisher, 1 = Advertiser
+     * Display balance page for publisher.
      */
     public function index()
     {
         $user = auth()->user();
-
-        // Role IDs: 2 = Publisher, 1 = Advertiser
-        $publisherRoleId = 2;
-        $advertiserRoleId = 1;
-
-        // Get publisher wallet balance (role_id = 2)
         $publisherWallet = Wallet::where('user_id', $user->id)
-            ->where('role_id', $publisherRoleId)
+            ->where('role_id', Wallet::publisherRoleId())
             ->first();
-        $publisherBalance = $publisherWallet ? $publisherWallet->balance : 0;
-        $publisherDebt = $publisherWallet ? $publisherWallet->debtBalance() : 0;
-
-        // Get advertiser wallet balance (role_id = 1)
         $advertiserWallet = Wallet::where('user_id', $user->id)
-            ->where('role_id', $advertiserRoleId)
+            ->where('role_id', Wallet::advertiserRoleId())
             ->first();
-        $advertiserBalance = $advertiserWallet ? $advertiserWallet->balance : 0;
 
-        return view('publisher.balance', compact('publisherBalance', 'advertiserBalance', 'publisherDebt'));
+        $publisher = $publisherWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+        $advertiser = $advertiserWallet?->roleSnapshot() ?? Wallet::emptyRoleSnapshot();
+        $minWithdrawalAmount = max(0.01, round((float) config('billing.withdrawal_min_amount', 20), 2));
+        $canWithdraw = $publisher['debt'] <= 0 && $publisher['withdrawable'] >= $minWithdrawalAmount;
+        $showAdvertiserWallet = $advertiserWallet !== null && $user->hasRole('advertiser');
+
+        return view('publisher.balance', [
+            'publisher' => $publisher,
+            'advertiser' => $advertiser,
+            'publisherBalance' => $publisher['spendable'],
+            'advertiserBalance' => $advertiser['spendable'],
+            'publisherDebt' => $publisher['debt'],
+            'minWithdrawalAmount' => $minWithdrawalAmount,
+            'canWithdraw' => $canWithdraw,
+            'showAdvertiserWallet' => $showAdvertiserWallet,
+        ]);
     }
 
     /**
@@ -53,14 +54,13 @@ class BalanceController extends Controller
     }
 
     /**
-     * Get transfer history - ONLY show transfers FROM Publisher
+     * Get transfer history — leftover endpoint; the Balance page no longer lists transfers.
      */
     public function getTransferHistory(Request $request)
     {
         try {
             $userId = auth()->id();
 
-            // Only show transfers where from_role = 'publisher'
             $transfers = BalanceTransfer::where('user_id', $userId)
                 ->where('from_role', 'publisher')
                 ->orderBy('created_at', 'desc')

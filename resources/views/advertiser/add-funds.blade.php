@@ -18,6 +18,8 @@
     $bonusReceived = (float) ($summary['bonus_received'] ?? $bonus);
     $bonusUsed = (float) ($summary['bonus_used'] ?? 0);
     $canWithdraw = $available > 0;
+    $publisher = $publisher ?? \App\Models\Wallet::emptyRoleSnapshot();
+    $showPublisherWallet = (bool) ($showPublisherWallet ?? false);
 @endphp
 
 
@@ -69,6 +71,20 @@
             </p>
         @endif
     </div>
+
+    @if($showPublisherWallet)
+        <aside class="af-role-strip mb-3" id="publisherRoleStrip" aria-label="Publisher earnings">
+            <div class="af-role-strip__main">
+                <span class="af-role-strip__label">Publisher earnings</span>
+                <span class="af-role-strip__value" id="publisherEarningsKpi">€{{ number_format((float) $publisher['withdrawable'], 2) }}</span>
+                <p class="af-role-strip__note mb-0">Withdrawable. Publisher earnings cannot be moved into this advertiser wallet here.</p>
+            </div>
+            <div class="af-role-strip__actions">
+                <a href="{{ route('publisher.balance') }}" class="btn btn-sm btn-outline-secondary" id="publisherBalanceCta">Balance</a>
+                <a href="{{ route('publisher.withdraw') }}" class="btn btn-sm btn-outline-secondary" id="publisherWithdrawCta">Withdraw</a>
+            </div>
+        </aside>
+    @endif
     <span id="kpiDeposits" class="d-none">€{{ number_format($lifetimeDeposits, 2) }}</span>
     <span id="bonusReceivedLabel" class="d-none">€{{ number_format($bonusReceived, 2) }}</span>
     <span id="bonusUsedLabel" class="d-none">€{{ number_format($bonusUsed, 2) }}</span>

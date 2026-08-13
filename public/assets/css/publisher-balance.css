@@ -1,0 +1,142 @@
+/**
+ * Publisher Balance — two equal wallet cards (earnings + advertiser spendable).
+ * Type scale matches advertiser Add Funds spendable block.
+ */
+
+.pb-wallet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 1rem;
+  align-items: stretch;
+}
+
+.pb-wallet-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  padding: 16px 18px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-lg, 12px);
+  background: var(--surface-1, #fff);
+}
+
+.pb-wallet-card__header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pb-wallet-card__label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--brand-primary-soft, #3faeb2);
+}
+
+.pb-wallet-card__value {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--brand-primary, #1a585e);
+  line-height: 1.1;
+}
+
+.pb-wallet-card__sub {
+  margin: 0;
+  font-size: 12px;
+  color: var(--brand-ink-muted, #75787B);
+}
+
+.pb-wallet-card__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.pb-wallet-card__chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 7.5rem;
+  padding: 8px 12px;
+  border-radius: var(--radius-md, 10px);
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  background: var(--surface-2, #f8fafc);
+}
+
+.pb-wallet-card__chip--bonus {
+  background: var(--brand-primary-bg, #e6f5f5);
+  border-color: var(--brand-primary-border, #b8e4e4);
+}
+
+.pb-wallet-card__chip--debt {
+  background: #fef2f2;
+  border-color: #fecaca;
+}
+
+.pb-wallet-card__chip-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--brand-ink-muted, #75787B);
+}
+
+.pb-wallet-card__chip--bonus .pb-wallet-card__chip-label {
+  color: var(--brand-primary, #1a585e);
+}
+
+.pb-wallet-card__chip--debt .pb-wallet-card__chip-label {
+  color: #991b1b;
+}
+
+.pb-wallet-card__chip-value {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--brand-ink, #1f2937);
+}
+
+.pb-wallet-card__chip--bonus .pb-wallet-card__chip-value {
+  color: var(--brand-primary-deep, #123f42);
+}
+
+.pb-wallet-card__chip--debt .pb-wallet-card__chip-value {
+  color: #991b1b;
+}
+
+.pb-wallet-card__status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--brand-ink, #1e293b);
+}
+
+.pb-wallet-card__status--ready {
+  color: var(--brand-primary, #1a585e);
+  font-weight: 600;
+}
+
+.pb-wallet-card__note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--brand-ink, #1e293b);
+  padding: 8px 10px;
+  border: 1px solid var(--border-subtle, #e2e8f0);
+  border-radius: var(--radius-sm, 8px);
+}
+
+.pb-wallet-card__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 4px;
+}
+
+.pb-wallet-card__actions .btn {
+  min-height: 38px;
+}
+
+.pb-disabled-wrap {
+  display: inline-block;
+}

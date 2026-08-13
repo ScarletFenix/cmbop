@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Models\Wallet;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -11,24 +12,253 @@ class PublisherBalanceHistoryUiTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_empty_transfer_history_renders_valid_table_row_markup(): void
+    /**
+     * @param  array{publisher_balance?: float, publisher_reserved?: float, publisher_bonus?: float, publisher_debt?: float, advertiser_balance?: float, advertiser_bonus?: float}|array<string, float>  $overrides
+     */
+    private function publisherWithWallets(array $overrides = [], bool $dualRole = true): User
     {
-        $role = Role::firstOrCreate(['name' => 'publisher']);
+        Role::firstOrCreate(['name' => 'admin']);
+        Role::firstOrCreate(['name' => 'marketing']);
+        $advertiser = Role::firstOrCreate(['name' => 'advertiser']);
+        $publisher = Role::firstOrCreate(['name' => 'publisher']);
+
         $user = User::factory()->create([
             'email_verified_at' => now(),
-            'active_role_id' => $role->id,
+            'active_role_id' => $publisher->id,
         ]);
-        $user->roles()->attach($role->id);
+        $user->roles()->attach($dualRole ? [$publisher->id, $advertiser->id] : [$publisher->id]);
+
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $publisher->id,
+            'balance' => $overrides['publisher_balance'] ?? 7.64,
+            'reserved_balance' => $overrides['publisher_reserved'] ?? 0,
+            'bonus_balance' => $overrides['publisher_bonus'] ?? 0,
+            'bonus_reserved' => 0,
+            'debt_balance' => $overrides['publisher_debt'] ?? 0,
+            'currency' => 'EUR',
+        ]);
+
+        if ($dualRole) {
+            Wallet::create([
+                'user_id' => $user->id,
+                'role_id' => $advertiser->id,
+                'balance' => $overrides['advertiser_balance'] ?? 20,
+                'reserved_balance' => 0,
+                'bonus_balance' => $overrides['advertiser_bonus'] ?? 20,
+                'bonus_reserved' => 0,
+                'currency' => 'EUR',
+            ]);
+        }
+
+        return $user;
+    }
+
+    public function test_balance_page_does_not_offer_role_transfers(): void
+    {
+        $user = $this->publisherWithWallets();
 
         $html = $this->actingAs($user)
             ->get(route('publisher.balance'))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('function renderTransferHistory', $html);
-        $this->assertStringContainsString("<\/tr>", $html);
-        $this->assertStringNotContainsString('</table>\\', $html);
-        $this->assertStringNotContainsString("No transfers found</p>\\\n                <\/td>\\\n            </table>", $html);
+        $this->assertStringContainsString('Publisher earnings', $html);
+        $this->assertStringContainsString('Withdrawable', $html);
+        $this->assertStringContainsString('€7.64', $html);
+        $this->assertStringContainsString('Internal wallet transfers are no longer offered', $html);
+        $this->assertStringNotContainsString('Transfer to Advertiser Wallet', $html);
+        $this->assertStringNotContainsString('0% Transfer Fee', $html);
+        $this->assertStringNotContainsString('id="transferBtn"', $html);
+        $this->assertStringNotContainsString('id="amount"', $html);
+        $this->assertStringNotContainsString('function renderTransferHistory', $html);
+        $this->assertStringNotContainsString('Transfer History', $html);
+        $this->assertStringNotContainsString('Ready to transfer or withdraw', $html);
+        $this->assertStringNotContainsString('/publisher/balance/transfer', $html);
+        $this->assertStringNotContainsString('Showing 0 to 0 of 0', $html);
+        $this->assertStringNotContainsString('after bonus, amounts on hold, and clawback debt', $html);
+    }
+
+    public function test_dual_role_balance_shows_both_cards_and_bonus_is_purchases_only(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="publisherBalance"', $html);
+        $this->assertStringContainsString('Advertiser (spendable)', $html);
+        $this->assertStringContainsString('id="advertiserBalance"', $html);
+        $this->assertStringContainsString('€20.00', $html);
+        $this->assertStringContainsString('Money', $html);
+        $this->assertStringContainsString('Bonus', $html);
+        $this->assertStringContainsString('(purchases only)', $html);
+        $this->assertStringContainsString(Wallet::PROMOTIONAL_BONUS_MESSAGE, $html);
+        $this->assertStringContainsString('Publisher earnings cannot be moved into this wallet here', $html);
+        $this->assertStringContainsString(route('advertiser.add-funds'), $html);
+        $this->assertStringContainsString(route('advertiser.catalog'), $html);
+        $this->assertStringContainsString('Clawback debt blocks withdrawals; it does not reduce this number', $html);
+    }
+
+    public function test_publisher_only_balance_hides_advertiser_card(): void
+    {
+        $user = $this->publisherWithWallets([], false);
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Publisher earnings', $html);
+        $this->assertStringContainsString('balance-label">Earnings', $html);
+        $this->assertStringNotContainsString('Advertiser (spendable)', $html);
+        $this->assertStringNotContainsString('Advertiser spendable', $html);
+        $this->assertStringNotContainsString('id="advertiserBalance"', $html);
+        $this->assertStringNotContainsString('id="addFundsCta"', $html);
+    }
+
+    public function test_withdraw_cta_is_disabled_below_minimum(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<button[^>]*id="withdrawCta"[^>]*disabled/', $html);
+        $this->assertStringContainsString('You need at least €20.00 withdrawable balance', $html);
+        $this->assertStringContainsString('Available now: €7.64', $html);
+        $this->assertStringNotContainsString('Ready to withdraw', $html);
+    }
+
+    public function test_withdraw_cta_is_disabled_when_publisher_has_debt(): void
+    {
+        $user = $this->publisherWithWallets([
+            'publisher_balance' => 40,
+            'publisher_debt' => 12.5,
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Outstanding clawback debt', $html);
+        $this->assertStringContainsString('€12.50', $html);
+        $this->assertStringContainsString('Debt', $html);
+        $this->assertStringContainsString('Withdrawals are blocked while you have outstanding clawback debt', $html);
+        $this->assertStringNotContainsString('Ready to withdraw', $html);
+        $this->assertMatchesRegularExpression('/<button[^>]*id="withdrawCta"[^>]*disabled/', $html);
+    }
+
+    public function test_withdraw_cta_is_enabled_when_withdrawable_meets_minimum(): void
+    {
+        $user = $this->publisherWithWallets([
+            'publisher_balance' => 25,
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Ready to withdraw', $html);
+        $this->assertStringContainsString(route('publisher.withdraw'), $html);
+        $this->assertMatchesRegularExpression('/<a[^>]*id="withdrawCta"/', $html);
+        $this->assertStringNotContainsString('You need at least €20.00 withdrawable balance', $html);
+    }
+
+    public function test_publisher_header_uses_earnings_not_spendable_and_keeps_advertiser_out_of_chip(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('balance-label">Earnings', $html);
+        $this->assertStringNotContainsString('balance-label">Spendable', $html);
+        $this->assertMatchesRegularExpression('/class="balance-amount">€7\.64/', $html);
+        $this->assertStringContainsString('Earnings €7.64', $html);
+        $this->assertStringContainsString('Withdrawable €7.64', $html);
+        $this->assertStringContainsString('Advertiser spendable €20.00', $html);
+        $this->assertStringContainsString('nav-label">Balance', $html);
+        $this->assertMatchesRegularExpression(
+            '/href="[^"]*\/publisher\/balance" class="active"/',
+            $html
+        );
+    }
+
+    public function test_on_hold_chip_renders_when_publisher_has_reserved_funds(): void
+    {
+        $user = $this->publisherWithWallets([
+            'publisher_balance' => 10,
+            'publisher_reserved' => 4.5,
+        ]);
+
+        $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->assertSee('On hold', false)
+            ->assertSee('€4.50', false);
+    }
+
+    public function test_dual_role_publisher_can_open_add_funds_and_catalog_without_403(): void
+    {
+        $user = $this->publisherWithWallets();
+        $this->assertSame('publisher', $user->activeRole());
+
+        $this->actingAs($user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('Add funds', false)
+            ->assertSee('id="publisherRoleStrip"', false)
+            ->assertSee('€7.64', false)
+            ->assertSee(route('publisher.balance'), false)
+            ->assertSee(route('publisher.withdraw'), false);
+
+        $this->assertSame('advertiser', $user->fresh()->activeRole());
+
+        $this->actingAs($user->fresh())
+            ->get(route('advertiser.catalog'))
+            ->assertOk();
+    }
+
+    public function test_publisher_balance_uses_role_name_ids_not_hardcoded_one_and_two(): void
+    {
+        $user = $this->publisherWithWallets();
+        $publisherId = (int) Wallet::publisherRoleId();
+        $advertiserId = (int) Wallet::advertiserRoleId();
+
+        $this->assertGreaterThan(2, $publisherId);
+        $this->assertGreaterThan(2, $advertiserId);
+
+        $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->assertSee('€7.64', false);
+    }
+
+    public function test_publisher_role_transfer_endpoint_stays_gone(): void
+    {
+        $user = $this->publisherWithWallets();
+
+        $this->actingAs($user)
+            ->postJson(route('publisher.balance.transfer'), ['amount' => 5])
+            ->assertStatus(410)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('code', 'transfers_disabled');
+
+        $this->assertSame(
+            7.64,
+            (float) Wallet::where('user_id', $user->id)
+                ->where('role_id', Wallet::publisherRoleId())
+                ->value('balance')
+        );
     }
 
     public function test_favicon_partial_points_at_existing_public_assets(): void

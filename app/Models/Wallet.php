@@ -197,11 +197,41 @@ class Wallet extends Model
     }
 
     /**
-     * Funds that may be withdrawn or transferred to another role wallet.
+     * Cash that may be withdrawn. Bonus is excluded; reserved funds already left balance.
      */
     public function withdrawableBalance(): float
     {
         return max(0, round((float) $this->balance - $this->lockedBonusBalance(), 2));
+    }
+
+    /**
+     * Role-wallet figures for Balance / Add Funds overviews.
+     *
+     * @return array{spendable: float, withdrawable: float, bonus: float, reserved: float, debt: float}
+     */
+    public function roleSnapshot(): array
+    {
+        return [
+            'spendable' => round((float) $this->balance, 2),
+            'withdrawable' => $this->withdrawableBalance(),
+            'bonus' => $this->lockedBonusBalance(),
+            'reserved' => round((float) $this->reserved_balance, 2),
+            'debt' => $this->debtBalance(),
+        ];
+    }
+
+    /**
+     * @return array{spendable: float, withdrawable: float, bonus: float, reserved: float, debt: float}
+     */
+    public static function emptyRoleSnapshot(): array
+    {
+        return [
+            'spendable' => 0.0,
+            'withdrawable' => 0.0,
+            'bonus' => 0.0,
+            'reserved' => 0.0,
+            'debt' => 0.0,
+        ];
     }
 
     /**
