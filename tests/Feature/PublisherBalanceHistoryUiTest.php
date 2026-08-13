@@ -293,6 +293,7 @@ class PublisherBalanceHistoryUiTest extends TestCase
 
         $this->assertStringContainsString('window.slbConfirm', $js);
         $this->assertStringContainsString('slbHandleHttpError', $js);
+        $this->assertStringNotContainsString('!moveBtn.disabled', $js);
         $this->assertStringNotContainsString('Swal.fire', $js);
         $this->assertDoesNotMatchRegularExpression('/(?<![\w.$])(?:window\.)?(alert|confirm)\s*\(/', $js);
     }

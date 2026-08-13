@@ -199,5 +199,8 @@
         </div>
     @endif
 </div>
-<script src="{{ asset('assets/js/publisher-balance.js') }}?v={{ @filemtime(public_path('assets/js/publisher-balance.js')) ?: '1' }}" defer></script>
 @endsection
+
+@push('scripts')
+<script src="{{ asset('assets/js/publisher-balance.js') }}?v={{ @filemtime(public_path('assets/js/publisher-balance.js')) ?: '1' }}"></script>
+@endpush

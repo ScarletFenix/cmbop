@@ -209,7 +209,8 @@ class AdminFinanceHubTest extends TestCase
             ->get(route('admin.finance.ledger'))
             ->assertOk()
             ->assertSee('Wallet ledger')
-            ->assertSee('transfer in', false)
+            ->assertSee('Transfer In', false)
+            ->assertSee('Earnings Moved for Spending', false)
             ->assertSee('Test earnings');
 
         $this->actingAs($admin)

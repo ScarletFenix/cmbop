@@ -209,6 +209,12 @@ class PublisherRoleMoveTest extends TestCase
             ->delete();
 
         $this->actingAs($user)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->assertSee('id="roleMoveForm"', false)
+            ->assertSee('id="roleMoveBtn"', false);
+
+        $this->actingAs($user)
             ->postJson(route('publisher.balance.transfer'), ['amount' => 12])
             ->assertOk()
             ->assertJsonPath('success', true)

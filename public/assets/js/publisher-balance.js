@@ -42,7 +42,7 @@
 
     function setBusy(on) {
         busy = on;
-        if (moveBtn && !moveBtn.disabled) {
+        if (moveBtn && canMove) {
             moveBtn.disabled = on;
         }
         if (allBtn) {
