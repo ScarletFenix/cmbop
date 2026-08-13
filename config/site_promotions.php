@@ -15,7 +15,7 @@ return [
         'min_qty' => 3,
         'max_qty' => 5,
         'min_percent' => 10,
-        'max_percent' => 15,
+        'max_percent' => 80,
         'default_percent' => 10,
     ],
 
