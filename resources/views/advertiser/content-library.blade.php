@@ -615,7 +615,7 @@
                     <li data-upload-step="market">Market</li>
                     <li data-upload-step="rights" class="is-pending">Rights</li>
                 </ol>
-                <x-ui.callout variant="attention" class="ui-callout--sm mb-3">
+                <x-ui.callout variant="info" class="ui-callout--sm mb-3">
                     Microsoft Word (.docx) only — not PDF, Google Doc, or pasted text.
                     Max {{ $uploadMaxMb }} MB. Opens in the editor next.
                     Image rights are asked after we read the file, and only if it contains pictures.

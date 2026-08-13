@@ -326,6 +326,10 @@ class ContentImageRightsTest extends TestCase
         $this->assertStringContainsString('id="articleEditorImageRights"', $library);
         $this->assertStringContainsString('name="image_rights"', $library);
         $this->assertStringContainsString('image-rights.js', $library);
+        preg_match('/id="uploadContentModal"[\s\S]*?id="libraryUploadBtn"/', $library, $uploadModal);
+        $this->assertNotEmpty($uploadModal);
+        $this->assertStringContainsString('ui-callout--info', $uploadModal[0]);
+        $this->assertStringNotContainsString('ui-callout--attention', $uploadModal[0]);
 
         $js = file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function bindLibraryDropzone', $js);
