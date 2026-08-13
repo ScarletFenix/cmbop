@@ -29,7 +29,17 @@ class CartDrawerDensityTest extends TestCase
 
         $this->assertStringContainsString('id="cartChecklist"', $layout);
         $this->assertStringContainsString('id="cartProceedHint"', $layout);
-        $this->assertStringContainsString('id="cartTotals"', $layout);
+        $this->assertStringContainsString('class="cart-totals d-none"', $layout);
+        $this->assertMatchesRegularExpression(
+            '/id="checkoutFromCart"[^>]*\bdisabled\b/',
+            $layout
+        );
+        $this->assertStringContainsString('itemKeyAttr', $layout);
+        $this->assertStringContainsString('sensitiveAttr', $layout);
+        $this->assertStringContainsString('Assign an article to at least one website to checkout', $layout);
+        $this->assertStringContainsString('Sites without articles stay in your cart.', $layout);
+        $this->assertStringNotContainsString('Assign a document to at least one website to checkout', $layout);
+        $this->assertStringNotContainsString('Sites without documents stay in your cart.', $layout);
         $this->assertStringContainsString('1 article still needed', $layout);
         $this->assertStringContainsString('itemKey.replace', $layout);
         $this->assertStringNotContainsString('1 site needs an article', $layout);
@@ -72,7 +82,9 @@ class CartDrawerDensityTest extends TestCase
             ->get(route('advertiser.catalog'))
             ->assertOk()
             ->assertSee('id="cartChecklist"', false)
-            ->assertSee('id="keepBrowsingCatalog"', false)
+            ->assertSee('id="checkoutFromCart"', false)
+            ->assertSee('Assign an article to at least one website to checkout', false)
+            ->assertDontSee('Assign a document to at least one website to checkout', false)
             ->assertSee('buy-confidence', false)
             ->assertSee('What happens after you pay', false)
             ->assertDontSee('Assign a document to each website', false)

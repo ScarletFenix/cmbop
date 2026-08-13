@@ -267,18 +267,18 @@
     </div>
     <div class="cart-footer">
         <div id="cartReadyNote" class="cart-ready-note d-none"></div>
-        <div id="cartTotals" class="cart-totals {{ $headerCartCount > 0 ? '' : 'd-none' }}">
+        <div id="cartTotals" class="cart-totals d-none">
             <div class="cart-totals__pay">
                 <span id="cartTotalLabel">Pay now</span>
                 <strong id="cartTotalAmount">€0.00</strong>
             </div>
             <div id="cartHeldNote" class="cart-totals__held d-none"></div>
         </div>
-        <button id="checkoutFromCart" class="btn btn-primary w-100" type="button">
+        <button id="checkoutFromCart" class="btn btn-primary w-100 d-none" type="button" disabled>
             <i class="fa fa-credit-card"></i> Proceed to Checkout
         </button>
         <div id="cartProceedHint" class="small text-muted mt-2 d-none">
-            Assign a document to at least one website to checkout. Sites without documents stay in your cart.
+            Assign an article to at least one website to checkout. Sites without articles stay in your cart.
         </div>
         <details class="cart-after-pay">
             <summary>What happens after you pay</summary>
@@ -650,6 +650,7 @@
             }
             if (proceedBtn) {
                 proceedBtn.disabled = true;
+                proceedBtn.classList.add('d-none');
             }
             if (proceedHint) {
                 proceedHint.classList.add('d-none');
@@ -710,6 +711,7 @@
             }
             if (proceedBtn) {
                 // Checkout only for sites that are ready and need payment.
+                proceedBtn.classList.remove('d-none');
                 proceedBtn.disabled = readyCount === 0;
                 if (readyCount > 0 && missing > 0) {
                     proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Checkout ' + readyCount + ' ready site' + (readyCount === 1 ? '' : 's');
@@ -739,6 +741,8 @@
             
             sortedCart.forEach((item) => {
                 const itemKey = getCartItemKey(item);
+                const itemKeyAttr = escapeHtml(itemKey);
+                const sensitiveAttr = escapeHtml(item.sensitive_type || '');
                 const siteName = item.name || 'Website';
                 const sensitiveDisplay = item.sensitive_type ? 
                     `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
@@ -798,7 +802,7 @@
                             <select id="${selectId}"
                                     class="cart-article-select"
                                     data-id="${item.id}"
-                                    data-sensitive-type="${item.sensitive_type || ''}"
+                                    data-sensitive-type="${sensitiveAttr}"
                                     data-homepage-days="${cartHomepageParam(item)}"
                                     data-copy-index="${copyIndex}"
                                     data-prev-value="${selectedId || ''}">
@@ -817,7 +821,7 @@
                     : '';
                 
                 html += `
-                    <div class="cart-item" data-key="${itemKey}">
+                    <div class="cart-item" data-key="${itemKeyAttr}">
                         <div class="cart-item-top">
                             <div class="cart-item-info">
                                 <div class="cart-item-name">${escapeHtml(siteName)}</div>
@@ -828,15 +832,15 @@
                                 ${qtyNote}
                             </div>
                             <div class="cart-item-quantity">
-                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article">
+                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article">
                                     <i class="fa fa-minus" aria-hidden="true"></i>
                                 </button>
                                 <span class="quantity-number" aria-label="Placements ${item.quantity}">${item.quantity}</span>
-                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase placements — each needs its own article" title="Placements — each needs its own article">
+                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase placements — each needs its own article" title="Placements — each needs its own article">
                                     <i class="fa fa-plus" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
+                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
                                 <i class="fa fa-times" aria-hidden="true"></i>
                             </button>
                         </div>
