@@ -452,7 +452,11 @@ class ContentSubmissionController extends Controller
         $this->authorizeDownload($submission);
 
         if (! $submission->canDownloadOriginal()) {
-            abort(404, 'File not found');
+            $user = auth()->user();
+            $staff = $user && ($user->hasRole('admin') || $user->hasRole('marketing'));
+            if (! $staff) {
+                abort(404, 'File not found');
+            }
         }
 
         $disk = Storage::disk($submission->disk ?: 'local');

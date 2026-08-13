@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ContentUpload\ArticlePreviewImage;
@@ -85,6 +86,48 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             ])
             ->assertStatus(422)
             ->assertJsonPath('success', false);
+    }
+
+    public function test_expired_rejected_article_is_expired_not_needs_fix(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Rejected Then Expired',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluation_status' => 'rejected',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->assertSame('expired', $submission->fresh()->libraryAvailability());
+        $this->assertFalse($submission->fresh()->canEditArticle());
+
+        $expiredHtml = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'expired']))
+            ->assertOk()
+            ->assertSee('Rejected Then Expired')
+            ->assertSee('Preview only — original file removed', false)
+            ->getContent();
+        $this->assertStringNotContainsString('Resubmit', $expiredHtml);
+        $this->assertStringNotContainsString('js-open-editor', $expiredHtml);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertDontSee('Rejected Then Expired');
+
+        $bootHtml = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'edit' => $submission->id,
+                'upload' => 1,
+            ]))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('editSubmission: null', $bootHtml);
+        $this->assertStringContainsString('id="replaceIdInput" value=""', $bootHtml);
     }
 
     public function test_editor_image_stores_webp_on_public_disk_not_private(): void

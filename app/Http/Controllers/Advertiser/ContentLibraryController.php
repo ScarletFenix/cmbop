@@ -124,7 +124,10 @@ class ContentLibraryController extends Controller
                         $eval->whereIn('moderation_status', [
                             ContentSubmission::STATUS_PENDING,
                             ContentSubmission::STATUS_PROCESSING,
-                        ])->whereNull('order_id');
+                        ])->whereNull('order_id')
+                            ->where(function ($exp) {
+                                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                            });
                     });
                 });
             } elseif ($availability === 'in_progress') {
@@ -149,7 +152,9 @@ class ContentLibraryController extends Controller
                     ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
                     ContentSubmission::STATUS_REJECTED,
                     ContentSubmission::STATUS_ERROR,
-                ]);
+                ])->where(function ($exp) {
+                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                });
             } elseif ($availability === 'published') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
                 $query->whereNotNull('order_id')
@@ -230,6 +235,9 @@ class ContentLibraryController extends Controller
                     ContentSubmission::STATUS_PROCESSING,
                 ])
                 ->whereNull('order_id')
+                ->where(function ($exp) {
+                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
                 ->count(),
             'in_progress' => (int) (clone $countScope)
                 ->whereNotNull('order_id')
@@ -262,7 +270,16 @@ class ContentLibraryController extends Controller
                 ->whereNotNull('expires_at')
                 ->where('expires_at', '<', now())
                 ->count(),
-            'needs_fix' => (int) ($moderationCounts['needs_fix'] ?? 0),
+            'needs_fix' => (int) (clone $countScope)
+                ->whereIn('moderation_status', [
+                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
+                    ContentSubmission::STATUS_REJECTED,
+                    ContentSubmission::STATUS_ERROR,
+                ])
+                ->where(function ($exp) {
+                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->count(),
         ];
 
         $archivedCountScope = ContentSubmission::query()
@@ -388,6 +405,13 @@ class ContentLibraryController extends Controller
                 ->whereNull('order_id')
                 ->whereNull('archived_at')
                 ->first();
+            if ($replace?->isExpired()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Expired',
+                    'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
         }
 
         $result = $this->uploads->uploadAndProcess(
@@ -473,6 +497,9 @@ class ContentLibraryController extends Controller
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->whereNull('archived_at')
+            ->where(function ($exp) {
+                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
             ->whereIn('moderation_status', [
                 ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
                 ContentSubmission::STATUS_REJECTED,

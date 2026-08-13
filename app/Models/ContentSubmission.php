@@ -481,10 +481,6 @@ class ContentSubmission extends Model
             return 'archived';
         }
 
-        if ($this->needsCorrection()) {
-            return 'needs_fix';
-        }
-
         if ($this->isPublished()) {
             return 'published';
         }
@@ -495,6 +491,10 @@ class ContentSubmission extends Model
 
         if ($this->isExpired()) {
             return 'expired';
+        }
+
+        if ($this->needsCorrection()) {
+            return 'needs_fix';
         }
 
         if ($this->isEvaluating()) {
