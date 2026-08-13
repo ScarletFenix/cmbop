@@ -76,6 +76,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
     refreshLibraryLanguages(libraryPreferredLanguage);
     bindLibraryDropzone();
+    bindLibraryModalA11y();
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
     refreshLibraryLanguages(libraryPreferredLanguage || document.getElementById('libraryLanguage')?.value || '');
@@ -510,8 +511,8 @@ function showImageRemoveOverlay(img, index) {
     btn.classList.remove('d-none');
     const shellRect = shell.getBoundingClientRect();
     const imgRect = img.getBoundingClientRect();
-    const btnW = btn.offsetWidth || 88;
-    // Pin to the top-right of the image so a small figure stays visible.
+    const btnW = btn.offsetWidth || 30;
+    // Pin to the top-right corner so a small figure stays visible.
     const top = imgRect.top - shellRect.top + 8;
     const left = imgRect.right - shellRect.left - btnW - 8;
     btn.style.top = Math.max(8, top) + 'px';
@@ -656,10 +657,29 @@ function patchQuillImageSanitize() {
 
 function hideBootstrapModal(el) {
     if (!el || typeof bootstrap === 'undefined') return;
-    if (el.contains(document.activeElement) && document.activeElement.blur) {
+    blurIfInside(el);
+    bootstrap.Modal.getOrCreateInstance(el).hide();
+}
+
+function blurIfInside(el) {
+    if (el && el.contains(document.activeElement) && document.activeElement.blur) {
         document.activeElement.blur();
     }
-    bootstrap.Modal.getOrCreateInstance(el).hide();
+}
+
+function bindLibraryModalA11y() {
+    ['uploadContentModal', 'articleEditorModal', 'articlePreviewModal'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (!el || el.dataset.a11yBound === '1') return;
+        el.dataset.a11yBound = '1';
+        el.addEventListener('hide.bs.modal', function () {
+            blurIfInside(el);
+        });
+        el.addEventListener('shown.bs.modal', function () {
+            el.removeAttribute('aria-hidden');
+            el.setAttribute('aria-modal', 'true');
+        });
+    });
 }
 
 function ensureArticleQuill() {
@@ -682,20 +702,24 @@ function ensureArticleQuill() {
         theme: 'snow',
         placeholder: 'Edit your article…',
         modules: {
-            toolbar: toolbarOptions,
+            toolbar: {
+                container: toolbarOptions,
+                handlers: {
+                    undo: function () {
+                        const history = this.quill.getModule('history');
+                        if (history) history.undo();
+                    },
+                    redo: function () {
+                        const history = this.quill.getModule('history');
+                        if (history) history.redo();
+                    },
+                },
+            },
             history: { delay: 500, maxStack: 100, userOnly: true },
         },
     });
 
     const toolbar = articleQuill.getModule('toolbar');
-    toolbar.addHandler('undo', function () {
-        const history = articleQuill.getModule('history');
-        if (history) history.undo();
-    });
-    toolbar.addHandler('redo', function () {
-        const history = articleQuill.getModule('history');
-        if (history) history.redo();
-    });
     const undoBtn = toolbar.container.querySelector('.ql-undo');
     if (undoBtn) {
         undoBtn.innerHTML = '<i class="fa fa-undo" aria-hidden="true"></i>';

@@ -736,6 +736,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="articlePreviewEditBtn"', $library);
         $this->assertStringContainsString('id="articleImageRemoveBtn"', $library);
         $this->assertStringContainsString('article-img-remove', $library);
+        $this->assertStringContainsString('aria-label="Remove image"', $library);
         $this->assertStringNotContainsString('id="articlePreviewBody" contenteditable', $library);
         $this->assertDoesNotMatchRegularExpression('/id="articlePreviewBody"[^>]*contenteditable/', $library);
 
@@ -762,14 +763,22 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $css = file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.article-img-remove', $css);
+        $this->assertStringContainsString('width: 1.85rem', $css);
         $this->assertStringContainsString('img.is-selected', $css);
         $this->assertStringContainsString('img.is-broken', $css);
         $this->assertStringContainsString('function patchQuillImageSanitize', $js);
         $this->assertStringContainsString("value.startsWith('/storage/')", $js);
         $this->assertStringContainsString('function hideBootstrapModal', $js);
+        $this->assertStringContainsString('function bindLibraryModalA11y', $js);
         $this->assertStringContainsString('data-no-tip', $js);
         $this->assertStringContainsString('imgRect.top - shellRect.top + 8', $js);
+        $this->assertStringContainsString('offsetWidth || 30', $js);
         $this->assertStringNotContainsString('imgRect.bottom - shellRect.top - 36', $js);
+        $this->assertStringContainsString('handlers: {', $js);
+        $this->assertStringContainsString('undo: function () {', $js);
+        $this->assertStringContainsString('redo: function () {', $js);
+        $this->assertStringNotContainsString("toolbar.addHandler('undo'", $js);
+        $this->assertStringNotContainsString("toolbar.addHandler('redo'", $js);
         $this->assertDoesNotMatchRegularExpression(
             '/\.library-expiry-hint \{\s*font-size:[^}]*color: #b45309/',
             $css
