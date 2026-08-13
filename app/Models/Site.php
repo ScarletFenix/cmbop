@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\SiteDescriptionSanitizer;
@@ -1366,6 +1367,40 @@ class Site extends Model
     {
         return app(SiteDescriptionSanitizer::class)
             ->sanitize((string) ($this->description ?? ''));
+    }
+
+    /**
+     * Publisher-entered article price (EUR), ignoring any in-memory advertiser markup.
+     */
+    public function publisherBasePrice(): float
+    {
+        $raw = $this->getRawOriginal('price');
+        if ($raw !== null && $raw !== '') {
+            return round((float) $raw, 2);
+        }
+
+        if (isset($this->original_price) && is_numeric($this->original_price)) {
+            return round((float) $this->original_price, 2);
+        }
+
+        return round((float) $this->price, 2);
+    }
+
+    /**
+     * Advertiser catalog/cart unit prices for this listing (hidden fee + sale floor).
+     *
+     * Always recomputes from the publisher base so a catalog row cannot show €40
+     * while add-to-cart charges the fee-marked total.
+     *
+     * @return array<string, mixed>
+     */
+    public function advertiserCatalogPricing(?string $sensitiveType = null, int $quantity = 1): array
+    {
+        $forCart = clone $this;
+        $forCart->setAttribute('price', $this->publisherBasePrice());
+
+        return app(CartPricingService::class)
+            ->priceForAdvertiser($forCart, $sensitiveType, $quantity);
     }
 
     /**

@@ -154,6 +154,49 @@ class HiddenPlatformFeeTest extends TestCase
         $this->assertEquals(103.5, (float) $payload['cart'][0]['price']);
     }
 
+    public function test_advertiser_catalog_shows_fee_inclusive_price_for_forty_euro_listing(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($publisher, 40);
+
+        $expected = app(CartPricingService::class)->priceForAdvertiser($site);
+        $this->assertSame(46.0, $expected['total']);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-base-price="46"', $html);
+        $this->assertStringContainsString('base-price-display">€46.00', $html);
+        $this->assertStringNotContainsString('base-price-display">€40.00', $html);
+        $this->assertStringContainsString('data-publisher-price="40"', $html);
+
+        $payload = $this->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $site->id])
+            ->assertOk()
+            ->json();
+
+        $this->assertEquals(46.0, (float) $payload['cart'][0]['price']);
+        $this->assertEquals(46.0, (float) $payload['cart_total']);
+    }
+
+    public function test_catalog_row_stays_fee_inclusive_if_in_memory_price_was_not_marked_up(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher, 40);
+
+        $this->assertSame(40.0, (float) $site->price);
+        $pricing = $site->advertiserCatalogPricing();
+        $this->assertSame(46.0, $pricing['base']);
+        $this->assertSame(40.0, $pricing['publisher_price']);
+        $this->assertSame(46.0, $pricing['total']);
+
+        $site->price = 40;
+        $this->assertSame(46.0, $site->advertiserCatalogPricing()['base']);
+    }
+
     public function test_sale_floor_at_publisher_payout_matches_cart(): void
     {
         // Distinct from the owner-fee bug: a deep sale can floor the *pay* price

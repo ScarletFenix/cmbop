@@ -187,29 +187,18 @@
                 $expandDescriptionHtml = $site->safeDescriptionHtml();
                 $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
 
-                // List price is the advertiser-facing base (already fee-marked-up).
-                // data-discount-percent keeps the nominal configured sale so JS can
-                // re-apply (base + sensitive) × (1 − %) then floor — same as
-                // CartPricingService. Chips / “X% off” use the effective % after
-                // the publisher-payout floor so the label never oversells.
-                $catalogListPrice = round((float) $site->price, 2);
-                // CatalogController sets original_price to the publisher-entered base
-                // before applying the portal fee markup onto $site->price.
-                $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
+                // Same engine as cart.add — publisher base + hidden fee (+ sale floor).
+                $catalogPricing = $site->advertiserCatalogPricing();
+                $catalogListPrice = (float) $catalogPricing['base'];
+                $catalogPublisherPrice = (float) $catalogPricing['publisher_price'];
                 $catalogSalePctNominal = $site->activeCustomDiscountPercent();
                 $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
                 $catalogSalePctDisplay = null;
                 $catalogSalePrice = null;
-                if ($catalogSalePctNominal) {
-                    $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePctNominal / 100), 2), 2));
-                    $flooredSale = max($catalogPublisherPrice, $rawSale);
-                    if ($flooredSale < $catalogListPrice) {
-                        $catalogSalePrice = $flooredSale;
-                        $catalogSalePctDisplay = \App\Services\CartPricingService::effectiveDiscountPercent(
-                            $catalogListPrice,
-                            round($catalogListPrice - $flooredSale, 2)
-                        );
-                    }
+                if (($catalogPricing['discount_amount'] ?? 0) > 0
+                    && (float) $catalogPricing['article_total'] < $catalogListPrice) {
+                    $catalogSalePrice = (float) $catalogPricing['article_total'];
+                    $catalogSalePctDisplay = (float) $catalogPricing['discount_percent'];
                 }
             @endphp
             @php
@@ -990,22 +979,17 @@
                 'instagram' => 'Instagram',
                 'x' => 'X',
             ];
-            $catalogListPrice = round((float) $site->price, 2);
-            $catalogPublisherPrice = round((float) ($site->original_price ?? $site->price), 2);
+            $catalogPricing = $site->advertiserCatalogPricing();
+            $catalogListPrice = (float) $catalogPricing['base'];
+            $catalogPublisherPrice = (float) $catalogPricing['publisher_price'];
             $catalogSalePctNominal = $site->activeCustomDiscountPercent();
             $catalogSalePct = $catalogSalePctNominal; // nominal for data-* / JS
             $catalogSalePctDisplay = null;
             $catalogSalePrice = null;
-            if ($catalogSalePctNominal) {
-                $rawSale = max(0, round($catalogListPrice - round($catalogListPrice * ($catalogSalePctNominal / 100), 2), 2));
-                $flooredSale = max($catalogPublisherPrice, $rawSale);
-                if ($flooredSale < $catalogListPrice) {
-                    $catalogSalePrice = $flooredSale;
-                    $catalogSalePctDisplay = \App\Services\CartPricingService::effectiveDiscountPercent(
-                        $catalogListPrice,
-                        round($catalogListPrice - $flooredSale, 2)
-                    );
-                }
+            if (($catalogPricing['discount_amount'] ?? 0) > 0
+                && (float) $catalogPricing['article_total'] < $catalogListPrice) {
+                $catalogSalePrice = (float) $catalogPricing['article_total'];
+                $catalogSalePctDisplay = (float) $catalogPricing['discount_percent'];
             }
         @endphp
         <article class="catalog-mobile-card {{ $isBlacklisted ? 'is-blacklisted' : '' }}" data-id="{{ $site->id }}" data-name="{{ $displayName }}">
