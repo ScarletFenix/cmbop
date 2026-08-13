@@ -158,8 +158,8 @@
             <i class="fa fa-hourglass-half me-1" aria-hidden="true"></i>
             {{ $nearExpiryCount }} unused article{{ $nearExpiryCount === 1 ? '' : 's' }}
             expire{{ $nearExpiryCount === 1 ? 's' : '' }} within {{ (int) ($nearExpiryDays ?? 7) }} days.
-            Order or download them before automatic purge removes unused expired files
-            ({{ (int) ($retentionMonths ?? 6) }}-month retention — articles linked to orders are never purged).
+            Order them before the original Word file is removed — a preview stays in Expired
+            (kept {{ (int) ($retentionMonths ?? 6) }} months; articles linked to orders keep the original file).
         </div>
     @endif
     @unless($uploadsEnabled)
@@ -360,7 +360,11 @@
                                     @endif
                                     </div>
                                 </div>
-                            @elseif($availability === 'available' && $submission->expires_at)
+                                @elseif($availability === 'expired')
+                                    <div class="library-expiry-hint">
+                                        Preview only — original file removed
+                                    </div>
+                                @elseif($availability === 'available' && $submission->expires_at)
                                 @php
                                     $daysLeft = $submission->daysUntilExpiry();
                                     $near = $submission->isNearExpiry((int) ($nearExpiryDays ?? 7));
@@ -374,7 +378,7 @@
                                         @else
                                             Expires in {{ $daysLeft }} days
                                         @endif
-                                        <span class="text-muted">· unused files are purged after expiry</span>
+                                        <span class="text-muted">· unused originals are removed after expiry; preview stays</span>
                                     </div>
                                 @endif
                             @endif
@@ -441,9 +445,11 @@
                                                 </button>
                                             </li>
                                         @endif
+                                        @if($submission->canDownloadOriginal())
                                         <li>
                                             <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
                                         </li>
+                                        @endif
                                     </ul>
                                 </div>
                             </div>
@@ -482,7 +488,7 @@
                                                 </button>
                                             </li>
                                         @endif
-                                        @if(!$submission->isInUse() && !$submission->isArchived())
+                                        @if($submission->canEditArticle())
                                             <li>
                                                 <button type="button" class="dropdown-item js-open-editor"
                                                         data-submission-id="{{ $submission->id }}">
@@ -490,10 +496,12 @@
                                                 </button>
                                             </li>
                                         @endif
+                                        @if($submission->canDownloadOriginal())
                                         <li>
                                             <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
                                         </li>
-                                        @if(!$submission->isInUse() && !$submission->isArchived())
+                                        @endif
+                                        @if($submission->canEditArticle())
                                             <li>
                                                 <button type="button" class="dropdown-item" onclick="toggleLibraryTitleEdit({{ $submission->id }}, true)">Rename</button>
                                             </li>
@@ -549,7 +557,7 @@
                                 <x-ui.empty-state
                                     icon="fa-hourglass-end"
                                     title="No expired articles"
-                                    message="Unused articles past their retention date appear here. Automatic purge deletes unused expired files only — articles linked to orders are never removed."
+                                    message="Unused articles past their retention date appear here as preview only — the original file is removed. Articles linked to orders keep the original file."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'completed')
                                 <x-ui.empty-state
@@ -618,7 +626,8 @@
                 </ol>
                 <x-ui.callout variant="info" class="ui-callout--sm mb-3">
                     Microsoft Word (.docx) only — not PDF, Google Doc, or pasted text.
-                    Max {{ $uploadMaxMb }} MB. Opens in the editor next.
+                    Max {{ $uploadMaxMb }} MB. Unused articles are kept {{ (int) ($retentionMonths ?? 6) }} months, then the original file is removed and a preview stays in Expired.
+                    Opens in the editor next.
                     Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
 

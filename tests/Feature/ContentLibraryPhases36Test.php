@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -97,7 +98,7 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertSee('Expiring Soon Piece')
             ->assertSee('expire', false)
             ->assertSee('within 7 days', false)
-            ->assertSee('never purged', false)
+            ->assertSee('keep the original file', false)
             ->getContent();
 
         $this->assertStringContainsString('Expires in', $html);
@@ -158,12 +159,28 @@ class ContentLibraryPhases36Test extends TestCase
             'title' => 'Linked Expired',
         ]);
 
+        $unusedPath = $unused->path;
+        $unusedDisk = $unused->disk ?: 'local';
+        $this->assertTrue(Storage::disk($unusedDisk)->exists($unusedPath));
+        $preview = (string) $unused->preview_html;
+
         $exit = Artisan::call('content:purge-expired');
         $this->assertSame(0, $exit);
         $this->assertStringContainsString('unused expired', Artisan::output());
 
-        $this->assertDatabaseMissing('content_submissions', ['id' => $unused->id]);
+        $this->assertDatabaseHas('content_submissions', ['id' => $unused->id]);
+        $stripped = $unused->fresh();
+        $this->assertSame('', (string) $stripped->path);
+        $this->assertSame(0, (int) $stripped->size_bytes);
+        $this->assertSame($preview, (string) $stripped->preview_html);
+        $this->assertFalse($stripped->hasStoredFile());
+        $this->assertFalse($stripped->canDownloadOriginal());
+        $this->assertFalse($stripped->canEditArticle());
+        $this->assertFalse($stripped->canBeOrdered());
+        $this->assertFalse(Storage::disk($unusedDisk)->exists($unusedPath));
+
         $this->assertDatabaseHas('content_submissions', ['id' => $linked->id]);
+        $this->assertTrue($linked->fresh()->hasStoredFile());
     }
 
     public function test_completed_row_keeps_live_url_clickable_without_pointer_events_none(): void

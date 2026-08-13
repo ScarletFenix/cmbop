@@ -499,6 +499,8 @@ class ContentLibraryController extends Controller
             'word_count' => $s->word_count,
             'moderation_status' => $s->moderation_status,
             'can_order' => $s->canBeOrdered(),
+            'editable' => $s->canEditArticle(),
+            'has_file' => $s->hasStoredFile(),
             'detected_links' => $s->detectedLinks(),
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
@@ -530,6 +532,8 @@ class ContentLibraryController extends Controller
             'detected_links' => $s->detectedLinks(),
             'has_link' => $s->hasLink(),
             'can_order' => $s->canBeOrdered(),
+            'editable' => $s->canEditArticle(),
+            'has_file' => $s->hasStoredFile(),
             'needs_correction' => $s->needsCorrection(),
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
@@ -537,7 +541,9 @@ class ContentLibraryController extends Controller
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),
-            'download_url' => route('advertiser.content-submissions.download', $s),
+            'download_url' => $s->canDownloadOriginal()
+                ? route('advertiser.content-submissions.download', $s)
+                : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
     }

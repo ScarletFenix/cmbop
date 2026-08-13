@@ -467,6 +467,10 @@ document.querySelectorAll('.js-open-editor').forEach(function (btn) {
         btn.disabled = true;
         try {
             const payload = await fetchSubmissionPayload(id);
+            if (payload.editable === false) {
+                showLibraryFlash('Expired articles are preview only.', false);
+                return;
+            }
             openArticleEditor(Object.assign({}, payload, {
                 id: payload.id || parseInt(id, 10),
                 preview_html: payload.preview_html || payload.html || '',

@@ -334,13 +334,11 @@ class ContentUploadService
 
     /**
      * Store an inline article image for preview/editor and return a public URL.
+     * May compress to WebP; the original Word file is never rewritten.
      */
     public function storeArticleImage(string $binary, string $ext, string $originalName, User $user): ?string
     {
-        $ext = strtolower(ltrim($ext, '.'));
-        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true)) {
-            $ext = 'png';
-        }
+        [$binary, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, $ext);
 
         $dir = 'content-articles/'.$user->id;
         $filename = Str::uuid()->toString().'.'.$ext;
@@ -363,6 +361,10 @@ class ContentUploadService
     {
         if ($submission->order_id) {
             return ['ok' => false, 'approved' => false, 'message' => 'This article is already linked to an order and cannot be edited.'];
+        }
+
+        if ($submission->isExpired()) {
+            return ['ok' => false, 'approved' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'];
         }
 
         $sanitizer = new ArticleHtmlSanitizer;

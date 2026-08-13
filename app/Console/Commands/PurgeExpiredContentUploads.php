@@ -9,27 +9,28 @@ class PurgeExpiredContentUploads extends Command
 {
     protected $signature = 'content:purge-expired';
 
-    protected $description = 'Delete unused expired content uploads (retention; skips anything linked to an order)';
+    protected $description = 'Strip original Word files from unused expired articles (keep preview rows; skip anything linked to an order)';
 
     public function handle(): int
     {
-        // Never purge articles still linked to orders / order items — only unused expired files.
+        // Never strip articles still linked to orders / order items — only unused expired files.
         $query = ContentSubmission::query()
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', now())
             ->whereNull('order_id')
+            ->where('path', '!=', '')
+            ->whereNotNull('path')
             ->whereDoesntHave('orderItem')
             ->whereDoesntHave('orderItems')
             ->limit(200);
 
         $count = 0;
         $query->each(function (ContentSubmission $submission) use (&$count) {
-            $submission->deleteStoredFile();
-            $submission->delete();
+            $submission->stripStoredFileKeepPreview();
             $count++;
         });
 
-        $this->info("Purged {$count} unused expired content submission(s). Linked/in-use articles were left alone.");
+        $this->info("Stripped {$count} unused expired Word file(s). Preview rows were kept. Linked/in-use articles were left alone.");
 
         return self::SUCCESS;
     }

@@ -233,6 +233,33 @@ class ContentSubmission extends Model
         return $this->expires_at !== null && $this->expires_at->isPast();
     }
 
+    public function hasStoredFile(): bool
+    {
+        return filled($this->path);
+    }
+
+    /**
+     * Advertiser/publisher may download the original Word file.
+     * Unused expired articles are preview-only even before the nightly strip.
+     */
+    public function canDownloadOriginal(): bool
+    {
+        if (! $this->hasStoredFile()) {
+            return false;
+        }
+
+        if ($this->isInUse()) {
+            return true;
+        }
+
+        return ! $this->isExpired();
+    }
+
+    public function canEditArticle(): bool
+    {
+        return ! $this->isInUse() && ! $this->isArchived() && ! $this->isExpired();
+    }
+
     /**
      * Unused approved articles approaching retention purge (content:purge-expired).
      */
@@ -657,5 +684,17 @@ class ContentSubmission extends Model
         if ($this->path && Storage::disk($this->disk ?: 'local')->exists($this->path)) {
             Storage::disk($this->disk ?: 'local')->delete($this->path);
         }
+    }
+
+    /**
+     * Remove the original Word file after unused expiry. Keep the row and preview.
+     */
+    public function stripStoredFileKeepPreview(): void
+    {
+        $this->deleteStoredFile();
+        $this->forceFill([
+            'path' => '',
+            'size_bytes' => 0,
+        ])->save();
     }
 }
