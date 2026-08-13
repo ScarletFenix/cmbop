@@ -60,13 +60,39 @@ class ContentImageRightsTest extends TestCase
         return $response;
     }
 
-    public function test_upload_is_rejected_without_an_image_rights_declaration(): void
+    public function test_upload_without_rights_records_none_when_the_article_has_no_images(): void
     {
-        $this->upload($this->advertiser())
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['image_rights']);
+        $advertiser = $this->advertiser();
 
-        $this->assertSame(0, ContentSubmission::count());
+        $this->upload($advertiser)
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.has_images', false)
+            ->assertJsonPath('submission.needs_image_rights', false);
+
+        $submission = ContentSubmission::where('user_id', $advertiser->id)->firstOrFail();
+        $this->assertSame(ContentSubmission::IMAGE_RIGHTS_NONE, $submission->image_rights);
+        $this->assertNotNull($submission->image_rights_declared_at);
+    }
+
+    public function test_blank_rights_plus_images_blocks_save_until_declared(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Body copy</p><img src="/storage/content-articles/1/x.png" alt="">',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('needs_image_rights', true);
     }
 
     public function test_upload_is_rejected_for_an_unknown_declaration(): void
@@ -208,6 +234,9 @@ class ContentImageRightsTest extends TestCase
         $this->assertTrue($submission->hasImages());
         $this->assertFalse($submission->imageRightsCoverContent());
 
+        $submission->image_rights = null;
+        $this->assertFalse($submission->imageRightsCoverContent());
+
         $submission->image_rights = ContentSubmission::IMAGE_RIGHTS_OWN;
         $this->assertTrue($submission->imageRightsCoverContent());
 
@@ -215,7 +244,7 @@ class ContentImageRightsTest extends TestCase
         $this->assertFalse(ContentSubmission::imageRightsNeedsSource(ContentSubmission::IMAGE_RIGHTS_OWN));
     }
 
-    public function test_both_upload_forms_ask_for_the_declaration(): void
+    public function test_library_upload_modal_defers_rights_until_the_editor(): void
     {
         $advertiser = $this->advertiser();
 
@@ -224,12 +253,26 @@ class ContentImageRightsTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString('data-image-rights', $library);
+        $this->assertStringContainsString('id="libraryDropzone"', $library);
+        $this->assertStringContainsString('id="libraryUploadBtn"', $library);
+        $this->assertStringContainsString('Upload and edit', $library);
+        $this->assertStringNotContainsString('Upload &amp; preview', $library);
+        $this->assertStringContainsString('data-upload-step="file"', $library);
+        $this->assertStringContainsString('data-upload-step="market"', $library);
+        $this->assertStringContainsString('data-upload-step="rights"', $library);
+        $this->assertStringContainsString('id="libraryMarketChip"', $library);
+        $this->assertStringContainsString('not PDF, Google Doc, or pasted text', $library);
+        $this->assertStringNotContainsString('id="libraryImageRightsOwn"', $library);
+        $this->assertStringContainsString('id="editorImageRightsOwn"', $library);
+        $this->assertStringContainsString('id="articleEditorImageRights"', $library);
         $this->assertStringContainsString('name="image_rights"', $library);
-        $this->assertStringContainsString('name="image_rights_source"', $library);
         $this->assertStringContainsString('image-rights.js', $library);
 
-        // Shared declaration partial (library modal + editor) — legacy 5-step wizard retired.
+        $js = file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('function bindLibraryDropzone', $js);
+        $this->assertStringContainsString('Opening editor…', $js);
+        $this->assertStringNotContainsString('readImageRights(this)', $js);
+
         $declaration = file_get_contents(resource_path('views/advertiser/partials/image-rights-declaration.blade.php'));
         $this->assertStringContainsString('image_rights', $declaration);
         $this->assertStringContainsString('image_rights_source', $declaration);

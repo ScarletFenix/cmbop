@@ -32,6 +32,8 @@ function refreshLibraryLanguages(preferredLanguage) {
     if (!country) {
         langSelect.disabled = true;
         langSelect.innerHTML = '<option value="">Select country first</option>';
+        updateMarketChip();
+        updateUploadSteps();
         return;
     }
     langSelect.disabled = false;
@@ -51,9 +53,21 @@ function refreshLibraryLanguages(preferredLanguage) {
     } else if (keep && !Array.from(langSelect.options).some(function (o) { return o.value === keep; })) {
         langSelect.value = '';
     }
+    const hint = document.getElementById('libraryLanguageHint');
+    if (hint) {
+        hint.textContent = options.length
+            ? 'Languages paired with this country.'
+            : 'No languages are paired with this country.';
+    }
+    updateMarketChip();
+    updateUploadSteps();
 }
 document.getElementById('libraryCountry')?.addEventListener('change', function () {
     refreshLibraryLanguages('');
+});
+document.getElementById('libraryLanguage')?.addEventListener('change', function () {
+    updateMarketChip();
+    updateUploadSteps();
 });
 document.addEventListener('DOMContentLoaded', function () {
     if (libraryPreferredCountry) {
@@ -61,10 +75,150 @@ document.addEventListener('DOMContentLoaded', function () {
         if (countrySelect) countrySelect.value = libraryPreferredCountry;
     }
     refreshLibraryLanguages(libraryPreferredLanguage);
+    bindLibraryDropzone();
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
     refreshLibraryLanguages(libraryPreferredLanguage || document.getElementById('libraryLanguage')?.value || '');
 });
+
+function selectedOptionLabel(select) {
+    if (!select || !select.selectedIndex || select.selectedIndex < 0) return '';
+    const opt = select.options[select.selectedIndex];
+    return opt && opt.value ? String(opt.textContent || '').trim() : '';
+}
+
+function updateMarketChip() {
+    const chip = document.getElementById('libraryMarketChip');
+    const country = selectedOptionLabel(document.getElementById('libraryCountry'));
+    const language = selectedOptionLabel(document.getElementById('libraryLanguage'));
+    if (!chip) return;
+    if (!country || !language) {
+        chip.classList.add('d-none');
+        chip.textContent = '';
+        return;
+    }
+    chip.textContent = country + ' · ' + language;
+    chip.classList.remove('d-none');
+}
+
+function updateUploadSteps() {
+    const file = document.getElementById('libraryFileInput');
+    const hasFile = !!(file && file.files && file.files[0]);
+    const hasMarket = !!(document.getElementById('libraryCountry')?.value
+        && document.getElementById('libraryLanguage')?.value);
+    const fileStep = document.querySelector('[data-upload-step="file"]');
+    const marketStep = document.querySelector('[data-upload-step="market"]');
+    const rightsStep = document.querySelector('[data-upload-step="rights"]');
+    if (fileStep) {
+        fileStep.classList.toggle('is-done', hasFile);
+        fileStep.classList.toggle('is-current', !hasFile);
+    }
+    if (marketStep) {
+        marketStep.classList.toggle('is-done', hasMarket);
+        marketStep.classList.toggle('is-current', hasFile && !hasMarket);
+    }
+    if (rightsStep) {
+        rightsStep.classList.add('is-pending');
+        rightsStep.classList.toggle('is-current', hasFile && hasMarket);
+    }
+}
+
+function formatFileSize(bytes) {
+    if (!bytes) return '0 B';
+    if (bytes < 1024) return bytes + ' B';
+    const kb = bytes / 1024;
+    if (kb < 1024) return Math.round(kb) + ' KB';
+    return (kb / 1024).toFixed(1) + ' MB';
+}
+
+function titleFromFilename(name) {
+    return String(name || '')
+        .replace(/\.docx$/i, '')
+        .replace(/[_-]+/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+}
+
+function showDropzoneFile(file) {
+    const idle = document.getElementById('libraryDropzoneIdle');
+    const shown = document.getElementById('libraryDropzoneFile');
+    const zone = document.getElementById('libraryDropzone');
+    if (idle) idle.classList.toggle('d-none', !!file);
+    if (shown) {
+        shown.classList.toggle('d-none', !file);
+        shown.innerHTML = file
+            ? '<strong>' + escapeHtml(file.name) + '</strong><span>' + escapeHtml(formatFileSize(file.size)) + '</span>'
+            : '';
+    }
+    zone?.classList.remove('is-error', 'is-dragover');
+}
+
+function assignLibraryFile(file, feedback) {
+    const input = document.getElementById('libraryFileInput');
+    const maxKb = Number(boot.maxKilobytes || 5120);
+    if (!file || !input) return false;
+    if (!/\.docx$/i.test(file.name)) {
+        setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
+        document.getElementById('libraryDropzone')?.classList.add('is-error');
+        return false;
+    }
+    if (file.size > maxKb * 1024) {
+        setFeedbackHtml(feedback, false, 'That file is over the ' + Math.max(1, Math.round(maxKb / 1024)) + ' MB limit.');
+        document.getElementById('libraryDropzone')?.classList.add('is-error');
+        return false;
+    }
+    const dt = new DataTransfer();
+    dt.items.add(file);
+    input.files = dt.files;
+    showDropzoneFile(file);
+    const titleInput = document.getElementById('libraryTitleInput');
+    if (titleInput && (!titleInput.value.trim() || titleInput.dataset.autofilled === '1')) {
+        titleInput.value = titleFromFilename(file.name);
+        titleInput.dataset.autofilled = '1';
+    }
+    if (feedback) feedback.textContent = '';
+    updateUploadSteps();
+    return true;
+}
+
+function bindLibraryDropzone() {
+    const zone = document.getElementById('libraryDropzone');
+    const input = document.getElementById('libraryFileInput');
+    const feedback = document.getElementById('libraryUploadFeedback');
+    const titleInput = document.getElementById('libraryTitleInput');
+    if (!zone || !input) return;
+
+    titleInput?.addEventListener('input', function () {
+        titleInput.dataset.autofilled = '0';
+    });
+    input.addEventListener('change', function () {
+        const file = input.files && input.files[0];
+        if (file) assignLibraryFile(file, feedback);
+        else {
+            showDropzoneFile(null);
+            updateUploadSteps();
+        }
+    });
+
+    ['dragenter', 'dragover'].forEach(function (type) {
+        zone.addEventListener(type, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.add('is-dragover');
+        });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+        zone.addEventListener(type, function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            zone.classList.remove('is-dragover');
+        });
+    });
+    zone.addEventListener('drop', function (e) {
+        const file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        assignLibraryFile(file, feedback);
+    });
+}
 
 function escapeHtml(str) {
     if (str == null || str === '') return '';
@@ -378,6 +532,11 @@ function openArticleEditor(submission) {
     if (articleQuill) {
         articleQuill.root.innerHTML = submission.preview_html || '<p><br></p>';
     }
+    const rightsWrap = document.getElementById('articleEditorImageRights');
+    if (rightsWrap) {
+        const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
+        rightsWrap.classList.toggle('d-none', !needsRights);
+    }
     const orderBtn = document.getElementById('articleEditorOrderBtn');
     if (submission.can_order) {
         orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
@@ -417,6 +576,14 @@ async function saveArticleEditor() {
     const btn = document.getElementById('articleEditorSaveBtn');
     const html = articleQuill.root.innerHTML;
     const title = (document.getElementById('articleEditorTitle').value || '').trim();
+    const wrap = document.getElementById('articleEditorImageRights');
+    if (wrap && !wrap.classList.contains('d-none') && window.readImageRights) {
+        const rights = window.readImageRights(wrap);
+        if (!rights.ok) {
+            setFeedbackHtml(feedback, false, rights.message);
+            return;
+        }
+    }
     btn.disabled = true;
     feedback.textContent = 'Saving and re-checking content moderation…';
     try {
@@ -662,18 +829,16 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     const progress = document.getElementById('libraryUploadProgress');
     const bar = progress.querySelector('.progress-bar');
 
-    if (!file) return;
+    if (!file) {
+        setFeedbackHtml(feedback, false, 'Drop a .docx or click the box to choose a file.');
+        return;
+    }
     if (!/\.docx$/i.test(file.name)) {
-        setFeedbackHtml(feedback, false, 'Please upload a Microsoft Word (.docx) document only.');
+        setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         return;
     }
     if (!document.getElementById('libraryCountry').value || !document.getElementById('libraryLanguage').value) {
         setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
-        return;
-    }
-    const rights = window.readImageRights ? window.readImageRights(this) : { ok: true };
-    if (!rights.ok) {
-        setFeedbackHtml(feedback, false, rights.message);
         return;
     }
 
@@ -696,7 +861,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             btn.disabled = false;
             return;
         }
-        setFeedbackHtml(feedback, true, (data.message || 'Uploaded') + ' Opening editor…');
+        setFeedbackHtml(feedback, true, 'Opening editor…');
         if (data.submission) {
             openArticleEditor(Object.assign({}, data.submission, {
                 can_order: !!(data.submission.can_order || data.approved),

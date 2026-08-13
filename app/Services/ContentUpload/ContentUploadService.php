@@ -220,6 +220,8 @@ class ContentUploadService
         ]);
 
         $fresh = $submission->fresh();
+        $this->reconcileImageRightsAfterParse($fresh, $imageRights);
+        $fresh = $fresh->fresh();
         $this->notifyAdvertiserOfEvaluation($fresh, $result);
 
         // Upload was accepted into the library; approval is separate.
@@ -234,6 +236,35 @@ class ContentUploadService
             'links' => $links,
             'has_link' => $firstLink !== null,
         ];
+    }
+
+    /**
+     * Rights are optional on upload. After parse: no images → record "none";
+     * images without own/licensed → clear so the editor asks.
+     */
+    protected function reconcileImageRightsAfterParse(
+        ContentSubmission $submission,
+        ?string $claimed,
+    ): void {
+        if ($submission->hasImages()) {
+            if (in_array($claimed, [ContentSubmission::IMAGE_RIGHTS_OWN, ContentSubmission::IMAGE_RIGHTS_LICENSED], true)) {
+                return;
+            }
+
+            $submission->update([
+                'image_rights' => null,
+                'image_rights_source' => null,
+                'image_rights_declared_at' => null,
+            ]);
+
+            return;
+        }
+
+        $submission->update([
+            'image_rights' => $claimed ?: ContentSubmission::IMAGE_RIGHTS_NONE,
+            'image_rights_source' => null,
+            'image_rights_declared_at' => now(),
+        ]);
     }
 
     /**

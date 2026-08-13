@@ -211,13 +211,12 @@ class ContentSubmission extends Model
     /**
      * The declaration must cover what the article actually contains: an article
      * declared image-free cannot keep images added later in the editor.
-     *
-     * Articles uploaded before declarations existed carry no claim at all, so
-     * there is nothing to contradict and editing them stays open.
+     * Articles with images and no covering claim (own / licensed) must declare
+     * before save — including new uploads that skip rights until after parse.
      */
     public function imageRightsCoverContent(): bool
     {
-        if (blank($this->image_rights) || ! $this->hasImages()) {
+        if (! $this->hasImages()) {
             return true;
         }
 

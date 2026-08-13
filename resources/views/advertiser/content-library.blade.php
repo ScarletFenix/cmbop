@@ -606,18 +606,37 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                @php
+                    $uploadMaxKb = (int) ($uploadCfg['max_kilobytes'] ?? 5120);
+                    $uploadMaxMb = max(1, (int) round($uploadMaxKb / 1024));
+                @endphp
+                <ol class="library-upload-steps mb-3" aria-label="Upload steps">
+                    <li data-upload-step="file" class="is-current">File</li>
+                    <li data-upload-step="market">Market</li>
+                    <li data-upload-step="rights" class="is-pending">Rights</li>
+                </ol>
                 <x-ui.callout variant="attention" class="ui-callout--sm mb-3">
-                    {{ $uploadCfg['help']['preferred_format'] ?? 'Please upload your article as a Microsoft Word (.docx) document only.' }}
-                    After upload you can preview and edit the article (add/remove images and links) before ordering.
+                    Microsoft Word (.docx) only — not PDF, Google Doc, or pasted text.
+                    Max {{ $uploadMaxMb }} MB. Opens in the editor next.
+                    Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
+
                 <div class="mb-3">
-                    <label class="form-label">Title <span class="text-muted">(optional)</span></label>
-                    <input type="text" name="title" class="form-control" maxlength="200" placeholder="Article title"
-                           value="{{ $editSubmission->title ?? '' }}">
+                    <label class="library-dropzone" id="libraryDropzone" for="libraryFileInput">
+                        <input type="file" name="file" id="libraryFileInput" class="visually-hidden"
+                               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                        <span class="library-dropzone__idle" id="libraryDropzoneIdle">
+                            <i class="fa fa-file-word" aria-hidden="true"></i>
+                            <strong>Drop a .docx here or click to browse</strong>
+                            <span>Word only — not PDF, Google Doc, or pasted text</span>
+                        </span>
+                        <span class="library-dropzone__file d-none" id="libraryDropzoneFile"></span>
+                    </label>
                 </div>
+
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                        <label class="form-label" for="libraryCountry">Country <span class="text-danger">*</span></label>
                         <select name="country" id="libraryCountry" class="form-select" required>
                             <option value="">Select country</option>
                             @foreach(($countries ?? []) as $country)
@@ -627,25 +646,26 @@
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">Pick the market country first.</div>
+                        <div class="form-text">Pick the market country first — language stays closed until you do.</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Language <span class="text-danger">*</span></label>
+                        <label class="form-label" for="libraryLanguage">Language <span class="text-danger">*</span></label>
                         <select name="language" id="libraryLanguage" class="form-select" required disabled>
                             <option value="">Select country first</option>
                         </select>
-                        <div class="form-text">Only languages paired with that country (e.g. Germany → German; UAE → Arabic or English).</div>
+                        <div class="form-text" id="libraryLanguageHint">Select a country first, then a paired language (e.g. Germany → German).</div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Microsoft Word document (.docx)</label>
-                    <input type="file" name="file" id="libraryFileInput" class="form-control" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+                <div class="mb-3" id="libraryMarketChipWrap">
+                    <span class="library-market-chip d-none" id="libraryMarketChip"></span>
                 </div>
 
-                @include('advertiser.partials.image-rights-declaration', [
-                    'idPrefix' => 'libraryImageRights',
-                    'submission' => $editSubmission ?? null,
-                ])
+                <div class="mb-3">
+                    <label class="form-label" for="libraryTitleInput">Title <span class="text-muted">(optional)</span></label>
+                    <input type="text" name="title" id="libraryTitleInput" class="form-control" maxlength="200"
+                           placeholder="Defaults to the filename"
+                           value="{{ $editSubmission->title ?? '' }}">
+                </div>
 
                 <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission->id ?? '' }}">
                 <div id="libraryUploadFeedback" class="small" aria-live="polite"></div>
@@ -653,7 +673,7 @@
             </div>
             <div class="modal-footer">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload &amp; preview</button>
+                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload and edit</button>
             </div>
         </form>
     </div>
@@ -765,6 +785,7 @@ window.ContentLibraryBoot = {
     uploadUrl: @json(route('advertiser.content-library.upload')),
     libraryIndexUrl: @json(route('advertiser.content-library')),
     editSubmission: @json($editSubmissionBoot ?? null),
+    maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 5120)),
 };
 </script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
