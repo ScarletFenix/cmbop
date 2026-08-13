@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -612,6 +613,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->putJson(route('advertiser.content-submissions.content', $submission), [
                 'preview_html' => $html,
                 'title' => 'Edited Doc Title',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -640,6 +642,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->actingAs($advertiser)
             ->putJson(route('advertiser.content-submissions.content', $submission), [
                 'preview_html' => $html,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
