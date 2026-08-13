@@ -18,7 +18,10 @@
         border-bottom-width: 1px;
         white-space: nowrap;
     }
-    .library-table td { vertical-align: middle; }
+    .library-row--focus {
+        box-shadow: inset 3px 0 0 #1a585e;
+        background: #e6f5f5;
+    }
     .library-title { font-weight: 600; color: #0f172a; max-width: 280px; }
     .library-live-link {
         display: block;
