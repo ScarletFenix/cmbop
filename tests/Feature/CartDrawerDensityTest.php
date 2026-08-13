@@ -1,0 +1,78 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Role;
+use App\Models\User;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Tests\TestCase;
+
+class CartDrawerDensityTest extends TestCase
+{
+    use RefreshDatabase;
+
+    private function advertiser(): User
+    {
+        $role = Role::firstOrCreate(['name' => 'advertiser']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    public function test_cart_drawer_copy_and_totals_contract(): void
+    {
+        $layout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+
+        $this->assertStringContainsString('id="cartChecklist"', $layout);
+        $this->assertStringContainsString('id="cartProceedHint"', $layout);
+        $this->assertStringContainsString('id="cartHeldNote"', $layout);
+        $this->assertStringContainsString('id="cartTotalLabel"', $layout);
+        $this->assertStringContainsString('Pay now', $layout);
+        $this->assertStringContainsString('In cart €', $layout);
+        $this->assertStringContainsString('cart-checklist__status', $layout);
+        $this->assertStringContainsString('Pay sites that have an article. Others stay in the cart.', $layout);
+        $this->assertStringNotContainsString('Assign a document to each website', $layout);
+        $this->assertStringNotContainsString('Before Pay', $layout);
+        $this->assertStringNotContainsString('Order document', $layout);
+        $this->assertStringContainsString('Upload article', $layout);
+        $this->assertStringContainsString('Decrease placements', $layout);
+        $this->assertStringContainsString('Placements — each needs its own article', $layout);
+        $this->assertStringContainsString('cart-keep-browsing', $layout);
+        $this->assertStringContainsString('What happens after you pay', $layout);
+        $this->assertStringContainsString('buy-confidence', $layout);
+        $this->assertStringNotContainsString('btn-outline-secondary w-100 mt-2', $layout);
+    }
+
+    public function test_cart_css_owns_checklist_and_compact_spacing(): void
+    {
+        $css = (string) file_get_contents(public_path('assets/css/cart.css'));
+        $stepper = (string) file_get_contents(resource_path('views/advertiser/wizard/_stepper.blade.php'));
+
+        $this->assertStringContainsString('.cart-checklist', $css);
+        $this->assertStringContainsString('#checkoutFromCart:disabled', $css);
+        $this->assertStringContainsString('padding: 12px 16px', $css);
+        $this->assertStringContainsString('.cart-keep-browsing', $css);
+        $this->assertStringContainsString('.cart-totals__held', $css);
+        $this->assertStringContainsString('width: min(420px, 94vw)', $css);
+
+        $this->assertStringNotContainsString('.cart-checklist', $stepper);
+        $this->assertStringNotContainsString('#checkoutFromCart:disabled', $stepper);
+    }
+
+    public function test_catalog_still_renders_cart_drawer(): void
+    {
+        $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertSee('id="cartChecklist"', false)
+            ->assertSee('id="keepBrowsingCatalog"', false)
+            ->assertSee('buy-confidence', false)
+            ->assertSee('What happens after you pay', false)
+            ->assertDontSee('Assign a document to each website', false)
+            ->assertDontSee('Before Pay', false);
+    }
+}
