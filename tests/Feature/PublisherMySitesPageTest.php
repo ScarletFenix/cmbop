@@ -142,6 +142,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('Feature · €10', $html);
         $this->assertStringContainsString('>Sale</span>', $html);
         $this->assertStringContainsString('>Bulk</span>', $html);
+        $this->assertStringContainsString('10–80% off when an advertiser buys', $html);
         $this->assertStringContainsString('site-offer-chip btn-feature-site', $html);
         $this->assertStringContainsString('Paid from publisher balance or card', $html);
         $this->assertStringNotContainsString('class="btn-icon-quiet btn-feature-site', $html);
@@ -171,7 +172,9 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('Update percent', $js);
         $this->assertStringContainsString("$(document).on('click', '.btn-bulk-site'", $js);
         $this->assertStringNotContainsString("$(document).on('click', '.btn-bulk-join'", $js);
-        $this->assertStringNotContainsString("$(document).on('click', '.btn-discount-clear'", $js);
+        $this->assertStringContainsString('bulkMaxPercent || 80', $js);
+        $this->assertStringNotContainsString('Discount % for 3–5 articles (10–15)', $js);
+        $this->assertStringContainsString('bulkMaxPercent: 80', $page);
     }
 
     public function test_offer_dialogs_keep_get_verified_on_manage_and_note_unverified_feature(): void
@@ -217,6 +220,7 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringNotContainsString('btn-discount-clear', $html);
         $this->assertStringNotContainsString('btn-bulk-join', $html);
         $this->assertStringNotContainsString('btn-bulk-leave', $html);
+        $this->assertStringContainsString('10–80% off when an advertiser buys', $html);
 
         $this->assertStringContainsString('Get Verified', $html);
         $this->assertMatchesRegularExpression(

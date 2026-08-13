@@ -217,7 +217,7 @@ class SitePromotionController extends Controller
 
         $data = $request->validate([
             'percent' => 'required|numeric|min:'.config('site_promotions.bulk.min_percent', 10)
-                .'|max:'.config('site_promotions.bulk.max_percent', 15),
+                .'|max:'.config('site_promotions.bulk.max_percent', 80),
         ]);
 
         $site = $this->promotions->joinBulkDiscount($site, (float) $data['percent']);

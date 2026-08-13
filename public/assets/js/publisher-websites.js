@@ -2166,12 +2166,15 @@ $(document).on('click', '.btn-bulk-site', async function () {
     const $btn = $(this);
     const id = $btn.data('id');
     const joined = String($btn.attr('data-joined')) === '1';
-    const currentPct = Number($btn.attr('data-percent') || 10);
+    const cfg = window.PublisherWebsitesConfig || {};
+    const bulkMin = Number(cfg.bulkMinPercent || 10);
+    const bulkMax = Number(cfg.bulkMaxPercent || 80);
+    const currentPct = Number($btn.attr('data-percent') || bulkMin);
     const result = await Swal.fire({
         title: joined ? `Bulk −${currentPct}% is on` : 'Join bulk discount program',
         html: `<p class="small text-muted">${promoEscapeHtml(promoBetterOfNote())}</p>
-               <label for="swal-bulk-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount % for 3–5 articles (10–15)</label>
-               <input id="swal-bulk-pct" type="number" min="10" max="15" step="1" class="swal2-input" value="${joined ? currentPct : 10}">`,
+               <label for="swal-bulk-pct" class="small fw-semibold d-block text-start ms-3 mb-0">Discount % for 3–5 articles (${bulkMin}–${bulkMax})</label>
+               <input id="swal-bulk-pct" type="number" min="${bulkMin}" max="${bulkMax}" step="1" class="swal2-input" value="${joined ? currentPct : bulkMin}">`,
         showDenyButton: joined,
         showCancelButton: true,
         confirmButtonText: joined ? 'Update percent' : 'Join',

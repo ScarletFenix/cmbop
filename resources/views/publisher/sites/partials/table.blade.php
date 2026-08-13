@@ -1263,7 +1263,7 @@
                         aria-label="Join bulk"
                         data-glass-tip
                         data-glass-tip-title="Join bulk"
-                        data-glass-tip-body="10–15% off when an advertiser buys {{ $bulkMinQty }}–{{ $bulkMaxQty }} articles. Exclusive with a timed sale — not stacked."
+                        data-glass-tip-body="{{ (int) config('site_promotions.bulk.min_percent', 10) }}–{{ (int) config('site_promotions.bulk.max_percent', 80) }}% off when an advertiser buys {{ $bulkMinQty }}–{{ $bulkMaxQty }} articles. Exclusive with a timed sale — not stacked."
                         data-glass-tip-placement="top">
                     <i class="fa fa-layer-group" aria-hidden="true"></i>
                     <span class="site-offer-chip__label">Bulk</span>
