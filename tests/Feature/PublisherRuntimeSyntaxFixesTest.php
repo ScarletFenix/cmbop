@@ -53,6 +53,12 @@ class PublisherRuntimeSyntaxFixesTest extends TestCase
         $this->actingAs($publisher)
             ->get(route('publisher.withdraw'))
             ->assertOk();
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.balance'))
+            ->assertOk()
+            ->assertSee('Publisher earnings', false)
+            ->assertSee('balance-label">Earnings', false);
     }
 
     public function test_advertiser_dashboard_renders_without_site_syntax_error(): void

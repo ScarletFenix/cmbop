@@ -207,6 +207,23 @@ class PublisherBalanceHistoryUiTest extends TestCase
             ->assertSee('€4.50', false);
     }
 
+    public function test_dual_role_publisher_can_open_add_funds_and_catalog_without_403(): void
+    {
+        $user = $this->publisherWithWallets();
+        $this->assertSame('publisher', $user->activeRole());
+
+        $this->actingAs($user)
+            ->get(route('advertiser.add-funds'))
+            ->assertOk()
+            ->assertSee('Add funds', false);
+
+        $this->assertSame('advertiser', $user->fresh()->activeRole());
+
+        $this->actingAs($user->fresh())
+            ->get(route('advertiser.catalog'))
+            ->assertOk();
+    }
+
     public function test_publisher_balance_uses_role_name_ids_not_hardcoded_one_and_two(): void
     {
         $user = $this->publisherWithWallets();
