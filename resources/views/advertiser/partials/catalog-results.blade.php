@@ -538,6 +538,7 @@
                                         class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
                                         data-name="{{ $displayName }}"
+                                        data-glass-tip-placement="left"
                                         aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
                                         title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
                                     <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
@@ -547,6 +548,7 @@
                                         class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                         data-id="{{ $site->id }}"
                                         data-name="{{ $displayName }}"
+                                        data-glass-tip-placement="left"
                                         aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
                                         title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
                                     <i class="fa-solid fa-ban" aria-hidden="true"></i>
@@ -559,6 +561,7 @@
                                     data-site-id="{{ $site->id }}"
                                     data-site-name="{{ $displayName }}"
                                     data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
+                                    data-glass-tip-placement="left"
                                     title="Claim this website if you own it"
                                     aria-label="Claim website {{ $identityLabel }}">
                                 Claim
@@ -1300,14 +1303,18 @@
                                 class="btn-icon-quiet favorite-btn {{ $isFavorited ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
                                 data-name="{{ $displayName }}"
-                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}">
+                                data-glass-tip-placement="left"
+                                aria-label="{{ $isFavorited ? 'Remove from favorites' : 'Add to favorites' }}"
+                                title="{{ $isFavorited ? 'Remove from Favorites' : 'Add to Favorites' }}">
                             <i class="fa-{{ $isFavorited ? 'solid' : 'regular' }} fa-heart" aria-hidden="true"></i>
                         </button>
                         <button type="button"
                                 class="btn-icon-quiet blacklist-btn {{ $isBlacklisted ? 'is-active' : '' }}"
                                 data-id="{{ $site->id }}"
                                 data-name="{{ $displayName }}"
-                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}">
+                                data-glass-tip-placement="left"
+                                aria-label="{{ $isBlacklisted ? 'Remove from blacklist' : 'Blacklist site' }}"
+                                title="{{ $isBlacklisted ? 'Remove from Blacklist' : 'Blacklist Site' }}">
                             <i class="fa-solid fa-ban" aria-hidden="true"></i>
                         </button>
                     </div>
@@ -1317,6 +1324,7 @@
                                 data-site-id="{{ $site->id }}"
                                 data-site-name="{{ $displayName }}"
                                 data-site-url="{{ $canSeeUrl ? $site->site_url : '' }}"
+                                data-glass-tip-placement="left"
                                 title="Claim this website if you own it"
                                 aria-label="Claim website {{ $identityLabel }}">
                             Claim
