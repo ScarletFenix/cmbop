@@ -136,7 +136,7 @@
         <h2 class="mb-1 fw-semibold">Content Library</h2>
         <div class="library-page-actions">
             @include('advertiser.partials.upload-article-button', [
-                'id' => 'openUploadModalBtn',
+                'uploadButtonId' => 'openUploadModalBtn',
                 'uploadsEnabled' => $uploadsEnabled,
             ])
             <a href="{{ route('advertiser.catalog') }}" class="btn btn-link btn-sm library-browse-link" id="libraryBrowsePublishersBtn">
@@ -204,6 +204,7 @@
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             </div>
         @endif
+        <button type="submit" class="visually-hidden">Search</button>
     </form>
 
     <nav class="library-status-row" aria-label="Library status filter">

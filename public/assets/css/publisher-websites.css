@@ -752,3 +752,27 @@
     #sitePreviewModal .modal-body {
         overflow-x: hidden;
     }
+
+    /* Complete details reused .btn-upload when that class was a light-blue
+       secondary. Library restyled .btn-upload as a filled primary; keep this
+       control pale so it does not look like Upload article. */
+    #bulkCompleteDetailsBtn.btn-upload {
+        --bs-btn-color: #1d4ed8;
+        --bs-btn-bg: #eff6ff;
+        --bs-btn-border-color: #93c5fd;
+        --bs-btn-hover-color: #1e3a8a;
+        --bs-btn-hover-bg: #dbeafe;
+        --bs-btn-hover-border-color: #60a5fa;
+        color: var(--bs-btn-color);
+        background-color: var(--bs-btn-bg);
+        border-color: var(--bs-btn-border-color);
+        box-shadow: none;
+        gap: 0.35rem;
+    }
+    #bulkCompleteDetailsBtn.btn-upload:hover,
+    #bulkCompleteDetailsBtn.btn-upload:focus-visible {
+        color: var(--bs-btn-hover-color);
+        background-color: var(--bs-btn-hover-bg);
+        border-color: var(--bs-btn-hover-border-color);
+        box-shadow: none;
+    }

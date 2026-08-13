@@ -537,6 +537,7 @@ code.font-monospace {
   --bs-btn-active-border-color: #1e3a8a;
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: .5rem;
   color: var(--bs-btn-color);
   background-color: var(--bs-btn-bg);
@@ -547,7 +548,7 @@ code.font-monospace {
   transition: background-color var(--motion-fast), border-color var(--motion-fast), color var(--motion-fast), box-shadow var(--motion-fast);
 }
 .btn-upload:hover,
-.btn-upload:focus {
+.btn-upload:focus-visible {
   color: var(--bs-btn-hover-color);
   background-color: var(--bs-btn-hover-bg);
   border-color: var(--bs-btn-hover-border-color);

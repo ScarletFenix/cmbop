@@ -38,6 +38,8 @@ class ModernUiSystemTest extends TestCase
         $this->assertStringNotContainsString('--brand-warning: #dc2626', $brand);
         $this->assertStringContainsString('.btn-upload', $brand);
         $this->assertStringContainsString('.btn-upload__icon', $brand);
+        $this->assertStringContainsString('.btn-upload:focus-visible', $brand);
+        $this->assertStringNotContainsString('.btn-upload:focus {', $brand);
         $this->assertStringContainsString('.upload-zone', $brand);
         $this->assertStringContainsString('#eff6ff', $brand);
         $this->assertStringContainsString('#2563eb', $brand);

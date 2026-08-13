@@ -276,6 +276,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
         $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
         $this->assertStringContainsString('visually-hidden" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('visually-hidden">Search</button>', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
         $this->assertStringContainsString('Search title or filename', $html);
@@ -527,6 +528,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
         $this->assertStringContainsString('Browse publishers', $html);
         $this->assertStringContainsString('btn-upload__hint', $html);
+        $this->assertSame(1, substr_count($html, 'id="openUploadModalBtn"'));
         $this->assertStringContainsString('class="library-page-actions"', $html);
         $this->assertStringNotContainsString('library-page-actions upload-zone', $html);
         $this->assertStringNotContainsString('btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn"', $html);
@@ -557,6 +559,7 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
         $this->assertStringContainsString('library-browse-link', $html);
+        $this->assertSame(1, substr_count($html, 'id="openUploadModalBtn"'));
         $this->assertGreaterThanOrEqual(2, substr_count($html, 'Browse publishers'));
         $this->assertStringContainsString('Guided placement', $html);
         $this->assertStringNotContainsString('btn btn-outline-secondary">Guided placement', $html);
