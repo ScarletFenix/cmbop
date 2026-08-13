@@ -528,19 +528,36 @@ $(document).ready(function() {
         showTasksModal('contentRevisionModal');
     });
 
-    $(document).on('click', '.submit-live-url', function() {
-        var $btn = $(this);
-        $('#complete_order_item_id').val($btn.data('id'));
-        $('#live_url').val('');
-        $('#completeModal .social-post-url').val('');
+    function parseSocialChannelsAttr($raw, fallback) {
         var channels = [];
         try {
-            var raw = $btn.attr('data-social-channels') || '[]';
-            channels = JSON.parse(raw);
+            channels = JSON.parse(raw || '[]');
         } catch (e) {
             channels = [];
         }
-        if (!Array.isArray(channels)) channels = [];
+        if (!Array.isArray(channels) || !channels.length) {
+            channels = Array.isArray(fallback) ? fallback : [];
+        }
+        return channels.filter(Boolean);
+    }
+
+    function taskItemById(id) {
+        var rows = window._publisherTaskItems || [];
+        var needle = String(id);
+        for (var i = 0; i < rows.length; i++) {
+            if (String(rows[i].id) === needle) return rows[i];
+        }
+        return null;
+    }
+
+    $(document).on('click', '.submit-live-url', function() {
+        var $btn = $(this);
+        var id = $btn.data('id');
+        $('#complete_order_item_id').val(id);
+        $('#live_url').val('');
+        $('#completeModal .social-post-url').val('');
+        var item = taskItemById(id) || {};
+        var channels = parseSocialChannelsAttr($btn.attr('data-social-channels'), item.social_channels);
         var $wrap = $('#completeSocialFields');
         $wrap.find('[data-social-channel]').addClass('d-none');
         if (channels.length) {
@@ -564,20 +581,17 @@ $(document).ready(function() {
         var id = $btn.data('id');
         $('#social_posts_order_item_id').val(id);
         $('#socialPostsModal .social-post-url').val('');
-        var channels = [];
-        try {
-            channels = JSON.parse($btn.attr('data-social-channels') || '[]');
-        } catch (e) {
-            channels = [];
-        }
-        if (!Array.isArray(channels)) channels = [];
+        var item = taskItemById(id) || {};
+        var channels = parseSocialChannelsAttr($btn.attr('data-social-channels'), item.social_channels);
         var existing = {};
         try {
             existing = JSON.parse($btn.attr('data-social-post-urls') || '{}') || {};
         } catch (e) {
             existing = {};
         }
-        if (typeof existing !== 'object' || existing === null) existing = {};
+        if (typeof existing !== 'object' || existing === null || !Object.keys(existing).length) {
+            existing = (item.social_post_urls && typeof item.social_post_urls === 'object') ? item.social_post_urls : {};
+        }
 
         var $wrap = $('#socialPostsFields');
         $wrap.find('[data-social-channel]').addClass('d-none');
@@ -1165,6 +1179,7 @@ $(document).ready(function() {
     }
 
     function renderTasksTable(orderItems) {
+        window._publisherTaskItems = Array.isArray(orderItems) ? orderItems : [];
         if (!orderItems || orderItems.length === 0) {
             $('#tasksTableBody').html(
                 '<tr><td colspan="8" class="text-center py-5">' +
