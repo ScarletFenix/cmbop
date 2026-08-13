@@ -56,7 +56,7 @@ class OrderController extends Controller
         abort_unless($allowed, 403);
 
         $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $disk->exists($submission->path)) {
+        if (! $submission->hasStoredFile() || ! $disk->exists($submission->path)) {
             abort(404, 'File not found');
         }
 

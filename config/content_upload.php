@@ -75,7 +75,7 @@ return [
 
     'help' => [
         'preferred_format' => 'Please upload your article as a Microsoft Word (.docx) document only. Other formats are not accepted.',
-        'before_upload' => 'Supported format: Microsoft Word (.docx) only. Maximum size: 10 MB. After upload, a report will be available with your article.',
+        'before_upload' => 'Supported format: Microsoft Word (.docx) only. Maximum size: 10 MB. Unused articles are kept for 6 months; after that the original file is removed and a preview stays in Expired.',
         'anchor_text' => 'Enter the exact anchor text that should appear in the article.',
         'target_url' => 'Enter the website URL that the anchor text should link to.',
         'feature_image' => 'If you would like the publisher to use a featured image, provide a royalty-free image URL from platforms such as Pixabay, Pexels, Unsplash, or similar sources.',

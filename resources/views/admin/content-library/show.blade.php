@@ -12,7 +12,7 @@
                 {{ str_replace('_', ' ', (string) $submission->moderation_status) }}
             </p>
         </div>
-        @if($submission->path)
+        @if($submission->hasStoredFile())
             <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.content-submissions.download', $submission) }}">
                 Download .docx
             </a>

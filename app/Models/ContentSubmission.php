@@ -230,7 +230,37 @@ class ContentSubmission extends Model
 
     public function isExpired(): bool
     {
-        return $this->expires_at !== null && $this->expires_at->isPast();
+        // Match content:purge-expired (`expires_at <= now()`). Carbon isPast() is
+        // strictly before now, which would leave the exact expiry instant orderable
+        // in the UI while the nightly strip already treats it as expired.
+        return $this->expires_at !== null && ! $this->expires_at->isFuture();
+    }
+
+    public function hasStoredFile(): bool
+    {
+        return filled($this->path);
+    }
+
+    /**
+     * Advertiser/publisher may download the original Word file.
+     * Unused expired articles are preview-only even before the nightly strip.
+     */
+    public function canDownloadOriginal(): bool
+    {
+        if (! $this->hasStoredFile()) {
+            return false;
+        }
+
+        if ($this->isInUse()) {
+            return true;
+        }
+
+        return ! $this->isExpired();
+    }
+
+    public function canEditArticle(): bool
+    {
+        return ! $this->isInUse() && ! $this->isArchived() && ! $this->isExpired();
     }
 
     /**
@@ -254,7 +284,7 @@ class ContentSubmission extends Model
             return null;
         }
 
-        if ($this->expires_at->isPast()) {
+        if ($this->isExpired()) {
             return 0;
         }
 
@@ -454,10 +484,6 @@ class ContentSubmission extends Model
             return 'archived';
         }
 
-        if ($this->needsCorrection()) {
-            return 'needs_fix';
-        }
-
         if ($this->isPublished()) {
             return 'published';
         }
@@ -468,6 +494,10 @@ class ContentSubmission extends Model
 
         if ($this->isExpired()) {
             return 'expired';
+        }
+
+        if ($this->needsCorrection()) {
+            return 'needs_fix';
         }
 
         if ($this->isEvaluating()) {
@@ -657,5 +687,17 @@ class ContentSubmission extends Model
         if ($this->path && Storage::disk($this->disk ?: 'local')->exists($this->path)) {
             Storage::disk($this->disk ?: 'local')->delete($this->path);
         }
+    }
+
+    /**
+     * Remove the original Word file after unused expiry. Keep the row and preview.
+     */
+    public function stripStoredFileKeepPreview(): void
+    {
+        $this->deleteStoredFile();
+        $this->forceFill([
+            'path' => '',
+            'size_bytes' => 0,
+        ])->save();
     }
 }

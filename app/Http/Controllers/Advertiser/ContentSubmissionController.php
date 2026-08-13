@@ -100,6 +100,13 @@ class ContentSubmissionController extends Controller
                 ->where('user_id', auth()->id())
                 ->whereNull('order_id')
                 ->first();
+            if ($replace?->isExpired()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Expired',
+                    'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
         }
 
         $result = $this->uploads->uploadAndProcess(
@@ -139,6 +146,10 @@ class ContentSubmissionController extends Controller
 
         if ($submission->isArchived()) {
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
+        if ($submission->isExpired()) {
+            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
         }
 
         $data = $request->validate([
@@ -248,6 +259,10 @@ class ContentSubmissionController extends Controller
 
         if ($submission->isArchived()) {
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
+        if ($submission->isExpired()) {
+            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
         }
 
         $cfg = $this->uploads->effectiveConfig();
@@ -418,7 +433,7 @@ class ContentSubmissionController extends Controller
             'html' => $html,
             'links' => $submission->detectedLinks(),
             'detected_links' => $submission->detectedLinks(),
-            'editable' => ! ($submission->isInUse() || $submission->isArchived()),
+            'editable' => $submission->canEditArticle(),
             'word_count' => $submission->word_count,
             'original_filename' => $submission->original_filename,
             'moderation_status' => $submission->moderation_status,
@@ -435,6 +450,7 @@ class ContentSubmissionController extends Controller
             'has_images' => $submission->hasImages(),
             'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
             'image_rights_covers' => $submission->imageRightsCoverContent(),
+            'has_file' => $submission->hasStoredFile(),
         ]);
     }
 
@@ -442,8 +458,16 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeDownload($submission);
 
+        if (! $submission->canDownloadOriginal()) {
+            $user = auth()->user();
+            $staff = $user && ($user->hasRole('admin') || $user->hasRole('marketing'));
+            if (! $staff) {
+                abort(404, 'File not found');
+            }
+        }
+
         $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $disk->exists($submission->path)) {
+        if (! $submission->path || ! $disk->exists($submission->path)) {
             abort(404, 'File not found');
         }
 
@@ -578,8 +602,12 @@ class ContentSubmissionController extends Controller
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),
             'can_order' => $s->canBeOrdered(),
+            'editable' => $s->canEditArticle(),
+            'has_file' => $s->hasStoredFile(),
             'history' => $s->articleHistory(),
-            'download_url' => route('advertiser.content-submissions.download', $s),
+            'download_url' => $s->canDownloadOriginal()
+                ? route('advertiser.content-submissions.download', $s)
+                : null,
             'created_at' => optional($s->created_at)?->toIso8601String(),
             'evaluated_at' => optional($s->evaluated_at)?->toIso8601String(),
             'updated_at' => optional($s->updated_at)?->toIso8601String(),
