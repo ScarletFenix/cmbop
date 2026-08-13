@@ -87,6 +87,7 @@ document.addEventListener('DOMContentLoaded', function () {
     bindLibraryModalA11y();
     bindLibraryUploadCancel();
     bindLibraryResultLanding();
+    bindArticleEditorScrollport();
     applyLibraryResultFocus();
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
@@ -923,6 +924,23 @@ function bindLibraryModalA11y() {
     });
 }
 
+function applyArticleEditorScrollport() {
+    const scroller = document.querySelector('#articleEditorModal #articleQuillEditor.ql-container');
+    if (!scroller) return;
+    scroller.style.minHeight = '0';
+    scroller.style.height = 'auto';
+    scroller.style.overflowX = 'hidden';
+    scroller.style.overflowY = 'auto';
+    scroller.style.webkitOverflowScrolling = 'touch';
+}
+
+function bindArticleEditorScrollport() {
+    const editorEl = document.getElementById('articleEditorModal');
+    if (!editorEl || editorEl.dataset.scrollportBound === '1') return;
+    editorEl.dataset.scrollportBound = '1';
+    editorEl.addEventListener('shown.bs.modal', applyArticleEditorScrollport);
+}
+
 function ensureArticleQuill() {
     if (articleQuill || typeof Quill === 'undefined') {
         return articleQuill;
@@ -1009,6 +1027,7 @@ function ensureArticleQuill() {
     });
 
     bindEditorImageChrome();
+    applyArticleEditorScrollport();
     return articleQuill;
 }
 

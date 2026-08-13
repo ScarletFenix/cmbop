@@ -661,10 +661,14 @@
         line-height: 1.65;
         padding: 1.25rem 1.5rem;
     }
-    /* One scrollport: Quill's snow theme sets .ql-editor { height:100% }, which
-       resolves to content height when the parent is height:auto — the article
-       is clipped with no scrollbar. height:0 + flex:1 forces a real box, and
-       the container (not the editor) is the scroller. */
+    /*
+     * One scrollport for Edit article. Quill Snow sets .ql-editor { height:100% }
+     * and .ql-container { overflow:hidden }. Safari also ignores height:0 flex
+     * boxes as scrollports, so long articles clip with no scrollbar — worse when
+     * the image-rights block is visible. flex-basis:0% gives a real height;
+     * the non-contenteditable container (not .ql-editor) is the scroller because
+     * WebKit often swallows wheel/trackpad on contenteditable overflow.
+     */
     body.modal-open:has(#articleEditorModal.show) {
         overscroll-behavior: none;
     }
@@ -674,7 +678,9 @@
     #articleEditorModal .modal-dialog {
         /* Fullscreen so library-row Order buttons cannot sit beside the editor. */
         height: 100%;
+        height: 100dvh;
         max-height: 100%;
+        max-height: 100dvh;
         width: 100%;
         max-width: none;
         margin: 0;
@@ -683,6 +689,7 @@
     #articleEditorModal .modal-content {
         height: 100%;
         max-height: 100%;
+        min-height: 0;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -693,7 +700,7 @@
         flex: 0 0 auto;
     }
     #articleEditorModal .modal-body {
-        flex: 1 1 auto;
+        flex: 1 1 0%;
         min-height: 0;
         overflow: hidden;
         display: flex;
@@ -705,33 +712,39 @@
         margin-bottom: 0;
     }
     #articleEditorModal .modal-body > :not(.article-docs-shell) {
-        flex: 0 0 auto;
+        flex: 0 1 auto;
+    }
+    #articleEditorImageRights {
+        max-height: 28vh;
+        overflow-x: hidden;
+        overflow-y: auto;
     }
     #articleEditorModal .article-docs-shell {
-        flex: 1 1 auto;
-        min-height: 0;
-        height: 0;
+        flex: 1 1 0%;
+        min-height: 12rem;
+        height: auto;
         display: flex;
         flex-direction: column;
         overflow: hidden;
+        position: relative;
     }
     #articleEditorModal .article-docs-shell .ql-toolbar.ql-snow {
         flex: 0 0 auto;
     }
-    /*
-     * Quill Snow inserts the toolbar as a sibling and turns #articleQuillEditor
-     * into .ql-container. Two-ID overflow:hidden on that node beat overflow-y:auto
-     * on .ql-container, so long articles were clipped at the bottom with no scroll.
-     */
-    #articleEditorModal .article-docs-shell #articleQuillEditor.ql-container {
-        flex: 1 1 auto;
+    #articleEditorModal .article-docs-shell .ql-container.ql-snow {
         min-height: 0;
-        height: 0;
+    }
+    #articleEditorModal .article-docs-shell #articleQuillEditor.ql-container {
+        flex: 1 1 0%;
+        min-height: 0;
+        height: auto;
         display: block;
+        overflow: auto;
         overflow-x: hidden;
         overflow-y: auto;
         overscroll-behavior: contain;
         -webkit-overflow-scrolling: touch;
+        touch-action: pan-y;
     }
     #articleEditorModal .article-docs-shell .ql-editor {
         height: auto;
