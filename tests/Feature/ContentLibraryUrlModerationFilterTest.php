@@ -95,6 +95,8 @@ class ContentLibraryUrlModerationFilterTest extends TestCase
             '/library-status-box--approved[^>]*is-active/i',
             $approvedHtml
         );
+        $this->assertStringContainsString('aria-current="page"', $approvedHtml);
+        $this->assertStringContainsString('id="libraryCountryFilter"', $approvedHtml);
 
         // Rejected deep-link and Needs corrections chip both surface compliance rejects.
         $this->actingAs($advertiser)

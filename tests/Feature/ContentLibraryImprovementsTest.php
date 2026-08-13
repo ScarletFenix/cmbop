@@ -261,6 +261,22 @@ class ContentLibraryImprovementsTest extends TestCase
             '/library-status-box--approved\s+is-active/',
             $html
         );
+        $this->assertStringContainsString('<nav class="library-status-row"', $html);
+        $this->assertStringContainsString('aria-current="page"', $html);
+        $this->assertStringNotContainsString('role="tablist"', $html);
+        $this->assertStringNotContainsString('role="tab"', $html);
+        $this->assertStringContainsString('mod-count is-zero', $html);
+        $this->assertStringContainsString('id="libraryCountryFilter"', $html);
+        $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
+        $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
+        $this->assertMatchesRegularExpression(
+            '/library-filter-bar__actions[\s\S]*?btn-outline-secondary[\s\S]*?>Apply</',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/library-filter-bar[\s\S]*?btn-primary[\s\S]*?>Apply</',
+            $html
+        );
     }
 
     public function test_completed_filter_empty_state(): void
