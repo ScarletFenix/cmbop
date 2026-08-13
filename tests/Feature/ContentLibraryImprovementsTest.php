@@ -784,6 +784,17 @@ class ContentLibraryImprovementsTest extends TestCase
             $css
         );
         $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .ql-editor', $css);
+        $this->assertStringContainsString('overscroll-behavior: contain', $css);
+        $this->assertStringContainsString('.library-row--focus', $css);
+        $this->assertStringContainsString('.library-row--focus > td', $css);
+        $this->assertStringContainsString('function goToLibraryResult', $js);
+        $this->assertStringContainsString('function libraryDestinationUrl', $js);
+        $this->assertStringContainsString("availability: 'needs_fix'", $js);
+        $this->assertStringContainsString('libraryResultFlash', $js);
+        $this->assertStringContainsString('function applyLibraryResultFocus', $js);
+        $this->assertStringNotContainsString('window.location.reload()', $js);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string

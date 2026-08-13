@@ -15,11 +15,15 @@ const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
 const libraryUploadsEnabled = !!boot.uploadsEnabled;
 const libraryOpenUpload = !!boot.openUpload;
 const libraryEditSubmission = boot.editSubmission || null;
+const libraryIndexUrl = boot.libraryIndexUrl || '';
 
 let articleQuill = null;
 let articleEditorSubmissionId = null;
 let articleEditorDetectedLinks = [];
 let previewModalState = { title: '', submissionId: null, editable: false, html: '' };
+let pendingLibraryLanding = null;
+let skipEditorListLanding = false;
+let skipPreviewListLanding = false;
 
 function refreshLibraryLanguages(preferredLanguage) {
     const countrySelect = document.getElementById('libraryCountry');
@@ -77,6 +81,8 @@ document.addEventListener('DOMContentLoaded', function () {
     refreshLibraryLanguages(libraryPreferredLanguage);
     bindLibraryDropzone();
     bindLibraryModalA11y();
+    bindLibraryResultLanding();
+    applyLibraryResultFocus();
 });
 document.getElementById('uploadContentModal')?.addEventListener('shown.bs.modal', function () {
     refreshLibraryLanguages(libraryPreferredLanguage || document.getElementById('libraryLanguage')?.value || '');
@@ -243,6 +249,117 @@ function showLibraryFlash(message, ok) {
     el.textContent = message;
     el.classList.remove('d-none');
     window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function libraryChipParams(submission) {
+    const availability = String((submission && submission.availability) || '');
+    const status = String((submission && submission.moderation_status) || '');
+    if (
+        availability === 'needs_fix'
+        || status === 'needs_improvement'
+        || status === 'rejected'
+        || status === 'error'
+        || (submission && submission.needs_correction)
+    ) {
+        return { status: 'all', availability: 'needs_fix' };
+    }
+    return { status: 'approved', availability: 'available' };
+}
+
+function libraryResultMessage(submission, fallback, ok) {
+    if (fallback) return fallback;
+    if (!ok) {
+        return 'Article needs corrections — it is listed here so you can fix and resubmit.';
+    }
+    const availability = String((submission && submission.availability) || '');
+    const status = String((submission && submission.moderation_status) || '');
+    if (availability === 'evaluating' || status === 'pending' || status === 'processing') {
+        return 'Article is still evaluating — it stays on Approved until the check finishes.';
+    }
+    return 'Article approved — you can order it from here.';
+}
+
+function libraryDestinationUrl(submission) {
+    const url = new URL(libraryIndexUrl || window.location.pathname, window.location.origin);
+    const chip = libraryChipParams(submission);
+    url.search = '';
+    url.searchParams.set('status', chip.status);
+    url.searchParams.set('availability', chip.availability);
+    if (submission && submission.id) {
+        url.hash = 'library-row-' + submission.id;
+    }
+    return url.pathname + url.search + url.hash;
+}
+
+function goToLibraryResult(submission, message, ok) {
+    pendingLibraryLanding = null;
+    skipEditorListLanding = true;
+    skipPreviewListLanding = true;
+    const text = libraryResultMessage(submission, message, ok);
+    try {
+        sessionStorage.setItem('libraryResultFlash', JSON.stringify({
+            message: text || '',
+            ok: !!ok,
+            id: submission && submission.id ? String(submission.id) : '',
+        }));
+    } catch (e) { /* ignore */ }
+    window.location.href = libraryDestinationUrl(submission);
+}
+
+function rememberLibraryLanding(submission, message, ok) {
+    pendingLibraryLanding = {
+        submission: submission || {},
+        message: libraryResultMessage(submission, message, ok),
+        ok: !!ok,
+    };
+}
+
+function applyLibraryResultFocus() {
+    let flash = null;
+    try {
+        flash = JSON.parse(sessionStorage.getItem('libraryResultFlash') || 'null');
+        sessionStorage.removeItem('libraryResultFlash');
+    } catch (e) {
+        flash = null;
+    }
+    if (flash && flash.message) {
+        showLibraryFlash(flash.message, flash.ok !== false);
+    }
+    const fromHash = (window.location.hash.match(/^#library-row-(\d+)/) || [])[1];
+    const id = (flash && flash.id) || fromHash;
+    const row = id ? document.getElementById('library-row-' + id) : null;
+    if (!row) return;
+    row.classList.add('library-row--focus');
+    row.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+
+function bindLibraryResultLanding() {
+    const editorEl = document.getElementById('articleEditorModal');
+    if (editorEl && editorEl.dataset.listLandingBound !== '1') {
+        editorEl.dataset.listLandingBound = '1';
+        editorEl.addEventListener('hidden.bs.modal', function () {
+            if (skipEditorListLanding) {
+                skipEditorListLanding = false;
+                return;
+            }
+            if (!pendingLibraryLanding) return;
+            const next = pendingLibraryLanding;
+            goToLibraryResult(next.submission, next.message, next.ok);
+        });
+    }
+    const previewEl = document.getElementById('articlePreviewModal');
+    if (previewEl && previewEl.dataset.listLandingBound !== '1') {
+        previewEl.dataset.listLandingBound = '1';
+        previewEl.addEventListener('hidden.bs.modal', function () {
+            if (skipPreviewListLanding) {
+                skipPreviewListLanding = false;
+                return;
+            }
+            if (!pendingLibraryLanding) return;
+            const next = pendingLibraryLanding;
+            goToLibraryResult(next.submission, next.message, next.ok);
+        });
+    }
 }
 
 function openPreviewModal(title, html, links, submissionId, editable) {
@@ -415,13 +532,19 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         if (!stillApproved) {
             const msg = data.message || (data.report && data.report.summary) || 'Content moderation failed after your link changes. Fix restricted links before ordering.';
             tools.toast(msg, false);
-            showLibraryFlash(msg, false);
-            setTimeout(function () { window.location.reload(); }, 1200);
-        } else {
-            tools.toast(data.message || 'Links saved — content re-checked and approved');
-            if (data.approved === true) {
-                showLibraryFlash(data.message || 'Article still approved after re-check.', true);
+            goToLibraryResult(sub, msg, false);
+            return;
+        }
+        tools.toast(data.message || 'Links saved — content re-checked and approved');
+        if (data.approved === true) {
+            const dest = libraryChipParams(sub);
+            const here = new URL(window.location.href);
+            const hereAvail = here.searchParams.get('availability') || 'available';
+            if (hereAvail === 'needs_fix' && dest.availability === 'available') {
+                goToLibraryResult(sub, data.message || 'Article approved — you can order it from here.', true);
+                return;
             }
+            showLibraryFlash(data.message || 'Article still approved after re-check.', true);
         }
     } catch (e) {
         tools.toast('Network error while saving links', false);
@@ -898,13 +1021,7 @@ async function saveArticleEditor() {
                 ? 'Article saved and re-approved.'
                 : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
         setFeedbackHtml(feedback, stillApproved, msg);
-        if (data.submission) {
-            openArticleEditor(data.submission);
-        }
-        if (!stillApproved) {
-            showLibraryFlash(msg, false);
-        }
-        setTimeout(function () { window.location.reload(); }, stillApproved ? 900 : 1400);
+        goToLibraryResult(data.submission || { id: articleEditorSubmissionId }, msg, stillApproved);
     } catch (e) {
         setFeedbackHtml(feedback, false, 'Network error while saving.');
         btn.disabled = false;
@@ -931,6 +1048,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
         );
     };
     if (editorEl && editorEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
+        skipEditorListLanding = true;
         editorEl.addEventListener('hidden.bs.modal', function onEditorHidden() {
             editorEl.removeEventListener('hidden.bs.modal', onEditorHidden);
             openPreview();
@@ -964,6 +1082,7 @@ function returnToEditorFromPreview() {
         });
     };
     if (previewEl && previewEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
+        skipPreviewListLanding = true;
         previewEl.addEventListener('hidden.bs.modal', function onPreviewHidden() {
             previewEl.removeEventListener('hidden.bs.modal', onPreviewHidden);
             showEditor();
@@ -1206,11 +1325,16 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         setFeedbackHtml(feedback, true, 'Opening editor…');
         if (data.submission) {
             openedEditor = true;
+            rememberLibraryLanding(
+                data.submission,
+                data.message,
+                !!(data.approved || data.submission.can_order)
+            );
             openArticleEditor(Object.assign({}, data.submission, {
                 can_order: !!(data.submission.can_order || data.approved),
             }));
         } else {
-            setTimeout(function () { window.location.href = boot.libraryIndexUrl; }, 800);
+            goToLibraryResult({}, data.message || 'Article uploaded.', !!data.approved);
         }
     } catch (err) {
         setFeedbackHtml(feedback, false, 'Network error while uploading.');
