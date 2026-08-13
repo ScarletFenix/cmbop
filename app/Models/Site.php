@@ -1404,6 +1404,111 @@ class Site extends Model
     }
 
     /**
+     * True when this listing belongs to the given user (dual-role publisher shopping as advertiser).
+     *
+     * Matches publisher_id (who listed it) and owner_id (post-verification owner).
+     */
+    public function isOwnedBy(?User $user): bool
+    {
+        if ($user === null) {
+            return false;
+        }
+
+        $uid = (int) $user->id;
+        if ($uid <= 0) {
+            return false;
+        }
+
+        if ((int) $this->publisher_id === $uid) {
+            return true;
+        }
+
+        $ownerId = (int) ($this->getAttribute('owner_id') ?? 0);
+
+        return $ownerId > 0 && $ownerId === $uid;
+    }
+
+    /**
+     * Catalog/cart IDs this user must not order.
+     *
+     * @return list<int>
+     */
+    public static function ownedIdsFor(?User $user): array
+    {
+        if ($user === null || (int) $user->id <= 0) {
+            return [];
+        }
+
+        $uid = (int) $user->id;
+
+        return static::query()
+            ->where(function ($q) use ($uid) {
+                $q->where('publisher_id', $uid);
+                if (Schema::hasColumn('sites', 'owner_id')) {
+                    $q->orWhere('owner_id', $uid);
+                }
+            })
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * Copy for own-listing catalog/cart surfaces. Does not mention the platform fee.
+     */
+    public static function cannotOrderOwnListingMessage(): string
+    {
+        return 'This is your listing — you can’t order it.';
+    }
+
+    /**
+     * Prices painted on the advertiser catalog for this viewer.
+     *
+     * Own listings show the entered publisher price (no hidden fee) because they
+     * cannot be added to cart. Everyone else sees fee-inclusive cart pricing.
+     *
+     * @return array{owned: bool, list: float, publisher: float, sale: float|null, sale_percent: float|null, sale_percent_nominal: float|null}
+     */
+    public function catalogPricesForViewer(?User $user): array
+    {
+        $owned = $this->isOwnedBy($user);
+        $nominal = $this->activeCustomDiscountPercent();
+
+        if ($owned) {
+            $base = $this->publisherBasePrice();
+
+            return [
+                'owned' => true,
+                'list' => $base,
+                'publisher' => $base,
+                'sale' => null,
+                'sale_percent' => null,
+                'sale_percent_nominal' => $nominal,
+            ];
+        }
+
+        $pricing = $this->advertiserCatalogPricing();
+        $list = (float) $pricing['base'];
+        $sale = null;
+        $salePercent = null;
+        if (($pricing['discount_amount'] ?? 0) > 0
+            && (float) $pricing['article_total'] < $list) {
+            $sale = (float) $pricing['article_total'];
+            $salePercent = (float) $pricing['discount_percent'];
+        }
+
+        return [
+            'owned' => false,
+            'list' => $list,
+            'publisher' => (float) $pricing['publisher_price'],
+            'sale' => $sale,
+            'sale_percent' => $salePercent,
+            'sale_percent_nominal' => $nominal,
+        ];
+    }
+
+    /**
      * Offered homepage placement durations (days => fee EUR). Empty = not offered.
      *
      * @return array<int, float>
