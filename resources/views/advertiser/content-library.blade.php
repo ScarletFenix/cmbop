@@ -178,19 +178,19 @@
         </div>
     @endunless
 
-    <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-2">
+    <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar mb-3">
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
         <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
-        <div class="col-md-3 col-lg-3">
+        <div class="library-filter-bar__search">
             <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
                    value="{{ $searchQuery ?? '' }}" placeholder="Title or filename"
                    title="Results update as you type" autocomplete="off" enterkeyhint="search"
                    data-slb-live-search="form">
         </div>
-        <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Country</label>
-            <select name="country" class="form-select form-select-sm" onchange="this.form.submit()">
+        <div class="library-filter-bar__select">
+            <label class="form-label small text-muted mb-1" for="libraryCountryFilter">Country</label>
+            <select name="country" id="libraryCountryFilter" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All</option>
                 @foreach(($groupedByCountry ?? []) as $countryCode => $count)
                     <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
@@ -199,9 +199,9 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Language</label>
-            <select name="language" class="form-select form-select-sm" onchange="this.form.submit()">
+        <div class="library-filter-bar__select">
+            <label class="form-label small text-muted mb-1" for="libraryLanguageFilter">Language</label>
+            <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm" onchange="this.form.submit()">
                 <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All</option>
                 @foreach(($groupedByLanguage ?? []) as $langCode => $count)
                     <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
@@ -210,19 +210,24 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-auto">
-            <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+        <div class="library-filter-bar__actions">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Apply</button>
             @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
             @endif
         </div>
     </form>
 
-    <div class="library-status-row" role="group" aria-label="Library status filter">
+    <nav class="library-status-row" aria-label="Library status filter">
         @foreach($libraryStatusChips as $key => $chip)
+            @php
+                $chipCount = (int) ($chip['count'] ?? 0);
+                $chipActive = $activeLibraryChip === $key;
+            @endphp
             <a href="{{ $libraryRoute($chip['params']) }}"
-               class="library-status-box library-status-box--{{ $key }} @if($activeLibraryChip === $key) is-active @endif"
-               @if($activeLibraryChip === $key) aria-current="true" @endif>
+               class="library-status-box library-status-box--{{ $key }} @if($chipActive) is-active @endif"
+               @if($chipActive) aria-current="page" @endif
+               aria-label="{{ $chip['label'] }}, {{ $chipCount }} {{ $chipCount === 1 ? 'article' : 'articles' }}">
                 <span class="library-status-box__main">
                     <span>{{ $chip['label'] }}</span>
                     @if($key === 'approved' && (int) ($chip['evaluating'] ?? 0) > 0)
@@ -231,10 +236,10 @@
                         </span>
                     @endif
                 </span>
-                <span class="mod-count">{{ $chip['count'] }}</span>
+                <span class="mod-count{{ $chipCount === 0 ? ' is-zero' : '' }}">{{ $chipCount }}</span>
             </a>
         @endforeach
-    </div>
+    </nav>
 
     <div class="library-table border shadow-sm">
         <div class="table-responsive">

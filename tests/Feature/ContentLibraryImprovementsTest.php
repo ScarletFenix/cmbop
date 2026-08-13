@@ -261,6 +261,38 @@ class ContentLibraryImprovementsTest extends TestCase
             '/library-status-box--approved\s+is-active/',
             $html
         );
+        $this->assertStringContainsString('<nav class="library-status-row"', $html);
+        $this->assertStringContainsString('aria-current="page"', $html);
+        $this->assertMatchesRegularExpression(
+            '/<nav class="library-status-row"[^>]*>[\s\S]*?<\/nav>/',
+            $html
+        );
+        preg_match('/<nav class="library-status-row"[^>]*>[\s\S]*?<\/nav>/', $html, $statusNav);
+        $this->assertStringNotContainsString('role="tab', $statusNav[0]);
+        $this->assertStringContainsString('mod-count is-zero', $html);
+        $this->assertStringContainsString('id="libraryCountryFilter"', $html);
+        $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
+        $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
+        $this->assertMatchesRegularExpression(
+            '/library-filter-bar__actions[\s\S]*?btn-outline-secondary[\s\S]*?>Apply</',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/library-filter-bar[\s\S]*?btn-primary[\s\S]*?>Apply</',
+            $html
+        );
+
+        $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertStringContainsString('.library-status-row', $css);
+        $this->assertStringContainsString('flex-wrap: wrap', $css);
+        $this->assertStringContainsString('.mod-count.is-zero', $css);
+        $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
+        $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
+        $boxPos = strpos($css, '.library-status-box {');
+        $mediaPos = strpos($css, '@media (max-width: 575.98px)');
+        $this->assertNotFalse($boxPos);
+        $this->assertNotFalse($mediaPos);
+        $this->assertGreaterThan($boxPos, $mediaPos);
     }
 
     public function test_completed_filter_empty_state(): void
