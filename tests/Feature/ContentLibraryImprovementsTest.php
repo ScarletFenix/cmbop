@@ -817,10 +817,27 @@ class ContentLibraryImprovementsTest extends TestCase
             '/id="articleEditorModal"[\s\S]*?modal-dialog-scrollable[\s\S]*?id="articleQuillEditor"/',
             $library
         );
-        $this->assertStringContainsString('function syncEditorActions', $js);
-        $this->assertStringContainsString("saveBtn.classList.toggle('btn-outline-primary', canOrder)", $js);
-        $this->assertStringContainsString('class="btn btn-primary d-none" id="articleEditorOrderBtn"', $library);
-        $this->assertStringNotContainsString('btn-success d-none" id="articleEditorOrderBtn"', $library);
+        $this->assertStringNotContainsString('function syncEditorActions', $js);
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $library);
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $js);
+        $this->assertStringNotContainsString('libraryOrderUrlBase', $js);
+        $this->assertStringNotContainsString("saveBtn.classList.toggle('btn-outline-primary', canOrder)", $js);
+        $this->assertMatchesRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog modal-fullscreen[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
+        $editorModal = $this->extractHtmlBetween(
+            $library,
+            'id="articleEditorModal"',
+            'id="articlePreviewModal"'
+        );
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $editorModal);
+        $this->assertStringNotContainsString('>Order</a>', $editorModal);
+        $this->assertStringContainsString('id="articleEditorSaveBtn"', $editorModal);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-dialog \{[^}]*height:\s*100%/s',
+            $css
+        );
         $this->assertStringContainsString('overscroll-behavior: none', $css);
         $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
         $this->assertMatchesRegularExpression(

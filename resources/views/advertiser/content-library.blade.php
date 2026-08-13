@@ -691,7 +691,7 @@
 
 {{-- Docs-style editor modal --}}
 <div class="modal fade" id="articleEditorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl">
+    <div class="modal-dialog modal-fullscreen">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
@@ -734,7 +734,6 @@
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-outline-primary" id="articleEditorPreviewBtn">Preview</button>
                 <button type="button" class="btn btn-primary" id="articleEditorSaveBtn">Save &amp; re-check</button>
-                <a href="#" class="btn btn-primary d-none" id="articleEditorOrderBtn">Order</a>
             </div>
         </div>
     </div>
@@ -794,7 +793,6 @@ window.ContentLibraryBoot = {
     libraryUpdateUrl: @json(url('/advertiser/content-submissions')),
     libraryContentUrl: @json(url('/advertiser/content-submissions')),
     libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image')),
-    libraryOrderUrlBase: @json(url('/advertiser/content-library')),
     libraryPreviewUrlBase: @json(url('/advertiser/content-submissions')),
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),

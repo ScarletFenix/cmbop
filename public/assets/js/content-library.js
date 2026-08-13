@@ -5,7 +5,6 @@ const boot = window.ContentLibraryBoot || {};
 const libraryUpdateUrl = boot.libraryUpdateUrl;
 const libraryContentUrl = boot.libraryContentUrl;
 const libraryImageUploadUrl = boot.libraryImageUploadUrl;
-const libraryOrderUrlBase = boot.libraryOrderUrlBase;
 const libraryPreviewUrlBase = boot.libraryPreviewUrlBase;
 const libraryCsrf = boot.libraryCsrf;
 const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
@@ -929,26 +928,7 @@ function openArticleEditor(submission) {
     loadArticleHtml(submission.preview_html || '<p><br></p>');
     const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
     syncEditorImageRights(needsRights);
-    syncEditorActions(submission);
     showArticleEditorAfterUploadModal();
-}
-
-function syncEditorActions(submission) {
-    const orderBtn = document.getElementById('articleEditorOrderBtn');
-    const saveBtn = document.getElementById('articleEditorSaveBtn');
-    const canOrder = !!(submission && submission.can_order);
-    if (orderBtn) {
-        if (canOrder && submission.id) {
-            orderBtn.href = libraryOrderUrlBase + '/' + submission.id + '/order';
-            orderBtn.classList.remove('d-none');
-        } else {
-            orderBtn.classList.add('d-none');
-        }
-    }
-    if (saveBtn) {
-        saveBtn.classList.toggle('btn-primary', !canOrder);
-        saveBtn.classList.toggle('btn-outline-primary', canOrder);
-    }
 }
 
 /**
