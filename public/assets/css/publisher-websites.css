@@ -265,7 +265,10 @@
         }
 
         #sitesTableWrapper .sites-responsive-table .site-row-actions {
+            display: flex;
+            flex-direction: column;
             justify-content: center;
+            align-items: center;
             width: 100%;
         }
 
@@ -681,7 +684,9 @@
         }
 
         #sitesTableWrapper .sites-responsive-table tr.main-row td[data-label="Actions"] .site-row-actions {
-            flex-wrap: wrap;
+            flex-direction: column;
+            flex-wrap: nowrap;
+            align-items: flex-end;
             justify-content: flex-end;
             max-width: 100%;
         }

@@ -109,12 +109,56 @@ class PublisherMySitesPageTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        // Configured sale stays on the badge; bulk is hidden when custom wins packs.
+        // Configured sale stays on the badge; bulk membership stays visible even
+        // when the timed sale wins packs (better-of, not stacked).
         $this->assertStringContainsString('−20%', $html);
         $this->assertStringContainsString('Timed sale −20% (configured)', $html);
         $this->assertStringContainsString('Advertisers see about −11.5%', $html);
         $this->assertStringContainsString('exclusive better-of with bulk, not stacked', $html);
-        $this->assertStringNotContainsString('Bulk −15%', $html);
+        $this->assertStringContainsString('Bulk −15%', $html);
+        $this->assertStringContainsString('Advertisers from €', $html);
+        $this->assertStringContainsString('Timed sale is stronger on packs too', $html);
+        $this->assertStringContainsString('site-row-actions__offers', $html);
+        $this->assertStringContainsString('Sale −20%', $html);
+        $this->assertStringContainsString('site-offer-chip', $html);
+    }
+
+    public function test_offer_chips_are_labeled_and_promo_js_is_single_path(): void
+    {
+        $this->makeSite([
+            'verified' => true,
+            'active' => true,
+            'price' => 304,
+        ]);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('site-row-actions__manage', $html);
+        $this->assertStringContainsString('site-row-actions__offers', $html);
+        $this->assertStringContainsString('>Offers</span>', $html);
+        $this->assertStringContainsString('Feature · €10', $html);
+        $this->assertStringContainsString('>Sale</span>', $html);
+        $this->assertStringContainsString('>Bulk</span>', $html);
+        $this->assertStringContainsString('site-offer-chip btn-feature-site', $html);
+        $this->assertStringContainsString('Paid from publisher balance or card', $html);
+        $this->assertStringNotContainsString('class="btn-icon-quiet btn-feature-site', $html);
+        $this->assertStringContainsString('€304.00', $html);
+        $this->assertStringNotContainsString('Advertisers from €', $html);
+
+        $page = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->getContent();
+        $js = file_get_contents(public_path('assets/js/publisher-websites.js'));
+        $this->assertStringNotContainsString("$(document).on('click', '.btn-feature-site'", $page);
+        $this->assertSame(1, substr_count($js, "$(document).on('click', '.btn-feature-site'"));
+        $this->assertStringContainsString('__publisherPromoHandlersBound', $js);
+        $this->assertStringContainsString('__publisherSitesList', $js);
+        $this->assertStringContainsString('reloadSitesAfterPromo', $js);
+        $this->assertStringContainsString('promoEscapeHtml', $js);
     }
 
     public function test_ajax_metrics_keep_traffic_out_of_market_column(): void
