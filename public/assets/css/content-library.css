@@ -106,7 +106,7 @@
     }
     .library-expiry-hint {
         font-size: .72rem;
-        color: #b45309;
+        color: var(--brand-ink-muted, #75787B);
         margin-top: .2rem;
         line-height: 1.3;
     }
@@ -611,6 +611,12 @@
     .ql-editor img.is-selected {
         outline: 2px solid #2563eb;
         outline-offset: 2px;
+    }
+    .ql-editor img.is-broken {
+        min-width: 80px;
+        min-height: 80px;
+        background: #f8fafc;
+        outline: 1px dashed #cbd5e1;
     }
     .article-img-remove {
         position: absolute;

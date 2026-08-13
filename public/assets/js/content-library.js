@@ -550,6 +550,21 @@ function removeSelectedEditorImage() {
     articleQuill.focus();
 }
 
+function bindBrokenEditorImages() {
+    if (!articleQuill) return;
+    articleQuill.root.querySelectorAll('img').forEach(function (img) {
+        if (img.dataset.errorBound === '1') return;
+        img.dataset.errorBound = '1';
+        img.addEventListener('error', function () {
+            img.classList.add('is-broken');
+            if (!img.getAttribute('alt')) img.setAttribute('alt', 'Image failed to load');
+        });
+        if (img.complete && img.naturalWidth === 0 && img.getAttribute('src')) {
+            img.classList.add('is-broken');
+        }
+    });
+}
+
 function loadArticleHtml(html) {
     if (!articleQuill) return;
     const raw = rewriteStorageUrlsInHtml((html && String(html).trim()) ? html : '<p><br></p>');
@@ -565,6 +580,7 @@ function loadArticleHtml(html) {
     }
     articleQuill.setSelection(0, 0, 'silent');
     hideImageRemoveOverlay();
+    bindBrokenEditorImages();
 }
 
 function bindEditorImageChrome() {
@@ -611,10 +627,45 @@ function bindEditorImageChrome() {
     });
 }
 
+function patchQuillImageSanitize() {
+    if (typeof Quill === 'undefined' || Quill.__libraryImagePatched) return;
+    const Image = Quill.import('formats/image');
+    if (!Image || typeof Image.sanitize !== 'function') return;
+    const original = Image.sanitize.bind(Image);
+    Image.sanitize = function (url) {
+        const value = String(url || '');
+        if (
+            value.startsWith('/storage/')
+            || value.startsWith('/media/')
+            || value.startsWith('blob:')
+            || value.startsWith('data:')
+        ) {
+            return value;
+        }
+        const next = original(value);
+        if (next === '//:0' && value.charAt(0) === '/') {
+            return value;
+        }
+        return next;
+    };
+    Quill.register(Image, true);
+    Quill.__libraryImagePatched = true;
+}
+
+function hideBootstrapModal(el) {
+    if (!el || typeof bootstrap === 'undefined') return;
+    if (el.contains(document.activeElement) && document.activeElement.blur) {
+        document.activeElement.blur();
+    }
+    bootstrap.Modal.getOrCreateInstance(el).hide();
+}
+
 function ensureArticleQuill() {
     if (articleQuill || typeof Quill === 'undefined') {
         return articleQuill;
     }
+
+    patchQuillImageSanitize();
 
     const toolbarOptions = [
         [{ header: [1, 2, 3, false] }],
@@ -648,12 +699,14 @@ function ensureArticleQuill() {
         undoBtn.innerHTML = '<i class="fa fa-undo" aria-hidden="true"></i>';
         undoBtn.setAttribute('aria-label', 'Undo');
         undoBtn.setAttribute('title', 'Undo (Ctrl+Z)');
+        undoBtn.setAttribute('data-no-tip', '');
     }
     const redoBtn = toolbar.container.querySelector('.ql-redo');
     if (redoBtn) {
         redoBtn.innerHTML = '<i class="fa fa-redo" aria-hidden="true"></i>';
         redoBtn.setAttribute('aria-label', 'Redo');
         redoBtn.setAttribute('title', 'Redo (Ctrl+Shift+Z)');
+        redoBtn.setAttribute('data-no-tip', '');
     }
     toolbar.addHandler('image', function () {
         const input = document.createElement('input');
@@ -735,7 +788,7 @@ function showArticleEditorAfterUploadModal() {
             uploadModalEl.removeEventListener('hidden.bs.modal', onUploadHidden);
             showEditor();
         });
-        bootstrap.Modal.getOrCreateInstance(uploadModalEl).hide();
+        hideBootstrapModal(uploadModalEl);
         return;
     }
     showEditor();
@@ -856,7 +909,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
             editorEl.removeEventListener('hidden.bs.modal', onEditorHidden);
             openPreview();
         });
-        bootstrap.Modal.getOrCreateInstance(editorEl).hide();
+        hideBootstrapModal(editorEl);
         return;
     }
     openPreview();
@@ -889,7 +942,7 @@ function returnToEditorFromPreview() {
             previewEl.removeEventListener('hidden.bs.modal', onPreviewHidden);
             showEditor();
         });
-        bootstrap.Modal.getOrCreateInstance(previewEl).hide();
+        hideBootstrapModal(previewEl);
         return;
     }
     showEditor();

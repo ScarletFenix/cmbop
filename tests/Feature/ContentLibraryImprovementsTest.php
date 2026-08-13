@@ -763,6 +763,16 @@ class ContentLibraryImprovementsTest extends TestCase
         $css = file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.article-img-remove', $css);
         $this->assertStringContainsString('img.is-selected', $css);
+        $this->assertStringContainsString('img.is-broken', $css);
+        $this->assertStringContainsString('function patchQuillImageSanitize', $js);
+        $this->assertStringContainsString("value.startsWith('/storage/')", $js);
+        $this->assertStringContainsString('function hideBootstrapModal', $js);
+        $this->assertStringContainsString('data-no-tip', $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.library-expiry-hint \{\s*font-size:[^}]*color: #b45309/',
+            $css
+        );
+        $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
