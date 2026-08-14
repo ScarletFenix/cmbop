@@ -192,11 +192,11 @@
                             <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
                                 {{ $submission->title ?: $submission->original_filename }}
                             </div>
-                            @if($submission->isJustApproved())
-                                <span class="library-just-approved">Just approved</span>
-                                @if($justApprovedHint = $submission->justApprovedLabel())
-                                    <div class="library-just-approved-hint">{{ $justApprovedHint }}</div>
+                            @if($justApprovedHint = $submission->justApprovedLabel())
+                                @if($submission->showJustApprovedBadge())
+                                    <span class="library-just-approved">Just approved</span>
                                 @endif
+                                <div class="library-just-approved-hint">{{ $justApprovedHint }}</div>
                             @endif
                             @if($availability === 'published')
                                 <div class="library-live-link">
