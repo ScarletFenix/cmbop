@@ -497,6 +497,10 @@ class BulkSiteRequestController extends Controller
             return back()->with('error', 'Cannot seed a cancelled request.');
         }
 
+        if ($bulkRequest->items()->exists()) {
+            return back()->with('error', 'Use Done for submitted URL + price rows. Advanced Seed is only for legacy requests without that list.');
+        }
+
         $validator = Validator::make($request->all(), [
             'rows' => 'required|string|min:3',
         ]);
