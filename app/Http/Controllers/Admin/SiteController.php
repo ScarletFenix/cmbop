@@ -1894,11 +1894,22 @@ class SiteController extends Controller
             ], 403);
         }
 
-        $isMarketingActor = $this->isMarketingEditor($user);
-        $rejectionReason = $this->validatedStatusReason($request, $isMarketingActor);
-        if ($rejectionReason === null && ! $isMarketingActor) {
-            $existing = is_string($site->status_reason) ? trim($site->status_reason) : '';
-            $rejectionReason = $existing !== '' ? $existing : null;
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => $orderCount === 1
+                    ? 'This site has 1 order and cannot be deleted. Deactivate it to hide it from the catalog.'
+                    : 'This site has '.$orderCount.' orders and cannot be deleted. Deactivate it to hide it from the catalog.',
+                'order_count' => $orderCount,
+            ], 422);
+        }
+
+        if ($site->isArchived()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This site is already archived.',
+            ], 422);
         }
 
         $siteName = $site->site_name;
