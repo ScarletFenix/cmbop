@@ -311,4 +311,53 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $order->total_amount, 0.01);
         $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
+
+    public function test_legacy_bonus_session_without_expected_amount_still_checks_charge(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'bonus-legacy.example');
+        $ref = 'BONUS-LEGACY-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 100,
+            'tax' => 0,
+            'total_amount' => 100,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 100,
+        ]);
+
+        $session = (object) [
+            'id' => 'cs_bonus_legacy',
+            'object' => 'checkout.session',
+            'amount_total' => 100,
+            'payment_intent' => 'pi_bonus_legacy',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => $ref,
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        try {
+            app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
+            $this->fail('Bonus card sessions without expected_amount must still verify the Stripe charge.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('does not match', $e->getMessage());
+        }
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
 }

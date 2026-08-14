@@ -44,16 +44,11 @@ class OrderPaymentService
             }
 
             $meta = $this->sessionMetadataArray($session);
-            if (isset($meta['expected_amount'])) {
-                $this->assertStripeAmountMatchesExpected(
-                    $session,
-                    round((float) $meta['expected_amount'], 2),
-                    $referenceCode
-                );
-            } elseif (! isset($meta['bonus_applied']) || (float) ($meta['bonus_applied'] ?? 0) <= 0) {
-                $expected = round((float) $orders->sum(fn (Order $o) => (float) $o->total_amount), 2);
-                $this->assertStripeAmountMatchesExpected($session, $expected, $referenceCode);
-            }
+            $this->assertStripeAmountMatchesExpected(
+                $session,
+                $this->expectedStripeEurosForOrders($orders, $meta),
+                $referenceCode
+            );
 
             $newlyPaid = collect();
 

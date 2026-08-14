@@ -232,11 +232,6 @@ class AutoApproveOrders extends Command
                 $schema = app(CheckoutSchemaService::class);
                 $schema->ensureCheckoutTables();
 
-                $order->update($schema->filterExistingColumns('orders', [
-                    'status' => 'completed',
-                    'completed_at' => Carbon::now(),
-                ]));
-
                 $itemCompletion = $schema->filterExistingColumns('order_items', [
                     'completed_at' => $lockedItem->completed_at ?? Carbon::now(),
                     'publisher_status' => 'completed',
@@ -309,15 +304,28 @@ class AutoApproveOrders extends Command
                     }
                 }
 
-                if ($order->payment_method === 'wallet') {
-                    $advertiserRoleId = Wallet::advertiserRoleId();
-                    $advertiserWallet = $advertiserRoleId
-                        ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
-                        : null;
+                $siblings = OrderItem::query()
+                    ->where('order_id', $order->id)
+                    ->lockForUpdate()
+                    ->get();
+                $allComplete = $siblings->every(fn (OrderItem $item) => $this->itemIsCompleted($item));
 
-                    if ($advertiserWallet) {
-                        $advertiserWallet->consumeReserved((float) $order->total_amount);
-                        $this->info('✓ Reserved funds released from advertiser wallet');
+                if ($allComplete) {
+                    $order->update($schema->filterExistingColumns('orders', [
+                        'status' => 'completed',
+                        'completed_at' => Carbon::now(),
+                    ]));
+
+                    if ($order->payment_method === 'wallet') {
+                        $advertiserRoleId = Wallet::advertiserRoleId();
+                        $advertiserWallet = $advertiserRoleId
+                            ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
+                            : null;
+
+                        if ($advertiserWallet) {
+                            $advertiserWallet->consumeReserved((float) $order->total_amount);
+                            $this->info('✓ Reserved funds released from advertiser wallet');
+                        }
                     }
                 }
 
@@ -356,5 +364,19 @@ class AutoApproveOrders extends Command
         }
 
         return $approvedCount;
+    }
+
+    private function itemIsCompleted(OrderItem $item): bool
+    {
+        if ($item->auto_approve_triggered) {
+            return true;
+        }
+
+        if (Schema::hasColumn('order_items', 'completed_at') && $item->completed_at) {
+            return true;
+        }
+
+        return Schema::hasColumn('order_items', 'publisher_status')
+            && $item->publisher_status === 'completed';
     }
 }
