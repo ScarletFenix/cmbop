@@ -158,6 +158,9 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertNotEmpty($site->site_image);
         $this->assertStringStartsWith('sites/', $site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $site->site_image);
+        }
         // Restricted fields stay untouched.
         $this->assertSame('Image Upload Site', $site->site_name);
         $this->assertSame('https://image-upload.example', $site->site_url);
@@ -184,6 +187,31 @@ class MarketingSiteImageUploadTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
+
+        $this->assertSame('sites/existing-cover.webp', $site->fresh()->site_image);
+    }
+
+    public function test_marketer_update_rejects_non_stored_site_image_string(): void
+    {
+        $site = $this->makeSite([
+            'site_image' => 'sites/existing-cover.webp',
+            'da' => 10,
+            'dr' => 12,
+            'traffic' => 900,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->putJson(route('marketing.sites.update', $site->id), [
+                'da' => 33,
+                'dr' => 44,
+                'traffic' => 5000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => [$this->nicheName()],
+                'site_image' => 'https://evil.example/cover.webp',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_image']);
 
         $this->assertSame('sites/existing-cover.webp', $site->fresh()->site_image);
     }

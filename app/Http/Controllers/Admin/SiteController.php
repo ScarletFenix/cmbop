@@ -25,6 +25,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -775,10 +776,8 @@ class SiteController extends Controller
 
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
-                    $disk = Storage::disk('public');
-                    $disk->makeDirectory('sites');
-                    $stored = $request->file('site_image')->store('sites', 'public');
-                    if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                    $stored = $this->storeStaffSiteImage($request->file('site_image'));
+                    if ($stored === null) {
                         throw ValidationException::withMessages([
                             'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                         ]);
@@ -1029,9 +1028,8 @@ class SiteController extends Controller
         $previous = is_string($site->site_image) ? $site->site_image : null;
 
         // Store new image first — only delete the previous file after success.
-        $path = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
-            ?? $file->store('sites', 'public');
-        if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
+        $path = $this->storeStaffSiteImage($file);
+        if ($path === null) {
             $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
 
             if ($request->expectsJson() || $request->ajax()) {
@@ -1319,7 +1317,7 @@ class SiteController extends Controller
             'description' => 'sometimes|nullable|string|min:50',
             'publication_time' => 'sometimes|nullable|string|max:20',
             'link_type' => 'sometimes|nullable|in:dofollow,nofollow',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
         ];
 
         $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
@@ -1405,11 +1403,10 @@ class SiteController extends Controller
             ], $this->siteImageValidationMessages());
 
             $disk = Storage::disk('public');
-            $disk->makeDirectory('sites');
             $previous = is_string($site->site_image) ? $site->site_image : null;
 
-            $stored = $upload->store('sites', 'public');
-            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            $stored = $this->storeStaffSiteImage($upload);
+            if ($stored === null) {
                 throw ValidationException::withMessages([
                     'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                 ]);
@@ -1429,7 +1426,12 @@ class SiteController extends Controller
 
             $data['site_image'] = $stored;
         } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
-            $data['site_image'] = $request->site_image;
+            $storedPath = SiteImageUpload::normalizeStoredPath($request->site_image);
+            if ($storedPath !== null) {
+                $data['site_image'] = $storedPath;
+            } else {
+                unset($data['site_image']);
+            }
         } else {
             unset($data['site_image']);
         }
@@ -1498,7 +1500,7 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
         ];
         if ($canFixListing) {
             $rules['site_name'] = 'sometimes|required|string|max:255';
@@ -1610,11 +1612,10 @@ class SiteController extends Controller
             }
 
             $disk = Storage::disk('public');
-            $disk->makeDirectory('sites');
             $previous = is_string($site->site_image) ? $site->site_image : null;
 
-            $stored = $upload->store('sites', 'public');
-            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            $stored = $this->storeStaffSiteImage($upload);
+            if ($stored === null) {
                 $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json([
@@ -1642,9 +1643,9 @@ class SiteController extends Controller
             $payload['site_image'] = $stored;
         } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             // JSON/AJAX path: image already persisted via upload-image.
-            $path = (string) $request->input('site_image');
-            if ($path !== '' && ! str_contains($path, '..')) {
-                $payload['site_image'] = ltrim(str_replace('\\', '/', $path), '/');
+            $storedPath = SiteImageUpload::normalizeStoredPath($request->input('site_image'));
+            if ($storedPath !== null) {
+                $payload['site_image'] = $storedPath;
             }
         }
 
@@ -1714,9 +1715,28 @@ class SiteController extends Controller
             'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',
             'site_image.image' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
             'site_image.mimes' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
+            'site_image.regex' => 'The site image must be a stored sites/ path or an uploaded JPEG, PNG, GIF, or WebP file.',
             'site_image.max' => 'The site image must be under '.$mb.' MB.',
             'site_image.required' => 'Choose a site image to upload.',
         ];
+    }
+
+    /**
+     * Persist a staff cover as WebP when GD can convert; otherwise keep the original file.
+     */
+    private function storeStaffSiteImage(UploadedFile $file): ?string
+    {
+        $disk = Storage::disk('public');
+        $disk->makeDirectory('sites');
+
+        $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
+            ?? $file->store('sites', 'public');
+
+        if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            return null;
+        }
+
+        return $stored;
     }
 
     /**
