@@ -76,13 +76,16 @@ class AdminDashboardTest extends TestCase
             ->assertSee('unpaid ·')
             ->assertSee('community ·')
             ->assertSee('disputes')
-            ->assertSee(route('admin.community.index'), false)
+            ->assertSee(route('admin.community.index', ['status' => 'pending']), false)
             ->assertSee(route('admin.site-enrichment.index'), false)
             ->assertSee('loadFinanceStrip')
             ->assertSee('js-kpi-link')
             ->assertSee('js-kpi-users-caption')
             ->assertSee('All accounts. Role counts can overlap.')
             ->assertSee('kpiAdmins')
+            ->assertSee('kpiMarketers')
+            ->assertSee('kpiStalled')
+            ->assertSee("row.classList.add('d-none')", false)
             ->assertSee('js-chart-range')
             ->assertSee('js-chart-range-label')
             ->assertSee('id="dashboardActionQueues"', false)
@@ -112,6 +115,7 @@ class AdminDashboardTest extends TestCase
                 'pending_claims' => 0,
                 'pending_community' => 0,
                 'open_disputes' => 0,
+                'stalled_orders' => 0,
                 'needs_attention' => 0,
             ]);
     }
@@ -126,6 +130,8 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.total_users', 1)
             ->assertJsonPath('data.admins', 1)
+            ->assertJsonPath('data.marketers', 0)
+            ->assertJsonPath('data.stalled_orders', 0)
             ->assertJsonPath('data.advertisers', 0)
             ->assertJsonPath('data.pending_deposits', 0)
             ->assertJsonPath('data.needs_attention', 0)
@@ -298,7 +304,8 @@ class AdminDashboardTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.statistics'))
             ->assertOk()
-            ->assertJsonPath('data.revenue_7d', 80);
+            ->assertJsonPath('data.revenue_7d', 80)
+            ->assertJsonPath('data.orders_7d', 1);
 
         $trends = $this->actingAs($admin)
             ->getJson(route('admin.dashboard.trends'))
@@ -568,7 +575,7 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('disputes.0.url', route('admin.orders.show', $paid->id))
             ->assertJsonPath('community.0.type', 'problem')
             ->assertJsonPath('community.0.label', 'Broken checkout')
-            ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems']))
+            ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems', 'status' => 'pending']))
             ->assertJsonPath('enrichment.0.site_name', 'Failed enrich')
             ->assertJsonPath('enrichment.0.url', route('admin.sites.edit', $site->id));
 

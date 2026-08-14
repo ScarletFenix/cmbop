@@ -42,7 +42,8 @@
                     <div class="small text-muted mt-1">
                         <span id="kpiAdvertisers">0</span> advertisers ·
                         <span id="kpiPublishers">0</span> publishers ·
-                        <span id="kpiAdmins">0</span> admins
+                        <span id="kpiAdmins">0</span> admins ·
+                        <span id="kpiMarketers">0</span> marketing
                     </div>
                 </div>
             </div>
@@ -90,7 +91,8 @@
                         <span id="kpiPayments">0</span> unpaid ·
                         <span id="kpiSitesReview">0</span> sites ·
                         <span id="kpiCommunity">0</span> community ·
-                        <span id="kpiDisputes">0</span> disputes
+                        <span id="kpiDisputes">0</span> disputes ·
+                        <span id="kpiStalled">0</span> stalled
                     </div>
                 </div>
             </div>
@@ -252,7 +254,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-comments me-2 text-secondary"></i>Community inbox</strong>
-                    <a href="{{ route('admin.community.index') }}" class="small">View all</a>
+                    <a href="{{ route('admin.community.index', ['status' => 'pending']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -289,10 +291,10 @@
             </div>
         </div>
     </div>
-    </div>
 
     {{-- Orders the reminder cadence could not rescue. Hidden entirely when the
-         queue is empty so an untouched panel is not a permanent fixture. --}}
+         queue is empty so an untouched panel is not a permanent fixture.
+         Kept inside #dashboardActionQueues so Needs Attention scrolls here too. --}}
     <div class="row g-3 mb-4 d-none" id="stalledOrdersRow">
         <div class="col-12">
             <div class="card border-0 shadow-sm">
@@ -322,6 +324,7 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 
     <!-- Charts -->
@@ -509,6 +512,7 @@ async function loadStatistics() {
         document.getElementById('kpiAdvertisers').textContent = num(d.advertisers);
         document.getElementById('kpiPublishers').textContent = num(d.publishers);
         document.getElementById('kpiAdmins').textContent = num(d.admins);
+        document.getElementById('kpiMarketers').textContent = num(d.marketers);
         document.getElementById('kpiRevenue').textContent = money(d.revenue);
         document.getElementById('kpiRevenue7d').textContent = money(d.revenue_7d) + ' / 7d';
         document.getElementById('kpiPaidOrders').textContent = num(d.paid_orders);
@@ -521,6 +525,7 @@ async function loadStatistics() {
         document.getElementById('kpiSitesReview').textContent = num(d.unverified_sites);
         document.getElementById('kpiCommunity').textContent = num(d.pending_community);
         document.getElementById('kpiDisputes').textContent = num(d.open_disputes);
+        document.getElementById('kpiStalled').textContent = num(d.stalled_orders);
         document.getElementById('kpiAttention').textContent = num(d.needs_attention);
         hideRetry(retryEl);
     } catch (err) {
@@ -795,14 +800,19 @@ async function loadActionQueue() {
 }
 
 async function loadStalledOrders() {
+    const row = document.getElementById('stalledOrdersRow');
     try {
         const json = await dashboardFetch(`{{ route('admin.dashboard.stalled-orders') }}`);
-        if (!json.items.length) return;
+        const items = json.items || [];
+        if (!items.length) {
+            row.classList.add('d-none');
+            return;
+        }
 
-        document.getElementById('stalledOrdersRow').classList.remove('d-none');
+        row.classList.remove('d-none');
         document.getElementById('stalledOrdersCount').textContent = json.count;
 
-        document.getElementById('queueStalled').innerHTML = json.items.map(i => `
+        document.getElementById('queueStalled').innerHTML = items.map(i => `
             <tr>
                 <td class="fw-semibold">${cellLink(i.order_url, '#' + i.order_number)}</td>
                 <td>${escapeHtml(i.site_name)}</td>
@@ -826,7 +836,7 @@ async function loadStalledOrders() {
                 </td>
             </tr>`).join('');
     } catch (err) {
-        document.getElementById('stalledOrdersRow').classList.remove('d-none');
+        row.classList.remove('d-none');
         document.getElementById('queueStalled').innerHTML = retryRow(7, 'loadStalledOrders');
         throw err;
     }

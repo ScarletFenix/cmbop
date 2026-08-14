@@ -112,6 +112,12 @@ class AdminStalledOrderQueueTest extends TestCase
         $response->assertJsonPath('items.0.order_number', $order->order_number);
         $response->assertJsonPath('items.0.track', 'publish');
         $response->assertJsonPath('items.0.order_url', route('admin.orders.show', $order->id));
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('stalled_orders', 1)
+            ->assertJsonPath('needs_attention', 1);
     }
 
     public function test_an_order_still_working_through_the_cadence_is_not_escalated_yet(): void
