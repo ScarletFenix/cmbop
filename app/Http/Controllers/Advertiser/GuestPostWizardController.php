@@ -303,7 +303,7 @@ class GuestPostWizardController extends Controller
             return;
         }
 
-        $sites = Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
+        $sites = Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
         foreach ($cart as $i => $line) {
             $site = $sites->get((int) ($line['id'] ?? 0));
             if (! $site) {

@@ -992,7 +992,7 @@ class CatalogController extends Controller
     }
 
     /**
-     * Drop session cart lines whose sites are missing, inactive, or owned by the shopper.
+     * Drop session cart lines whose sites are missing, not catalog-visible, or owned by the shopper.
      *
      * @param  array<int, array<string, mixed>>  $cart
      * @return array{
@@ -1012,7 +1012,7 @@ class CatalogController extends Controller
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
-            : Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
+            : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
         $buyer = auth()->user();
 
         $kept = [];
@@ -1024,7 +1024,7 @@ class CatalogController extends Controller
             if ($name === '') {
                 $name = 'A website';
             }
-            if (! $site || (int) $site->active !== 1) {
+            if (! $site || ! $site->isCatalogVisible()) {
                 $removed[] = $name;
 
                 continue;
@@ -1071,11 +1071,11 @@ class CatalogController extends Controller
         $removedOwned = [];
         $buyer = auth()->user();
 
-        // Refresh site market metadata; drop missing/inactive/own-listing lines.
+        // Refresh site market metadata; drop missing/hidden/own-listing lines.
         $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
         $sites = $siteIds->isEmpty()
             ? collect()
-            : Site::query()->whereIn('id', $siteIds)->get()->keyBy('id');
+            : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
 
         $kept = [];
         foreach ($cart as $line) {
@@ -1084,7 +1084,7 @@ class CatalogController extends Controller
             if ($name === '') {
                 $name = 'A website';
             }
-            if (! $site || (int) $site->active !== 1) {
+            if (! $site || ! $site->isCatalogVisible()) {
                 $removedInactive[] = $name;
 
                 continue;
