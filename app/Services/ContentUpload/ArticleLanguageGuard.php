@@ -130,6 +130,9 @@ class ArticleLanguageGuard
         }
 
         $tokens = preg_split('/[^\p{L}\p{N}]+/u', $normalized, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($tokens) > 15000) {
+            $tokens = array_slice($tokens, 0, 15000);
+        }
         if (count($tokens) < 40) {
             return ['language' => null, 'confidence' => 0.0, 'scores' => []];
         }

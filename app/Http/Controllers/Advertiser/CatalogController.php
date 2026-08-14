@@ -3245,6 +3245,14 @@ class CatalogController extends Controller
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
 
+            // Pay again charges the full package on the card. Release any leftover
+            // checkout bonus for this reference first so promo is not left reserved
+            // while the advertiser pays the original total again.
+            app(OrderPaymentService::class)->refundBonusReservedForReference(
+                (int) auth()->id(),
+                $referenceCode
+            );
+
             Stripe::setApiKey(config('services.stripe.secret'));
 
             $retryPayload = [
@@ -3629,6 +3637,13 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved because payment is not complete.',
+                ], 422);
+            }
+
             DB::beginTransaction();
 
             // Lock order to prevent double-approve races
@@ -3651,6 +3666,15 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Order must be under review to approve (current status: '.$order->status.').',
                 ], 400);
+            }
+
+            if ($order->payment_status !== 'paid') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved because payment is not complete.',
+                ], 422);
             }
 
             if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {

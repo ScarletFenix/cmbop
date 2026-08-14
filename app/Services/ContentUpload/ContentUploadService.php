@@ -22,6 +22,9 @@ class ContentUploadService
     /** Hard article .docx cap (10 MB). Admin cannot raise this. */
     public const MAX_KILOBYTES = 10240;
 
+    /** Editor / draft HTML cap. Quill inflates markup; 500k rejected real 10 MB articles. */
+    public const PREVIEW_HTML_MAX_CHARS = 8000000;
+
     public function __construct(
         private DocumentTextExtractor $extractor,
         private ArticleEvaluationService $evaluation,
@@ -345,7 +348,14 @@ class ContentUploadService
      */
     public function storeArticleImage(string $binary, string $ext, string $originalName, User $user): ?string
     {
-        [$binary, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, $ext);
+        try {
+            [$binary, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, $ext);
+        } catch (\Throwable $e) {
+            Log::notice('Article preview image compress skipped', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+            ]);
+        }
 
         $dir = 'content-articles/'.$user->id;
         $filename = Str::uuid()->toString().'.'.$ext;
@@ -590,7 +600,7 @@ class ContentUploadService
         $mb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
 
         return [
-            'file.uploaded' => 'The article could not be uploaded. Use a Word .docx under '.$mb.' MB and try again.',
+            'file.uploaded' => 'The article could not be uploaded. Please try again.',
             'file.extensions' => 'Word .docx only — not PDF, Google Doc, or pasted text.',
             'file.mimes' => 'Word .docx only — not PDF, Google Doc, or pasted text.',
             'file.max' => 'That file is over the '.$mb.' MB limit.',
@@ -657,27 +667,38 @@ class ContentUploadService
      */
     public function uploadByteHints(Request $request): array
     {
-        return [$this->headerByteValue($request, 'Content-Length', 'CONTENT_LENGTH'), $this->headerByteValue($request, 'X-Upload-Bytes', null, 'client_bytes')];
+        return [
+            $this->maxPositiveInt([
+                $request->header('Content-Length'),
+                $request->server('CONTENT_LENGTH'),
+            ]),
+            $this->maxPositiveInt([
+                $request->header('X-Upload-Bytes'),
+                $request->query('client_bytes'),
+            ]),
+        ];
     }
 
-    private function headerByteValue(Request $request, string $header, ?string $serverKey = null, ?string $queryKey = null): ?int
+    /**
+     * @param  array<int, mixed>  $candidates
+     */
+    private function maxPositiveInt(array $candidates): ?int
     {
-        $value = $request->header($header);
-        if (($value === null || $value === '') && $serverKey) {
-            $value = $request->server($serverKey);
+        $best = null;
+        foreach ($candidates as $value) {
+            if (is_array($value)) {
+                $value = $value[0] ?? null;
+            }
+            if ($value === null || $value === '' || ! is_numeric($value)) {
+                continue;
+            }
+            $bytes = (int) $value;
+            if ($bytes > 0) {
+                $best = max($best ?? 0, $bytes);
+            }
         }
-        if (($value === null || $value === '') && $queryKey) {
-            $value = $request->query($queryKey);
-        }
-        if (is_array($value)) {
-            $value = $value[0] ?? null;
-        }
-        if ($value === null || $value === '') {
-            return null;
-        }
-        $bytes = (int) $value;
 
-        return $bytes > 0 ? $bytes : null;
+        return $best;
     }
 
     /**
@@ -699,8 +720,6 @@ class ContentUploadService
             return null;
         }
 
-        $mb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
-
         Log::notice('Content article upload rejected by PHP', [
             'error' => $file->getError(),
             'error_message' => $file->getErrorMessage(),
@@ -714,7 +733,7 @@ class ContentUploadService
             UPLOAD_ERR_PARTIAL => 'The upload was interrupted. Please try again.',
             UPLOAD_ERR_NO_FILE => 'Drop a .docx or click the box to choose a file.',
             UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'The server could not save the upload. Please try again in a moment.',
-            default => 'The article could not be uploaded. Use a Word .docx under '.$mb.' MB and try again.',
+            default => 'The article could not be uploaded. Please try again.',
         };
     }
 

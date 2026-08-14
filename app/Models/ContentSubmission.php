@@ -227,6 +227,42 @@ class ContentSubmission extends Model
     }
 
     /**
+     * List pages only need a preview flag — not the article body (10 MB HTML/text).
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeForLibraryList($query)
+    {
+        $table = $query->getModel()->getTable();
+        $omit = ['extracted_text', 'preview_html'];
+        $columns = array_values(array_filter(
+            Schema::getColumnListing($table),
+            fn (string $column) => ! in_array($column, $omit, true)
+        ));
+        $prefixed = array_map(fn (string $column) => $table.'.'.$column, $columns);
+
+        return $query
+            ->select($prefixed)
+            ->selectRaw(
+                'CASE WHEN '.$table.'.preview_html IS NOT NULL AND '.$table.'.preview_html != \'\' THEN 1 ELSE 0 END as has_preview_html'
+            );
+    }
+
+    /**
+     * True when the article has preview HTML. Uses the list-query flag when
+     * preview_html was not selected.
+     */
+    public function hasPreviewHtml(): bool
+    {
+        if (array_key_exists('has_preview_html', $this->attributes)) {
+            return (int) $this->attributes['has_preview_html'] === 1;
+        }
+
+        return filled($this->preview_html);
+    }
+
+    /**
      * @return list<string>
      */
     public static function imageRightsOptions(): array
