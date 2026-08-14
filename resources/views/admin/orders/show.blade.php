@@ -618,6 +618,11 @@
     document.querySelectorAll('.js-resolve-dispute').forEach((btn) => {
         btn.addEventListener('click', () => resolveDispute(btn.dataset.resolveUrl, btn.dataset.action));
     });
+
+    const hash = window.location.hash;
+    if (hash === '#order-schedule' || hash === '#order-disputes') {
+        document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'start' });
+    }
 })();
 </script>
 @endsection

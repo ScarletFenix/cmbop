@@ -168,7 +168,7 @@
 
         <!-- Cart — count + estimated total while browsing -->
         @php
-            $headerCart = session('cart', []);
+            $headerCart = is_array($headerCart ?? null) ? $headerCart : session('cart', []);
             $headerCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), $headerCart));
             $headerCartTotal = round(array_sum(array_map(
                 fn ($row) => ((float) ($row['price'] ?? 0)) * ((int) ($row['quantity'] ?? 0)),
@@ -434,7 +434,13 @@
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
-        const removed = Array.isArray(data?.removed_inactive) ? data.removed_inactive : [];
+        toastRemovedCartNames(
+            Array.isArray(data?.removed_inactive) ? data.removed_inactive : [],
+            Array.isArray(data?.removed_owned) ? data.removed_owned : []
+        );
+    }
+
+    function toastRemovedCartNames(removed, removedOwned) {
         if (removed.length === 1) {
             showToast(removed[0] + ' was deactivated and removed from your cart.', 'warning');
         } else if (removed.length > 1) {
@@ -442,7 +448,6 @@
             const more = removed.length > 2 ? ' (+' + (removed.length - 2) + ' more)' : '';
             showToast(removed.length + ' sites were deactivated and removed from your cart: ' + preview + more + '.', 'warning');
         }
-        const removedOwned = Array.isArray(data?.removed_owned) ? data.removed_owned : [];
         if (removedOwned.length === 1) {
             showToast(removedOwned[0] + ' is your listing and was removed from your cart.', 'warning');
         } else if (removedOwned.length > 1) {
@@ -1198,6 +1203,14 @@
     
     // Load cart on page load
     loadCart();
+    // Catalog shows its own banner; other pages toast names already dropped during render.
+    const onCatalogPage = {{ request()->routeIs('advertiser.catalog') ? 'true' : 'false' }};
+    if (!onCatalogPage) {
+        toastRemovedCartNames(
+            @json($ssrCartRemovedInactive ?? []),
+            @json($ssrCartRemovedOwned ?? [])
+        );
+    }
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

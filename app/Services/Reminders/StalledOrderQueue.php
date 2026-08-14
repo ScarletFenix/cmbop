@@ -35,7 +35,9 @@ class StalledOrderQueue
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('publish_nudge_stage', '>=', $stalledFrom)
             ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')->whereIn('status', ['processing', 'pending']);
+                $q->where('payment_status', 'paid')
+                    ->whereIn('status', ['processing', 'pending'])
+                    ->notAwaitingScheduledRelease();
             })
             ->with(['order.user', 'site.publisher'])
             ->limit($limit)
@@ -48,7 +50,9 @@ class StalledOrderQueue
             ->whereNull('accepted_at')
             ->where('accept_nudge_stage', '>=', $acceptStages)
             ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')->where('status', 'pending');
+                $q->where('payment_status', 'paid')
+                    ->where('status', 'pending')
+                    ->notAwaitingScheduledRelease();
             })
             ->with(['order.user', 'site.publisher'])
             ->limit($limit)
@@ -75,7 +79,9 @@ class StalledOrderQueue
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('publish_nudge_stage', '>=', $stalledFrom)
             ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')->whereIn('status', ['processing', 'pending']);
+                $q->where('payment_status', 'paid')
+                    ->whereIn('status', ['processing', 'pending'])
+                    ->notAwaitingScheduledRelease();
             })
             ->count();
 
@@ -83,7 +89,9 @@ class StalledOrderQueue
             ->whereNull('accepted_at')
             ->where('accept_nudge_stage', '>=', $acceptStages)
             ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')->where('status', 'pending');
+                $q->where('payment_status', 'paid')
+                    ->where('status', 'pending')
+                    ->notAwaitingScheduledRelease();
             })
             ->count();
 

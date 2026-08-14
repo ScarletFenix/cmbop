@@ -35,6 +35,7 @@
         ['title' => 'staff_handbook_section3_title', 'lists' => ['staff_handbook_section3_list1', 'staff_handbook_section3_list2', 'staff_handbook_section3_list3', 'staff_handbook_section3_list4']],
         ['title' => 'staff_handbook_section4_title', 'lists' => ['staff_handbook_section4_list1', 'staff_handbook_section4_list2', 'staff_handbook_section4_list3']],
         ['title' => 'staff_handbook_section5_title', 'lists' => ['staff_handbook_section5_list1', 'staff_handbook_section5_list2', 'staff_handbook_section5_list3']],
+        ['title' => 'staff_handbook_section6_title', 'lists' => ['staff_handbook_section6_list1', 'staff_handbook_section6_list2', 'staff_handbook_section6_list3', 'staff_handbook_section6_list4', 'staff_handbook_section6_list5']],
     ] as $section)
         <div class="card border-0 shadow-sm mb-3">
             <div class="card-body">

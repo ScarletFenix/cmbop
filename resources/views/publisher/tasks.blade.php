@@ -103,6 +103,7 @@
                         <select id="statusFilter" class="form-select form-select-sm">
                             <option value="">All Status</option>
                             <option value="pending">New — needs accept</option>
+                            <option value="scheduled">Scheduled — waiting for date</option>
                             <option value="processing">In progress — publish content</option>
                             <option value="review">Waiting for advertiser</option>
                             <option value="completed">Completed</option>
@@ -1221,7 +1222,9 @@ $(document).ready(function() {
                 modificationRequested,
                 item.live_url_submitted_at,
                 contentRevisionRequested,
-                orderHeldForContentRevision
+                orderHeldForContentRevision,
+                !!(item.order && item.order.is_awaiting_scheduled_release),
+                item.order && item.order.scheduled_label ? item.order.scheduled_label : null
             );
             var unreadBadge = item.unread_chat > 0
                 ? '<span class="chat-unread-dot pulse-badge is-pulsing">' + item.unread_chat + '</span>'
@@ -1368,7 +1371,9 @@ $(document).ready(function() {
             modificationRequested,
             item.live_url_submitted_at,
             contentRevisionRequested,
-            orderHeldForContentRevision
+            orderHeldForContentRevision,
+            !!(order && order.is_awaiting_scheduled_release),
+            order && order.scheduled_label ? order.scheduled_label : null
         );
         var statusClass = statusMeta.statusClass;
         var statusText = statusMeta.statusText;
@@ -1600,7 +1605,14 @@ $(document).ready(function() {
         return 'Auto-approve in ~' + Math.ceil(hoursRemaining) + 'h if they take no action';
     }
 
-    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested, orderHeldForContentRevision) {
+    function getPublisherStatusMeta(orderStatus, hasLiveUrl, modificationRequested, liveUrlSubmittedAt, contentRevisionRequested, orderHeldForContentRevision, isAwaitingScheduled, scheduledLabel) {
+        if (isAwaitingScheduled) {
+            return {
+                statusClass: 'status-processing',
+                statusText: 'Scheduled',
+                nextStep: scheduledLabel ? ('Publishes on ' + scheduledLabel) : 'Publishes on the scheduled date'
+            };
+        }
         if (orderStatus === 'pending') {
             return { statusClass: 'status-pending', statusText: 'New order', nextStep: 'Accept or reject this order' };
         }

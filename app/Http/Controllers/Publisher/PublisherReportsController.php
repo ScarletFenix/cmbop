@@ -125,7 +125,15 @@ class PublisherReportsController extends Controller
 
             $status = (string) $request->get('status', 'completed');
             if ($status !== '' && $status !== 'all' && in_array($status, self::ORDER_STATUSES, true)) {
-                $query->whereHas('order', fn ($q) => $q->where('status', $status));
+                $query->whereHas('order', function ($q) use ($status) {
+                    if ($status === 'scheduled') {
+                        $q->awaitingScheduledRelease();
+                    } elseif ($status === 'pending') {
+                        $q->where('status', 'pending')->notAwaitingScheduledRelease();
+                    } else {
+                        $q->where('status', $status);
+                    }
+                });
             }
 
             $perPage = max(1, min(100, (int) $request->get('per_page', 20)));

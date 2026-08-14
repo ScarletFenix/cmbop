@@ -730,6 +730,14 @@ class Site extends Model
     }
 
     /**
+     * Live, verified, or archived listings are read-only for marketing.
+     */
+    public function isLockedForMarketingEdits(): bool
+    {
+        return (bool) $this->verified || (bool) $this->active || $this->isArchived();
+    }
+
+    /**
      * Hard delete is safe only for pending listings that were never ordered.
      */
     public function canBeHardDeleted(): bool
@@ -1452,6 +1460,21 @@ class Site extends Model
         return (int) $this->da >= self::GOOD_MIN_DA
             && (int) $this->dr >= self::GOOD_MIN_DR
             && (int) $this->traffic >= self::GOOD_MIN_TRAFFIC;
+    }
+
+    /**
+     * Marketing may activate this listing (pending, complete, market + quality bar).
+     */
+    public function marketingCanActivate(): bool
+    {
+        if ((bool) $this->active || $this->isArchived()) {
+            return false;
+        }
+        if ($this->isPendingPublisherAcceptance() || $this->isPendingPublisherBulkSubmit()) {
+            return false;
+        }
+
+        return $this->hasMarketplaceCountry() && $this->hasGoodMetrics();
     }
 
     /**

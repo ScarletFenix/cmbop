@@ -1,6 +1,6 @@
 @php
     $wizardState = \App\Http\Controllers\Advertiser\GuestPostWizardController::stateFromSession();
-    $cart = session('cart', []);
+    $cart = is_array($cart ?? null) ? $cart : session('cart', []);
     $cartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), $cart));
     $lang = strtoupper((string) ($wizardState['language'] ?? ''));
     $cats = $wizardState['categories'] ?? [];

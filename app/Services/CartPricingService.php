@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\Site;
+use App\Models\User;
 
 class CartPricingService
 {
@@ -277,6 +278,82 @@ class CartPricingService
     }
 
     /**
+     * Keep only cart lines that are still catalog-visible and not owned by the shopper.
+     *
+     * @param  array<int, array<string, mixed>>  $cart
+     * @return array{
+     *     cart: list<array<string, mixed>>,
+     *     removed_inactive: list<string>,
+     *     removed_owned: list<string>,
+     *     changed: bool
+     * }
+     */
+    public function pruneAdvertiserCart(array $cart, ?User $buyer = null): array
+    {
+        $cart = array_values(array_filter($cart, 'is_array'));
+        if ($cart === []) {
+            return ['cart' => [], 'removed_inactive' => [], 'removed_owned' => [], 'changed' => false];
+        }
+
+        $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
+        $sites = $siteIds->isEmpty()
+            ? collect()
+            : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
+
+        $kept = [];
+        $removed = [];
+        $removedOwned = [];
+        foreach ($cart as $line) {
+            $site = $sites->get((int) ($line['id'] ?? 0));
+            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
+            if ($name === '') {
+                $name = 'A website';
+            }
+            if (! $site || ! $site->isCatalogVisible()) {
+                $removed[] = $name;
+
+                continue;
+            }
+            if ($site->isOwnedBy($buyer)) {
+                $removedOwned[] = $name;
+
+                continue;
+            }
+            $kept[] = $line;
+        }
+
+        $removed = array_values(array_unique($removed));
+        $removedOwned = array_values(array_unique($removedOwned));
+
+        return [
+            'cart' => $kept,
+            'removed_inactive' => $removed,
+            'removed_owned' => $removedOwned,
+            'changed' => count($kept) !== count($cart),
+        ];
+    }
+
+    /**
+     * Drop hidden/owned lines from the session cart.
+     *
+     * @return array{
+     *     cart: list<array<string, mixed>>,
+     *     removed_inactive: list<string>,
+     *     removed_owned: list<string>,
+     *     changed: bool
+     * }
+     */
+    public function syncAdvertiserSessionCart(?User $buyer = null): array
+    {
+        $pruned = $this->pruneAdvertiserCart(session('cart', []) ?: [], $buyer);
+        if ($pruned['changed']) {
+            session()->put('cart', array_values($pruned['cart']));
+        }
+
+        return $pruned;
+    }
+
+    /**
      * Keep only cart lines that are still catalog-visible.
      *
      * @param  array<int, array<string, mixed>>  $cart
@@ -284,36 +361,35 @@ class CartPricingService
      */
     public function pruneUnavailableCartItems(array $cart): array
     {
-        $kept = [];
-        $removed = [];
-
-        foreach ($cart as $item) {
-            $site = Site::query()
-                ->catalogVisible()
-                ->where('id', $item['id'] ?? null)
-                ->first();
-
-            if ($site) {
-                $kept[] = $item;
-            } else {
-                $removed[] = $item;
-            }
-        }
+        $pruned = $this->pruneAdvertiserCart($cart, auth()->user());
 
         return [
-            'cart' => $kept,
-            'removed' => $removed,
+            'cart' => $pruned['cart'],
+            'removed' => array_map(
+                static fn (string $name) => ['name' => $name],
+                $pruned['removed_inactive']
+            ),
         ];
     }
 
     /**
-     * Expand a session cart into per-unit line items with server-calculated prices.
-     *
-     * @param  array<int, array<string, mixed>>  $cart
-     * @return array<int, array<string, mixed>>
-     *
-     * @throws \Exception
+     * Same ownership rule as Site::isOwnedBy() without loading the user.
      */
+    private function buyerOwnsSite(Site $site, ?int $buyerId): bool
+    {
+        if ($buyerId === null || $buyerId <= 0) {
+            return false;
+        }
+
+        if ((int) $site->publisher_id === $buyerId) {
+            return true;
+        }
+
+        $ownerId = (int) ($site->getAttribute('owner_id') ?? 0);
+
+        return $ownerId > 0 && $ownerId === $buyerId;
+    }
+
     /**
      * Expand session cart lines into per-copy order rows using live DB prices.
      *
@@ -336,7 +412,7 @@ class CartPricingService
                 continue;
             }
 
-            if ($buyerId && (int) $site->publisher_id === (int) $buyerId) {
+            if ($this->buyerOwnsSite($site, $buyerId)) {
                 $unavailable[] = (string) ($item['name'] ?? $site->site_name);
 
                 continue;
@@ -407,7 +483,7 @@ class CartPricingService
             if (! $site) {
                 continue;
             }
-            if ($buyerId && (int) $site->publisher_id === (int) $buyerId) {
+            if ($this->buyerOwnsSite($site, $buyerId)) {
                 continue;
             }
 

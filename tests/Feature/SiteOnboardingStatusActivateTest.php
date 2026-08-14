@@ -76,7 +76,7 @@ class SiteOnboardingStatusActivateTest extends TestCase
         $this->assertTrue($site->awaitsPublisherDetails());
     }
 
-    public function test_marketer_activate_is_blocked_while_awaiting_details(): void
+    public function test_marketer_cannot_activate_awaiting_details(): void
     {
         $marketer = $this->userWithRole('marketing');
         $publisher = $this->userWithRole('publisher');
@@ -85,7 +85,8 @@ class SiteOnboardingStatusActivateTest extends TestCase
         $this->actingAs($marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
             ->assertStatus(422)
-            ->assertJsonPath('success', false);
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Publisher has not finished listing details.');
 
         $site->refresh();
         $this->assertFalse((bool) $site->active);

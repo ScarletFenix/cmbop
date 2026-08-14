@@ -212,6 +212,21 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
             ->assertJsonPath('sites.0.archived', false);
     }
 
+    public function test_marketer_site_list_includes_orders_count(): void
+    {
+        $marketer = $this->userWithRole('marketing');
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site($publisher);
+        $this->orderItemFor($site, $advertiser);
+
+        $this->actingAs($marketer)
+            ->getJson(route('marketing.users.sites', $publisher->id))
+            ->assertOk()
+            ->assertJsonPath('sites.0.id', $site->id)
+            ->assertJsonPath('sites.0.orders_count', 1);
+    }
+
     public function test_staff_site_list_marks_archived_sites(): void
     {
         $admin = $this->userWithRole('admin');

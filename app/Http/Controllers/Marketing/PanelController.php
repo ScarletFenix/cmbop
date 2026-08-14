@@ -90,14 +90,24 @@ class PanelController extends Controller
         ));
     }
 
+    public function queueCounts()
+    {
+        return response()->json([
+            'success' => true,
+            'ready_sites' => MarketingOpsQueues::sitesReadyForStaffCount(),
+            'bulk_waiting' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
+        ]);
+    }
+
     public function history(Request $request)
     {
         $userId = (int) auth()->id();
-        $query = $this->marketerHistoryQuery($userId)->latest('id');
+        $query = $this->marketerHistoryQuery($userId);
         $dateErrors = [];
 
-        if ($request->filled('action')) {
-            $query->where('action', $request->string('action')->toString());
+        $selectedAction = $request->string('action')->toString();
+        if ($selectedAction !== '' && ! in_array($selectedAction, self::TRACKED_ACTIONS, true)) {
+            $selectedAction = '';
         }
 
         $fromBound = null;
@@ -134,36 +144,48 @@ class PanelController extends Controller
             }
         }
 
-        if ($request->filled('q')) {
-            $raw = $request->string('q')->toString();
-            $term = '%'.$raw.'%';
-            $matchedActions = marketing_task_actions_matching($raw);
-            $query->where(function ($q) use ($term, $matchedActions) {
-                $q->where('description', 'like', $term)
-                    ->orWhere('subject_label', 'like', $term);
+        $searchNeedle = mb_strtolower(trim($request->string('q')->toString()));
+        if ($searchNeedle !== '') {
+            $matchedActions = marketing_task_actions_matching($searchNeedle);
+            $query->where(function ($q) use ($searchNeedle, $matchedActions) {
+                $this->whereHistoryDescriptionHasWord($q, $searchNeedle);
+                $q->orWhereRaw('LOWER(COALESCE(subject_label, \'\')) LIKE ?', ['%'.$searchNeedle.'%']);
                 if ($matchedActions !== []) {
                     $q->orWhereIn('action', $matchedActions);
                 }
             });
         }
 
-        $logs = $query->paginate(30)->withQueryString();
+        $actionCounts = (clone $query)
+            ->selectRaw('action, COUNT(*) as aggregate')
+            ->groupBy('action')
+            ->pluck('aggregate', 'action');
 
-        $actions = ActivityLog::query()
-            ->where('user_id', $userId)
-            ->where('role', 'marketing')
-            ->whereIn('action', self::TRACKED_ACTIONS)
-            ->select('action')
-            ->distinct()
-            ->orderBy('action')
-            ->pluck('action');
+        if ($selectedAction !== '') {
+            $query->where('action', $selectedAction);
+        }
 
-        $filtersActive = $request->filled('q')
-            || $request->filled('action')
+        $logs = $query->latest('id')->paginate(30)->withQueryString();
+
+        if ($request->integer('page') > 1 && $logs->total() > 0 && $logs->count() === 0) {
+            return redirect()->to($logs->url(max(1, $logs->lastPage())));
+        }
+
+        $actions = self::TRACKED_ACTIONS;
+
+        $filtersActive = $searchNeedle !== ''
+            || $selectedAction !== ''
             || $request->filled('from')
             || $request->filled('to');
 
-        return view('marketing.history', compact('logs', 'actions', 'dateErrors', 'filtersActive'));
+        return view('marketing.history', compact(
+            'logs',
+            'actions',
+            'actionCounts',
+            'selectedAction',
+            'dateErrors',
+            'filtersActive'
+        ));
     }
 
     /**
@@ -195,6 +217,20 @@ class PanelController extends Controller
     private function marketerTodayDateString(): string
     {
         return now()->timezone($this->marketerTimezone())->toDateString();
+    }
+
+    /**
+     * Word-aware description match so "Activated" does not hit "Deactivated".
+     */
+    private function whereHistoryDescriptionHasWord(Builder $q, string $needle): void
+    {
+        $pattern = '% '.$needle.' %';
+        $driver = $q->getConnection()->getDriverName();
+        $haystack = in_array($driver, ['sqlite', 'pgsql'], true)
+            ? "(' ' || LOWER(COALESCE(description, '')) || ' ')"
+            : "CONCAT(' ', LOWER(COALESCE(description, '')), ' ')";
+
+        $q->whereRaw($haystack.' LIKE ?', [$pattern]);
     }
 
     private function parseMarketerDay(mixed $value, bool $start): ?Carbon

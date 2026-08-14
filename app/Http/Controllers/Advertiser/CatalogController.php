@@ -191,7 +191,8 @@ class CatalogController extends Controller
             $siteCategories = $predefinedCategories;
         }
 
-        // Get cart from SESSION
+        // Drop hidden/owned lines before the banner, wizard chrome, and header badge render.
+        $cartRemovedInactive = $this->syncPrunedSessionCart();
         $cart = session()->get('cart', []);
 
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
@@ -246,6 +247,7 @@ class CatalogController extends Controller
             'favorites',
             'blacklist',
             'cart',
+            'cartRemovedInactive',
             'showBlacklistedOnly',
             'bulkDeals',
             'featurePrice',
@@ -1004,49 +1006,7 @@ class CatalogController extends Controller
      */
     private function pruneInactiveCartLines(array $cart): array
     {
-        $cart = array_values($cart);
-        if ($cart === []) {
-            return ['cart' => [], 'removed_inactive' => [], 'removed_owned' => [], 'changed' => false];
-        }
-
-        $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
-        $sites = $siteIds->isEmpty()
-            ? collect()
-            : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
-        $buyer = auth()->user();
-
-        $kept = [];
-        $removed = [];
-        $removedOwned = [];
-        foreach ($cart as $line) {
-            $site = $sites->get((int) ($line['id'] ?? 0));
-            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
-            if ($name === '') {
-                $name = 'A website';
-            }
-            if (! $site || ! $site->isCatalogVisible()) {
-                $removed[] = $name;
-
-                continue;
-            }
-            if ($site->isOwnedBy($buyer)) {
-                $removedOwned[] = $name;
-
-                continue;
-            }
-            $kept[] = $line;
-        }
-
-        $removed = array_values(array_unique($removed));
-        $removedOwned = array_values(array_unique($removedOwned));
-        $changed = count($kept) !== count($cart);
-
-        return [
-            'cart' => $kept,
-            'removed_inactive' => $removed,
-            'removed_owned' => $removedOwned,
-            'changed' => $changed,
-        ];
+        return $this->cartPricing()->pruneAdvertiserCart($cart, auth()->user());
     }
 
     /**
@@ -1056,12 +1016,7 @@ class CatalogController extends Controller
      */
     private function syncPrunedSessionCart(): array
     {
-        $pruned = $this->pruneInactiveCartLines(session()->get('cart', []));
-        if ($pruned['changed']) {
-            session()->put('cart', array_values($pruned['cart']));
-        }
-
-        return $pruned['removed_inactive'];
+        return $this->cartPricing()->syncAdvertiserSessionCart(auth()->user())['removed_inactive'];
     }
 
     /**
@@ -1388,7 +1343,7 @@ class CatalogController extends Controller
                     continue;
                 }
                 $site = $sites->get((int) $row['id']);
-                if (! $site) {
+                if (! $site || $site->isOwnedBy(auth()->user())) {
                     continue;
                 }
                 $key = $this->cartIdentityKey($row);
@@ -1414,7 +1369,7 @@ class CatalogController extends Controller
                 $merged[] = $this->normalizeCartLineForSite($site, $row);
             }
 
-            session()->put('cart', array_values($merged));
+            $this->putCatalogVisibleCart($merged);
 
             return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
@@ -1474,6 +1429,8 @@ class CatalogController extends Controller
 
         $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
         if (! $site) {
+            $this->putCatalogVisibleCart($cart);
+
             return response()->json(['success' => false, 'error' => 'Site not found or inactive.'], 404);
         }
 
@@ -1488,7 +1445,7 @@ class CatalogController extends Controller
         if ($submissionId <= 0) {
             $ids[$copyIndex] = 0;
             $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart($cart);
 
             return response()->json(array_merge(['success' => true, 'message' => 'Article cleared for this placement.'], $this->cartPayloadForClient()));
         }
@@ -1540,7 +1497,7 @@ class CatalogController extends Controller
         } else {
             unset($cart[$lineKey]['language_note']);
         }
-        session()->put('cart', array_values($cart));
+        $this->putCatalogVisibleCart($cart);
 
         $message = $mismatchNote
             ? 'Article assigned (language differs: '.$mismatchNote.').'
@@ -1572,6 +1529,8 @@ class CatalogController extends Controller
 
             $site = Site::query()->catalogVisible()->where('id', $id)->first();
             if (! $site) {
+                $this->putCatalogVisibleCart(session()->get('cart', []));
+
                 return response()->json([
                     'success' => false,
                     'error' => 'Site not found or inactive.',
@@ -1755,7 +1714,7 @@ class CatalogController extends Controller
                 }
             }
 
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart($cart);
 
             $cartCount = array_sum(array_column($cart, 'quantity'));
             $cartTotal = array_sum(array_map(function ($item) {
@@ -1818,9 +1777,9 @@ class CatalogController extends Controller
                 }
             }
 
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart(array_values($cart));
 
-            return response()->json(['success' => true]);
+            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
             Log::error('Error removing from cart: '.$e->getMessage());
 
@@ -1869,7 +1828,7 @@ class CatalogController extends Controller
                 break;
             }
 
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart($cart);
 
             return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
@@ -3368,7 +3327,8 @@ class CatalogController extends Controller
                 ->where(function ($q) {
                     $q->where(function ($pendingPaid) {
                         $pendingPaid->where('status', 'pending')
-                            ->where('payment_status', 'paid');
+                            ->where('payment_status', 'paid')
+                            ->notAwaitingScheduledRelease();
                     })->orWhere('status', 'processing');
                 })
                 ->count();
@@ -3432,13 +3392,15 @@ class CatalogController extends Controller
                         });
                 } elseif ($status === 'awaiting_publisher') {
                     $query->where('status', 'pending')
-                        ->where('payment_status', 'paid');
+                        ->where('payment_status', 'paid')
+                        ->notAwaitingScheduledRelease();
                 } elseif ($status === 'in_progress') {
                     // Matches funnel KPI: paid·waiting publisher + publisher working.
                     $query->where(function ($q) {
                         $q->where(function ($pendingPaid) {
                             $pendingPaid->where('status', 'pending')
-                                ->where('payment_status', 'paid');
+                                ->where('payment_status', 'paid')
+                                ->notAwaitingScheduledRelease();
                         })->orWhere('status', 'processing');
                     });
                 } elseif ($status === 'needs_action') {
@@ -4358,8 +4320,6 @@ class CatalogController extends Controller
 
             $siteId = (int) ($item['id'] ?? 0);
             if ($siteId <= 0) {
-                $deferred[] = $item;
-
                 continue;
             }
 
