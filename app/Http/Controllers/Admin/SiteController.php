@@ -1535,6 +1535,10 @@ class SiteController extends Controller
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
 
+        if ($request->exists('category') && ! is_string($request->input('category'))) {
+            $request->merge(['category' => null]);
+        }
+
         $rules = [
             'site_name' => 'sometimes|required|string|max:255',
             'site_url' => 'sometimes|required|url|max:255',

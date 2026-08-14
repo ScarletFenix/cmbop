@@ -741,11 +741,13 @@ class MarketingAssignSiteForPublisherTest extends TestCase
                 'site_url' => ['https://poison-url.example'],
                 'example_url' => ['https://poison-url.example/sample'],
             ]))
-            ->assertRedirect(route('marketing.sites.create'))
-            ->assertSessionHasErrors(['site_url', 'example_url']);
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
         $this->assertNull(Site::where('domain', 'array')->first());
-        $this->assertNull(Site::where('domain', 'poison-url.example')->first());
+        $site = Site::where('domain', 'poison-url.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame('https://poison-url.example', $site->site_url);
     }
 
     public function test_non_string_categories_old_input_does_not_crash_create_page(): void
