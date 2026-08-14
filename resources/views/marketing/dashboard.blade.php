@@ -25,45 +25,58 @@
 
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Pending sites</div>
-                    <h3 class="mb-0 text-warning">{{ $stats['pending_sites'] }}</h3>
+            <a href="{{ route('marketing.sites.index', ['needs_review' => 1]) }}" class="text-decoration-none text-reset" data-stat="ready-to-activate">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Ready to activate</div>
+                        <h3 class="mb-0 text-warning" data-stat-value="{{ $stats['ready_to_activate'] }}">{{ $stats['ready_to_activate'] }}</h3>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">Open bulk requests</div>
-                    <h3 class="mb-0 text-primary">{{ $stats['open_bulk_requests'] }}</h3>
+            <a href="{{ route('marketing.bulk-site-requests.index') }}" class="text-decoration-none text-reset" data-stat="bulk-waiting-on-you">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Waiting on you (bulk)</div>
+                        <h3 class="mb-0 text-primary" data-stat-value="{{ $stats['bulk_waiting_on_you'] }}">{{ $stats['bulk_waiting_on_you'] }}</h3>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">My tasks today</div>
-                    <h3 class="mb-0 text-success">{{ $stats['my_tasks_today'] }}</h3>
+            <a href="{{ route('marketing.bulk-site-requests.index', ['status' => 'awaiting_publisher']) }}" class="text-decoration-none text-reset" data-stat="waiting-on-publisher">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">Waiting on publisher</div>
+                        <h3 class="mb-1" data-stat-sites="{{ $stats['sites_waiting_on_publisher'] }}">{{ $stats['sites_waiting_on_publisher'] }}</h3>
+                        <div class="small text-muted" data-stat-bulk="{{ $stats['bulk_waiting_on_publisher'] }}">
+                            {{ $stats['bulk_waiting_on_publisher'] }}
+                            bulk request{{ $stats['bulk_waiting_on_publisher'] === 1 ? '' : 's' }}
+                        </div>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
         <div class="col-6 col-md-3">
-            <div class="card border-0 shadow-sm h-100">
-                <div class="card-body">
-                    <div class="text-muted small">My tasks (all time)</div>
-                    <h3 class="mb-0">{{ $stats['my_tasks_total'] }}</h3>
+            <a href="{{ route('marketing.history') }}" class="text-decoration-none text-reset" data-stat="my-tasks-today">
+                <div class="card border-0 shadow-sm h-100">
+                    <div class="card-body">
+                        <div class="text-muted small">My tasks today</div>
+                        <h3 class="mb-1 text-success" data-stat-value="{{ $stats['my_tasks_today'] }}">{{ $stats['my_tasks_today'] }}</h3>
+                        <div class="small text-muted" data-stat-total="{{ $stats['my_tasks_total'] }}">{{ $stats['my_tasks_total'] }} all time</div>
+                    </div>
                 </div>
-            </div>
+            </a>
         </div>
     </div>
 
     <div class="row g-3 mb-4">
         <div class="col-lg-7">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100" data-queue="ready-sites">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-clock me-2 text-warning"></i>Pending sites</strong>
-                    <a href="{{ route('marketing.sites.index') }}" class="small">View all</a>
+                    <strong><i class="fa fa-bolt me-2 text-warning"></i>Ready to activate</strong>
+                    <a href="{{ route('marketing.sites.index', ['needs_review' => 1]) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -72,11 +85,13 @@
                                 <tr>
                                     <th>Site</th>
                                     <th>Publisher</th>
-                                    <th width="100">Action</th>
+                                    <th>State</th>
+                                    <th>Age</th>
+                                    <th style="width:100px">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @forelse($pendingSites as $site)
+                                @forelse($readySites as $site)
                                     <tr>
                                         <td>
                                             <div class="fw-semibold">{{ $site->site_name ?: '—' }}</div>
@@ -85,13 +100,15 @@
                                         <td class="small">
                                             {{ $site->publisher?->name ?? 'Unknown' }}
                                         </td>
+                                        <td class="small">{{ \App\Support\MarketingOpsQueues::siteQueueLabel($site) }}</td>
+                                        <td class="small text-nowrap text-muted">{{ $site->created_at?->format('d M Y') }}</td>
                                         <td>
                                             <a href="{{ route('marketing.sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted py-4">No pending sites right now.</td>
+                                        <td colspan="5" class="text-center text-muted py-4">No sites ready to activate.</td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -101,7 +118,7 @@
             </div>
         </div>
         <div class="col-lg-5">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100" data-queue="open-bulk">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-layer-group me-2 text-primary"></i>Open bulk requests</strong>
                     <a href="{{ route('marketing.bulk-site-requests.index') }}" class="small">View all</a>
@@ -113,7 +130,8 @@
                                 <tr>
                                     <th>Publisher</th>
                                     <th>Status</th>
-                                    <th width="90">Open</th>
+                                    <th>Rows</th>
+                                    <th style="width:90px">Open</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -122,21 +140,63 @@
                                         <td class="small">
                                             <div class="fw-semibold">{{ $req->publisher?->name ?? '—' }}</div>
                                             <div class="text-muted">#{{ $req->id }}</div>
+                                            @if($req->handler?->name)
+                                                <div class="text-muted">{{ $req->handler->name }}</div>
+                                            @endif
                                         </td>
-                                        <td><span class="badge bg-secondary text-capitalize">{{ str_replace('_', ' ', $req->status) }}</span></td>
+                                        <td><span class="badge bg-secondary">{{ $req->statusLabel() }}</span></td>
+                                        <td class="small text-muted">{{ $req->pending_items_count }}</td>
                                         <td>
                                             <a href="{{ route('marketing.bulk-site-requests.show', $req) }}" class="btn btn-sm btn-outline-primary">Open</a>
                                         </td>
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="3" class="text-center text-muted py-4">No open bulk requests.</td>
+                                        <td colspan="4" class="text-center text-muted py-4">No open bulk requests.</td>
                                     </tr>
                                 @endforelse
                             </tbody>
                         </table>
                     </div>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4" data-queue="waiting-sites">
+        <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+            <strong><i class="fa fa-hourglass-half me-2 text-muted"></i>Waiting on publisher</strong>
+            <span class="small text-muted">Details or accept — not staff work yet</span>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Site</th>
+                            <th>Publisher</th>
+                            <th>State</th>
+                            <th>Age</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @forelse($waitingSites as $site)
+                            <tr>
+                                <td>
+                                    <div class="fw-semibold">{{ $site->site_name ?: '—' }}</div>
+                                    <div class="small text-muted text-truncate" style="max-width:260px;">{{ $site->site_url }}</div>
+                                </td>
+                                <td class="small">{{ $site->publisher?->name ?? 'Unknown' }}</td>
+                                <td class="small">{{ \App\Support\MarketingOpsQueues::siteQueueLabel($site) }}</td>
+                                <td class="small text-nowrap text-muted">{{ $site->created_at?->format('d M Y') }}</td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="4" class="text-center text-muted py-4">No listings waiting on a publisher.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
         </div>
     </div>
@@ -153,8 +213,8 @@
 
     <div class="alert alert-info border-0 mt-4 mb-0">
         <i class="fa fa-info-circle me-1"></i>
-        You can add/edit sites, manage bulk drafts, and delete pending (not-live) sites.
-        Admin handles verify, activate, enrichment, payments, and users.
+        You can add and edit listings (metrics, geo, niches, images), seed bulk requests, activate or deactivate sites, and delete pending (not-live) sites.
+        Admin handles verification, payments, and users.
     </div>
 
 </div>

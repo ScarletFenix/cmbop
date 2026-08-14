@@ -4,8 +4,7 @@ namespace App\Http\Controllers\Marketing;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
-use App\Models\BulkSiteRequest;
-use App\Models\Site;
+use App\Support\MarketingOpsQueues;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -31,41 +30,35 @@ class PanelController extends Controller
         $userId = (int) auth()->id();
 
         $stats = [
-            'pending_sites' => Site::query()
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
-                ->where(function ($q) {
-                    $q->where('active', 0)->orWhereNull('active');
-                })
-                ->count(),
-            'open_bulk_requests' => BulkSiteRequest::query()
-                ->whereNotIn('status', [
-                    BulkSiteRequest::STATUS_COMPLETED,
-                    BulkSiteRequest::STATUS_CANCELLED,
-                ])
-                ->count(),
+            'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaff()->count(),
+            'bulk_waiting_on_you' => MarketingOpsQueues::bulkWaitingOnMarketer()->count(),
+            'sites_waiting_on_publisher' => MarketingOpsQueues::sitesWaitingOnPublisher()->count(),
+            'bulk_waiting_on_publisher' => MarketingOpsQueues::bulkWaitingOnPublisher()->count(),
             'my_tasks_today' => $this->marketerHistoryQuery($userId)
                 ->whereDate('created_at', Carbon::today())
                 ->count(),
             'my_tasks_total' => $this->marketerHistoryQuery($userId)->count(),
         ];
 
-        $pendingSites = Site::with('publisher:id,name,email')
-            ->where(function ($q) {
-                $q->where('verified', 0)->orWhereNull('verified');
-            })
-            ->where(function ($q) {
-                $q->where('active', 0)->orWhereNull('active');
-            })
+        $readySites = MarketingOpsQueues::sitesReadyForStaff()
+            ->with('publisher:id,name,email')
             ->latest()
             ->take(8)
             ->get();
 
-        $openBulk = BulkSiteRequest::with('publisher:id,name,email')
-            ->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
+        $waitingSites = MarketingOpsQueues::sitesWaitingOnPublisher()
+            ->with('publisher:id,name,email')
+            ->latest()
+            ->take(5)
+            ->get();
+
+        $openBulk = MarketingOpsQueues::openBulkForMarketer()
+            ->with([
+                'publisher:id,name,email',
+                'handler:id,name',
+            ])
+            ->withCount([
+                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
             ])
             ->latest()
             ->take(5)
@@ -78,7 +71,8 @@ class PanelController extends Controller
 
         return view('marketing.dashboard', compact(
             'stats',
-            'pendingSites',
+            'readySites',
+            'waitingSites',
             'openBulk',
             'recentHistory'
         ));
