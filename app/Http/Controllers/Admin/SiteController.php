@@ -17,6 +17,7 @@ use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
@@ -42,13 +43,15 @@ class SiteController extends Controller
 
         $publisherSearch = trim((string) $request->query('q', ''));
 
+        $reviewQueue = function ($q) {
+            $q->needsAdminReview()->notArchived();
+        };
+
         // Counts only — do not eager-load every site row for the publisher list.
         $query = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
-            ->withCount('sites')
-            ->withCount(['sites as needs_review_sites_count' => function ($q) {
-                $q->needsAdminReview();
-            }]);
+            ->withCount(['sites' => fn ($q) => $q->notArchived()])
+            ->withCount(['sites as needs_review_sites_count' => $reviewQueue]);
 
         if ($publisherSearch !== '') {
             $query->where(function ($q) use ($publisherSearch) {
@@ -59,11 +62,8 @@ class SiteController extends Controller
 
         // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
         if ($needsReviewFilter) {
-            $query->whereHas('sites', function ($q) {
-                $q->needsAdminReview();
-            })->withCount(['sites as unverified_sites_count' => function ($q) {
-                $q->needsAdminReview();
-            }]);
+            $query->whereHas('sites', $reviewQueue)
+                ->withCount(['sites as unverified_sites_count' => $reviewQueue]);
         }
 
         $users = $query
@@ -74,7 +74,7 @@ class SiteController extends Controller
             ->appends($request->query());
         $unverifiedFilter = $needsReviewFilter;
         $needsReviewFilterActive = $needsReviewFilter;
-        $openReviewCount = Site::query()->needsAdminReview()->count();
+        $openReviewCount = MarketingOpsQueues::sitesReadyForStaffCount();
         $missingMarketCount = Site::query()->activeMissingMarketplaceCountry()->count();
 
         return view('admin.sites', compact(
@@ -565,6 +565,7 @@ class SiteController extends Controller
 
         $sites = Site::query()
             ->where('publisher_id', $user->id)
+            ->notArchived()
             ->latest()
             ->get($select)
             ->map(fn (Site $site) => $this->staffSiteListRow($site))

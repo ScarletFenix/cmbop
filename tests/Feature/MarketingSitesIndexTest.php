@@ -176,6 +176,47 @@ class MarketingSitesIndexTest extends TestCase
         $this->assertLessThan($emptyPos, $queuedPos);
     }
 
+    public function test_sites_index_excludes_archived_from_review_count_and_user_sites(): void
+    {
+        $publisher = $this->userWithRole('publisher', [
+            'name' => 'Archive Queue Publisher',
+            'email' => 'archive-queue-publisher@example.test',
+        ]);
+        $live = $this->makeSite($publisher, [
+            'domain' => 'live-review.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+        $archived = $this->makeSite($publisher, [
+            'domain' => 'archived-review.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'archived_at' => now(),
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['needs_review' => 1]))
+            ->assertOk()
+            ->assertSee($publisher->email, false)
+            ->assertDontSee('waiting for Verify, Activate, Reject, or Delete', false)
+            ->assertSee('waiting for Activate or delete (pending only)', false)
+            ->getContent();
+
+        $this->assertStringContainsString('1 new', $html);
+
+        $payload = $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', $publisher->id))
+            ->assertOk()
+            ->json();
+
+        $ids = collect($payload['sites'] ?? [])->pluck('id')->all();
+        $this->assertContains($live->id, $ids);
+        $this->assertNotContains($archived->id, $ids);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['needs_review' => 1]))
+            ->assertOk()
+            ->assertSee('waiting for Verify, Activate, Reject, or Delete', false);
+    }
+
     public function test_sites_delete_script_checks_failed_responses(): void
     {
         $html = $this->actingAs($this->marketer)

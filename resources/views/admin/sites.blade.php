@@ -58,7 +58,13 @@
         <div class="alert alert-warning border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2">
             <div>
                 <strong>Needs review queue</strong>
-                <span class="ms-1">Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.</span>
+                <span class="ms-1">
+                    @if(auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin())
+                        Publishers with new/ready sites waiting for Activate or delete (pending only). Admin verifies.
+                    @else
+                        Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.
+                    @endif
+                </span>
             </div>
             <a href="{{ staff_route('sites.index', $publisherSearchQuery) }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
         </div>
