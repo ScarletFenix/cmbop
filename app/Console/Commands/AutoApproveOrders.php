@@ -80,7 +80,8 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('content_revision_requested');
             })
             ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+                $q->where('status', 'review')
+                    ->where('payment_status', 'paid');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -160,7 +161,8 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('content_revision_requested');
             })
             ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+                $q->where('status', 'review')
+                    ->where('payment_status', 'paid');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -187,6 +189,13 @@ class AutoApproveOrders extends Command
                 $order = Order::where('id', $orderItem->order_id)->lockForUpdate()->first();
                 if (! $order || $order->status === 'completed' || $order->status === 'cancelled') {
                     DB::rollBack();
+
+                    continue;
+                }
+
+                if ($order->payment_status !== 'paid') {
+                    DB::rollBack();
+                    $this->warn("Skip order #{$order->id}: payment is not complete ({$order->payment_status})");
 
                     continue;
                 }
