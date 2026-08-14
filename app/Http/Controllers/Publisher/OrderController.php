@@ -611,19 +611,24 @@ class OrderController extends Controller
             $suppressedOrderId = (int) $order->id;
             $suppressor->suppress($suppressedOrderId, ['advertiser']);
 
+            $wasPaid = $order->payment_status === 'paid';
             $order->update([
                 'status' => 'cancelled',
-                'payment_status' => 'refunded',
+                'payment_status' => $wasPaid ? 'refunded' : $order->payment_status,
             ]);
 
             $reason = $request->reason;
-            // rejectOrder cancels the whole order — always refund the full order total,
-            // not just the clicked line (multi-item carts must not strand reserved funds).
-            $orderAmount = app(OrderRefundService::class)
-                ->resolveOrderCancelRefundAmount($order);
-
-            // Process refund for ALL payment types (throws on failure so TX rolls back)
-            $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
+            $orderAmount = 0.0;
+            $refundProcessed = false;
+            // Only refund money that was actually collected. Unpaid pending/failed
+            // rows used to mint withdrawable cash via refundToAdvertiser().
+            if ($wasPaid) {
+                // rejectOrder cancels the whole order — refund the full order total,
+                // not just the clicked line (multi-item carts must not strand reserved funds).
+                $orderAmount = app(OrderRefundService::class)
+                    ->resolveOrderCancelRefundAmount($order);
+                $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
+            }
 
             DB::commit();
 
