@@ -21,8 +21,8 @@ return [
         'application/x-zip-compressed',
     ],
 
-    /** Hard cap in kilobytes (10240 = 10 MB). ContentUploadService ignores higher values. */
-    'max_kilobytes' => 10240,
+    /** Default max upload size in kilobytes (10240 = 10 MB). Admin may raise to 51200 (50 MB). */
+    'max_kilobytes' => (int) env('CONTENT_UPLOAD_MAX_KB', 10240),
 
     'disk' => env('CONTENT_UPLOAD_DISK', 'local'),
 

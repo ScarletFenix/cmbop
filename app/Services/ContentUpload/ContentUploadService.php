@@ -18,8 +18,11 @@ use Symfony\Component\Mime\MimeTypes;
 
 class ContentUploadService
 {
-    /** Product cap for article .docx uploads (10 MB). */
+    /** Default / minimum article .docx cap (10 MB). */
     public const MAX_KILOBYTES = 10240;
+
+    /** Admin may raise the cap this high (50 MB). */
+    public const ABSOLUTE_MAX_KILOBYTES = 51200;
 
     public function __construct(
         private DocumentTextExtractor $extractor,
@@ -32,13 +35,13 @@ class ContentUploadService
         $override = ContentModerationSetting::getValue('upload_config', []) ?: [];
 
         if (! is_array($override) || $override === []) {
-            $base['max_kilobytes'] = self::MAX_KILOBYTES;
+            $base['max_kilobytes'] = $this->clampMaxKilobytes((int) ($base['max_kilobytes'] ?? self::MAX_KILOBYTES));
 
             return $base;
         }
 
         $merged = array_replace_recursive($base, $override);
-        $merged['max_kilobytes'] = self::MAX_KILOBYTES;
+        $merged['max_kilobytes'] = $this->clampMaxKilobytes((int) ($merged['max_kilobytes'] ?? self::MAX_KILOBYTES));
 
         return $merged;
     }
@@ -528,12 +531,18 @@ class ContentUploadService
     }
 
     /**
-     * Hard article cap: 10 MB. Files at or under this size are allowed;
-     * anything larger is rejected. Admin / env cannot raise this.
+     * Article cap: at least 10 MB, at most 50 MB when admin raises it.
      */
     public function effectiveMaxKilobytes(?array $cfg = null): int
     {
-        return self::MAX_KILOBYTES;
+        $cfg = $cfg ?? $this->effectiveConfig();
+
+        return $this->clampMaxKilobytes((int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
+    }
+
+    public function clampMaxKilobytes(int $kilobytes): int
+    {
+        return max(self::MAX_KILOBYTES, min(self::ABSOLUTE_MAX_KILOBYTES, $kilobytes));
     }
 
     public function phpUploadMaxKilobytes(): int

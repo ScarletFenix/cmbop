@@ -28,7 +28,7 @@ class PhpIniSizeTest extends TestCase
         $message = $service->phpSizeRejectedMessage($cfg);
 
         $this->assertSame(10240, $appKb);
-        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
+        $this->assertSame(51200, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
         $this->assertStringContainsString('MB', $message);
 
         if ($phpKb < $appKb) {
