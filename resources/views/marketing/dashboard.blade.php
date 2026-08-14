@@ -28,7 +28,7 @@
 
     <div class="row g-3 mb-4">
         <div class="col-6 col-md-3">
-            <a href="{{ route('marketing.sites.index', ['needs_review' => 1]) }}" class="text-decoration-none text-reset" data-stat="ready-to-activate">
+            <a href="{{ route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1]) }}" class="text-decoration-none text-reset" data-stat="ready-to-activate">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="text-muted small">Ready to activate</div>
@@ -80,7 +80,7 @@
             <div class="card border-0 shadow-sm h-100" data-queue="ready-sites">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-bolt me-2 text-warning"></i>Ready to activate</strong>
-                    <a href="{{ route('marketing.sites.index', ['needs_review' => 1]) }}" class="small">View all</a>
+                    <a href="{{ route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1]) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -91,15 +91,30 @@
                                     <th>Publisher</th>
                                     <th>State</th>
                                     <th>Age</th>
-                                    <th style="width:100px">Action</th>
+                                    <th style="width:220px">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 @forelse($readySites as $site)
+                                    @php
+                                        $readyOpenUrl = staff_route('sites.index', array_filter([
+                                            'publisher' => $site->publisher_id,
+                                            'site' => $site->id,
+                                        ]));
+                                        $readyCanActivate = $site->marketingCanActivate();
+                                    @endphp
                                     <tr>
                                         <td>
                                             <div class="fw-semibold">{{ $site->site_name ?: '—' }}</div>
                                             <div class="small text-muted text-truncate" style="max-width:260px;">{{ $site->site_url }}</div>
+                                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                                @if(! $site->hasMarketplaceCountry())
+                                                    <span class="badge text-bg-danger">Missing market</span>
+                                                @endif
+                                                @if(! $site->hasGoodMetrics())
+                                                    <span class="badge text-bg-warning text-dark">Below quality bar</span>
+                                                @endif
+                                            </div>
                                         </td>
                                         <td class="small">
                                             {{ $site->publisher?->name ?? 'Unknown' }}
@@ -107,7 +122,13 @@
                                         <td class="small">{{ \App\Support\MarketingOpsQueues::siteQueueLabel($site) }}</td>
                                         <td class="small text-nowrap text-muted">{{ $site->created_at?->format('d M Y') }}</td>
                                         <td>
-                                            <a href="{{ route('marketing.sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">Edit</a>
+                                            <div class="d-flex flex-wrap gap-1">
+                                                <a href="{{ $readyOpenUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
+                                                <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ $site->isLockedForMarketingEdits() ? 'View' : 'Edit' }}</a>
+                                                @if($readyCanActivate)
+                                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Activate</button>
+                                                @endif
+                                            </div>
                                         </td>
                                     </tr>
                                 @empty
@@ -187,6 +208,7 @@
                             <th>Publisher</th>
                             <th>State</th>
                             <th>Age</th>
+                            <th style="width:90px">Action</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -199,10 +221,13 @@
                                 <td class="small">{{ $site->publisher?->name ?? 'Unknown' }}</td>
                                 <td class="small">{{ \App\Support\MarketingOpsQueues::siteQueueLabel($site) }}</td>
                                 <td class="small text-nowrap text-muted">{{ $site->created_at?->format('d M Y') }}</td>
+                                <td>
+                                    <a href="{{ staff_route('sites.index', array_filter(['publisher' => $site->publisher_id, 'site' => $site->id])) }}" class="btn btn-sm btn-outline-secondary">Open</a>
+                                </td>
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="text-center text-muted py-4">
+                                <td colspan="5" class="text-center text-muted py-4">
                                     <div class="mb-2">No listings waiting on a publisher.</div>
                                     <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-outline-primary">Add site for publisher</a>
                                 </td>
@@ -227,8 +252,60 @@
     <div class="alert alert-info border-0 mt-4 mb-0">
         <i class="fa fa-info-circle me-1"></i>
         You can add and edit listings (metrics, geo, niches, images), seed bulk requests, activate or deactivate sites, and delete pending (not-live) sites.
-        Admin handles verification, payments, and users.
+        Admin handles verification, payments, and users. Metrics/geo/niche edits do not email the publisher.
     </div>
 
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    const csrf = @json(csrf_token());
+    const activateUrl = @json(staff_route('sites.active', '__ID__'));
+    document.querySelectorAll('.js-mkt-activate').forEach((btn) => {
+        btn.addEventListener('click', function () {
+            const id = this.dataset.id;
+            const name = this.dataset.name || 'this site';
+            const go = window.Swal
+                ? Swal.fire({
+                    title: 'Activate Site?',
+                    text: 'Make "' + name + '" live in the catalog?',
+                    icon: 'question',
+                    showCancelButton: true,
+                    confirmButtonText: 'Activate',
+                }).then((r) => r.isConfirmed)
+                : Promise.resolve(window.confirm('Activate "' + name + '"?'));
+            go.then((ok) => {
+                if (!ok) return;
+                fetch(activateUrl.replace('__ID__', encodeURIComponent(id)), {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': csrf,
+                    },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ active: 1 }),
+                })
+                .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+                .then(({ ok, data }) => {
+                    if (ok && data && data.success) {
+                        window.location.reload();
+                        return;
+                    }
+                    const msg = (data && data.message) || 'Could not activate site';
+                    if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
+                    else window.alert(msg);
+                })
+                .catch(() => {
+                    if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed' });
+                    else window.alert('Request failed');
+                });
+            });
+        });
+    });
+})();
+</script>
+@endpush

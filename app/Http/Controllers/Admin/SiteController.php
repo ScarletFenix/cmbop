@@ -24,6 +24,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -42,40 +43,56 @@ class SiteController extends Controller
             || $request->query('verified') === 0;
 
         $publisherSearch = trim((string) $request->query('q', ''));
+        $flatQueue = $request->boolean('flat');
 
         $reviewQueue = function ($q) {
             $q->needsAdminReview()->notArchived();
         };
 
-        // Counts only — do not eager-load every site row for the publisher list.
-        $query = User::query()
-            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
-            ->withCount(['sites' => fn ($q) => $q->notArchived()])
-            ->withCount(['sites as needs_review_sites_count' => $reviewQueue]);
-
-        if ($publisherSearch !== '') {
-            $query->where(function ($q) use ($publisherSearch) {
-                $q->where('name', 'like', '%'.$publisherSearch.'%')
-                    ->orWhere('email', 'like', '%'.$publisherSearch.'%');
-            });
-        }
-
-        // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
-        if ($needsReviewFilter) {
-            $query->whereHas('sites', $reviewQueue)
-                ->withCount(['sites as unverified_sites_count' => $reviewQueue]);
-        }
-
-        $users = $query
-            ->orderByDesc('needs_review_sites_count')
-            ->orderByDesc('sites_count')
-            ->orderBy('name')
-            ->paginate(20)
-            ->appends($request->query());
         $unverifiedFilter = $needsReviewFilter;
         $needsReviewFilterActive = $needsReviewFilter;
         $openReviewCount = MarketingOpsQueues::sitesReadyForStaffCount();
         $missingMarketCount = Site::query()->activeMissingMarketplaceCountry()->count();
+        $flatQueueSites = null;
+
+        if ($flatQueue && $needsReviewFilter) {
+            $users = new LengthAwarePaginator([], 0, 20, 1, [
+                'path' => $request->url(),
+                'query' => $request->query(),
+            ]);
+            $flatQueueSites = MarketingOpsQueues::sitesReadyForStaff()
+                ->with('publisher:id,name,email')
+                ->orderBy('created_at')
+                ->orderBy('id')
+                ->paginate(30)
+                ->appends($request->query());
+        } else {
+            // Counts only — do not eager-load every site row for the publisher list.
+            $query = User::query()
+                ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+                ->withCount(['sites' => fn ($q) => $q->notArchived()])
+                ->withCount(['sites as needs_review_sites_count' => $reviewQueue]);
+
+            if ($publisherSearch !== '') {
+                $query->where(function ($q) use ($publisherSearch) {
+                    $q->where('name', 'like', '%'.$publisherSearch.'%')
+                        ->orWhere('email', 'like', '%'.$publisherSearch.'%');
+                });
+            }
+
+            // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
+            if ($needsReviewFilter) {
+                $query->whereHas('sites', $reviewQueue)
+                    ->withCount(['sites as unverified_sites_count' => $reviewQueue]);
+            }
+
+            $users = $query
+                ->orderByDesc('needs_review_sites_count')
+                ->orderByDesc('sites_count')
+                ->orderBy('name')
+                ->paginate(20)
+                ->appends($request->query());
+        }
 
         return view('admin.sites', compact(
             'users',
@@ -83,7 +100,9 @@ class SiteController extends Controller
             'needsReviewFilterActive',
             'openReviewCount',
             'missingMarketCount',
-            'publisherSearch'
+            'publisherSearch',
+            'flatQueue',
+            'flatQueueSites'
         ));
     }
 
@@ -493,8 +512,8 @@ class SiteController extends Controller
         ];
     }
 
-    // Get all sites of a user (AJAX)
-    public function userSites($id)
+    // Get sites of a user (AJAX, paginated)
+    public function userSites(Request $request, $id)
     {
         $user = User::query()->find($id);
 
@@ -566,11 +585,14 @@ class SiteController extends Controller
             }
         ));
 
-        $sites = Site::query()
+        $perPage = 50;
+        $paginator = Site::query()
             ->where('publisher_id', $user->id)
             ->notArchived()
             ->latest()
-            ->get($select)
+            ->paginate($perPage, $select);
+
+        $sites = $paginator->getCollection()
             ->map(fn (Site $site) => $this->staffSiteListRow($site))
             ->values();
 
@@ -583,6 +605,12 @@ class SiteController extends Controller
                 'email' => (string) $user->email,
             ],
             'sites' => $sites,
+            'meta' => [
+                'current_page' => $paginator->currentPage(),
+                'last_page' => $paginator->lastPage(),
+                'total' => $paginator->total(),
+                'per_page' => $paginator->perPage(),
+            ],
         ]);
     }
 
@@ -1246,10 +1274,9 @@ class SiteController extends Controller
 
         $emailSent = false;
 
-        // Send email notification to publisher about the update
         try {
             $publisher = $site->publisher;
-            if ($publisher && $publisher->email) {
+            if ($publisher && $publisher->email && $this->shouldNotifyPublisherOfSiteUpdate($site, $oldData, $isMarketingEditor)) {
                 Mail::to($publisher->email)->send(new SiteStatusNotification($site, 'update', $oldData));
                 $emailSent = true;
             }
@@ -1267,9 +1294,39 @@ class SiteController extends Controller
 
         $message = 'Site updated successfully.'.($emailSent ? ' Publisher notified.' : '');
 
+        if ($isMarketingEditor) {
+            return redirect()
+                ->to(staff_route('sites.index', array_filter([
+                    'publisher' => $site->publisher_id,
+                    'site' => $site->id,
+                ])))
+                ->with('success', $message);
+        }
+
         return redirect()
             ->to(staff_route('sites.edit', $site->id))
             ->with('success', $message);
+    }
+
+    /**
+     * Marketing metrics/geo/niche/image saves stay internal. Publisher mail
+     * only fires when listing identity (name, URL, price) changes.
+     *
+     * @param  array<string, mixed>  $oldData
+     */
+    private function shouldNotifyPublisherOfSiteUpdate(Site $site, array $oldData, bool $isMarketingEditor): bool
+    {
+        $keys = $isMarketingEditor
+            ? ['site_name', 'site_url', 'price']
+            : ['site_name', 'site_url', 'da', 'dr', 'traffic', 'price', 'language', 'country', 'active', 'verified'];
+
+        foreach ($keys as $key) {
+            if ((string) ($oldData[$key] ?? '') !== (string) ($site->{$key} ?? '')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function isMarketingEditor(?User $user): bool

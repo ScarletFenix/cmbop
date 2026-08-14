@@ -4,6 +4,7 @@
 @php
     $publisherSearch = trim((string) ($publisherSearch ?? ''));
     $publisherSearchQuery = array_filter(['q' => $publisherSearch !== '' ? $publisherSearch : null]);
+    $flatQueue = $flatQueue ?? false;
 @endphp
 <div class="container-fluid py-3">
 
@@ -28,12 +29,24 @@
                 <a href="{{ staff_route('sites.index', $publisherSearchQuery) }}" class="btn btn-sm btn-outline-dark">
                     Show all publishers
                 </a>
+                @if(!empty($flatQueue))
+                    <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-secondary">
+                        By publisher
+                    </a>
+                @else
+                    <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1, 'flat' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-warning">
+                        Site queue
+                    </a>
+                @endif
             @else
                 <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-warning">
                     <i class="fa fa-bell me-1"></i> Needs review
                     @if(($openReviewCount ?? 0) > 0)
                         <span class="badge text-bg-dark ms-1">{{ $openReviewCount }}</span>
                     @endif
+                </a>
+                <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1, 'flat' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-outline-warning">
+                    Site queue
                 </a>
             @endif
             @if(auth()->user()?->isAdmin())
@@ -59,7 +72,13 @@
             <div>
                 <strong>Needs review queue</strong>
                 <span class="ms-1">
-                    @if(auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin())
+                    @if(!empty($flatQueue))
+                        @if(auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin())
+                            Flat list of sites waiting for Activate or delete (pending only). Admin verifies.
+                        @else
+                            Flat list of sites waiting for Verify, Activate, Reject, or Delete.
+                        @endif
+                    @elseif(auth()->user()?->isMarketing() && ! auth()->user()?->isAdmin())
                         Publishers with new/ready sites waiting for Activate or delete (pending only). Admin verifies.
                     @else
                         Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.
@@ -70,8 +89,78 @@
         </div>
     @endif
 
+    @if(!empty($flatQueue) && $flatQueueSites)
+    <div class="card shadow-sm border-0 mb-3 admin-table-fit" data-flat-queue="1">
+        <div class="card-header bg-white fw-semibold d-flex justify-content-between align-items-center">
+            <span>Sites needing review</span>
+            <span class="small text-muted">{{ $flatQueueSites->total() }} in queue</span>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th class="admin-num-col">#</th>
+                        <th>Site</th>
+                        <th>Publisher</th>
+                        <th class="admin-narrow-col">Traffic</th>
+                        <th class="admin-narrow-col">Price</th>
+                        <th class="admin-actions-col">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                @forelse($flatQueueSites as $index => $site)
+                    @php
+                        $openUrl = staff_route('sites.index', array_filter([
+                            'publisher' => $site->publisher_id,
+                            'site' => $site->id,
+                        ]));
+                    @endphp
+                    <tr>
+                        <td>{{ $flatQueueSites->firstItem() + $index }}</td>
+                        <td>
+                            <div class="fw-semibold">{{ $site->site_name ?: '—' }}</div>
+                            <div class="small text-muted text-break">{{ $site->site_url }}</div>
+                            <div class="d-flex flex-wrap gap-1 mt-1">
+                                @if(! $site->hasMarketplaceCountry())
+                                    <span class="badge text-bg-danger">Missing market</span>
+                                @endif
+                                @if(! $site->hasGoodMetrics())
+                                    <span class="badge text-bg-warning text-dark">Below quality bar</span>
+                                @endif
+                            </div>
+                        </td>
+                        <td class="small">
+                            <div>{{ $site->publisher?->name ?? 'Unknown' }}</div>
+                            <div class="text-muted">{{ $site->publisher?->email }}</div>
+                        </td>
+                        <td>{{ number_format((int) $site->traffic) }}</td>
+                        <td>€{{ number_format((float) $site->price, 2) }}</td>
+                        <td>
+                            <div class="d-flex flex-wrap gap-1">
+                                <a href="{{ $openUrl }}" class="btn btn-sm btn-outline-secondary">Open</a>
+                                <a href="{{ staff_route('sites.edit', $site->id) }}" class="btn btn-sm btn-outline-primary">{{ $site->isLockedForMarketingEdits() ? 'View' : 'Edit' }}</a>
+                                @if(auth()->user()?->canActivateSites() && $site->marketingCanActivate())
+                                    <button type="button" class="btn btn-sm btn-success js-mkt-activate" data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Activate</button>
+                                @endif
+                            </div>
+                        </td>
+                    </tr>
+                @empty
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-4">No sites in the review queue.</td>
+                    </tr>
+                @endforelse
+                </tbody>
+            </table>
+        </div>
+        <div class="p-2">
+            {{ $flatQueueSites->links() }}
+        </div>
+    </div>
+    @endif
+
     <!-- ================= USERS TABLE ================= -->
-    <div id="usersSection">
+    <div id="usersSection" class="{{ !empty($flatQueue) ? 'd-none' : '' }}">
 
         <form method="GET" action="{{ staff_route('sites.index') }}" class="mb-2" style="max-width: 250px;" role="search">
             @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
@@ -199,6 +288,7 @@
 
                  </table>
             </div>
+            <div class="p-2 d-flex flex-wrap justify-content-between align-items-center gap-2" id="sitesPager"></div>
 
         </div>
 
@@ -217,6 +307,10 @@ const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user
 const CAN_VERIFY_SITES = @json(auth()->user()->isAdmin());
 const CAN_TOGGLE_ACTIVE = @json(auth()->user()->canActivateSites());
 const IS_MARKETING_EDITOR = @json(auth()->user()->isMarketing() && ! auth()->user()->isAdmin());
+const FLAT_QUEUE = @json(! empty($flatQueue));
+const QUALITY_MIN_DA = {{ (int) \App\Models\Site::GOOD_MIN_DA }};
+const QUALITY_MIN_DR = {{ (int) \App\Models\Site::GOOD_MIN_DR }};
+const QUALITY_MIN_TRAFFIC = {{ (int) \App\Models\Site::GOOD_MIN_TRAFFIC }};
 let allSites = [];
 let pendingHighlightSiteId = null;
 
@@ -253,7 +347,7 @@ function releaseSwalBodyLock() {
 }
 
 /* ================= LOAD SITES ================= */
-function fetchUserSites(id){
+function fetchUserSites(id, page){
     const userRow = document.querySelector(`.user-row[data-id="${id}"]`);
     const addBtn = document.getElementById('addSiteForPublisherBtn');
 
@@ -278,7 +372,12 @@ function fetchUserSites(id){
     document.getElementById('sitesTable').innerHTML =
         `<tr><td colspan="6">Loading...</td></tr>`;
 
-    return fetch(`${STAFF_BASE}/users/${id}/sites`, {
+    const pageNum = Number(page) > 1 ? Number(page) : 1;
+    const sitesUrl = pageNum > 1
+        ? `${STAFF_BASE}/users/${id}/sites?page=${encodeURIComponent(pageNum)}`
+        : `${STAFF_BASE}/users/${id}/sites`;
+
+    return fetch(sitesUrl, {
         method: 'GET',
         credentials: 'same-origin',
         headers: {
@@ -329,9 +428,18 @@ function fetchUserSites(id){
                     publisher.email || '';
             }
 
-            allSites = sites;
+            const meta = Array.isArray(data) ? null : (data?.meta || null);
+            const page = meta && Number(meta.current_page) > 1 ? Number(meta.current_page) : 1;
+            if (page > 1) {
+                const seen = new Set(allSites.map((s) => s.id));
+                sites.forEach((s) => { if (!seen.has(s.id)) allSites.push(s); });
+            } else {
+                allSites = sites;
+            }
+            window.sitesListMeta = meta;
             syncPublisherOpenReviewBadge(id, allSites);
             applySiteFilters();
+            renderSitesPager(id, meta, allSites.length);
             return allSites;
         })
         .catch((err) => {
@@ -343,6 +451,33 @@ function fetchUserSites(id){
             return [];
         });
 }
+
+function renderSitesPager(publisherId, meta, loadedCount) {
+    const pager = document.getElementById('sitesPager');
+    if (!pager) return;
+    if (!meta || Number(meta.last_page) <= 1) {
+        pager.innerHTML = '';
+        return;
+    }
+    const loaded = Number(loadedCount) || 0;
+    const total = Number(meta.total) || loaded;
+    const nextPage = (Number(meta.current_page) || 1) + 1;
+    const hasMore = nextPage <= Number(meta.last_page);
+    pager.innerHTML = `<span class="small text-muted">Showing ${loaded} of ${total}</span>`
+        + (hasMore
+            ? `<button type="button" class="btn btn-sm btn-outline-primary" id="sitesLoadMore" data-id="${publisherId}" data-page="${nextPage}">Load more</button>`
+            : '');
+}
+
+document.addEventListener('click', function (e) {
+    const more = e.target.closest('#sitesLoadMore');
+    if (!more) return;
+    e.preventDefault();
+    more.disabled = true;
+    fetchUserSites(more.dataset.id, more.dataset.page).finally(() => {
+        more.disabled = false;
+    });
+});
 
 function refreshSidebarQueueBadges() {
     if (typeof window.refreshAdminQueueBadges === 'function') {
@@ -1272,6 +1407,12 @@ function renderSites(data){
             const csvMetricsBadge = site.csv_metrics_spot_check
                 ? `<span class="badge text-bg-light border badge-needs-review ms-1" title="Publisher-supplied DA/DR/traffic from agency CSV — spot-check before activate">CSV metrics — spot-check</span>`
                 : '';
+            const missingMarketBadge = site.missing_market
+                ? `<span class="badge text-bg-danger badge-needs-review ms-1" title="Set a marketplace country before marketing can activate">Missing market</span>`
+                : '';
+            const belowQualityBadge = site.below_quality_bar
+                ? `<span class="badge text-bg-warning text-dark badge-needs-review ms-1" title="DA ≥ ${QUALITY_MIN_DA}, DR ≥ ${QUALITY_MIN_DR}, traffic ≥ ${QUALITY_MIN_TRAFFIC.toLocaleString('en-US')}">Below quality bar</span>`
+                : '';
 
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
@@ -1284,6 +1425,8 @@ function renderSites(data){
                             ${awaitingBadge}
                             ${inviteBadge}
                             ${csvMetricsBadge}
+                            ${missingMarketBadge}
+                            ${belowQualityBadge}
                         </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}
@@ -1519,10 +1662,50 @@ window.addEventListener('DOMContentLoaded',()=>{
     }
 
     let id = sessionStorage.getItem('selected_user');
-    if(id) {
+    if(id && !FLAT_QUEUE) {
         revealAllPublisherSites();
         fetchUserSites(id);
     }
+});
+
+document.addEventListener('click', function (e) {
+    const btn = e.target.closest('.js-mkt-activate');
+    if (!btn) return;
+    e.preventDefault();
+    const id = btn.dataset.id;
+    const name = btn.dataset.name || 'this site';
+    const go = window.Swal
+        ? Swal.fire({
+            title: 'Activate Site?',
+            text: 'Make "' + name + '" live in the catalog?',
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Activate',
+        }).then((r) => r.isConfirmed)
+        : Promise.resolve(window.confirm('Activate "' + name + '"?'));
+    go.then((ok) => {
+        if (!ok) return;
+        fetch(`${STAFF_BASE}/sites/${id}/active`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+            },
+            credentials: 'same-origin',
+            body: JSON.stringify({ active: 1 }),
+        })
+        .then((res) => res.json().then((data) => ({ ok: res.ok, data })))
+        .then(({ ok, data }) => {
+            if (ok && data && data.success) {
+                window.location.reload();
+                return;
+            }
+            toast((data && data.message) || 'Could not activate site', 'error');
+        })
+        .catch(() => toast('Could not activate site', 'error'));
+    });
 });
 </script>
 

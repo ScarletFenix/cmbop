@@ -1362,6 +1362,21 @@ class Site extends Model
     }
 
     /**
+     * Marketing may activate this listing (pending, complete, market + quality bar).
+     */
+    public function marketingCanActivate(): bool
+    {
+        if ((bool) $this->active || $this->isArchived()) {
+            return false;
+        }
+        if ($this->isPendingPublisherAcceptance() || $this->isPendingPublisherBulkSubmit()) {
+            return false;
+        }
+
+        return $this->hasMarketplaceCountry() && $this->hasGoodMetrics();
+    }
+
+    /**
      * Scope to get sites by publisher.
      */
     public function scopeForPublisher(Builder $query, int $publisherId): Builder

@@ -65,7 +65,18 @@
                 @else
                     <div class="alert alert-info border-0 mb-4">
                         Fix the URL, price, or metrics if needed. Description stays with the publisher.
+                        Metrics, geo, and niche-only saves do not email the publisher.
                     </div>
+                    @if(! $site->hasMarketplaceCountry())
+                        <div class="alert alert-danger border-0 mb-3">
+                            Missing marketplace country — marketing cannot activate until a country is set.
+                        </div>
+                    @endif
+                    @if(! $site->hasGoodMetrics())
+                        <div class="alert alert-warning border-0 mb-3">
+                            Below the quality bar (DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}). Update metrics before Activate.
+                        </div>
+                    @endif
                 @endif
 
                 <div class="row g-3 mb-4">

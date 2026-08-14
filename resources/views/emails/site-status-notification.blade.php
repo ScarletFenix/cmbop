@@ -4,7 +4,7 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
 
 @switch($action)
     @case('update')
-        Your site **{{ $site->site_name }}** has been updated by an administrator.
+        Your site **{{ $site->site_name }}** has been updated by our team.
         
         @if($oldData)
         **Changes made:**
