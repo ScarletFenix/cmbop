@@ -475,7 +475,7 @@
 }
 
 .catalog-card-preview {
-    max-width: min(720px, 100%);
+    max-width: 220px;
 }
 
 .catalog-card-details__description {
@@ -569,7 +569,9 @@
 }
 
 .catalog-expand-preview {
-    max-width: 720px;
+    /* Compact desktop window — same 300px cap as the 16:10 frame inside.
+       A 720px col-12 stole the row and blew the screenshot up. */
+    max-width: 300px;
 }
 
 .catalog-expand-pricing .form-check-label {
@@ -1004,17 +1006,22 @@ body:has(.catalog-page) {
 }
 
 .site-preview-zoom {
-    /* Desktop 16:10 frame via padding-top (Safari-safe). aspect-ratio + only
+    /* Compact desktop 16:10 window (Safari-safe padding-top). Hover pop stays
+       720px so the full capture is still readable. aspect-ratio + only
        absolute children often collapses to 0 height in WebKit. */
     position: relative;
     width: 100%;
-    max-width: min(720px, 100%);
+    max-width: min(300px, 100%);
     margin: 0 auto;
     border-radius: var(--radius-md, 12px);
     overflow: hidden;
     border: 1px solid var(--border-subtle, #e2e8f0);
     box-shadow: 0 2px 10px rgba(15, 23, 42, 0.06);
     background: var(--surface-2, #f7fafb);
+}
+
+.site-preview-zoom.catalog-card-preview {
+    max-width: min(220px, 100%);
 }
 
 .site-preview-zoom[data-zoom-src] {
@@ -1077,7 +1084,7 @@ body:has(.catalog-page) {
 .site-preview-fallback {
     position: relative;
     width: 100%;
-    max-width: min(720px, 100%);
+    max-width: min(300px, 100%);
     margin: 0 auto;
 }
 
