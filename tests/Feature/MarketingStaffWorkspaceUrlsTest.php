@@ -11,10 +11,12 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Support\StaffWorkspace;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class MarketingStaffWorkspaceUrlsTest extends TestCase
@@ -135,6 +137,35 @@ class MarketingStaffWorkspaceUrlsTest extends TestCase
         $this->assertStringContainsString('/marketing/sites', $marketingHtml);
         $this->assertStringContainsString('needs_review=1', $marketingHtml);
         $this->assertStringNotContainsString('/admin/sites', $marketingHtml);
+    }
+
+    public function test_new_site_email_fans_out_to_marketing_with_search_url(): void
+    {
+        Mail::fake();
+        $site = $this->pendingSite();
+
+        app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'create', sendEmail: true);
+
+        Mail::assertQueued(NewSiteNotification::class, function (NewSiteNotification $mail) use ($site) {
+            if (! $mail->hasTo($this->admin->email) || (int) $mail->site->id !== (int) $site->id) {
+                return false;
+            }
+            $html = $mail->render();
+
+            return str_contains($html, '/admin/sites')
+                && str_contains($html, 'needs_review=1')
+                && str_contains($html, 'site='.$site->id);
+        });
+        Mail::assertQueued(NewSiteNotification::class, function (NewSiteNotification $mail) use ($site) {
+            if (! $mail->hasTo($this->marketer->email) || (int) $mail->site->id !== (int) $site->id) {
+                return false;
+            }
+            $html = $mail->render();
+
+            return str_contains($html, '/marketing/sites')
+                && str_contains($html, 'needs_review=1')
+                && ! str_contains($html, '/admin/sites');
+        });
     }
 
     public function test_bulk_bell_and_email_use_workspace_show_url(): void

@@ -92,26 +92,27 @@ class EmailNotificationService
     }
 
     /**
-     * Publisher submitted/updated a site that needs admin review.
-     * Bell always runs even when mail fails or no admin mailbox is configured.
+     * Publisher submitted/updated a site that needs staff review.
+     * Bell always runs even when mail fails or no staff mailbox is configured.
+     * Marketing gets the same mail as admin, with a /marketing sites search URL.
      */
     public function notifyAdminsNewSite(Site $site, string $action = 'create', bool $sendEmail = true): void
     {
         $site->loadMissing('publisher');
 
         if ($sendEmail) {
-            $admins = $this->adminUsers();
-            foreach ($admins as $admin) {
+            $staff = $this->staffUsers();
+            foreach ($staff as $recipient) {
                 $this->dispatch(
                     'new_site',
-                    $admin,
-                    new NewSiteNotification($site, $action, $admin),
-                    'new_site:'.$action.':'.$site->id.':admin:'.$admin->id
+                    $recipient,
+                    new NewSiteNotification($site, $action, $recipient),
+                    'new_site:'.$action.':'.$site->id.':admin:'.$recipient->id
                 );
             }
 
             $fallback = config('mail.admin_email') ?: config('email_notifications.brand.support_email');
-            if ($admins->isEmpty() && filled($fallback)) {
+            if ($staff->isEmpty() && filled($fallback)) {
                 try {
                     $mailable = new NewSiteNotification($site, $action);
                     $mailable->notificationType = 'new_site';
@@ -536,6 +537,18 @@ class EmailNotificationService
     protected function adminUsers(): Collection
     {
         return $this->usersWithRole('admin');
+    }
+
+    /**
+     * Admin + marketing (sites / bulk review). Unique by id so dual-role
+     * users are not mailed twice.
+     */
+    protected function staffUsers(): Collection
+    {
+        return $this->adminUsers()
+            ->concat($this->usersWithRole('marketing'))
+            ->unique('id')
+            ->values();
     }
 
     protected function usersWithRole(string $roleName): Collection
