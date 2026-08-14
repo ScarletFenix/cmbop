@@ -25,8 +25,7 @@
 <!-- SEARCH -->
 <div class="mb-3 d-flex flex-wrap align-items-center gap-2" style="max-width: 520px;">
     <div class="flex-grow-1" style="max-width: 400px;">
-        <label class="visually-hidden" for="userSearch">Search users by name, email, or company</label>
-        <input type="search" id="userSearch" class="form-control" placeholder="Search users (name, email, company…)" title="Results update as you type" autocomplete="off" enterkeyhint="search">
+        <x-slb-search-field name="user_search" id="userSearch" placeholder="Search users (name, email, company…)" input-class="form-control" mode="" />
     </div>
     @if(request()->integer('user') > 0)
         <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-secondary">All users</a>
@@ -658,7 +657,8 @@ function updateRoleBadges(id, roles, activeRole, canActivateSites = false){
     if (typeof window.SlbLiveSearch !== 'undefined') {
         window.SlbLiveSearch.init(document.getElementById('userSearch'), {
             mode: 'client',
-            minChars: 1,
+            statusEl: document.getElementById('userSearchStatus'),
+            clearBtn: document.getElementById('userSearchClear'),
             onSearch: function (detail) { filterUsers(detail.query); },
         });
     } else {

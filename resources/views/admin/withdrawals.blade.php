@@ -123,7 +123,7 @@
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <div id="adminWithdrawalsSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                    <div id="adminWithdrawalsSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                 </div>
             </div>
             <div class="mt-3 d-flex flex-wrap gap-2">

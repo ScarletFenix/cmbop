@@ -93,7 +93,7 @@
                                 <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                             </button>
                         </div>
-                        <div id="tasksSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                        <div id="tasksSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                     </div>
 
                     <!-- Order Status Filter -->

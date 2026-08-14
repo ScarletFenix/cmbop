@@ -28,7 +28,7 @@
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <div id="adminOrdersSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                    <div id="adminOrdersSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted">Order status</label>

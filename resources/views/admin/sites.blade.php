@@ -64,7 +64,7 @@
     <div id="usersSection">
 
         <div class="mb-2" style="max-width: 250px;">
-            <input type="search" id="userSearch" class="form-control form-control-sm" placeholder="Search users…" title="Results update as you type" autocomplete="off" enterkeyhint="search">
+            <x-slb-search-field name="user_search" id="userSearch" placeholder="Search users…" mode="" />
         </div>
 
         <div class="card shadow-sm border-0 mb-3 admin-table-fit">
@@ -154,7 +154,7 @@
 
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div style="max-width: 250px;">
-                <input type="search" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites…" title="Results update as you type" autocomplete="off" enterkeyhint="search">
+                <x-slb-search-field name="site_search" id="siteSearch" placeholder="Search sites…" mode="" />
             </div>
             <div class="form-check form-check-inline m-0">
                 {{-- Default OFF: needs_review=1 filters the publishers list only.
@@ -1475,12 +1475,14 @@ document.getElementById('backBtn').addEventListener('click', function(){
     if (typeof window.SlbLiveSearch !== 'undefined') {
         window.SlbLiveSearch.init(document.getElementById('userSearch'), {
             mode: 'client',
-            minChars: 1,
+            statusEl: document.getElementById('userSearchStatus'),
+            clearBtn: document.getElementById('userSearchClear'),
             onSearch: function (detail) { filterUsers(detail.query); },
         });
         window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
             mode: 'client',
-            minChars: 1,
+            statusEl: document.getElementById('siteSearchStatus'),
+            clearBtn: document.getElementById('siteSearchClear'),
             onSearch: function () { applySiteFilters(); },
         });
     } else {

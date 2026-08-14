@@ -12,8 +12,7 @@
 
     <form method="GET" class="row g-2 mb-3">
         <div class="col-md-3">
-            <label class="visually-hidden" for="logUser">Filter by user name or email</label>
-            <input type="search" id="logUser" name="user" value="{{ request('user') }}" class="form-control form-control-sm" placeholder="Filter by user name / email" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+            <x-slb-search-field name="user" id="logUser" :value="request('user')" placeholder="Filter by user name / email" />
         </div>
         <div class="col-md-3">
             <label class="visually-hidden" for="logAction">Filter by action</label>

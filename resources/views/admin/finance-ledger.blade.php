@@ -16,8 +16,7 @@
         <div class="card-body">
             <div class="row g-2 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label small text-muted">Search</label>
-                    <input type="search" name="search" value="{{ request('search') }}" class="form-control form-control-sm" placeholder="User, email, reference…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                    <x-slb-search-field name="search" id="adminFinanceLedgerSearch" :value="request('search')" placeholder="User, email, reference…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted">Type</label>

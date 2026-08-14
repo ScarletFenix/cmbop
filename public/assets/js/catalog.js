@@ -817,7 +817,8 @@ function initBulkDealRail() {
         if (typeof window.SlbLiveSearch !== 'undefined') {
             window.SlbLiveSearch.init(searchInput, {
                 mode: 'client',
-                minChars: 1,
+                statusEl: document.getElementById('bulkDealSearchStatus'),
+                clearBtn: document.getElementById('bulkDealSearchClear'),
                 onSearch: function (detail) {
                     applySearch(detail.query);
                 },

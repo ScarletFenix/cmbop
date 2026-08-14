@@ -103,8 +103,7 @@
                     </select>
                 </div>
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold">Search</label>
-                    <input type="search" name="search" class="form-control" placeholder="Reference, Name, Email" value="{{ request('search') }}" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                    <x-slb-search-field name="search" id="adminDepositsSearch" :value="request('search')" placeholder="Reference, Name, Email" input-class="form-control" label-class="form-label fw-semibold" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold">&nbsp;</label>

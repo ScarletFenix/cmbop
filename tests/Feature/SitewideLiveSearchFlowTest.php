@@ -81,13 +81,21 @@ class SitewideLiveSearchFlowTest extends TestCase
         $forms = [
             resource_path('views/notifications/all.blade.php'),
             resource_path('views/advertiser/billing/index.blade.php'),
+            resource_path('views/publisher/billing/index.blade.php'),
             resource_path('views/admin/deposits.blade.php'),
+            resource_path('views/admin/invoices/index.blade.php'),
+            resource_path('views/admin/community/index.blade.php'),
+            resource_path('views/admin/audiences/index.blade.php'),
+            resource_path('views/admin/activity-logs.blade.php'),
+            resource_path('views/admin/site-ratings.blade.php'),
+            resource_path('views/admin/finance-ledger.blade.php'),
             resource_path('views/marketing/history.blade.php'),
+            resource_path('views/admin/content-library/index.blade.php'),
         ];
 
         foreach ($forms as $path) {
             $body = (string) file_get_contents($path);
-            $this->assertStringContainsString('data-slb-live-search="form"', $body, basename($path));
+            $this->assertStringContainsString('<x-slb-search-field', $body, basename($path));
         }
 
         $library = (string) file_get_contents(resource_path('views/advertiser/content-library.blade.php'));
@@ -100,5 +108,54 @@ class SitewideLiveSearchFlowTest extends TestCase
         $libraryJs = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('SlbLiveSearch.init', $libraryJs);
         $this->assertStringContainsString('fetchLibraryResults', $libraryJs);
+    }
+
+    public function test_shared_search_field_component_has_catalog_chrome(): void
+    {
+        $component = (string) file_get_contents(resource_path('views/components/slb-search-field.blade.php'));
+        $this->assertStringContainsString('slb-search-wrap', $component);
+        $this->assertStringContainsString('slb-search-clear', $component);
+        $this->assertStringContainsString('slb-search-status', $component);
+        $this->assertStringContainsString('data-slb-live-search', $component);
+        $this->assertStringContainsString('Type at least 2 characters', $component);
+    }
+
+    public function test_ajax_and_off_contract_bars_have_clear_and_status(): void
+    {
+        $ajax = [
+            resource_path('views/admin/orders/index.blade.php'),
+            resource_path('views/admin/payments.blade.php'),
+            resource_path('views/admin/withdrawals.blade.php'),
+            resource_path('views/publisher/tasks.blade.php'),
+        ];
+        foreach ($ajax as $path) {
+            $body = (string) file_get_contents($path);
+            $this->assertStringContainsString('slb-search-wrap', $body, basename($path));
+            $this->assertStringContainsString('slb-search-clear', $body, basename($path));
+            $this->assertStringContainsString('form-text slb-search-status', $body, basename($path));
+            $this->assertStringNotContainsString('visually-hidden" role="status"', $body, basename($path));
+        }
+
+        $offContractComponents = [
+            resource_path('views/advertiser/add-funds.blade.php'),
+            resource_path('views/admin/sites.blade.php'),
+            resource_path('views/admin/users.blade.php'),
+            resource_path('views/publisher/websites.blade.php'),
+        ];
+        foreach ($offContractComponents as $path) {
+            $body = (string) file_get_contents($path);
+            $this->assertStringContainsString('<x-slb-search-field', $body, basename($path));
+        }
+
+        $offContractInline = [
+            resource_path('views/pages/blog.blade.php'),
+            resource_path('views/advertiser/partials/catalog-bulk-deals.blade.php'),
+        ];
+        foreach ($offContractInline as $path) {
+            $body = (string) file_get_contents($path);
+            $this->assertStringContainsString('slb-search-wrap', $body, basename($path));
+            $this->assertStringContainsString('slb-search-clear', $body, basename($path));
+            $this->assertStringContainsString('slb-search-status', $body, basename($path));
+        }
     }
 }

@@ -31,7 +31,7 @@
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <div id="adminPaymentsSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                    <div id="adminPaymentsSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted" for="paymentStatusFilter">Payment Status</label>

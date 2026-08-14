@@ -117,7 +117,9 @@
         <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
             <form method="GET" class="d-flex gap-2" action="{{ route('admin.audiences.index') }}">
                 <input type="hidden" name="tab" value="{{ $tab }}">
-                <input type="search" name="q" value="{{ $search }}" class="form-control form-control-sm" placeholder="Search name or email" style="min-width:220px;" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                <div style="min-width:220px;">
+                    <x-slb-search-field name="q" id="adminAudiencesSearch" :value="$search" placeholder="Search name or email" />
+                </div>
                 <button class="btn btn-sm btn-outline-secondary" type="submit">Search</button>
             </form>
             <div class="d-flex gap-2">
