@@ -141,7 +141,8 @@ class CheckoutSkipsOwnSitesTest extends TestCase
                 ],
             ])
             ->assertStatus(422)
-            ->assertJsonPath('success', false);
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'You cannot order placements on your own websites.');
 
         $this->assertSame(0, Order::query()->count());
         $wallet = Wallet::where('user_id', $buyer->id)

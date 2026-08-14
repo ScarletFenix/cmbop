@@ -405,7 +405,7 @@ class CartPricingService
 
         foreach ($cart as $item) {
             $siteId = $item['id'] ?? null;
-            $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
+            $site = $siteId ? Site::query()->where('id', $siteId)->first() : null;
 
             if (! $site) {
                 $unavailable[] = (string) ($item['name'] ?? $siteId ?? 'unknown');
@@ -415,6 +415,12 @@ class CartPricingService
 
             if ($this->buyerOwnsSite($site, $buyerId)) {
                 $owned[] = (string) ($item['name'] ?? $site->site_name);
+
+                continue;
+            }
+
+            if (! $site->isCatalogVisible()) {
+                $unavailable[] = (string) ($item['name'] ?? $site->site_name);
 
                 continue;
             }

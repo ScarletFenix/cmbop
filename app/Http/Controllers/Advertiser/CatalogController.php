@@ -1991,11 +1991,17 @@ class CatalogController extends Controller
         }
 
         try {
-            $this->syncPrunedSessionCart();
-            // Get cart from session
+            $prunedCart = $this->cartPricing()->syncAdvertiserSessionCart(auth()->user());
             $cart = session()->get('cart', []);
 
             if (empty($cart)) {
+                if (($prunedCart['removed_owned'] ?? []) !== []) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You cannot order placements on your own websites.',
+                    ], 422);
+                }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Your cart is empty.',
@@ -4169,12 +4175,13 @@ class CatalogController extends Controller
      */
     private function excludeSelfOwnedCheckoutLines(array $checkoutContent, int $userId): array
     {
+        $buyer = User::query()->find($userId);
         $checkoutContent['lines'] = array_values(array_filter(
             $checkoutContent['lines'] ?? [],
-            function ($line) use ($userId) {
+            function ($line) use ($buyer) {
                 $site = is_array($line) ? ($line['orderItem']['site'] ?? null) : null;
 
-                return ! ($site instanceof Site && (int) $site->publisher_id === (int) $userId);
+                return ! ($site instanceof Site && $site->isOwnedBy($buyer));
             }
         ));
 
