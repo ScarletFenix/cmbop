@@ -276,10 +276,11 @@ class ArticleEvaluationService
             ];
 
             $highlighted = $html;
-            if ($matchedTerms !== []) {
+            $canHighlight = mb_strlen($html) <= 200000;
+            if ($canHighlight && $matchedTerms !== []) {
                 $highlighted = ArticlePreviewHtml::highlightTerms($highlighted, $matchedTerms);
             }
-            if ($blockedUrls !== []) {
+            if ($canHighlight && $blockedUrls !== []) {
                 $highlighted = ArticlePreviewHtml::highlightBlockedLinks($highlighted, $blockedUrls);
             }
 

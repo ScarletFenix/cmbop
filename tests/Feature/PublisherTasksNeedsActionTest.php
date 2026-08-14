@@ -108,6 +108,7 @@ class PublisherTasksNeedsActionTest extends TestCase
             ->json();
 
         $this->assertTrue($htmlish['success']);
+        $this->assertNull($htmlish['data'][0]['preview_html'] ?? 'missing');
         $ids = collect($htmlish['data'])->pluck('id')->all();
         $this->assertContains($paidPending->id, $ids);
         $this->assertNotContains($paidProcessingDone->id, $ids);
