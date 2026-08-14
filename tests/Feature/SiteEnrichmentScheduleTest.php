@@ -9,11 +9,17 @@ class SiteEnrichmentScheduleTest extends TestCase
 {
     public function test_scheduled_enrich_queues_jobs_instead_of_running_sync(): void
     {
+        $this->artisan('schedule:list')->assertSuccessful();
+
         $scheduled = collect(app(Schedule::class)->events())
             ->first(fn ($event) => str_contains((string) $event->command, 'sites:enrich'));
 
         $this->assertNotNull($scheduled, 'sites:enrich must be scheduled.');
         $this->assertStringContainsString('sites:enrich --stale', (string) $scheduled->command);
         $this->assertStringNotContainsString('--sync', (string) $scheduled->command);
+
+        $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
+        $this->assertStringContainsString("command('sites:enrich --stale')", $bootstrap);
+        $this->assertStringNotContainsString('sites:enrich --stale --sync', $bootstrap);
     }
 }
