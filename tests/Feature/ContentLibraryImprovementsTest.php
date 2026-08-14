@@ -318,7 +318,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
         $this->assertStringContainsString('.library-browse-link', $css);
         $this->assertStringNotContainsString('.library-page-actions.upload-zone', $css);
-        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: flex-end;", $css);
+        $this->assertStringContainsString('.library-filter-bar__row', $css);
+        $this->assertStringContainsString(".library-filter-bar__row {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: center;", $css);
+        $this->assertStringContainsString('class="library-filter-bar__row"', $html);
+        $this->assertStringContainsString(".library-browse-link {\n        display: inline-flex;\n        align-items: center;", $css);
+        $this->assertStringNotContainsString('align-items: flex-end;', $css);
         $boxPos = strpos($css, '.library-status-box {');
         $mediaPos = strpos($css, '@media (max-width: 575.98px)');
         $this->assertNotFalse($boxPos);

@@ -46,53 +46,55 @@
     <form method="GET" action="{{ route('advertiser.content-library', absolute: false) }}" class="library-filter-bar mb-3">
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
         <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
-        <div class="library-filter-bar__search">
-            <label class="form-label fw-semibold small text-muted mb-1" for="librarySearchInput">Search</label>
-            <div class="position-relative slb-search-wrap">
-                <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
-                       value="{{ $searchQuery ?? '' }}" placeholder="Search title or filename"
-                       title="Results update as you type. Multi-word matches require every word."
-                       autocomplete="off" enterkeyhint="search"
-                       aria-describedby="librarySearchStatus">
-                <button type="button"
-                        id="librarySearchClear"
-                        class="btn btn-sm btn-link slb-search-clear{{ ($searchQuery ?? '') !== '' ? '' : ' d-none' }}"
-                        aria-label="Clear search">
-                    <i class="fa-solid fa-xmark" aria-hidden="true"></i>
-                </button>
+        <label class="form-label fw-semibold small text-muted mb-1" for="librarySearchInput">Search</label>
+        <div class="library-filter-bar__row">
+            <div class="library-filter-bar__search">
+                <div class="position-relative slb-search-wrap">
+                    <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
+                           value="{{ $searchQuery ?? '' }}" placeholder="Search title or filename"
+                           title="Results update as you type. Multi-word matches require every word."
+                           autocomplete="off" enterkeyhint="search"
+                           aria-describedby="librarySearchStatus">
+                    <button type="button"
+                            id="librarySearchClear"
+                            class="btn btn-sm btn-link slb-search-clear{{ ($searchQuery ?? '') !== '' ? '' : ' d-none' }}"
+                            aria-label="Clear search">
+                        <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                    </button>
+                </div>
             </div>
-            <div id="librarySearchStatus" class="form-text library-search-status" role="status" aria-live="polite"></div>
+            <div class="library-filter-bar__select">
+                <label class="visually-hidden" for="libraryCountryFilter">Country</label>
+                <select name="country" id="libraryCountryFilter" class="form-select form-select-sm">
+                    <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
+                    @foreach(($groupedByCountry ?? []) as $countryCode => $count)
+                        <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
+                            {{ strtoupper($countryCode) }} ({{ $count }})
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="library-filter-bar__select">
+                <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
+                <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm">
+                    <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
+                    @foreach(($groupedByLanguage ?? []) as $langCode => $count)
+                        <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
+                            {{ strtoupper($langCode) }} ({{ $count }})
+                        </option>
+                    @endforeach
+                </select>
+            </div>
+            <div id="libraryFilterReset" class="library-filter-bar__actions{{ (
+                ! empty($searchQuery)
+                || ($countryFilter ?? 'all') !== 'all'
+                || ($languageFilter ?? 'all') !== 'all'
+                || ($availabilityFilter ?? 'available') !== 'available'
+            ) ? '' : ' d-none' }}">
+                <a href="{{ route('advertiser.content-library', absolute: false) }}" class="btn btn-sm btn-link">Reset</a>
+            </div>
         </div>
-        <div class="library-filter-bar__select">
-            <label class="visually-hidden" for="libraryCountryFilter">Country</label>
-            <select name="country" id="libraryCountryFilter" class="form-select form-select-sm">
-                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
-                @foreach(($groupedByCountry ?? []) as $countryCode => $count)
-                    <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
-                        {{ strtoupper($countryCode) }} ({{ $count }})
-                    </option>
-                @endforeach
-            </select>
-        </div>
-        <div class="library-filter-bar__select">
-            <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
-            <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm">
-                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
-                @foreach(($groupedByLanguage ?? []) as $langCode => $count)
-                    <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
-                        {{ strtoupper($langCode) }} ({{ $count }})
-                    </option>
-                @endforeach
-            </select>
-        </div>
-        <div id="libraryFilterReset" class="library-filter-bar__actions{{ (
-            ! empty($searchQuery)
-            || ($countryFilter ?? 'all') !== 'all'
-            || ($languageFilter ?? 'all') !== 'all'
-            || ($availabilityFilter ?? 'available') !== 'available'
-        ) ? '' : ' d-none' }}">
-            <a href="{{ route('advertiser.content-library', absolute: false) }}" class="btn btn-sm btn-link">Reset</a>
-        </div>
+        <div id="librarySearchStatus" class="form-text library-search-status" role="status" aria-live="polite"></div>
         <button type="submit" class="visually-hidden">Search</button>
     </form>
 

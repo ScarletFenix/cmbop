@@ -552,11 +552,14 @@
         }
     }
     .library-filter-bar {
+        display: block;
+        margin-bottom: .85rem;
+    }
+    .library-filter-bar__row {
         display: flex;
         flex-wrap: wrap;
-        align-items: flex-end;
+        align-items: center;
         gap: .4rem .5rem;
-        margin-bottom: .85rem;
     }
     .library-search-status {
         min-height: 1.15em;
@@ -579,6 +582,8 @@
     .library-filter-bar .form-control {
         min-width: 0;
         width: 100%;
+        height: 31px;
+        min-height: 31px;
     }
     .library-page-actions {
         display: flex;
@@ -588,6 +593,13 @@
         margin-top: .75rem;
     }
     .library-browse-link {
+        display: inline-flex;
+        align-items: center;
+        align-self: center;
+        min-height: 2.55rem;
+        padding-top: 0;
+        padding-bottom: 0;
+        line-height: 1.2;
         font-weight: 600;
         text-decoration: none;
         padding-left: .15rem;
