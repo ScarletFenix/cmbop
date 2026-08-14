@@ -196,12 +196,13 @@ class OrderPaymentService
             $total = $bonusApplied;
         }
 
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
-        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
-        Cache::forget($cacheKey);
+        app(WalletLedgerService::class)->recordPurchaseOnce(
+            $wallet,
+            $total,
+            $bonusApplied,
+            $orders->first(),
+            $referenceCode
+        );
     }
 
     /**
@@ -233,8 +234,6 @@ class OrderPaymentService
                 'error' => $e->getMessage(),
             ]);
         }
-        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
-        Cache::forget($cacheKey);
     }
 
     /**
