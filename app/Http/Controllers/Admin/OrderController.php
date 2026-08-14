@@ -58,7 +58,10 @@ class OrderController extends Controller
             $query->where('status', $request->string('status')->toString());
         }
 
-        if ($request->filled('payment_status')) {
+        // "unpaid" is the ops queue (not paid/refunded + still open), not an enum value.
+        if ($request->input('payment_status') === 'unpaid') {
+            $query->unpaidOps();
+        } elseif ($request->filled('payment_status')) {
             $query->where('payment_status', $request->string('payment_status')->toString());
         }
 

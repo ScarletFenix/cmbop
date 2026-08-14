@@ -208,6 +208,64 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertJsonPath('pagination.last_page', 1);
     }
 
+    public function test_orders_index_reads_unpaid_ops_filter(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.index', ['payment_status' => 'unpaid']))
+            ->assertOk()
+            ->assertSee('value="unpaid"', false)
+            ->assertSee('Unpaid (ops queue)', false)
+            ->assertSee("boot.get('payment_status')", false);
+    }
+
+    public function test_orders_data_filters_unpaid_ops_queue(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($this->userWithRole('publisher'));
+
+        $unpaid = $this->orderFor($advertiser, $site);
+        $unpaid->update([
+            'payment_status' => 'pending',
+            'status' => 'processing',
+            'paid_at' => null,
+        ]);
+
+        $failedOpen = $this->orderFor($advertiser, $site);
+        $failedOpen->update([
+            'payment_status' => 'failed',
+            'status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $paid = $this->orderFor($advertiser, $site);
+
+        $pendingButCompleted = $this->orderFor($advertiser, $site);
+        $pendingButCompleted->update([
+            'payment_status' => 'pending',
+            'status' => 'completed',
+            'paid_at' => null,
+            'completed_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['payment_status' => 'unpaid']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => $unpaid->order_number])
+            ->assertJsonFragment(['order_number' => $failedOpen->order_number])
+            ->assertJsonMissing(['order_number' => $paid->order_number])
+            ->assertJsonMissing(['order_number' => $pendingButCompleted->order_number]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['payment_status' => 'paid']))
+            ->assertOk()
+            ->assertJsonFragment(['order_number' => $paid->order_number])
+            ->assertJsonMissing(['order_number' => $unpaid->order_number]);
+    }
+
     public function test_orders_data_filters_by_created_date_range(): void
     {
         $admin = $this->userWithRole('admin');

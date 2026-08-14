@@ -46,6 +46,7 @@
                     <label class="form-label fw-semibold small text-muted">Payment status</label>
                     <select id="paymentStatusFilter" class="form-select form-select-sm">
                         <option value="">All</option>
+                        <option value="unpaid">Unpaid (ops queue)</option>
                         <option value="pending">Pending</option>
                         <option value="paid">Paid</option>
                         <option value="failed">Failed</option>
