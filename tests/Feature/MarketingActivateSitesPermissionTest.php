@@ -60,7 +60,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
         ], $overrides));
     }
 
-    public function test_admin_can_grant_and_revoke_activate_sites_permission(): void
+    public function test_admin_can_grant_and_revoke_marketing_without_activate_toggle(): void
     {
         $admin = $this->userWithRoles(['admin'], 'admin');
         $member = $this->userWithRoles(['advertiser', 'publisher'], 'advertiser');
@@ -68,7 +68,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->actingAs($admin)
             ->postJson(route('admin.users.updateRoles', $member->id), [
                 'marketing' => true,
-                'can_activate_sites' => true,
+                'can_activate_sites' => false,
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -79,16 +79,6 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue($member->hasRole('marketing'));
         $this->assertTrue((bool) $member->can_activate_sites);
         $this->assertTrue($member->fresh()->canActivateSites());
-
-        $this->actingAs($admin)
-            ->postJson(route('admin.users.updateRoles', $member->id), [
-                'marketing' => true,
-                'can_activate_sites' => false,
-            ])
-            ->assertOk()
-            ->assertJsonPath('can_activate_sites', false);
-
-        $this->assertFalse((bool) $member->fresh()->can_activate_sites);
 
         $this->actingAs($admin)
             ->postJson(route('admin.users.updateRoles', $member->id), [
@@ -361,15 +351,17 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
-    public function test_users_page_exposes_activate_permission_toggle(): void
+    public function test_users_page_does_not_expose_activate_permission_toggle(): void
     {
         $admin = $this->userWithRoles(['admin'], 'admin');
-        $marketer = $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => true]);
+        $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => true]);
 
         $this->actingAs($admin)
             ->get(route('admin.users.index'))
             ->assertOk()
-            ->assertSee('data-can-activate-sites="1"', false)
-            ->assertSee('Activate sites', false);
+            ->assertDontSee('data-can-activate-sites', false)
+            ->assertDontSee('Can activate websites', false)
+            ->assertDontSee('Activate sites', false)
+            ->assertSee('Marketing team member', false);
     }
 }

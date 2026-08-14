@@ -165,8 +165,8 @@ class UserController extends Controller
 
         $grantMarketing = (bool) $validated['marketing'];
         $alreadyHasMarketing = $user->hasRole('marketing');
-        // Optional preference flag (activation itself is allowed for all marketing members).
-        $canActivateSites = $grantMarketing && (bool) ($validated['can_activate_sites'] ?? false);
+        // Column kept for Hostinger leftovers; runtime uses isAdmin() || isMarketing().
+        $canActivateSites = $grantMarketing;
 
         if ($grantMarketing && ! $alreadyHasMarketing) {
             $current = $this->marketingCount();
