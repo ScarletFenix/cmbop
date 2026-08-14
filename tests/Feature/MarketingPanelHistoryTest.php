@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -134,6 +135,12 @@ class MarketingPanelHistoryTest extends TestCase
         ]);
         $publisher->roles()->attach($publisherRole->id);
 
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+
         $site = Site::create([
             'publisher_id' => $publisher->id,
             'site_name' => 'Activate Link Site',
@@ -163,7 +170,7 @@ class MarketingPanelHistoryTest extends TestCase
             'subject_type' => Site::class,
             'subject_id' => $site->id,
             'subject_label' => 'Activate Link Site',
-            'properties' => ['bulk_site_request_id' => 17],
+            'properties' => ['bulk_site_request_id' => $bulk->id],
         ]);
         ActivityLog::create([
             'user_id' => $this->marketer->id,
@@ -208,7 +215,7 @@ class MarketingPanelHistoryTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString(route('marketing.sites.edit', $site->id), $dashboard);
-        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', 17), $dashboard);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $bulk->id), $dashboard);
         $this->assertStringContainsString('Bulk request', $dashboard);
 
         $history = $this->actingAs($this->marketer)
@@ -229,6 +236,28 @@ class MarketingPanelHistoryTest extends TestCase
             'href="'.route('marketing.sites.edit', $site->id).'">Deleted Leftover<',
             $history
         );
+
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Edited a site that was later removed',
+            'subject_type' => Site::class,
+            'subject_id' => 999999,
+            'subject_label' => 'Gone Site',
+            'properties' => ['bulk_site_request_id' => 888888],
+        ]);
+
+        $stale = $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Gone Site', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString(route('marketing.sites.edit', 999999), $stale);
+        $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', 888888), $stale);
     }
 
     public function test_my_tasks_today_uses_app_timezone_window(): void
@@ -277,6 +306,12 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertOk()
             ->assertSee('Today in Berlin', false)
             ->assertDontSee('Yesterday in Berlin', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['from' => 'not-a-date', 'to' => 'also-bad']))
+            ->assertOk()
+            ->assertSee('Today in Berlin', false)
+            ->assertSee('Yesterday in Berlin', false);
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void

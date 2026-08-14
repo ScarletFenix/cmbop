@@ -530,18 +530,18 @@ if (! function_exists('marketing_history_subject_url')) {
         $id = (int) $log->subject_id;
 
         if ($id > 0) {
-            if ($type === Site::class) {
+            if ($type === Site::class && Site::query()->whereKey($id)->exists()) {
                 return route('marketing.sites.edit', $id);
             }
 
-            if ($type === BulkSiteRequest::class) {
+            if ($type === BulkSiteRequest::class && BulkSiteRequest::query()->whereKey($id)->exists()) {
                 return route('marketing.bulk-site-requests.show', $id);
             }
         }
 
         $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
 
-        return $bulkId > 0
+        return $bulkId > 0 && BulkSiteRequest::query()->whereKey($bulkId)->exists()
             ? route('marketing.bulk-site-requests.show', $bulkId)
             : null;
     }
@@ -558,7 +558,7 @@ if (! function_exists('marketing_history_bulk_url')) {
         }
 
         $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
-        if ($bulkId <= 0) {
+        if ($bulkId <= 0 || ! BulkSiteRequest::query()->whereKey($bulkId)->exists()) {
             return null;
         }
 

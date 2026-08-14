@@ -96,11 +96,17 @@ class PanelController extends Controller
         }
 
         if ($request->filled('from')) {
-            $query->where('created_at', '>=', $this->marketerDayBound($request->date('from'), true));
+            $from = $this->parseMarketerDay($request->input('from'), true);
+            if ($from) {
+                $query->where('created_at', '>=', $from);
+            }
         }
 
         if ($request->filled('to')) {
-            $query->where('created_at', '<=', $this->marketerDayBound($request->date('to'), false));
+            $to = $this->parseMarketerDay($request->input('to'), false);
+            if ($to) {
+                $query->where('created_at', '<=', $to);
+            }
         }
 
         if ($request->filled('q')) {
@@ -152,9 +158,13 @@ class PanelController extends Controller
         ];
     }
 
-    private function marketerDayBound(Carbon $date, bool $start): Carbon
+    private function parseMarketerDay(mixed $value, bool $start): ?Carbon
     {
-        $local = $date->copy()->timezone($this->marketerTimezone());
+        try {
+            $local = Carbon::parse($value, $this->marketerTimezone());
+        } catch (\Throwable) {
+            return null;
+        }
 
         return $start
             ? $local->startOfDay()->utc()
