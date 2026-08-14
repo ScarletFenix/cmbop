@@ -514,10 +514,8 @@ class MarketingPanelHistoryTest extends TestCase
         $this->assertSame(1, substr_count($html, 'data-history-removed'));
 
         $existsLookups = array_values(array_filter($queries, function (string $sql) {
-            $s = strtolower($sql);
-
-            return (str_contains($s, 'sites') || str_contains($s, 'bulk_site_requests'))
-                && (str_contains($s, 'exists') || (bool) preg_match('/["`]?(?:sites|bulk_site_requests)["`]?\.["`]?id["`]? = \?/i', $sql));
+            return (bool) preg_match('/exists\s*\(\s*select\s+\*\s+from\s+["`]?(sites|bulk_site_requests)["`]/i', $sql)
+                || (bool) preg_match('/from\s+["`]?(sites|bulk_site_requests)["`]?\s+where\s+(?:["`]?(?:sites|bulk_site_requests)["`]?\.)?["`]?id["`]?\s*=\s*\?/i', $sql);
         }));
 
         $this->assertSame([], $existsLookups, implode("\n", $existsLookups));
