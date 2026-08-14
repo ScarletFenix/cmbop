@@ -446,6 +446,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':marketing'])
     ->group(function () use ($registerStaffOpsRoutes) {
         Route::get('/dashboard', [MarketingPanelController::class, 'dashboard'])
             ->name('dashboard');
+        Route::get('/dashboard/queue-counts', [MarketingPanelController::class, 'queueCounts'])
+            ->name('dashboard.queue-counts');
         Route::get('/history', [MarketingPanelController::class, 'history'])
             ->name('history');
         $registerStaffOpsRoutes();

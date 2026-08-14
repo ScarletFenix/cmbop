@@ -491,6 +491,12 @@ return [
     'staff_handbook_section5_list1' => 'Bei risikoreichen Nischen oder ersten Einträgen nach Möglichkeit Verified (TXT) vor Aktivierung bevorzugen.',
     'staff_handbook_section5_list2' => 'Bei bestrittenem Eigentum einfrieren/deaktivieren und eskalieren — keine Platzierungen weiter verkaufen.',
     'staff_handbook_section5_list3' => 'Verweisen Sie auf die öffentlichen Nutzungsbedingungen und die Datenschutzerklärung, wenn Publisher fragen, warum Annahme erforderlich ist.',
+    'staff_handbook_section6_title' => 'Marketing-Katalogarbeit',
+    'staff_handbook_section6_list1' => 'Marketing aktiviert und deaktiviert ausstehende Einträge. Die Verifizierung (TXT-Badge) bleibt admin-only. Nicht aktivieren, solange der Publisher noch Annehmen oder Listing-Details schuldet.',
+    'staff_handbook_section6_list2' => 'Qualitätsgrenze vor Marketing-Aktivierung: DA ≥ 30, DR ≥ 30 und Traffic ≥ 10.000. Ohne Marktland erscheint der Eintrag nicht in Länderfiltern.',
+    'staff_handbook_section6_list3' => 'URL, Preis, Metriken, Geo, Nischen und Bilder nur bei ausstehenden (nicht live) Sites korrigieren. Live, verifizierte oder archivierte Einträge sind schreibgeschützt — Admin fragen.',
+    'staff_handbook_section6_list4' => 'Änderungen an Metriken, Geo, Nischen und Bildern sind intern und lösen keine Publisher-E-Mail aus. Name, URL oder Preis tun das.',
+    'staff_handbook_section6_list5' => 'Ausstehende Sites nur mit einem Grund ablehnen/löschen, den der Publisher sieht. Die flache Review-Queue (Needs review → Sites) arbeitet über Publisher hinweg.',
     'staff_handbook_terms_link' => 'Publisher-Nutzungsbedingungen',
     'staff_handbook_privacy_link' => 'Datenschutzerklärung',
 

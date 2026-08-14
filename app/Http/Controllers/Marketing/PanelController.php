@@ -90,6 +90,15 @@ class PanelController extends Controller
         ));
     }
 
+    public function queueCounts()
+    {
+        return response()->json([
+            'success' => true,
+            'ready_sites' => MarketingOpsQueues::sitesReadyForStaffCount(),
+            'bulk_waiting' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
+        ]);
+    }
+
     public function history(Request $request)
     {
         $userId = (int) auth()->id();
