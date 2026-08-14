@@ -37,14 +37,19 @@
             <button class="btn btn-sm btn-primary flex-grow-1" type="submit">Filter</button>
         </div>
     </form>
-    @if(request()->hasAny(['q', 'action', 'from', 'to']))
+    @if(!empty($dateErrors))
+        <div class="alert alert-warning border-0 py-2" data-history-date-error>
+            {{ implode(' ', $dateErrors) }}
+        </div>
+    @endif
+    @if(!empty($filtersActive))
         <div class="mb-3">
             <a href="{{ route('marketing.history') }}" class="small">Reset filters</a>
         </div>
     @endif
 
     <div class="card border-0 shadow-sm">
-        @include('marketing.partials.history-table', ['logs' => $logs])
+        @include('marketing.partials.history-table', ['logs' => $logs, 'filtersActive' => $filtersActive ?? false])
         <div class="p-3">
             {{ $logs->links() }}
         </div>

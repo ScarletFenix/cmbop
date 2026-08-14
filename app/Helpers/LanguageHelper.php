@@ -516,6 +516,30 @@ if (! function_exists('marketing_task_label')) {
     }
 }
 
+if (! function_exists('marketing_task_actions_matching')) {
+    /**
+     * Action codes whose friendly label or raw code contains the search needle.
+     *
+     * @return list<string>
+     */
+    function marketing_task_actions_matching(?string $q): array
+    {
+        $needle = strtolower(trim((string) $q));
+        if ($needle === '') {
+            return [];
+        }
+
+        $matched = [];
+        foreach (marketing_task_labels() as $code => $label) {
+            if (str_contains(strtolower($label), $needle) || str_contains(strtolower((string) $code), $needle)) {
+                $matched[] = $code;
+            }
+        }
+
+        return $matched;
+    }
+}
+
 if (! function_exists('marketing_history_subject_url')) {
     /**
      * Deep link for a marketing history row subject, or null when it should stay plain text.

@@ -63,7 +63,7 @@
             </div>
         </div>
         <div class="col-6 col-md-3">
-            <a href="{{ route('marketing.history') }}" class="text-decoration-none text-reset" data-stat="my-tasks-today">
+            <a href="{{ route('marketing.history', ['from' => $historyToday, 'to' => $historyToday]) }}" class="text-decoration-none text-reset" data-stat="my-tasks-today">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="text-muted small">My tasks today</div>

@@ -77,12 +77,15 @@ class PanelController extends Controller
             ->take(12)
             ->get();
 
+        $historyToday = $this->marketerTodayDateString();
+
         return view('marketing.dashboard', compact(
             'stats',
             'readySites',
             'waitingSites',
             'openBulk',
-            'recentHistory'
+            'recentHistory',
+            'historyToday'
         ));
     }
 
@@ -90,31 +93,57 @@ class PanelController extends Controller
     {
         $userId = (int) auth()->id();
         $query = $this->marketerHistoryQuery($userId)->latest('id');
+        $dateErrors = [];
 
         if ($request->filled('action')) {
             $query->where('action', $request->string('action')->toString());
         }
 
+        $fromBound = null;
+        $toBound = null;
+        $datesOk = true;
+
         if ($request->filled('from')) {
-            $from = $this->parseMarketerDay($request->input('from'), true);
-            if ($from) {
-                $query->where('created_at', '>=', $from);
+            $fromBound = $this->parseMarketerDay($request->input('from'), true);
+            if (! $fromBound) {
+                $dateErrors[] = 'Use a valid From date.';
+                $datesOk = false;
             }
         }
 
         if ($request->filled('to')) {
-            $to = $this->parseMarketerDay($request->input('to'), false);
-            if ($to) {
-                $query->where('created_at', '<=', $to);
+            $toBound = $this->parseMarketerDay($request->input('to'), false);
+            if (! $toBound) {
+                $dateErrors[] = 'Use a valid To date.';
+                $datesOk = false;
+            }
+        }
+
+        if ($fromBound && $toBound && $fromBound->gt($toBound)) {
+            $dateErrors[] = 'From date must be on or before To date.';
+            $datesOk = false;
+        }
+
+        if ($datesOk) {
+            if ($fromBound) {
+                $query->where('created_at', '>=', $fromBound);
+            }
+            if ($toBound) {
+                $query->where('created_at', '<=', $toBound);
             }
         }
 
         if ($request->filled('q')) {
-            $term = '%'.$request->string('q')->toString().'%';
-            $query->where(function ($q) use ($term) {
+            $raw = $request->string('q')->toString();
+            $term = '%'.$raw.'%';
+            $matchedActions = marketing_task_actions_matching($raw);
+            $query->where(function ($q) use ($term, $matchedActions) {
                 $q->where('description', 'like', $term)
                     ->orWhere('subject_label', 'like', $term)
                     ->orWhere('action', 'like', $term);
+                if ($matchedActions !== []) {
+                    $q->orWhereIn('action', $matchedActions);
+                }
             });
         }
 
@@ -129,7 +158,12 @@ class PanelController extends Controller
             ->orderBy('action')
             ->pluck('action');
 
-        return view('marketing.history', compact('logs', 'actions'));
+        $filtersActive = $request->filled('q')
+            || $request->filled('action')
+            || $request->filled('from')
+            || $request->filled('to');
+
+        return view('marketing.history', compact('logs', 'actions', 'dateErrors', 'filtersActive'));
     }
 
     /**
@@ -156,6 +190,11 @@ class PanelController extends Controller
             $today->copy()->startOfDay()->utc(),
             $today->copy()->endOfDay()->utc(),
         ];
+    }
+
+    private function marketerTodayDateString(): string
+    {
+        return now()->timezone($this->marketerTimezone())->toDateString();
     }
 
     private function parseMarketerDay(mixed $value, bool $start): ?Carbon
