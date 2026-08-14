@@ -1231,4 +1231,89 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         );
         $this->assertNull(Site::where('domain', 'legacy-www-store.example')->first());
     }
+
+    public function test_store_strips_url_userinfo_and_default_port(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://user:secret@cred-store.example:443/path',
+                'example_url' => 'https://user:secret@cred-store.example/sample',
+            ]))
+            ->assertRedirect();
+
+        $site = Site::where('domain', 'cred-store.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame('https://cred-store.example/path', $site->site_url);
+        $this->assertSame('https://cred-store.example/sample', $site->example_url);
+        $this->assertStringNotContainsString('secret', (string) $site->site_url);
+        $this->assertStringNotContainsString('user', (string) $site->site_url);
+    }
+
+    public function test_store_rejects_ftp_and_javascript_urls(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'ftp://ftp-store.example/path',
+                'example_url' => 'https://ftp-store.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'ftp-store.example')->first());
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'javascript:alert(1)',
+                'example_url' => 'https://js-store.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'javascript')->first());
+        $this->assertNull(Site::where('domain', 'js-store.example')->first());
+    }
+
+    public function test_legacy_port_domain_matches_existing_listing(): void
+    {
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Legacy Port',
+            'site_url' => 'https://legacy-port.example',
+            'domain' => 'legacy-port.example:443',
+            'example_url' => 'https://legacy-port.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Legacy port listing description text. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://legacy-port.example',
+                'example_url' => 'https://legacy-port.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This website domain is already registered.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertNull(Site::where('domain', 'legacy-port.example')->first());
+    }
 }

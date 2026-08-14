@@ -443,4 +443,63 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertTrue(Storage::disk('public')->exists((string) $site->site_image));
         $this->assertFalse(Storage::disk('public')->exists('sites/old-cover.jpg'));
     }
+
+    public function test_update_strips_url_userinfo_and_rejects_ftp(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://user:secret@guard-site.example/path',
+                'example_url' => 'https://user:secret@guard-site.example/sample',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('https://guard-site.example/path', $site->site_url);
+        $this->assertSame('https://guard-site.example/sample', $site->example_url);
+        $this->assertSame('guard-site.example', $site->domain);
+        $this->assertStringNotContainsString('secret', (string) $site->site_url);
+        $this->assertStringNotContainsString('secret', (string) $site->example_url);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'ftp://guard-site.example/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->assertSame('https://guard-site.example/path', $site->fresh()->site_url);
+    }
+
+    public function test_update_ignores_remote_or_non_sites_image_path(): void
+    {
+        $site = $this->site([
+            'site_image' => 'sites/existing.jpg',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => 'https://evil.example/phish.jpg',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => 'avatars/other.jpg',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
+        $this->assertNull(Site::where('site_image', 'https://evil.example/phish.jpg')->first());
+    }
 }

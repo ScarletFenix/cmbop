@@ -1295,20 +1295,23 @@ class SiteController extends Controller
         try {
             $site->update($data);
         } catch (\Throwable $e) {
-            if (isset($data['site_image']) && is_string($data['site_image']) && $data['site_image'] !== $previousImage) {
-                $this->deleteStoredSiteImage($data['site_image']);
+            $storedThisRequest = $request->attributes->get('staff_stored_site_image');
+            if (is_string($storedThisRequest) && $storedThisRequest !== '') {
+                $this->deleteStoredSiteImage($storedThisRequest);
             }
             Log::error('Staff site update failed', [
                 'site_id' => $site->id,
                 'error' => $e->getMessage(),
             ]);
 
-            $hint = 'We could not save this website. Please try again.';
+            $hint = $this->isDomainUniqueConstraintFailure($e)
+                ? 'This website domain is already registered.'
+                : 'We could not save this website. Please try again.';
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
                     'message' => $hint,
-                ], 500);
+                ], $this->isDomainUniqueConstraintFailure($e) ? 422 : 500);
             }
 
             return back()->withErrors(['site_url' => $hint])->withInput();
@@ -1626,6 +1629,7 @@ class SiteController extends Controller
             }
 
             $data['site_image'] = $stored;
+            $request->attributes->set('staff_stored_site_image', $stored);
         } elseif ($request->has('site_image') && ! $request->hasFile('site_image')) {
             $path = $this->postedSiteImagePath($request->input('site_image'));
             if ($path !== null) {
@@ -1846,6 +1850,7 @@ class SiteController extends Controller
             }
 
             $payload['site_image'] = $stored;
+            $request->attributes->set('staff_stored_site_image', $stored);
         } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             // JSON/AJAX path: image already persisted via upload-image.
             $path = $this->postedSiteImagePath($request->input('site_image'));
@@ -1945,18 +1950,23 @@ class SiteController extends Controller
     }
 
     /**
-     * Keep only a relative public-disk path. Arrays become "Array" if cast.
+     * Keep only a relative public-disk cover under sites/. Arrays become "Array" if cast.
      */
     private function postedSiteImagePath(mixed $raw): ?string
     {
         if (! is_string($raw) || $raw === '') {
             return null;
         }
-        if (str_contains($raw, '..')) {
+        if (str_contains($raw, '..') || str_contains($raw, ':') || str_contains($raw, "\0")) {
             return null;
         }
 
-        return ltrim(str_replace('\\', '/', $raw), '/');
+        $path = ltrim(str_replace('\\', '/', $raw), '/');
+        if ($path === '' || ! str_starts_with($path, 'sites/')) {
+            return null;
+        }
+
+        return $path;
     }
 
     private function deleteStoredSiteImage(?string $path): void
@@ -2164,6 +2174,10 @@ class SiteController extends Controller
             'www.'.$normalized,
             $normalized.'.',
             'www.'.$normalized.'.',
+            $normalized.':80',
+            $normalized.':443',
+            'www.'.$normalized.':80',
+            'www.'.$normalized.':443',
         ]));
     }
 
@@ -2213,11 +2227,38 @@ class SiteController extends Controller
             return $url;
         }
 
-        if (! preg_match('~^(?:f|ht)tps?://~i', $url)) {
+        if (preg_match('~^(?:https?|ftps?)://~i', $url) !== 1) {
+            if (preg_match('~^[a-z][a-z0-9+.-]*:~i', $url) === 1) {
+                return '';
+            }
             $url = 'https://'.$url;
         }
 
-        return $url;
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return '';
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            return '';
+        }
+
+        $host = $parts['host'];
+        if (str_contains($host, ':') && ! str_starts_with($host, '[')) {
+            $host = '['.$host.']';
+        }
+
+        $authority = $host;
+        $port = $parts['port'] ?? null;
+        if (is_int($port) && ! in_array($port, [80, 443], true)) {
+            $authority .= ':'.$port;
+        }
+
+        $path = $parts['path'] ?? '';
+        $query = isset($parts['query']) && $parts['query'] !== '' ? '?'.$parts['query'] : '';
+
+        return $scheme.'://'.$authority.$path.$query;
     }
 
     /**
