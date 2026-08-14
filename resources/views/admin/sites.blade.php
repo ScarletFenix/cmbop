@@ -1291,6 +1291,7 @@ function renderSites(data){
             const marketingActivateBlocked = IS_MARKETING_EDITOR && (
                 !!site.pending_publisher_acceptance
                 || !!site.awaits_publisher_details
+                || !!site.details_complete
                 || !!site.missing_market
                 || !!site.below_quality_bar
             );

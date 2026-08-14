@@ -181,6 +181,49 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue($site->awaitsPublisherDetails());
     }
 
+    public function test_marketer_cannot_activate_details_complete_site(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'Publisher Reviewing Site',
+            'site_url' => 'https://publisher-reviewing.example',
+            'domain' => 'publisher-reviewing.example',
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+        ]);
+
+        $this->assertTrue($site->hasDetailsComplete());
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Publisher is still reviewing this listing.');
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->hasDetailsComplete());
+    }
+
+    public function test_marketer_cannot_activate_archived_site(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'Archived Ready Site',
+            'site_url' => 'https://archived-ready-activate.example',
+            'domain' => 'archived-ready-activate.example',
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
     public function test_marketer_cannot_activate_site_without_marketplace_country(): void
     {
         $marketer = $this->userWithRoles(['marketing'], 'marketing');

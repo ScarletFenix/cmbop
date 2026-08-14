@@ -88,6 +88,7 @@ class MarketingSitesLoadTest extends TestCase
                     'missing_market',
                     'below_quality_bar',
                     'awaits_publisher_details',
+                    'details_complete',
                     'preview_thumb_url',
                     'preview_full_url',
                     'preview_fallback_urls',

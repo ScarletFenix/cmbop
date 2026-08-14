@@ -442,6 +442,7 @@ class SiteController extends Controller
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'below_quality_bar' => ! $site->hasGoodMetrics(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
+            'details_complete' => $site->hasDetailsComplete(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
             'agency_site_import_id' => Site::hasSitesColumn('agency_site_import_id')
                 ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
@@ -1671,16 +1672,25 @@ class SiteController extends Controller
             if ($activating) {
                 $site->promoteFromAwaitingDetailsIfComplete();
                 $site->refresh();
-                if ($site->awaitsPublisherDetails()) {
-                    if ($isMarketingActor) {
-                        return response()->json([
-                            'success' => false,
-                            'message' => 'Publisher has not finished listing details.',
-                        ], 422);
-                    }
+                if ($isMarketingActor && $site->isPendingPublisherBulkSubmit()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $site->hasDetailsComplete()
+                            ? 'Publisher is still reviewing this listing.'
+                            : 'Publisher has not finished listing details.',
+                    ], 422);
+                }
 
+                if ($site->awaitsPublisherDetails()) {
                     $site->clearAwaitingDetailsForAdmin();
                     $site->refresh();
+                }
+
+                if ($isMarketingActor && $site->isArchived()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This listing is archived and cannot be activated.',
+                    ], 422);
                 }
 
                 if ($isMarketingActor && ! $site->hasMarketplaceCountry()) {
