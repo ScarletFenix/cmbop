@@ -217,3 +217,4 @@ class ContentLibraryLiveSearchTest extends TestCase
         $this->assertStringContainsString("detail.reason === 'clear'", $js);
         $this->assertStringContainsString("'completed', 'evaluating'", $js);
     }
+}
