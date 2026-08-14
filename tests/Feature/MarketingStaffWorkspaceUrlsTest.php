@@ -11,10 +11,12 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
+use App\Services\EmailNotificationService;
 use App\Services\InAppNotificationService;
 use App\Support\StaffWorkspace;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class MarketingStaffWorkspaceUrlsTest extends TestCase
@@ -79,6 +81,8 @@ class MarketingStaffWorkspaceUrlsTest extends TestCase
         $bulk = '/admin/bulk-site-requests/12';
         $claim = '/admin/community?tab=claims&status=pending';
         $verify = '/admin/sites/4/verify';
+        $records = '/admin/sites/records';
+        $recordsExport = '/admin/sites/records/export';
 
         $this->assertSame(
             '/marketing/sites?needs_review=1&publisher=9&site=4',
@@ -87,10 +91,16 @@ class MarketingStaffWorkspaceUrlsTest extends TestCase
         $this->assertSame('/marketing/bulk-site-requests/12', staff_ops_url_for($this->marketer, $bulk));
         $this->assertSame($claim, staff_ops_url_for($this->marketer, $claim));
         $this->assertSame($verify, staff_ops_url_for($this->marketer, $verify));
-
+        $this->assertSame($records, staff_ops_url_for($this->marketer, $records));
+        $this->assertSame($recordsExport, staff_ops_url_for($this->marketer, $recordsExport));
         $this->assertSame($search, staff_ops_url_for($this->admin, $search));
         $this->assertSame($bulk, staff_ops_url_for($this->admin, $bulk));
         $this->assertFalse(StaffWorkspace::isMarketingOpsPath('community'));
+        $this->assertFalse(StaffWorkspace::isMarketingOpsPath('sites/records'));
+        $this->assertFalse(StaffWorkspace::isMarketingOpsPath('sites/records/export'));
+        $this->assertFalse(StaffWorkspace::isMarketingOpsPath('sitesomething'));
+        $this->assertTrue(StaffWorkspace::isMarketingOpsPath('sites'));
+        $this->assertTrue(StaffWorkspace::isMarketingOpsPath('sites/4/edit'));
     }
 
     public function test_new_site_bell_and_email_use_workspace_search_url(): void
@@ -127,6 +137,35 @@ class MarketingStaffWorkspaceUrlsTest extends TestCase
         $this->assertStringContainsString('/marketing/sites', $marketingHtml);
         $this->assertStringContainsString('needs_review=1', $marketingHtml);
         $this->assertStringNotContainsString('/admin/sites', $marketingHtml);
+    }
+
+    public function test_new_site_email_fans_out_to_marketing_with_search_url(): void
+    {
+        Mail::fake();
+        $site = $this->pendingSite();
+
+        app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'create', sendEmail: true);
+
+        Mail::assertQueued(NewSiteNotification::class, function (NewSiteNotification $mail) use ($site) {
+            if (! $mail->hasTo($this->admin->email) || (int) $mail->site->id !== (int) $site->id) {
+                return false;
+            }
+            $html = $mail->render();
+
+            return str_contains($html, '/admin/sites')
+                && str_contains($html, 'needs_review=1')
+                && str_contains($html, 'site='.$site->id);
+        });
+        Mail::assertQueued(NewSiteNotification::class, function (NewSiteNotification $mail) use ($site) {
+            if (! $mail->hasTo($this->marketer->email) || (int) $mail->site->id !== (int) $site->id) {
+                return false;
+            }
+            $html = $mail->render();
+
+            return str_contains($html, '/marketing/sites')
+                && str_contains($html, 'needs_review=1')
+                && ! str_contains($html, '/admin/sites');
+        });
     }
 
     public function test_bulk_bell_and_email_use_workspace_show_url(): void
@@ -258,6 +297,10 @@ class MarketingStaffWorkspaceUrlsTest extends TestCase
 
         $this->actingAs($this->marketer)
             ->get('/admin/community?tab=claims&status=pending')
+            ->assertRedirect(route('marketing.dashboard'));
+
+        $this->actingAs($this->marketer)
+            ->get('/admin/sites/records')
             ->assertRedirect(route('marketing.dashboard'));
     }
 }
