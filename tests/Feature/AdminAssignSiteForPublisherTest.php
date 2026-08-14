@@ -104,7 +104,11 @@ class AdminAssignSiteForPublisherTest extends TestCase
             }
             $mail->build();
 
-            return str_contains((string) ($mail->viewData['acceptUrl'] ?? ''), 'status=invites');
+            $html = $mail->render();
+
+            return str_contains((string) ($mail->viewData['acceptUrl'] ?? ''), 'status=invites')
+                && str_contains($html, 'Catalog Activate is not automatic')
+                && ! str_contains($html, 'Our team can activate it for the catalog when ready');
         });
 
         $bell = InAppNotification::query()
@@ -113,6 +117,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->first();
         $this->assertNotNull($bell);
         $this->assertStringContainsString('status=invites', (string) $bell->action_url);
+        $this->assertStringContainsString('staff review', (string) $bell->message);
+        $this->assertStringNotContainsString('You can still verify ownership with the TXT file', (string) $bell->message);
 
         $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']))
@@ -342,5 +348,25 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertOk()
             ->assertSee('No site invites waiting', false)
             ->assertSee('Accept / Decline', false);
+    }
+
+    public function test_admin_create_page_uses_verify_first_copy_and_posts_language(): void
+    {
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertSee('Add site for publisher', false)
+            ->assertSee('catalog Activate is not automatic', false)
+            ->assertSee('Accept ≠ Verified', false)
+            ->assertDontSee('Activate / Deactivate as usual', false)
+            ->assertSee('id="selectedLanguage"', false)
+            ->assertSee('name="language"', false)
+            ->assertSee('data-max-kb', false)
+            ->assertSee('Site image must be under', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('required disabled', $html);
+        $this->assertMatchesRegularExpression('/<select[^>]+id="language"[^>]*required/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
     }
 }

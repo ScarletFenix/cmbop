@@ -641,6 +641,7 @@ class SiteController extends Controller
         $categories = Category::catalogPickerNames();
         $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
         $selectedPublisherId = (int) $request->query('publisher', 0);
+        $isMarketingEditor = $this->isMarketingEditor(auth()->user());
 
         return view('admin.site-create', compact(
             'publishers',
@@ -648,7 +649,8 @@ class SiteController extends Controller
             'countries',
             'categories',
             'countryLanguageMap',
-            'selectedPublisherId'
+            'selectedPublisherId',
+            'isMarketingEditor'
         ));
     }
 

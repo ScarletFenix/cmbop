@@ -5,6 +5,8 @@
 @section('content')
 @php
     $categories = $categories ?? collect();
+    $languages = $languages ?? collect();
+    $isMarketingEditor = $isMarketingEditor ?? false;
     $rawNiches = old('categories', []);
     if (is_string($rawNiches)) {
         $rawNiches = preg_split('/\|/', $rawNiches) ?: [];
@@ -21,8 +23,12 @@
         <div>
             <h4 class="mb-1 fw-bold">Add site for publisher</h4>
             <p class="text-muted mb-0 small">
-                Create a full listing. The publisher gets email + bell, accepts it into My Sites, then you Activate / Deactivate as usual.
-                TXT verification for the Verified badge works the same as other sites after accept.
+                Create a draft listing. The publisher gets email + bell and must Accept it into My Sites.
+                @if($isMarketingEditor)
+                    After Accept, admin verifies first (TXT badge). You Activate only after that — and only if DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}, and a marketplace country is set.
+                @else
+                    After Accept, verify (TXT badge) before Activate. Accept ≠ Verified, and catalog Activate is not automatic.
+                @endif
                 See the <a href="{{ staff_route('staff-handbook') }}">{{ __('messages.staff_handbook_title') }}</a>.
             </p>
         </div>
@@ -126,8 +132,15 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
-                        <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required disabled>
-                            <option value="">Select country first</option>
+                        <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language') }}">
+                        <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
+                            <option value="">{{ old('country') ? 'Select…' : 'Select country first' }}</option>
+                            @foreach($languages as $language)
+                                <option value="{{ strtolower($language->code) }}"
+                                    @selected(old('language') === strtolower($language->code))>
+                                    {{ $language->name }}
+                                </option>
+                            @endforeach
                         </select>
                         <div class="form-text">Only languages paired with that country.</div>
                         @error('language')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -238,17 +251,26 @@
     const map = @json($countryLanguageMap ?? new \stdClass());
     const countryEl = document.getElementById('country');
     const langEl = document.getElementById('language');
+    const langHidden = document.getElementById('selectedLanguage');
     const preferredLang = @json(old('language', ''));
+    const imageInput = document.getElementById('site_image');
+
+    function syncLanguageHidden() {
+        if (!langHidden) return;
+        const fromSelect = langEl && !langEl.disabled ? String(langEl.value || '') : '';
+        langHidden.value = (fromSelect || langHidden.value || '').toLowerCase();
+    }
 
     function refreshLanguages() {
         if (!countryEl || !langEl) return;
         const code = (countryEl.value || '').toLowerCase();
         const list = map[code] || [];
-        const keep = (preferredLang || langEl.value || '').toLowerCase();
+        const keep = (preferredLang || (langHidden && langHidden.value) || langEl.value || '').toLowerCase();
         langEl.innerHTML = '';
         if (!code) {
             langEl.disabled = true;
             langEl.innerHTML = '<option value="">Select country first</option>';
+            if (langHidden) langHidden.value = '';
             return;
         }
         langEl.disabled = false;
@@ -266,6 +288,7 @@
         if (list.length === 1) {
             langEl.value = list[0].code;
         }
+        syncLanguageHidden();
     }
 
     if (countryEl) {
@@ -273,6 +296,9 @@
             refreshLanguages();
         });
         refreshLanguages();
+    }
+    if (langEl) {
+        langEl.addEventListener('change', syncLanguageHidden);
     }
 
     const prefills = @json($prefillNiches);
@@ -295,12 +321,31 @@
     const hidden = document.getElementById('selectedCategories');
     if (form && hidden) {
         form.addEventListener('submit', function (e) {
+            if (langEl) {
+                langEl.disabled = false;
+            }
+            syncLanguageHidden();
             if (!String(hidden.value || '').trim()) {
                 e.preventDefault();
                 if (window.slbAlert) {
                     window.slbAlert({ icon: 'warning', title: 'Select at least one niche' });
                 } else if (window.Swal) {
                     Swal.fire({ icon: 'warning', title: 'Select at least one niche', timer: 2200, showConfirmButton: false });
+                }
+                return;
+            }
+            if (imageInput && imageInput.files && imageInput.files[0]) {
+                const maxKb = parseInt(imageInput.getAttribute('data-max-kb') || '10240', 10);
+                const maxBytes = maxKb * 1024;
+                if (imageInput.files[0].size > maxBytes) {
+                    e.preventDefault();
+                    const mb = Math.floor(maxKb / 1024);
+                    const title = 'Site image must be under ' + mb + ' MB';
+                    if (window.slbAlert) {
+                        window.slbAlert({ icon: 'warning', title: title });
+                    } else if (window.Swal) {
+                        Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
+                    }
                 }
             }
         });
