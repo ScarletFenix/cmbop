@@ -149,6 +149,15 @@ class PaymentController extends Controller
 
             $refundAmount = 0.0;
             if ($request->payment_status === 'refunded' && $oldStatus === 'paid') {
+                if ($order->status === 'completed') {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Completed orders cannot be refunded here. Use a dispute clawback so the publisher payout is reversed first.',
+                    ], 422);
+                }
+
                 $refundAmount = $this->creditAdvertiserRefund($order);
                 if ($order->status !== 'cancelled') {
                     $order->status = 'cancelled';
