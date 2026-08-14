@@ -149,7 +149,9 @@ class ContentLibraryLiveSearchTest extends TestCase
         $this->assertStringContainsString('21–21', $html);
         $this->assertStringContainsString('of <strong>21</strong>', $html);
         $this->assertStringContainsString('Page 2 of 2', $html);
-        $this->assertMatchesRegularExpression('/[?&]q=PagerUnique/', $html);
-        $this->assertMatchesRegularExpression('/[?&]page=1/', $html);
+        $this->assertStringContainsString('q=PagerUnique', $html);
+        $this->assertStringContainsString('page=1', $html);
+        $this->assertStringContainsString(route('advertiser.content-library', absolute: false), $html);
+        $this->assertStringNotContainsString('/content-library/results?', $html);
     }
 }

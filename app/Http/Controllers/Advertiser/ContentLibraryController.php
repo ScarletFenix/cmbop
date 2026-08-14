@@ -180,6 +180,7 @@ class ContentLibraryController extends Controller
         }
 
         $submissions = $query->paginate(20)->withQueryString();
+        $submissions->setPath(route('advertiser.content-library', absolute: false));
 
         $baseScope = ContentSubmission::query()->where('user_id', auth()->id());
 
