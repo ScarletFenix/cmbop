@@ -1091,9 +1091,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('The file failed to upload', $message);
         $this->assertStringContainsString('MB', $message);
         $phpKb = app(ContentUploadService::class)->phpUploadMaxKilobytes();
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
         if ($phpKb < 10240) {
-            $this->assertStringContainsString('under the 10 MB article limit', $message);
-            $this->assertStringContainsString('PHP upload limit', $message);
+            $this->assertStringContainsString('The article could not be uploaded', $message);
             $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
         } else {
             $this->assertStringContainsString('That file is over the 10 MB limit', $message);
@@ -1173,6 +1174,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Max 5 MB', $html);
         $this->assertStringNotContainsString('server PHP still allows only', $html);
         $this->assertStringNotContainsString('libraryPhpUploadLimitWarn', $html);
+        $this->assertStringNotContainsString('hosting PHP settings', $html);
+        $this->assertStringNotContainsString('article cap is 10 MB', $html);
         $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
         $this->assertMatchesRegularExpression('/phpMaxKilobytes:\s*\d+/', $html);
 
@@ -1211,8 +1214,10 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
-        $this->assertStringContainsString('const appMaxKb = 10240;', $js);
-        $this->assertStringContainsString('boot.phpMaxKilobytes', $js);
+        $this->assertStringContainsString('10240 * 1024', $js);
+        $this->assertStringNotContainsString('hosting PHP settings', $js);
+        $this->assertStringNotContainsString('server PHP upload limit', $js);
+        $this->assertStringNotContainsString('upload_max_filesize to 64M', $js);
 
         $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
         $this->assertStringContainsString('PostTooLargeException', $bootstrap);
@@ -1243,8 +1248,9 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $response->assertStatus(422)->assertJsonPath('success', false);
         $message = (string) $response->json('message');
-        $this->assertStringContainsString('under the 10 MB article limit', $message);
-        $this->assertStringContainsString('PHP upload limit', $message);
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
         $this->assertStringNotContainsString('Drop a .docx', $message);
     }
 

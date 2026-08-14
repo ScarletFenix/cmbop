@@ -188,15 +188,8 @@ function showDropzoneFile(file) {
 
 function libraryFileTooLargeMessage(file) {
     if (!file) return '';
-    const appMaxKb = 10240;
-    const phpMaxKb = Number(boot.phpMaxKilobytes || 0);
-    const appMb = 10;
-    if (phpMaxKb > 0 && phpMaxKb < appMaxKb && file.size > phpMaxKb * 1024) {
-        const phpMb = Math.max(1, Math.round(phpMaxKb / 1024));
-        return 'This file is under the ' + appMb + ' MB article limit, but the server PHP upload limit is ' + phpMb + ' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
-    }
-    if (file.size > appMaxKb * 1024) {
-        return 'That file is over the ' + appMb + ' MB limit.';
+    if (file.size > 10240 * 1024) {
+        return 'That file is over the 10 MB limit.';
     }
     return '';
 }

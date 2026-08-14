@@ -562,15 +562,14 @@ class ContentUploadService
 
     /**
      * PHP rejected the file before Laravel saw the bytes (UPLOAD_ERR_INI_SIZE /
-     * FORM_SIZE). Do not blame the 10 MB article cap when PHP is still 2 MB.
+     * FORM_SIZE). Advertisers only see the 10 MB product rule — never hosting
+     * PHP instructions. Admin Content Moderation still shows the PHP-too-low warning.
      */
     public function phpSizeRejectedMessage(?array $cfg = null): string
     {
         $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
         if ($this->phpLimitBlocksArticleCap($cfg)) {
-            $phpMb = PhpIniSize::megabytesLabel($this->phpUploadMaxKilobytes());
-
-            return 'This file is under the '.$appMb.' MB article limit, but the server PHP upload limit is '.$phpMb.' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
+            return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
         }
 
         return 'That file is over the '.$appMb.' MB limit. Save as a smaller .docx and try again.';
