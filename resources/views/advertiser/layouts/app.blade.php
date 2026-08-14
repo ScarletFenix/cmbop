@@ -119,6 +119,11 @@
             <span class="nav-label">Saved Sites</span>
         </a>
 
+        <a href="{{ route('advertiser.projects.index') }}" class="{{ request()->routeIs('advertiser.projects*') ? 'active' : '' }}">
+            <i class="fa fa-folder-open" aria-hidden="true"></i>
+            <span class="nav-label">Projects</span>
+        </a>
+
         <a href="{{ route('site-claims.index') }}" class="{{ request()->routeIs('site-claims.*') ? 'active' : '' }}">
             <i class="fa fa-user-check" aria-hidden="true"></i>
             <span class="nav-label">My Claims</span>
