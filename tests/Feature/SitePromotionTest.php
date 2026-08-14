@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\SiteDiscountEnded;
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CartPricingService;
@@ -212,6 +213,40 @@ class SitePromotionTest extends TestCase
         $sent = app(SitePromotionService::class)->notifyExpiredCustomDiscounts();
         $this->assertSame(1, $sent);
         Mail::assertQueued(SiteDiscountEnded::class);
+    }
+
+    public function test_promotions_wallet_summary_uses_withdrawable_not_bonus(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        Wallet::where('user_id', $publisher->id)->update([
+            'bonus_balance' => 50,
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.promotions.wallet'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('balance', 0)
+            ->assertJsonPath('withdrawable', 0)
+            ->assertJsonPath('feature_price', 10);
+    }
+
+    public function test_feature_from_stripe_is_idempotent_for_the_same_session(): void
+    {
+        $publisher = $this->publisherWithWallet(5);
+        $site = $this->site($publisher);
+        $promotions = app(SitePromotionService::class);
+
+        $first = $promotions->featureFromStripePayment($site, $publisher, 'cs_test_feature_dup');
+        $second = $promotions->featureFromStripePayment($site->fresh(), $publisher, 'cs_test_feature_dup');
+
+        $this->assertTrue($first['success']);
+        $this->assertTrue($second['success']);
+        $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', 'cs_test_feature_dup')->count());
+
+        $until = $site->fresh()->featured_until;
+        $this->assertNotNull($until);
+        $this->assertEqualsWithDelta(now()->addDays(7)->timestamp, $until->timestamp, 5);
     }
 
     public function test_feature_from_stripe_payment_applies_without_wallet_debit(): void

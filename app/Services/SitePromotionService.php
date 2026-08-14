@@ -8,6 +8,8 @@ use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
+use Illuminate\Database\QueryException;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -84,7 +86,8 @@ class SitePromotionService
 
                 $wallet->deductWithdrawable($price);
 
-                $site = $this->applyFeaturePeriod($site, $publisher, $price, $days, 'wallet');
+                $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+                $site = $this->applyFeaturePeriod($lockedSite, $publisher, $price, $days, 'wallet');
 
                 // Promo feature spends are intentionally excluded from INV tax
                 // invoicing (see config billing.promo_feature.issue_invoice).
@@ -124,21 +127,24 @@ class SitePromotionService
 
         try {
             return DB::transaction(function () use ($site, $publisher, $price, $days, $stripeSessionId) {
+                // Lock the site first so webhook + success URL cannot both
+                // pass an unlocked exists() check and stack two 7-day periods.
+                $locked = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+
                 if ($stripeSessionId) {
                     $already = SiteFeaturePurchase::query()
                         ->where('payment_method', 'stripe')
                         ->where('stripe_session_id', $stripeSessionId)
-                        ->exists();
+                        ->first();
                     if ($already) {
                         return [
                             'success' => true,
                             'message' => 'Feature already applied for this payment.',
-                            'site' => $site->fresh(),
+                            'site' => $locked->fresh(),
                         ];
                     }
                 }
 
-                $locked = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
                 $featured = $this->applyFeaturePeriod($locked, $publisher, $price, $days, 'stripe', $stripeSessionId);
 
                 return [
@@ -147,9 +153,39 @@ class SitePromotionService
                     'site' => $featured,
                 ];
             });
+        } catch (UniqueConstraintViolationException) {
+            return $this->alreadyAppliedStripeFeature($site);
+        } catch (QueryException $e) {
+            if ($this->isUniqueViolation($e)) {
+                return $this->alreadyAppliedStripeFeature($site);
+            }
+
+            return ['success' => false, 'message' => $e->getMessage()];
         } catch (\Throwable $e) {
             return ['success' => false, 'message' => $e->getMessage()];
         }
+    }
+
+    /**
+     * @return array{success:bool, message:string, site:Site}
+     */
+    private function alreadyAppliedStripeFeature(Site $site): array
+    {
+        return [
+            'success' => true,
+            'message' => 'Feature already applied for this payment.',
+            'site' => $site->fresh(),
+        ];
+    }
+
+    private function isUniqueViolation(QueryException $e): bool
+    {
+        $sqlState = (string) $e->getCode();
+        $message = $e->getMessage();
+
+        return $sqlState === '23000'
+            || str_contains($message, 'UNIQUE')
+            || str_contains($message, 'unique');
     }
 
     private function applyFeaturePeriod(
