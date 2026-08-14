@@ -293,6 +293,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.library-status-row', $css);
         $this->assertStringContainsString('flex-wrap: wrap', $css);
+        $this->assertStringContainsString('library-status-dot', $html);
+        $this->assertStringContainsString('.library-status-dot', $css);
+        $this->assertStringContainsString('.library-status-box--needs_fix .library-status-dot', $css);
+        $this->assertStringContainsString('.library-status-box--completed .library-status-dot', $css);
+        $this->assertStringContainsString('library-status-pulse', $css);
         $this->assertStringContainsString('.mod-count.is-zero', $css);
         $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
