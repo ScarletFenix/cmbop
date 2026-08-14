@@ -12,6 +12,8 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\MessageBag;
+use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 class BulkDoneDraftAndNicheUiTest extends TestCase
@@ -82,6 +84,14 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString('bulk-done-row__body', $html);
         $this->assertStringContainsString('data-bulk-clear-row', $html);
         $this->assertStringContainsString('data-bulk-copy-above', $html);
+        $this->assertStringContainsString('data-bulk-done-chip', $html);
+        $this->assertStringContainsString('function expandBulkDoneRow', $html);
+        $this->assertStringContainsString('function clearBulkDoneRow', $html);
+        $this->assertStringContainsString('function copyBulkDoneRowFromAbove', $html);
+        $this->assertStringContainsString('function updateBulkDoneChip', $html);
+        $this->assertStringContainsString('row.open = true', $html);
+        $this->assertStringContainsString('[data-bulk-clear-row]', $html);
+        $this->assertStringContainsString('[data-bulk-copy-above]', $html);
         $this->assertStringContainsString('No categories found', $html);
         $this->assertStringContainsString('Type to search niches', $html);
         $this->assertStringContainsString("emptyId: 'categoryEmpty-", $html);
@@ -92,6 +102,9 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.bulk-done-panel', $staffCss);
         $this->assertStringContainsString('.bulk-done-row__fields', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-empty', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-partial', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-ready', $staffCss);
         $this->assertStringNotContainsString('table-layout: fixed', $staffCss);
 
         $js = file_get_contents(public_path('js/multi-select.js'));
@@ -137,5 +150,76 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $appShell = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('max-width: var(--shell-sidebar-collapsed)', $appShell);
+    }
+
+    public function test_done_row_error_prefix_does_not_open_sibling_item_ids(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 3,
+        ]);
+
+        $this->insertDoneItem($bulk->id, 1, 'https://first.example', 'first.example', 40);
+        $this->insertDoneItem($bulk->id, 2, 'https://prefix.example', 'prefix.example', 50);
+        $this->insertDoneItem($bulk->id, 21, 'https://long.example', 'long.example', 60);
+
+        $errors = (new ViewErrorBag)->put('default', new MessageBag([
+            'items.21.country' => ['Country is required.'],
+        ]));
+
+        $html = $this->actingAs($this->marketer)
+            ->withSession(['errors' => $errors])
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertFalse(
+            $this->doneRowIsOpen($html, 'prefix.example'),
+            'items.21.country must not mark item 2 as having errors'
+        );
+        $this->assertTrue(
+            $this->doneRowIsOpen($html, 'long.example'),
+            'The row that actually has errors should stay expanded'
+        );
+
+        $blade = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
+        $this->assertStringContainsString('$itemErrorPrefix = \'items.\'.$item->id.\'.\'', $blade);
+        $this->assertStringNotContainsString(
+            "str_starts_with((string) \$key, 'items.'.\$item->id)",
+            $blade
+        );
+    }
+
+    private function insertDoneItem(int $bulkId, int $id, string $url, string $domain, float $price): void
+    {
+        $item = new BulkSiteRequestItem([
+            'bulk_site_request_id' => $bulkId,
+            'site_url' => $url,
+            'domain' => $domain,
+            'price' => $price,
+        ]);
+        $item->id = $id;
+        $item->save();
+    }
+
+    private function doneRowIsOpen(string $html, string $domain): bool
+    {
+        preg_match_all(
+            '/<details class="bulk-done-row" data-bulk-done-row([^>]*)>(.*?)<\/details>/s',
+            $html,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            if (! str_contains($match[2], $domain)) {
+                continue;
+            }
+
+            return (bool) preg_match('/\sopen(?:\s|>|$)/', $match[1]);
+        }
+
+        $this->fail('Done row for '.$domain.' was not rendered');
     }
 }

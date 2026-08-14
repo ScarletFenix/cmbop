@@ -187,13 +187,17 @@
                                 if (trim((string) $oldCategories) !== '') {
                                     $filledCount++;
                                 }
+                                $itemErrorPrefix = 'items.'.$item->id.'.';
                                 $rowHasErrors = collect($errors->keys())->contains(
-                                    fn ($key) => str_starts_with((string) $key, 'items.'.$item->id)
+                                    fn ($key) => $key === 'items.'.$item->id || str_starts_with((string) $key, $itemErrorPrefix)
                                 );
                                 $rowOpen = $loop->first || $rowHasErrors || $filledCount > 0;
                                 $chipLabel = $filledCount === 0
                                     ? 'Empty'
                                     : ($filledCount === 6 ? 'Ready' : $filledCount.'/6 filled');
+                                $chipClass = $filledCount === 0
+                                    ? 'is-empty'
+                                    : ($filledCount === 6 ? 'is-ready' : 'is-partial');
                             @endphp
                             <details class="bulk-done-row" data-bulk-done-row @if($rowOpen) open @endif>
                                 <summary class="bulk-done-row__summary">
@@ -205,7 +209,7 @@
                                     </span>
                                     <span class="bulk-done-row__meta">
                                         <span class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</span>
-                                        <span class="bulk-done-row__chip" data-bulk-done-chip>{{ $chipLabel }}</span>
+                                        <span class="bulk-done-row__chip {{ $chipClass }}" data-bulk-done-chip>{{ $chipLabel }}</span>
                                     </span>
                                 </summary>
                                 <div class="bulk-done-row__body">
@@ -730,7 +734,84 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         } catch (e) {}
     }
 
+    function expandBulkDoneRow(field) {
+        const row = field && field.closest('[data-bulk-done-row]');
+        if (row) {
+            row.open = true;
+        }
+    }
+
+    function updateBulkDoneChip(row) {
+        const required = rowFields(row);
+        const filled = required.filter(fieldFilled).length;
+        const chip = row.querySelector('[data-bulk-done-chip]');
+        if (!chip) return;
+        chip.classList.remove('is-empty', 'is-partial', 'is-ready');
+        if (filled === 0) {
+            chip.classList.add('is-empty');
+            chip.textContent = 'Empty';
+        } else if (filled >= required.length) {
+            chip.classList.add('is-ready');
+            chip.textContent = 'Ready';
+        } else {
+            chip.classList.add('is-partial');
+            chip.textContent = filled + '/' + required.length + ' filled';
+        }
+    }
+
+    function clearBulkDoneRow(row) {
+        rowFields(row).forEach(function (field) {
+            field.value = '';
+        });
+        refreshBulkDoneLanguages(row, '');
+        const id = rowItemId(row);
+        if (id && multiSelects[id]) {
+            multiSelects[id].setSelectedItems([], []);
+        }
+        row.querySelectorAll('.is-invalid').forEach(function (el) {
+            el.classList.remove('is-invalid');
+        });
+        scheduleDraftSave();
+        syncDoneState();
+    }
+
+    function copyBulkDoneRowFromAbove(row) {
+        let prev = row.previousElementSibling;
+        while (prev && !prev.hasAttribute('data-bulk-done-row')) {
+            prev = prev.previousElementSibling;
+        }
+        if (!prev) return;
+
+        const srcCountry = prev.querySelector('[data-bulk-country]');
+        const destCountry = row.querySelector('[data-bulk-country]');
+        if (srcCountry && destCountry) {
+            destCountry.value = srcCountry.value;
+        }
+        const srcLang = prev.querySelector('[data-bulk-language]');
+        refreshBulkDoneLanguages(row, (srcLang && srcLang.value) || '');
+        const destLang = row.querySelector('[data-bulk-language]');
+        if (srcLang && destLang && srcLang.value) {
+            destLang.value = srcLang.value;
+        }
+
+        const srcCats = prev.querySelector('input[name*="[categories]"]');
+        const nicheValues = String((srcCats && srcCats.value) || '')
+            .split('|')
+            .map(function (v) { return v.trim(); })
+            .filter(Boolean);
+        const destId = rowItemId(row);
+        if (destId && multiSelects[destId]) {
+            multiSelects[destId].setSelectedItems(nicheValues, nicheValues);
+        } else {
+            const destCats = row.querySelector('input[name*="[categories]"]');
+            if (destCats) destCats.value = nicheValues.join('|');
+        }
+        scheduleDraftSave();
+        syncDoneState();
+    }
+
     function syncDoneState() {
+        doneRows().forEach(updateBulkDoneChip);
         const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
         const complete = completeRows();
         const partial = partialRows();
@@ -802,6 +883,19 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         el.removeAttribute('data-score-clamp');
     });
 
+    form.querySelectorAll('[data-bulk-clear-row]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row) clearBulkDoneRow(row);
+        });
+    });
+    form.querySelectorAll('[data-bulk-copy-above]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row) copyBulkDoneRowFromAbove(row);
+        });
+    });
+
     form.addEventListener('input', function (e) {
         clampScoreInput(e.target);
         syncDoneState();
@@ -834,6 +928,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             if (partial.length > 0) {
                 const firstPartial = rowFields(partial[0]).find((el) => !fieldFilled(el));
                 if (firstPartial) {
+                    expandBulkDoneRow(firstPartial);
                     firstPartial.focus();
                     firstPartial.classList.add('is-invalid');
                 }
@@ -845,6 +940,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             } else {
                 const firstEmpty = fields().find((el) => !fieldFilled(el));
                 if (firstEmpty) {
+                    expandBulkDoneRow(firstEmpty);
                     firstEmpty.focus();
                     firstEmpty.classList.add('is-invalid');
                 }
