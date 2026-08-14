@@ -226,10 +226,7 @@ class AdminOrdersConsoleTest extends TestCase
             ->get(route('admin.orders.show', $order->id))
             ->assertOk()
             ->assertSee(route('admin.payments', ['search' => $order->order_number]), false)
-            ->assertDontSee(route('admin.payments', [
-                'search' => $order->order_number,
-                'payment_status' => 'unpaid',
-            ]), false);
+            ->assertDontSee('payment_status=unpaid', false);
     }
 
     public function test_unpaid_order_show_deep_links_payments_to_the_ops_queue(): void
@@ -246,9 +243,9 @@ class AdminOrdersConsoleTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.orders.show', $order->id))
             ->assertOk()
-            ->assertSee(route('admin.payments', [
+            ->assertSee(e(route('admin.payments', [
                 'search' => $order->order_number,
                 'payment_status' => 'unpaid',
-            ]), false);
+            ])), false);
     }
 }
