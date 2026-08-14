@@ -70,7 +70,8 @@ class ModerationCategoryRolloutTest extends TestCase
 
         $this->runRollout();
 
-        $this->assertSame([], $this->offCategories(), 'Categories are still suppressed after the migration.');
+        // Crypto stays off: it is an accepted topic even after the historical rollout.
+        $this->assertSame(['crypto_promo'], $this->offCategories(), 'Non-crypto categories are still suppressed after the migration.');
     }
 
     public function test_a_deliberate_disable_is_not_overridden(): void
@@ -80,7 +81,7 @@ class ModerationCategoryRolloutTest extends TestCase
 
         $this->runRollout();
 
-        $this->assertSame(['gambling'], $this->offCategories());
+        $this->assertEqualsCanonicalizing(['gambling', 'crypto_promo'], $this->offCategories());
     }
 
     public function test_the_admin_banner_names_categories_the_scanner_is_skipping(): void
