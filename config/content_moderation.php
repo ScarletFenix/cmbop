@@ -65,15 +65,15 @@ return [
                     'online casino', 'goksite', 'speelautomaat', 'bookmaker', 'wedden op sport',
                 ],
                 'sk' => [
-                    'kasíno', 'kasina', 'hazard', 'hazardné hry', 'stávkovanie', 'stávky', 'stávka',
+                    'kasíno', 'kasina', 'hazardné hry', 'stávkovanie', 'stávky', 'stávka',
                     'stávková kancelária', 'poker', 'ruleta', 'automaty', 'kurzy stávok',
                 ],
                 'cs' => [
-                    'kasino', 'hazard', 'hazardní hry', 'sázení', 'sázky', 'sázka', 'sázková kancelář',
+                    'kasino', 'hazardní hry', 'sázení', 'sázky', 'sázka', 'sázková kancelář',
                     'poker', 'ruleta', 'automaty', 'kurzové sázení',
                 ],
                 'pl' => [
-                    'kasyno', 'hazard', 'gry hazardowe', 'zakłady bukmacherskie', 'bukmacher',
+                    'kasyno', 'gry hazardowe', 'zakłady bukmacherskie', 'bukmacher',
                     'typowanie', 'poker', 'ruletka', 'automaty do gier', 'zakłady sportowe',
                 ],
                 'es' => [
@@ -97,12 +97,12 @@ return [
                     'casă de pariuri', 'poker', 'ruletă', 'păcănele', 'cote pariuri',
                 ],
                 'sv' => [
-                    'kasino', 'hasardspel', 'vadslagning', 'sportbetting', 'odds',
-                    'poker', 'roulette', 'spelautomat', 'spelbolag',
+                    'kasino', 'hasardspel', 'vadslagning', 'sportbetting', 'spelodds',
+                    'vadslagningsodds', 'poker', 'roulette', 'spelautomat', 'spelbolag',
                 ],
                 'da' => [
-                    'kasino', 'hasardspil', 'væddemål', 'sportsbetting', 'odds',
-                    'poker', 'roulette', 'spilleautomat', 'spillefirma',
+                    'kasino', 'hasardspil', 'væddemål', 'sportsbetting', 'spilleodds',
+                    'odds på sport', 'poker', 'roulette', 'spilleautomat', 'spillefirma',
                 ],
                 'fi' => [
                     'kasino', 'uhkapeli', 'vedonlyönti', 'urheiluvedonlyönti',
@@ -121,7 +121,7 @@ return [
                     'poker', 'rulet', 'automati',
                 ],
                 'sl' => [
-                    'kazino', 'igre na srečo', 'stave', 'stava', 'športne stave',
+                    'kazino', 'igre na srečo', 'športne stave', 'spletne stave', 'športna stava',
                     'poker', 'ruleta', 'igralni avtomati',
                 ],
                 'lt' => [
@@ -144,7 +144,7 @@ return [
                 ],
                 'no' => [
                     'kasino', 'pengespill', 'gambling', 'veddemål', 'sportsbetting',
-                    'bookmaker', 'poker', 'rulett', 'spilleautomat', 'oddsen',
+                    'bookmaker', 'poker', 'rulett', 'spilleautomat', 'spillodds', 'veddemålsodds',
                 ],
                 'mt' => [
                     'każinò', 'logħob tal-azzard', 'imħatri', 'imħatri sportivi',
@@ -473,6 +473,6 @@ return [
     'exceptions' => [
         'casino royale',
         'poker face',
-        'slot' => ['time slot', 'parking slot', 'slot in'],
+        'slot' => ['time slot', 'time slots', 'parking slot', 'parking slots', 'slot in'],
     ],
 ];

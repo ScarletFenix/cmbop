@@ -144,6 +144,55 @@ class ContentModerationHardeningTest extends TestCase
         $this->assertEmpty($result['blocked_urls']);
     }
 
+    public function test_generic_english_words_are_not_treated_as_gambling(): void
+    {
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $samples = [
+            'What are the odds of this campaign succeeding in the next quarter?',
+            'Teams can stave off burnout with better planning and rest.',
+            'Identify every workplace hazard before the warehouse site audit.',
+            'Book the remaining time slots for next week interviews.',
+        ];
+
+        foreach ($samples as $text) {
+            $result = $this->engine->score(
+                title: 'Digital marketing guide',
+                text: $text,
+                links: [],
+                categories: $this->categories,
+                exceptions: $cfg['exceptions'] ?? [],
+            );
+
+            $this->assertLessThan(70, $result['max_confidence'], $text);
+            $this->assertNotContains('odds', $result['matched_terms']);
+            $this->assertNotContains('stave', $result['matched_terms']);
+            $this->assertNotContains('hazard', $result['matched_terms']);
+        }
+    }
+
+    public function test_locale_specific_odds_and_stake_phrases_still_fail(): void
+    {
+        $samples = [
+            'spelodds',
+            'spilleodds',
+            'športne stave',
+            'hazardní hry',
+            'gry hazardowe',
+        ];
+
+        foreach ($samples as $term) {
+            $result = $this->engine->score(
+                title: 'Industry notes',
+                text: 'This marketing briefing mentions '.$term.' among other venue types.',
+                links: [],
+                categories: $this->categories,
+            );
+
+            $this->assertSame('gambling', $result['detected_category'], $term.' should fail gambling');
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $term);
+        }
+    }
+
     public function test_casino_royale_exception_does_not_false_positive_alone(): void
     {
         $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
