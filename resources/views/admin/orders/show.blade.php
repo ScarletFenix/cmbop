@@ -19,6 +19,10 @@
         'refunded' => 'secondary',
         default => 'warning',
     };
+    $paymentsUrl = route('admin.payments', array_filter([
+        'search' => $order->order_number,
+        'payment_status' => $order->isUnpaidOps() ? 'unpaid' : null,
+    ]));
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
@@ -361,7 +365,7 @@
                     <p class="text-muted small mb-3">
                         To mark paid, failed, or refunded, use the Order Payments tools. This screen is inspection-only.
                     </p>
-                    <a href="{{ route('admin.payments') }}" class="btn btn-primary btn-sm">
+                    <a href="{{ $paymentsUrl }}" class="btn btn-primary btn-sm">
                         <i class="fa fa-money-bill me-1"></i> Open Order Payments
                     </a>
                 </div>

@@ -63,6 +63,17 @@ class Order extends Model
         })->whereIn('status', ['pending', 'processing', 'review']);
     }
 
+    /**
+     * Same definition as scopeUnpaidOps(), for a loaded row.
+     */
+    public function isUnpaidOps(): bool
+    {
+        $payment = $this->payment_status;
+
+        return ($payment === null || ! in_array($payment, ['paid', 'refunded'], true))
+            && in_array($this->status, ['pending', 'processing', 'review'], true);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

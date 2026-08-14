@@ -215,4 +215,40 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertJsonFragment(['order_number' => $recent->order_number])
             ->assertJsonMissing(['order_number' => $old->order_number]);
     }
+
+    public function test_order_show_deep_links_payments_to_the_order_number(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee(route('admin.payments', ['search' => $order->order_number]), false)
+            ->assertDontSee(route('admin.payments', [
+                'search' => $order->order_number,
+                'payment_status' => 'unpaid',
+            ]), false);
+    }
+
+    public function test_unpaid_order_show_deep_links_payments_to_the_ops_queue(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $order->update([
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee(route('admin.payments', [
+                'search' => $order->order_number,
+                'payment_status' => 'unpaid',
+            ]), false);
+    }
 }
