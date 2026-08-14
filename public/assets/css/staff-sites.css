@@ -191,6 +191,10 @@
   padding-top: 62.5%; /* 10 / 16 */
 }
 
+.site-image-desktop-preview:not(.is-empty) {
+  cursor: zoom-in;
+}
+
 .site-image-desktop-preview img {
   position: absolute;
   inset: 0;
@@ -201,6 +205,16 @@
   object-position: center top;
   display: block;
   background: #f8fafc;
+  transform: scale(1);
+  transform-origin: center top;
+  transition: transform 0.2s ease;
+}
+
+@media (any-hover: hover) {
+  .site-image-desktop-preview.is-zooming img,
+  .site-image-desktop-preview:not(.is-empty):hover img {
+    transform: scale(1.75);
+  }
 }
 
 .site-image-desktop-preview.is-empty {
@@ -218,10 +232,12 @@
   text-align: center;
 }
 
-/* SweetAlert portals to body as display:flex — keep the frame full-width. */
+/* SweetAlert portals to body as display:flex — keep a visible 16:10 frame
+   without a 960px-wide / 600px-tall preview that pushes the file input
+   above the fold. */
 .swal2-popup .site-image-desktop-preview,
 .swal2-html-container .site-image-desktop-preview {
-  max-width: none;
+  max-width: 520px;
   width: 100%;
   margin-left: 0;
   margin-right: 0;
@@ -276,14 +292,26 @@
   display: block;
 }
 
-@media (hover: none) {
+@media (any-hover: none) {
   .site-preview-zoom-pop { display: none !important; }
   .site-row-preview { cursor: default; }
+  .site-image-desktop-preview:not(.is-empty) { cursor: default; }
+  .site-image-desktop-preview.is-zooming img,
+  .site-image-desktop-preview:not(.is-empty):hover img {
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .site-preview-zoom-pop {
     transition: none;
+  }
+  .site-image-desktop-preview img {
+    transition: none;
+  }
+  .site-image-desktop-preview.is-zooming img,
+  .site-image-desktop-preview:not(.is-empty):hover img {
+    transform: none;
   }
 }
 

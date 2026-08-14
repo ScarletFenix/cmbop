@@ -7,17 +7,12 @@ use Tests\TestCase;
 
 class SiteImageUploadTest extends TestCase
 {
-    public function test_max_kilobytes_never_exceeds_app_cap_or_php_ini(): void
+    public function test_max_kilobytes_is_the_app_cap_not_php_ini(): void
     {
         $this->assertSame(10240, SiteImageUpload::APP_MAX_KILOBYTES);
-        $this->assertSame(
-            min(SiteImageUpload::APP_MAX_KILOBYTES, SiteImageUpload::phpUploadMaxKilobytes()),
-            SiteImageUpload::maxKilobytes()
-        );
-        $this->assertSame(
-            max(1, (int) floor(SiteImageUpload::maxKilobytes() / 1024)),
-            SiteImageUpload::maxMegabytesLabel()
-        );
+        $this->assertSame(10240, SiteImageUpload::maxKilobytes());
+        $this->assertSame(10, SiteImageUpload::maxMegabytesLabel());
+        $this->assertGreaterThan(0, SiteImageUpload::phpUploadMaxKilobytes());
     }
 
     public function test_php_upload_max_kilobytes_is_positive(): void
@@ -47,5 +42,13 @@ class SiteImageUploadTest extends TestCase
         $this->assertIsArray($rules);
         $this->assertContains('nullable', $rules);
         $this->assertContains('regex:'.SiteImageUpload::STORED_PATH_REGEX, $rules);
+    }
+
+    public function test_field_rules_for_uploads_use_the_10mb_app_cap(): void
+    {
+        $rules = SiteImageUpload::fieldRules(true);
+        $this->assertIsString($rules);
+        $this->assertStringContainsString('max:10240', $rules);
+        $this->assertStringContainsString('mimes:jpeg,png,jpg,gif,webp', $rules);
     }
 }

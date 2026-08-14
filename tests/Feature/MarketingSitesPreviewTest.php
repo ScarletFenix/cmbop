@@ -247,5 +247,7 @@ class MarketingSitesPreviewTest extends TestCase
             $staffCss
         );
         $this->assertStringContainsString('.site-preview-zoom-pop', $staffCss);
+        $this->assertStringContainsString('.site-image-desktop-preview.is-zooming img', $staffCss);
+        $this->assertStringContainsString('@media (any-hover: hover)', $staffCss);
     }
 }
