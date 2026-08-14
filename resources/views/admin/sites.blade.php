@@ -1416,8 +1416,8 @@ function initSitePreviewZoom(root) {
     function place(trigger) {
         const rect = trigger.getBoundingClientRect();
         const pad = 12;
-        const popW = pop.offsetWidth || 360;
-        const popH = pop.offsetHeight || 220;
+        const popW = pop.offsetWidth || 720;
+        const popH = pop.offsetHeight || 450;
         let left = rect.right + 12;
         let top = rect.top + (rect.height / 2) - (popH / 2);
         if (left + popW > window.innerWidth - pad) {
