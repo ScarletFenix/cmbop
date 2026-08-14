@@ -267,15 +267,12 @@
         btn.addEventListener('click', function () {
             const id = this.dataset.id;
             const name = this.dataset.name || 'this site';
-            const go = window.Swal
-                ? Swal.fire({
-                    title: 'Activate Site?',
-                    text: 'Make "' + name + '" live in the catalog?',
-                    icon: 'question',
-                    showCancelButton: true,
-                    confirmButtonText: 'Activate',
-                }).then((r) => r.isConfirmed)
-                : Promise.resolve(window.confirm('Activate "' + name + '"?'));
+            const go = window.slbConfirm({
+                title: 'Activate Site?',
+                text: 'Make "' + name + '" live in the catalog?',
+                icon: 'question',
+                confirmText: 'Activate',
+            });
             go.then((ok) => {
                 if (!ok) return;
                 fetch(activateUrl.replace('__ID__', encodeURIComponent(id)), {
@@ -296,12 +293,10 @@
                         return;
                     }
                     const msg = (data && data.message) || 'Could not activate site';
-                    if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: msg });
-                    else window.alert(msg);
+                    window.slbAlert({ icon: 'error', title: 'Error', text: msg });
                 })
                 .catch(() => {
-                    if (window.Swal) Swal.fire({ icon: 'error', title: 'Error', text: 'Request failed' });
-                    else window.alert('Request failed');
+                    window.slbAlert({ icon: 'error', title: 'Error', text: 'Request failed' });
                 });
             });
         });

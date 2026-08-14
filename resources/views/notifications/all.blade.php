@@ -79,16 +79,19 @@ document.getElementById('markAllReadForm')?.addEventListener('submit', function 
     var msg = unread > 0
         ? 'Mark all ' + unread + ' notifications as read?'
         : 'Mark all notifications as read?';
-    if (!window.confirm(msg)) return;
-    fetch(this.action, {
-        method: 'POST',
-        headers: {
-            'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
-            'Accept': 'application/json',
-            'X-Requested-With': 'XMLHttpRequest'
-        },
-        credentials: 'same-origin'
-    }).then(function () { window.location.reload(); });
+    var form = this;
+    window.slbConfirm({ title: 'Mark all as read?', text: msg, confirmText: 'Mark all read' }).then(function (ok) {
+        if (!ok) return;
+        fetch(form.action, {
+            method: 'POST',
+            headers: {
+                'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin'
+        }).then(function () { window.location.reload(); });
+    });
 });
 
 function markReadThenGo(e, id, url) {

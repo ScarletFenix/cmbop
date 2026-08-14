@@ -629,10 +629,12 @@
     const msg = n > 0
       ? 'Mark all ' + n + ' notifications as read?'
       : 'Mark all notifications as read?';
-    if (!window.confirm(msg)) return;
-    this.post(this.config.readAllUrl).then(function () {
-      self.setUnread(0);
-      self.reload();
+    window.slbConfirm({ title: 'Mark all as read?', text: msg, confirmText: 'Mark all read' }).then(function (ok) {
+      if (!ok) return;
+      self.post(self.config.readAllUrl).then(function () {
+        self.setUnread(0);
+        self.reload();
+      });
     });
   };
 

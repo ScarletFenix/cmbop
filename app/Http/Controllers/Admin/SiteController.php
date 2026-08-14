@@ -2688,8 +2688,9 @@ class SiteController extends Controller
             ], 403);
         }
 
-        $approving = $this->requestFlag($request, 'verified');
-        $reason = $this->validatedStatusReason($request, ! $approving);
+        try {
+            $approving = $this->requestFlag($request, 'verified');
+            $reason = $this->validatedStatusReason($request, ! $approving);
 
             $site = Site::findOrFail($id);
 
@@ -2703,9 +2704,8 @@ class SiteController extends Controller
             // Heal complete drafts; admin approve also clears incomplete awaiting_details.
             $site->promoteFromAwaitingDetailsIfComplete();
             $site->refresh();
-        }
 
-        $oldStatus = (int) $site->verified;
+            $oldStatus = (int) $site->verified;
         $site->verified = $approving ? 1 : 0;
         if ($site->verified) {
             $site->verified_at = now();

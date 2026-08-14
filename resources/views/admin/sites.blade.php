@@ -1733,15 +1733,12 @@ document.addEventListener('click', function (e) {
     e.preventDefault();
     const id = btn.dataset.id;
     const name = btn.dataset.name || 'this site';
-    const go = window.Swal
-        ? Swal.fire({
-            title: 'Activate Site?',
-            text: 'Make "' + name + '" live in the catalog?',
-            icon: 'question',
-            showCancelButton: true,
-            confirmButtonText: 'Activate',
-        }).then((r) => r.isConfirmed)
-        : Promise.resolve(window.confirm('Activate "' + name + '"?'));
+    const go = window.slbConfirm({
+        title: 'Activate Site?',
+        text: 'Make "' + name + '" live in the catalog?',
+        icon: 'question',
+        confirmText: 'Activate',
+    });
     go.then((ok) => {
         if (!ok) return;
         fetch(`${STAFF_BASE}/sites/${id}/active`, {
