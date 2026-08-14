@@ -12,8 +12,6 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\MessageBag;
-use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 class BulkDoneDraftAndNicheUiTest extends TestCase
@@ -164,14 +162,18 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->insertDoneItem($bulk->id, 2, 'https://prefix.example', 'prefix.example', 50);
         $this->insertDoneItem($bulk->id, 21, 'https://long.example', 'long.example', 60);
 
-        $errors = (new ViewErrorBag)->put('default', new MessageBag([
-            'items.21.country' => ['Country is required.'],
-        ]));
-
         $html = $this->actingAs($this->marketer)
-            ->withSession(['errors' => $errors])
-            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->followingRedirects()
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    21 => [
+                        'da' => 10,
+                    ],
+                ],
+            ])
             ->assertOk()
+            ->assertSee('Finish the boxes first.', false)
             ->getContent();
 
         $this->assertFalse(
