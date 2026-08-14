@@ -1499,18 +1499,18 @@ class SiteController extends Controller
 
         if ($countryCodes !== []) {
             $request->merge(['country' => $countryCodes[0]]);
-        } elseif ($request->has('country') && is_string($request->input('country')) && trim($request->input('country')) === '') {
+        } elseif ($request->has('country') && $this->isBlankStringInput($request->input('country'))) {
             $request->merge(['country' => null]);
         }
         if ($languageCodes !== []) {
             $request->merge(['language' => $languageCodes[0]]);
-        } elseif ($request->has('language') && is_string($request->input('language')) && trim($request->input('language')) === '') {
+        } elseif ($request->has('language') && $this->isBlankStringInput($request->input('language'))) {
             $request->merge(['language' => null]);
         }
-        if ($request->has('description') && is_string($request->input('description')) && trim($request->input('description')) === '') {
+        if ($request->has('description') && $this->isBlankStringInput($request->input('description'))) {
             $request->merge(['description' => null]);
         }
-        if ($request->has('link_type') && is_string($request->input('link_type')) && trim($request->input('link_type')) === '') {
+        if ($request->has('link_type') && $this->isBlankStringInput($request->input('link_type'))) {
             $request->merge(['link_type' => null]);
         }
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
@@ -1777,10 +1777,10 @@ class SiteController extends Controller
             $data['language'] = '';
             $data['languages'] = null;
         }
-        if ($request->has('example_url') && is_string($request->input('example_url')) && trim($request->input('example_url')) === '') {
+        if ($request->has('example_url') && $this->isBlankStringInput($request->input('example_url'))) {
             $data['example_url'] = null;
         }
-        if ($request->has('description') && is_string($request->input('description')) && trim($request->input('description')) === '') {
+        if ($request->has('description') && $this->isBlankStringInput($request->input('description'))) {
             $data['description'] = '';
         }
 
@@ -2248,17 +2248,25 @@ class SiteController extends Controller
      */
     private function storeStaffSiteImage(UploadedFile $file): ?string
     {
-        $disk = Storage::disk('public');
-        $disk->makeDirectory('sites');
+        try {
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
 
-        $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
-            ?? $file->store('sites', 'public');
+            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
+                ?? $file->store('sites', 'public');
 
-        if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                return null;
+            }
+
+            return $stored;
+        } catch (\Throwable $e) {
+            Log::error('Staff site image store failed', [
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
-
-        return $stored;
     }
 
     /**
@@ -2308,6 +2316,15 @@ class SiteController extends Controller
         }
 
         return trim((string) $value);
+    }
+
+    /**
+     * Empty optional text, including ConvertEmptyStringsToNull → null.
+     * Arrays are not blank — those must 422, not wipe the stored value.
+     */
+    private function isBlankStringInput(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
     }
 
     /**
