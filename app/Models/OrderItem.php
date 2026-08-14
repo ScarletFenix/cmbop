@@ -520,6 +520,9 @@ class OrderItem extends Model
         if (! in_array($order->status, ['pending', 'processing', 'review'], true)) {
             return false;
         }
+        if ($order->isAwaitingScheduledRelease()) {
+            return false;
+        }
         if ($this->hasLiveUrl()) {
             return false;
         }

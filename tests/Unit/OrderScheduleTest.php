@@ -80,11 +80,17 @@ class OrderScheduleTest extends TestCase
             'publication_mode' => 'scheduled',
             'scheduled_publish_at' => Carbon::parse('2026-09-15 14:00:00', 'UTC'),
         ]);
+        $processing = new Order([
+            'status' => 'processing',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => Carbon::parse('2026-09-15 14:00:00', 'UTC'),
+        ]);
 
         $this->assertTrue($cancelled->hasPublicationSchedule());
         $this->assertFalse($cancelled->isAwaitingScheduledRelease());
         $this->assertTrue($completed->hasPublicationSchedule());
         $this->assertFalse($completed->isAwaitingScheduledRelease());
+        $this->assertFalse($processing->isAwaitingScheduledRelease());
     }
 
     public function test_invalid_schedule_timezone_falls_back_to_utc(): void

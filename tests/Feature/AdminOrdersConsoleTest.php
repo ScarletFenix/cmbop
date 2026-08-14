@@ -787,6 +787,34 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertOk()
             ->assertDontSee('id="remind-publisher"', false)
             ->assertDontSee('Remind to publish', false);
+
+        $upcoming = $this->orderFor($advertiser, $site);
+        $upcoming->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $upcoming->id))
+            ->assertOk()
+            ->assertDontSee('id="remind-publisher"', false);
+
+        $released = $this->orderFor($advertiser, $site);
+        $released->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->subHour(),
+            'schedule_timezone' => 'Europe/Berlin',
+            'schedule_released_at' => now()->subHour(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $released->id))
+            ->assertOk()
+            ->assertSee('id="remind-publisher"', false)
+            ->assertSee('Remind to accept', false);
     }
 
     public function test_order_show_hides_schedule_fields_for_immediate_orders(): void
@@ -907,6 +935,13 @@ class AdminOrdersConsoleTest extends TestCase
             'schedule_released_at' => now(),
         ]);
 
+        $processing = $this->orderFor($advertiser, $site);
+        $processing->update([
+            'status' => 'processing',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $at,
+        ]);
+
         $plain = $this->orderFor($advertiser, $site);
 
         $this->actingAs($admin)
@@ -915,6 +950,7 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertJsonFragment(['order_number' => $upcoming->order_number])
             ->assertJsonFragment(['order_number' => $legacyStatus->order_number])
             ->assertJsonMissing(['order_number' => $released->order_number])
+            ->assertJsonMissing(['order_number' => $processing->order_number])
             ->assertJsonMissing(['order_number' => $plain->order_number]);
     }
 

@@ -68,6 +68,7 @@ class Order extends Model
     /**
      * Still waiting on the scheduled slot (list chip / status filter).
      * Checkout keeps status=pending and stores the slot on publication_mode.
+     * Processing/review means the publisher already has it.
      */
     public function isAwaitingScheduledRelease(): bool
     {
@@ -75,7 +76,7 @@ class Order extends Model
             return false;
         }
 
-        if (in_array($this->status, ['cancelled', 'completed'], true)) {
+        if (in_array($this->status, ['cancelled', 'completed', 'processing', 'review'], true)) {
             return false;
         }
 
@@ -86,7 +87,7 @@ class Order extends Model
     {
         return $query
             ->whereNull('schedule_released_at')
-            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->whereNotIn('status', ['cancelled', 'completed', 'processing', 'review'])
             ->where(function ($q) {
                 $q->where('status', 'scheduled')
                     ->orWhere('publication_mode', 'scheduled');

@@ -234,7 +234,10 @@
                                     </div>
                                 </div>
                                 @if($linePublisher && $loop->count > 1)
-                                    <div class="small text-muted">Publisher: {{ $linePublisher->name }}</div>
+                                    <div class="small text-muted">
+                                        Publisher:
+                                        <a href="{{ route('admin.users.index', ['user' => $linePublisher->id]) }}#user-{{ $linePublisher->id }}" class="link-dark">{{ $linePublisher->name }}</a>
+                                    </div>
                                 @endif
                             @empty
                                 <div class="text-muted">No placements on this order.</div>

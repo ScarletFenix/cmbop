@@ -23,9 +23,14 @@
 
 
 <!-- SEARCH -->
-<div class="mb-3" style="max-width: 400px;">
-    <label class="visually-hidden" for="userSearch">Search users by name, email, or company</label>
-    <input type="search" id="userSearch" class="form-control" placeholder="Search users (name, email, company…)" title="Results update as you type" autocomplete="off" enterkeyhint="search">
+<div class="mb-3 d-flex flex-wrap align-items-center gap-2" style="max-width: 520px;">
+    <div class="flex-grow-1" style="max-width: 400px;">
+        <label class="visually-hidden" for="userSearch">Search users by name, email, or company</label>
+        <input type="search" id="userSearch" class="form-control" placeholder="Search users (name, email, company…)" title="Results update as you type" autocomplete="off" enterkeyhint="search">
+    </div>
+    @if(request()->integer('user') > 0)
+        <a href="{{ route('admin.users.index') }}" class="btn btn-sm btn-outline-secondary">All users</a>
+    @endif
 </div>
 
 <div class="table-responsive admin-table-fit">

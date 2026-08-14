@@ -102,6 +102,8 @@ class AdminUsersManageActionsTest extends TestCase
             ->assertOk()
             ->assertSee('Deep Link Target')
             ->assertSee('id="user-'.$target->id.'"', false)
-            ->assertDontSee('Someone Else');
+            ->assertDontSee('Someone Else')
+            ->assertSee('All users', false)
+            ->assertSee(route('admin.users.index'), false);
     }
 }
