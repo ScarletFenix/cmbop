@@ -631,7 +631,11 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
-        $selectedPublisherId = (int) (old('publisher_id') ?: $request->query('publisher', 0));
+        $rawSelectedPublisher = old('publisher_id', $request->query('publisher', 0));
+        if (is_array($rawSelectedPublisher)) {
+            $rawSelectedPublisher = reset($rawSelectedPublisher);
+        }
+        $selectedPublisherId = (int) $rawSelectedPublisher;
 
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
@@ -807,12 +811,7 @@ class SiteController extends Controller
 
             $existing = Site::where('domain', $domain)->first();
             if ($existing) {
-                $validator->errors()->add(
-                    'site_url',
-                    $existing->isArchived()
-                        ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
-                        : 'This website domain is already registered.'
-                );
+                $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
             }
 
             $country = $countryCodes[0] ?? null;
@@ -828,8 +827,8 @@ class SiteController extends Controller
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
             }
 
-            $rawDescription = (string) $request->input('description', '');
-            if (mb_strlen($rawDescription) <= 5000) {
+            $rawDescription = $request->input('description', '');
+            if (is_string($rawDescription) && mb_strlen($rawDescription) <= 5000) {
                 foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
                     $validator->errors()->add('description', $message);
                 }
@@ -1421,9 +1420,11 @@ class SiteController extends Controller
         $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
 
         $validator->after(function ($validator) use ($request, $site, $domain) {
-            if (is_string($domain) && $domain !== ''
-                && Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
-                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            if (is_string($domain) && $domain !== '') {
+                $existing = Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->first();
+                if ($existing) {
+                    $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
+                }
             }
 
             if ($request->filled('site_url') && ($domain === null || $domain === '')) {
@@ -1640,8 +1641,9 @@ class SiteController extends Controller
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
                     $domain = preg_replace('/^www\./', '', strtolower((string) $host));
-                    if (Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
-                        $validator->errors()->add('site_url', 'This website domain is already registered.');
+                    $existing = Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->first();
+                    if ($existing) {
+                        $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
                     }
                 }
             }
@@ -1754,6 +1756,13 @@ class SiteController extends Controller
         return $payload;
     }
 
+    private function domainAlreadyRegisteredMessage(Site $existing): string
+    {
+        return $existing->isArchived()
+            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+            : 'This website domain is already registered.';
+    }
+
     /**
      * @return array<string, float>
      */
@@ -1766,7 +1775,11 @@ class SiteController extends Controller
             }
 
             $price = $request->input("price_sensitive.$topic");
-            $sensitivePrices[$topic] = ($price === null || $price === '') ? 0.0 : (float) $price;
+            $amount = ($price === null || $price === '') ? 0.0 : (float) $price;
+            if ($amount < 0) {
+                continue;
+            }
+            $sensitivePrices[$topic] = round($amount, 2);
         }
 
         return $sensitivePrices;

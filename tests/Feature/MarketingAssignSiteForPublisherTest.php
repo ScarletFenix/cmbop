@@ -583,4 +583,141 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         );
         $this->assertNull(Site::where('domain', 'neg-home.example')->first());
     }
+
+    public function test_array_shaped_language_old_input_does_not_crash_create_page(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'language' => ['de'],
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors();
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->assertDontSee('htmlspecialchars', false)
+            ->assertSee('id="selectedLanguage"', false)
+            ->assertSee('Add site for publisher', false);
+    }
+
+    public function test_array_shaped_publisher_id_keeps_first_scalar_after_validation_error(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'publisher_id' => [$this->publisher->id],
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors();
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option[^>]+value="'.$this->publisher->id.'"[^>]+selected/',
+            $html
+        );
+        $this->assertStringContainsString('publisher='.$this->publisher->id, $html);
+    }
+
+    public function test_zero_sensitive_extra_keeps_disclosure_open_after_validation_error(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'price_sensitive' => ['crypto' => '0'],
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('categories');
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="sensitiveDisclosurePanel"[^>]*hidden/',
+            $html
+        );
+        $this->assertStringContainsString('value="0"', $html);
+    }
+
+    public function test_marketing_update_rejects_archived_domain_with_restore_message(): void
+    {
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Archived Collision',
+            'site_url' => 'https://archived-collision.example',
+            'domain' => 'archived-collision.example',
+            'example_url' => 'https://archived-collision.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Archived collision description text. ', 3),
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Collision',
+            'site_url' => 'https://pending-collision.example',
+            'domain' => 'pending-collision.example',
+            'example_url' => 'https://pending-collision.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending collision description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Collision',
+                'site_url' => 'https://archived-collision.example',
+                'example_url' => 'https://pending-collision.example/sample',
+                'price' => 50,
+                'da' => 40,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => 'News',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This domain is already registered (including archived). Ask an admin to restore or hard-delete.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertSame('pending-collision.example', $pending->fresh()->domain);
+    }
 }

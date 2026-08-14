@@ -62,7 +62,7 @@
                             @foreach($publishers as $publisher)
                                 <option value="{{ $publisher->id }}"
                                     data-verified="{{ filled($publisher->email_verified_at) ? '1' : '0' }}"
-                                    @selected((int) old('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
+                                    @selected((int) old_text('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
                                     {{ $publisher->name }} · {{ $publisher->email }}
                                     @if((int) ($publisher->sites_count ?? 0) > 0)
                                         ({{ (int) $publisher->sites_count }} {{ \Illuminate\Support\Str::plural('site', (int) $publisher->sites_count) }})
@@ -158,7 +158,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
-                        <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language') }}">
+                        <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language') }}">
                         <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
                             <option value="">{{ old('country') ? 'Select…' : 'Select country first' }}</option>
                             @foreach($languages as $language)
@@ -258,7 +258,12 @@
 
                     @php
                         $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
-                        $hasSensitiveOld = collect(['crypto','trading','CBD','forex'])->contains(fn ($t) => filled(old("sensitive.$t")) || filled(old("price_sensitive.$t")));
+                        $hasSensitiveOld = collect(['crypto','trading','CBD','forex'])->contains(function ($t) {
+                            $flag = old("sensitive.$t");
+                            $price = old("price_sensitive.$t");
+                            return ($flag !== null && $flag !== '' && $flag !== [])
+                                || ($price !== null && $price !== '' && $price !== []);
+                        });
                     @endphp
                     <div class="col-12">
                         <input type="hidden" name="placement_offers_form" value="1">
@@ -360,7 +365,7 @@
     const countryEl = document.getElementById('country');
     const langEl = document.getElementById('language');
     const langHidden = document.getElementById('selectedLanguage');
-    const preferredLang = @json(old('language', ''));
+    const preferredLang = @json(old_text('language'));
     const imageInput = document.getElementById('site_image');
     const qualityBar = document.getElementById('qualityBarStatic');
     const qualityWarn = document.getElementById('qualityBarWarn');
