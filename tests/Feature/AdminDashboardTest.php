@@ -51,7 +51,7 @@ class AdminDashboardTest extends TestCase
             ->assertSee('pending_community')
             ->assertSee('Remind the publisher, or open the order to refund.')
             ->assertDontSee('Chase again or refund the advertiser.')
-            ->assertSee(route('admin.deposits'), false)
+            ->assertSee(route('admin.deposits', ['status' => 'pending']), false)
             ->assertSee(route('admin.withdrawals'), false)
             ->assertSee(route('admin.sites.index', ['needs_review' => 1]), false)
             ->assertSee('dashboardFetch')
@@ -85,7 +85,8 @@ class AdminDashboardTest extends TestCase
             ->assertSee(route('admin.sites.index'), false)
             ->assertSee(route('admin.finance'), false)
             ->assertSee('js/chart.umd.min.js')
-            ->assertDontSee('cdn.jsdelivr.net/npm/chart.js', false);
+            ->assertDontSee('cdn.jsdelivr.net/npm/chart.js', false)
+            ->assertSee('scrollIntoView');
     }
 
     public function test_admin_queue_counts_endpoint(): void
@@ -390,7 +391,7 @@ class AdminDashboardTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.action-queue'))
             ->assertOk()
-            ->assertJsonPath('deposits.0.url', route('admin.deposits'))
+            ->assertJsonPath('deposits.0.url', route('admin.deposits', ['status' => 'pending']))
             ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals'))
             ->assertJsonPath('withdrawals.0.id', $withdrawal->id)
             ->assertJsonPath('sites.0.url', route('admin.sites.edit', $site->id));
@@ -592,5 +593,23 @@ class AdminDashboardTest extends TestCase
             ->getJson(route('admin.dashboard.statistics'))
             ->assertOk()
             ->assertJsonPath('data.total_users', 2);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('pending_deposits', 0);
+
+        DepositRequest::create([
+            'user_id' => $admin->id,
+            'reference_code' => '555333',
+            'amount' => 10,
+            'payment_method' => 'wise',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('pending_deposits', 1);
     }
 }

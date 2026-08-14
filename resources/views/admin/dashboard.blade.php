@@ -143,12 +143,13 @@
     </div>
 
     <!-- Action queues (first viewport priority) -->
-    <div class="row g-3 mb-4" id="dashboardActionQueues">
+    <div id="dashboardActionQueues">
+    <div class="row g-3 mb-4">
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-wallet me-2 text-success"></i>Pending Deposits</strong>
-                    <a href="{{ route('admin.deposits') }}" class="small">View all</a>
+                    <a href="{{ route('admin.deposits', ['status' => 'pending']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -287,6 +288,7 @@
                 </div>
             </div>
         </div>
+    </div>
     </div>
 
     {{-- Orders the reminder cadence could not rescue. Hidden entirely when the
@@ -436,7 +438,7 @@
 
 </div>
 
-<script src="{{ asset('js/chart.umd.min.js') }}?v={{ filemtime(public_path('js/chart.umd.min.js')) }}"></script>
+<script src="{{ asset('js/chart.umd.min.js') }}?v={{ @filemtime(public_path('js/chart.umd.min.js')) ?: '1' }}"></script>
 <script>
 const money = (n) => '€' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n) => Number(n || 0).toLocaleString();
@@ -885,6 +887,16 @@ const dashboardLoaders = {
 function followKpiLink(card) {
     const href = card.getAttribute('data-href');
     if (!href) return;
+    if (href.charAt(0) === '#') {
+        const el = document.querySelector(href);
+        if (el) {
+            el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            if (history.replaceState) {
+                history.replaceState(null, '', href);
+            }
+        }
+        return;
+    }
     window.location.href = href;
 }
 

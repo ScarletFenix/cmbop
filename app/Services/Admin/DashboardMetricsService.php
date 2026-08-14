@@ -239,7 +239,7 @@ class DashboardMetricsService
                 'method' => $d->payment_method,
                 'date' => optional($d->created_at)->format('d M Y H:i'),
                 // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.deposits'),
+                'url' => route('admin.deposits', ['status' => 'pending']),
             ]);
 
         $withdrawals = Withdrawal::with('user:id,name,email')

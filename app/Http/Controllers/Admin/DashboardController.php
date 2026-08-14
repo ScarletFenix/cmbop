@@ -76,9 +76,10 @@ class DashboardController extends Controller
     public function getQueueCounts()
     {
         try {
+            // Nav badges poll this every 60s — do not put it behind the metrics cache.
             return response()->json([
                 'success' => true,
-                ...$this->remember('queue-counts', fn () => $this->metrics->queueCounts()),
+                ...$this->metrics->queueCounts(),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard queue counts error: '.$e->getMessage());
