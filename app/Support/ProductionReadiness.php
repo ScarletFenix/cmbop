@@ -143,8 +143,8 @@ class ProductionReadiness
             'app_url',
             self::SEVERITY_WARN,
             'APP_URL is still loopback',
-            $url.' — verify-email and mail CTAs will use PUBLIC_APP_URL ('.$fallback.').',
-            'Set APP_URL to the real public origin (https://your-domain) and run php artisan config:clear.'
+            $url.' — verify-email and mail CTAs will use PUBLIC_APP_URL ('.$fallback.'). The next production page view (or --repair) writes APP_URL from PUBLIC_APP_URL.',
+            'Run php artisan ops:production-ready --repair, or set APP_URL to the real public origin and php artisan config:clear.'
         );
     }
 
@@ -162,8 +162,8 @@ class ProductionReadiness
                     'media_path',
                     self::SEVERITY_FAIL,
                     'MEDIA_PATH is empty',
-                    'Catalog and site images live under storage/app/public and will be wiped on the next code deploy.',
-                    'Set MEDIA_PATH to an absolute path outside public_html (see docs/hostinger-media.md).'
+                    'Catalog and site images live under storage/app/public and will be wiped on the next code deploy. The next production page view creates /home/USER/persistent/media.',
+                    'Run php artisan ops:production-ready --repair (or wait for the next production page view). See docs/hostinger-media.md.'
                 );
             }
 
@@ -173,6 +173,16 @@ class ProductionReadiness
                 'MEDIA_PATH',
                 'Unset — using storage/app/public (local/CI).',
                 ''
+            );
+        }
+
+        if (str_contains(str_replace('\\', '/', $path), 'public_html')) {
+            return $this->item(
+                'media_path',
+                $this->isProduction() ? self::SEVERITY_FAIL : self::SEVERITY_WARN,
+                'MEDIA_PATH is under public_html',
+                $path.' — a code deploy can wipe catalog images.',
+                'Run php artisan ops:production-ready --repair (moves uploads to /home/USER/persistent/media).'
             );
         }
 
@@ -327,7 +337,7 @@ class ProductionReadiness
             $this->isProduction() ? self::SEVERITY_FAIL : self::SEVERITY_WARN,
             'Pending migrations',
             $preview,
-            'Run: php artisan migrate --force'
+            'Run: php artisan ops:production-ready --repair   (runs migrate --force)'
         );
     }
 
@@ -386,6 +396,16 @@ class ProductionReadiness
             );
         }
 
+        if ((bool) config('app.web_heal', true)) {
+            return $this->item(
+                'scheduler',
+                self::SEVERITY_OK,
+                'Scheduler',
+                'Web traffic runs schedule:run about once a minute (HOSTINGER_WEB_HEAL). Add system cron if the site is quiet overnight.',
+                ''
+            );
+        }
+
         if (! $this->isProduction()) {
             return $this->item(
                 'scheduler',
@@ -400,8 +420,8 @@ class ProductionReadiness
             'scheduler',
             self::SEVERITY_WARN,
             'Confirm the scheduler is running',
-            'CRON_SECRET is empty, so /cron/run is disabled. Auto-approve, nudges, and mail:drain-queue need `* * * * * php artisan schedule:run`.',
-            'Add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and hit /cron/run/{key} every minute. See docs/ops-mail-reminders.md.'
+            'CRON_SECRET is empty and HOSTINGER_WEB_HEAL is off. Auto-approve, nudges, and mail:drain-queue need `* * * * * php artisan schedule:run`.',
+            'Set HOSTINGER_WEB_HEAL=true, add a system cron for schedule:run, or set CRON_SECRET (≥ 32 chars) and hit /cron/run/{key} every minute. See docs/ops-mail-reminders.md.'
         );
     }
 

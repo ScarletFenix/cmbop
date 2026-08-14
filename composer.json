@@ -49,7 +49,7 @@
             "@php artisan migrate --force",
             "@php artisan db:seed --force",
             "@php artisan media:ensure-link",
-            "@php artisan ops:production-ready",
+            "@php artisan ops:production-ready --repair",
             "npm install",
             "npm run build"
         ],
