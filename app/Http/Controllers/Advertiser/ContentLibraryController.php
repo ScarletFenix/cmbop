@@ -368,10 +368,11 @@ class ContentLibraryController extends Controller
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
+        $contentLength = $request->header('Content-Length') ?? $request->server('CONTENT_LENGTH');
         if ($message = $this->uploads->rejectedUploadMessage(
             $request->file('file'),
             $cfg,
-            $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null,
+            $contentLength !== null ? (int) $contentLength : null,
         )) {
             return response()->json([
                 'success' => false,

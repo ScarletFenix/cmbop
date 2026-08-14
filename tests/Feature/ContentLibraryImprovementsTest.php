@@ -1231,6 +1231,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
         $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
+        $this->assertStringContainsString('The image could not be uploaded', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
         $this->assertStringNotContainsString('hosting PHP settings', $js);
         $this->assertStringNotContainsString('server PHP upload limit', $js);
@@ -1244,11 +1245,6 @@ class ContentLibraryImprovementsTest extends TestCase
     public function test_missing_file_with_oversize_content_length_explains_php_limit(): void
     {
         $advertiser = $this->advertiser();
-        $service = app(ContentUploadService::class);
-        $phpKb = $service->phpUploadMaxKilobytes();
-        if ($phpKb >= 10240) {
-            $this->markTestSkipped('PHP already accepts the 10 MB article cap.');
-        }
 
         $response = $this->actingAs($advertiser)->call(
             'POST',
@@ -1269,6 +1265,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('upload_max_filesize', $message);
         $this->assertStringNotContainsString('hosting PHP settings', $message);
         $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string

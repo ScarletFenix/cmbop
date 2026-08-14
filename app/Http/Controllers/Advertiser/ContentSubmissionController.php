@@ -69,10 +69,11 @@ class ContentSubmissionController extends Controller
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
+        $contentLength = $request->header('Content-Length') ?? $request->server('CONTENT_LENGTH');
         if ($message = $this->uploads->rejectedUploadMessage(
             $request->file('file'),
             $cfg,
-            $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null,
+            $contentLength !== null ? (int) $contentLength : null,
         )) {
             return response()->json([
                 'success' => false,
@@ -233,17 +234,14 @@ class ContentSubmissionController extends Controller
         }
 
         $image = $request->file('image');
-        if ($image instanceof UploadedFile && ! $image->isValid()) {
+        $contentLength = $request->header('Content-Length') ?? $request->server('CONTENT_LENGTH');
+        if ($message = $this->uploads->rejectedImageUploadMessage(
+            $image instanceof UploadedFile ? $image : null,
+            $contentLength !== null ? (int) $contentLength : null,
+        )) {
             return response()->json([
                 'success' => false,
-                'message' => $this->uploads->phpImageRejectedMessage(),
-            ], 422);
-        }
-        $contentLength = $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null;
-        if (! $image && $contentLength !== null && $contentLength > ($this->uploads->phpUploadMaxKilobytes() * 1024)) {
-            return response()->json([
-                'success' => false,
-                'message' => $this->uploads->phpImageRejectedMessage(),
+                'message' => $message,
             ], 422);
         }
 

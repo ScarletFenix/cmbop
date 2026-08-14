@@ -48,17 +48,20 @@ class PhpIniSizeTest extends TestCase
     {
         $service = app(ContentUploadService::class);
         $cfg = ['max_kilobytes' => 10240];
-        $phpKb = $service->phpUploadMaxKilobytes();
-        if ($phpKb >= 10240) {
-            $this->assertNull($service->rejectedUploadMessage(null, $cfg, 6 * 1024 * 1024));
-
-            return;
-        }
+        $this->assertTrue($service->contentLengthLooksLikeStrippedUpload(6 * 1024 * 1024));
+        $this->assertFalse($service->contentLengthLooksLikeStrippedUpload(1024));
 
         $message = $service->rejectedUploadMessage(null, $cfg, 6 * 1024 * 1024);
         $this->assertIsString($message);
         $this->assertStringContainsString('The article could not be uploaded', $message);
         $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
         $this->assertNull($service->rejectedUploadMessage(null, $cfg, 1024));
+
+        $imageMessage = $service->rejectedImageUploadMessage(null, 3 * 1024 * 1024);
+        $this->assertIsString($imageMessage);
+        $this->assertStringContainsString('image could not be uploaded', $imageMessage);
+        $this->assertStringNotContainsString('.docx', $imageMessage);
+        $this->assertNull($service->rejectedImageUploadMessage(null, 1024));
     }
 }

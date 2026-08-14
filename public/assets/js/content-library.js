@@ -1210,7 +1210,10 @@ function ensureArticleQuill() {
                 });
                 const data = await parseLibraryJson(res);
                 if (!data || !res.ok || !data.success || !data.url) {
-                    setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Image upload failed'));
+                    const fallback = (res.status === 413 || res.status === 422)
+                        ? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
+                        : 'Image upload failed';
+                    setFeedbackHtml(feedback, false, firstErrorMessage(data, fallback));
                     return;
                 }
                 const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };

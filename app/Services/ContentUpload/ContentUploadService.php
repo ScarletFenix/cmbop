@@ -601,6 +601,10 @@ class ContentUploadService
     /**
      * PHP discarded the multipart body (post_max_size) or the file (upload_max_filesize).
      * A 5 MB .docx then looks like "no file" unless we check Content-Length.
+     *
+     * Do not require Content-Length to exceed ini_get(). Hostinger can already
+     * report 64M while LiteSpeed still drops a 5 MB body; comparing to the
+     * reported cap then falls through to "country required" / "drop a .docx".
      */
     public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null): ?string
     {
@@ -608,11 +612,33 @@ class ContentUploadService
             return $this->invalidUploadMessage($file, $cfg);
         }
 
-        if ($contentLengthBytes !== null && $contentLengthBytes > ($this->phpUploadMaxKilobytes() * 1024)) {
+        if ($this->contentLengthLooksLikeStrippedUpload($contentLengthBytes)) {
             return $this->phpSizeRejectedMessage($cfg);
         }
 
         return null;
+    }
+
+    public function rejectedImageUploadMessage(?UploadedFile $file, ?int $contentLengthBytes = null): ?string
+    {
+        if ($file instanceof UploadedFile && ! $file->isValid()) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        if (! $file instanceof UploadedFile && $this->contentLengthLooksLikeStrippedUpload($contentLengthBytes)) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * Larger than CSRF + country/language fields. A real missing-file submit
+     * is a few KB; a discarded 5 MB .docx still sends Content-Length ≈ 5 MB.
+     */
+    public function contentLengthLooksLikeStrippedUpload(?int $contentLengthBytes): bool
+    {
+        return $contentLengthBytes !== null && $contentLengthBytes > 64 * 1024;
     }
 
     /**
