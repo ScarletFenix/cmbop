@@ -4712,9 +4712,22 @@ class CatalogController extends Controller
             return;
         }
 
-        foreach (Order::with('items')->whereIn('id', $orderIds)->get() as $order) {
+        $orders = Order::with('items')->whereIn('id', $orderIds)->get();
+        $paymentService = app(OrderPaymentService::class);
+        foreach ($orders->pluck('reference_code')->unique()->filter() as $referenceCode) {
+            $paymentService->markOrdersFailedFromReference(
+                (string) $referenceCode,
+                'Replaced by a new checkout',
+                $userId
+            );
+        }
+
+        foreach ($orders as $order) {
             $this->releaseContentSubmissionsForOrder($order);
-            $order->update(['status' => 'cancelled']);
+            $fresh = $order->fresh();
+            if ($fresh && $fresh->status !== 'cancelled') {
+                $fresh->update(['status' => 'cancelled']);
+            }
         }
     }
 
