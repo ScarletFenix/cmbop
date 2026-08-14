@@ -226,7 +226,7 @@ class BulkSiteRequestController extends Controller
 
         if ($request->filled('exampleUrl')) {
             $request->merge([
-                'exampleUrl' => $this->normalizeHttpUrl((string) $request->input('exampleUrl')),
+                'exampleUrl' => $this->normalizeHttpUrl($request->input('exampleUrl')),
             ]);
         }
 
@@ -472,9 +472,23 @@ class BulkSiteRequestController extends Controller
                 : $submitted.' sites submitted for admin review — they stay in Pending until approved.');
     }
 
-    private function normalizeHttpUrl(string $url): string
+    private function normalizeHttpUrl(mixed $url): string
     {
-        $url = trim($url);
+        if (is_array($url)) {
+            $flat = [];
+            array_walk_recursive($url, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $url = $flat[0] ?? '';
+        }
+
+        if (! is_scalar($url) && $url !== null) {
+            return '';
+        }
+
+        $url = trim((string) $url);
         if ($url === '') {
             return $url;
         }

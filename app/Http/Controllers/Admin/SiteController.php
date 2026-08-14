@@ -633,7 +633,9 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
-        $selectedPublisherId = (int) (old('publisher_id') ?: $request->query('publisher', 0));
+        $selectedPublisherId = (int) (old_text('publisher_id') !== ''
+            ? old_text('publisher_id')
+            : $request->query('publisher', 0));
 
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
@@ -689,8 +691,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
-        $siteUrl = $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', '')));
-        $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+        $siteUrl = $this->normalizeHttpUrl($request->input('site_url', $request->input('siteUrl', '')));
+        $exampleUrl = $this->normalizeHttpUrl($request->input('example_url', $request->input('exampleUrl', '')));
 
         // Coerce metric fields before validation (locale number inputs / "45.0" strings).
         $da = $this->normalizeMetricInt($request->input('da'));
@@ -1333,12 +1335,12 @@ class SiteController extends Controller
     {
         if ($request->filled('site_url')) {
             $request->merge([
-                'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url')),
+                'site_url' => $this->normalizeHttpUrl($request->input('site_url')),
             ]);
         }
         if ($request->filled('example_url')) {
             $request->merge([
-                'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
+                'example_url' => $this->normalizeHttpUrl($request->input('example_url')),
             ]);
         }
         $metrics = [];
@@ -1573,11 +1575,11 @@ class SiteController extends Controller
         if ($canFixListing) {
             if ($request->exists('site_url') || $request->exists('siteUrl')) {
                 $request->merge([
-                    'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', ''))),
+                    'site_url' => $this->normalizeHttpUrl($request->input('site_url', $request->input('siteUrl', ''))),
                 ]);
             }
             if ($request->exists('example_url') || $request->exists('exampleUrl')) {
-                $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+                $exampleUrl = $this->normalizeHttpUrl($request->input('example_url', $request->input('exampleUrl', '')));
                 $request->merge([
                     'example_url' => $exampleUrl !== '' ? $exampleUrl : null,
                 ]);
@@ -1899,9 +1901,23 @@ class SiteController extends Controller
         return array_values(array_unique($codes));
     }
 
-    private function normalizeHttpUrl(string $url): string
+    private function normalizeHttpUrl(mixed $url): string
     {
-        $url = trim($url);
+        if (is_array($url)) {
+            $flat = [];
+            array_walk_recursive($url, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $url = $flat[0] ?? '';
+        }
+
+        if (! is_scalar($url) && $url !== null) {
+            return '';
+        }
+
+        $url = trim((string) $url);
         if ($url === '') {
             return $url;
         }

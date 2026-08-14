@@ -349,6 +349,67 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertNull(Site::where('domain', 'int-niche.example')->first());
     }
 
+    public function test_create_page_array_publisher_id_does_not_select_user_one(): void
+    {
+        $html = $this->actingAs($this->admin)
+            ->withSession(['_old_input' => ['publisher_id' => ['not-an-id']]])
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/<option value="\d+"[^>]*\bselected\b/', $html);
+
+        $selected = $this->actingAs($this->admin)
+            ->withSession(['_old_input' => ['publisher_id' => [(string) $this->publisher->id]]])
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option value="'.$this->publisher->id.'"[^>]*\bselected\b/',
+            $selected
+        );
+    }
+
+    public function test_admin_store_flattens_array_site_url_instead_of_https_array(): void
+    {
+        Mail::fake();
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $niche = Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.sites.store'), [
+                'publisher_id' => $this->publisher->id,
+                'site_name' => 'Array URL Site',
+                'site_url' => ['https://array-url.example'],
+                'example_url' => ['https://array-url.example/sample'],
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+                'country' => strtolower((string) $country->code),
+                'language' => strtolower((string) $language->code),
+                'categories' => $niche,
+                'price' => 90,
+                'turnaround_time' => '3days',
+                'publication_time' => 'permanent',
+                'link_type' => 'dofollow',
+                'description' => str_repeat('Array URL leftover store guard. ', 4),
+                'site_tag' => 'as_you_prefer',
+                'written_request' => 1,
+            ])
+            ->assertRedirect();
+
+        $this->assertNull(Site::where('domain', 'array')->first());
+        $site = Site::where('domain', 'array-url.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame('https://array-url.example', $site->site_url);
+    }
+
     public function test_publisher_self_created_sites_are_accepted_immediately(): void
     {
         $country = Country::marketplace()->where('code', 'de')->first()

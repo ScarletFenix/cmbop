@@ -102,8 +102,8 @@ class SiteController extends Controller
     public function store(Request $request)
     {
         // Normalize URLs before validation (publishers often omit https://)
-        $siteUrl = $this->normalizeHttpUrl((string) $request->input('siteUrl', ''));
-        $exampleUrl = $this->normalizeHttpUrl((string) $request->input('exampleUrl', ''));
+        $siteUrl = $this->normalizeHttpUrl($request->input('siteUrl', ''));
+        $exampleUrl = $this->normalizeHttpUrl($request->input('exampleUrl', ''));
         $request->merge([
             'siteUrl' => $siteUrl,
             'exampleUrl' => $exampleUrl,
@@ -597,7 +597,7 @@ class SiteController extends Controller
 
         if ($request->filled('exampleUrl')) {
             $request->merge([
-                'exampleUrl' => $this->normalizeHttpUrl((string) $request->input('exampleUrl')),
+                'exampleUrl' => $this->normalizeHttpUrl($request->input('exampleUrl')),
             ]);
         }
 
