@@ -29,7 +29,13 @@
                 <div class="card-body">
                     <div class="text-muted small">Metrics provider</div>
                     <div class="fw-semibold text-uppercase">{{ $config['default_provider'] }}</div>
-                    <div class="small text-muted">Fallbacks: {{ implode(', ', $config['fallback_providers'] ?? []) ?: '—' }}</div>
+                    <div class="small text-muted">
+                        @if(empty($config['has_api_keys']))
+                            no API keys
+                        @else
+                            Fallbacks: {{ implode(', ', $config['fallback_providers'] ?? []) ?: '—' }}
+                        @endif
+                    </div>
                 </div>
             </div>
         </div>
@@ -64,6 +70,7 @@
         <code>SITE_SCREENSHOT_PROVIDER</code>,
         <code>SITE_ENRICHMENT_FREQUENCY</code>.
         Manual metrics can be set per site from Sites Management.
+        A manual lock skips API providers until you click Allow API overwrite.
         Re-run and Queue stale enqueue jobs — <code>php artisan queue:work --queue=default,emails</code> must be running.
     </div>
 
@@ -198,6 +205,11 @@
                                 @endif
                             </td>
                             <td class="text-end">
+                                @if($site->metrics_manual)
+                                    <button type="button" class="btn btn-sm btn-outline-secondary allow-api-overwrite-btn" data-id="{{ $site->id }}">
+                                        Allow API overwrite
+                                    </button>
+                                @endif
                                 <button type="button" class="btn btn-sm btn-outline-primary enrich-site-btn" data-id="{{ $site->id }}">
                                     Queue
                                 </button>
@@ -269,6 +281,12 @@ document.querySelectorAll('.enrich-site-btn').forEach(function (btn) {
     btn.addEventListener('click', function () {
         const id = btn.dataset.id;
         postEnrichmentJson(`${STAFF_BASE}/sites/${id}/enrich`, { sync: false }, btn);
+    });
+});
+
+document.querySelectorAll('.allow-api-overwrite-btn').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+        postEnrichmentJson(`${STAFF_BASE}/sites/${btn.dataset.id}/allow-api-metrics`, {}, btn);
     });
 });
 </script>

@@ -437,6 +437,8 @@ $registerStaffOpsRoutes = function () {
         ->name('site-enrichment.rerun-failed');
     Route::post('/site-enrichment/queue-stale', [SiteEnrichmentController::class, 'queueStale'])
         ->name('site-enrichment.queue-stale');
+    Route::post('/sites/{id}/allow-api-metrics', [SiteEnrichmentController::class, 'allowApiOverwrite'])
+        ->name('sites.allow-api-metrics');
 
     // Activate/deactivate: admin and marketing (shared Sites Management).
     Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])

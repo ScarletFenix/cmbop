@@ -55,9 +55,9 @@ class CountryDetectionService
         $parts = explode('.', $host);
         $tld = end($parts) ?: '';
 
-        if ($tld === 'com' || $tld === 'net' || $tld === 'org' || $tld === 'io' || $tld === 'ai') {
-            // Ambiguous gTLD — prefer US only as soft default for .com when no other signal.
-            return $tld === 'com' ? 'us' : null;
+        if (in_array($tld, ['com', 'net', 'org', 'io', 'ai'], true)) {
+            // Ambiguous gTLD — do not guess a marketplace country.
+            return null;
         }
 
         // co.uk style

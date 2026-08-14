@@ -382,6 +382,50 @@ class AdminSiteEnrichmentPageTest extends TestCase
         });
     }
 
+    public function test_config_cards_show_when_apis_are_missing(): void
+    {
+        config([
+            'site_enrichment.default_provider' => 'manual',
+            'site_enrichment.providers.ahrefs.api_token' => '',
+            'site_enrichment.providers.moz.access_token' => '',
+            'site_enrichment.providers.moz.access_id' => '',
+            'site_enrichment.providers.moz.secret_key' => '',
+            'site_enrichment.providers.semrush.api_key' => '',
+            'site_enrichment.screenshots.provider' => 'thum_io',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('no API keys', false)
+            ->assertSee('thum_io (unauthenticated)', false)
+            ->assertSee('manual lock skips API providers', false);
+    }
+
+    public function test_stale_row_can_unlock_manual_metrics(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Locked Stale',
+            'domain' => 'locked-stale.example',
+            'site_url' => 'https://locked-stale.example',
+            'metrics_manual' => true,
+            'metrics_fetched_at' => null,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('Allow API overwrite', false)
+            ->assertSee('Locked Stale', false);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.allow-api-metrics', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse((bool) $site->fresh()->metrics_manual);
+    }
+
     public function test_sites_enrich_stale_uses_the_shared_scope(): void
     {
         Queue::fake();

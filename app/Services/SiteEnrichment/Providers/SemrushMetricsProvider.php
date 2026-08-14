@@ -10,6 +10,55 @@ use Illuminate\Support\Facades\Log;
 
 class SemrushMetricsProvider implements SiteMetricsProvider
 {
+    /**
+     * ISO country → SEMrush Analytics database. Unknown countries fall back to us.
+     *
+     * @var array<string, string>
+     */
+    private const COUNTRY_DATABASES = [
+        'us' => 'us',
+        'gb' => 'uk',
+        'uk' => 'uk',
+        'ca' => 'ca',
+        'au' => 'au',
+        'de' => 'de',
+        'fr' => 'fr',
+        'es' => 'es',
+        'it' => 'it',
+        'nl' => 'nl',
+        'be' => 'be',
+        'ch' => 'ch',
+        'at' => 'at',
+        'pl' => 'pl',
+        'se' => 'se',
+        'no' => 'no',
+        'dk' => 'dk',
+        'fi' => 'fi',
+        'ie' => 'ie',
+        'pt' => 'pt',
+        'br' => 'br',
+        'mx' => 'mx',
+        'ar' => 'ar',
+        'cl' => 'cl',
+        'co' => 'co',
+        'in' => 'in',
+        'jp' => 'jp',
+        'kr' => 'kr',
+        'sg' => 'sg',
+        'hk' => 'hk',
+        'tw' => 'tw',
+        'za' => 'za',
+        'ae' => 'ae',
+        'il' => 'il',
+        'tr' => 'tr',
+        'ru' => 'ru',
+        'cz' => 'cz',
+        'ro' => 'ro',
+        'hu' => 'hu',
+        'gr' => 'gr',
+        'nz' => 'nz',
+    ];
+
     public function key(): string
     {
         return 'semrush';
@@ -18,6 +67,16 @@ class SemrushMetricsProvider implements SiteMetricsProvider
     public function isConfigured(): bool
     {
         return filled(config('site_enrichment.providers.semrush.api_key'));
+    }
+
+    /**
+     * SEMrush regional database for a site country. Defaults to us when unknown.
+     */
+    public static function databaseForCountry(?string $country): string
+    {
+        $code = strtolower(trim((string) $country));
+
+        return self::COUNTRY_DATABASES[$code] ?? 'us';
     }
 
     public function fetch(Site $site): SiteMetricsSnapshot
@@ -35,7 +94,7 @@ class SemrushMetricsProvider implements SiteMetricsProvider
                 'key' => $apiKey,
                 'export_columns' => 'Dn,Rk,Or,Ot,Oc,Ad,At,Ac',
                 'domain' => $site->domain,
-                'database' => 'us',
+                'database' => self::databaseForCountry($site->country),
             ]);
 
             if (! $response->successful()) {

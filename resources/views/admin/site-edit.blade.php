@@ -50,6 +50,10 @@
     </div>
 
 
+    @if(session('success'))
+        <div class="alert alert-success border-0 shadow-sm">{{ session('success') }}</div>
+    @endif
+
     @if($errors->any())
         <div class="alert alert-danger border-0 shadow-sm">
             <ul class="mb-0">
@@ -208,6 +212,17 @@
                                    value="{{ old_text('traffic', $site->traffic) }}">
                             @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
+                        @if($site->metrics_manual)
+                        <div class="col-12">
+                            <div class="alert alert-warning border-0 py-2 mb-0 d-flex flex-wrap align-items-center gap-2">
+                                <span>Manual lock skips API providers.</span>
+                                <form method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-dark">Allow API overwrite</button>
+                                </form>
+                            </div>
+                        </div>
+                        @endif
                         <div class="col-12">
                             <label class="form-label fw-semibold" for="categoryInput">Niches <span class="text-danger">*</span> (max 7)</label>
                             <input type="hidden"
@@ -357,6 +372,17 @@
                                    step="1" inputmode="numeric" placeholder="e.g. 1500000"
                                    value="{{ old_text('traffic', $site->traffic) }}">
                         </div>
+                        @if($site->metrics_manual)
+                        <div class="col-12">
+                            <div class="alert alert-warning border-0 py-2 mb-0 d-flex flex-wrap align-items-center gap-2">
+                                <span>Manual lock skips API providers.</span>
+                                <form method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}" class="d-inline">
+                                    @csrf
+                                    <button type="submit" class="btn btn-sm btn-outline-dark">Allow API overwrite</button>
+                                </form>
+                            </div>
+                        </div>
+                        @endif
 
                         <div class="col-md-4">
                             <label class="form-label fw-semibold" for="price">Price (€)</label>
