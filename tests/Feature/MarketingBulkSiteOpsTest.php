@@ -148,7 +148,8 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertOk()
             ->assertSee('History')
             ->assertSee('Cannot be deleted')
-            ->assertSee('Seeded / added sites')
+            ->assertSee('<div class="fw-semibold">Seed</div>', false)
+            ->assertDontSee('<div class="fw-semibold">Done</div>', false)
             ->assertDontSee('>bulk_request.seeded<', false)
             ->getContent();
 
@@ -537,6 +538,23 @@ class MarketingBulkSiteOpsTest extends TestCase
                 ->where('title', 'like', '%Pending sites%')
                 ->exists()
         );
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'bulk_request.done',
+            'user_id' => $this->marketer->id,
+        ]);
+        $this->assertDatabaseMissing('activity_logs', [
+            'action' => 'bulk_request.seeded',
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('<div class="fw-semibold">Done</div>', $html);
+        $this->assertStringNotContainsString('<div class="fw-semibold">Seed</div>', $html);
+        $this->assertStringNotContainsString('>bulk_request.done<', $html);
     }
 
     public function test_marketer_can_delete_awaiting_details_draft_and_history_remains(): void

@@ -486,7 +486,8 @@ if (! function_exists('marketing_task_labels')) {
     function marketing_task_labels(): array
     {
         return [
-            'bulk_request.seeded' => 'Seeded / added sites',
+            'bulk_request.done' => 'Done',
+            'bulk_request.seeded' => 'Seed',
             'bulk_request.sheet_sent' => 'Marked sheet sent',
             'bulk_request.cancelled' => 'Cancelled bulk request',
             'bulk_request.notes_updated' => 'Updated bulk notes',

@@ -13,6 +13,7 @@ class PanelController extends Controller
 {
     /** @var list<string> */
     public const TRACKED_ACTIONS = [
+        'bulk_request.done',
         'bulk_request.seeded',
         'bulk_request.sheet_sent',
         'bulk_request.cancelled',
