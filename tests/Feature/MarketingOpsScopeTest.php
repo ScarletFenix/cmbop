@@ -191,6 +191,10 @@ class MarketingOpsScopeTest extends TestCase
         $this->actingAs($this->marketer)
             ->get('/admin/sites')
             ->assertRedirect('/marketing/sites');
+
+        $this->actingAs($this->marketer)
+            ->get('/admin/staff-handbook')
+            ->assertRedirect('/marketing/staff-handbook');
     }
 
     public function test_marketer_can_open_ops_pages_and_sites_ui_hides_verify_active(): void
