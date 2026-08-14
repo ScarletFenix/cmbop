@@ -18,6 +18,13 @@ Use this on **every** code update. Full media background:
 4. `php artisan config:clear` (and `config:cache` if you normally cache)
 5. Open 2 known image URLs (`/storage/sites/...`, `/storage/site-screenshots/...`)
 6. Confirm a new upload lands under `persistent/media`, not a wiped folder
+7. Article .docx uploads need 10 MB. In hPanel → Advanced → PHP Configuration set
+   `upload_max_filesize=16M` and `post_max_size=64M`. Confirm with
+   `php -r 'echo ini_get("upload_max_filesize"), " ", ini_get("post_max_size"), "\n";'`
+   from `public_html` (or `public/`). `public/.htaccess` and `public/.user.ini`
+   already request 16M/64M; Hostinger LiteSpeed often ignores `php_value` until
+   the same numbers are saved in hPanel. A 5 MB Word file is rejected as
+   `UPLOAD_ERR_INI_SIZE` while PHP stays at the default 2M.
 
 ## Weekly
 

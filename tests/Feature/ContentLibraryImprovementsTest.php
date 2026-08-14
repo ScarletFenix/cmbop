@@ -1089,7 +1089,15 @@ class ContentLibraryImprovementsTest extends TestCase
         $response->assertStatus(422)->assertJsonPath('success', false);
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('The file failed to upload', $message);
-        $this->assertStringContainsString('MB limit', $message);
+        $this->assertStringContainsString('MB', $message);
+        $phpKb = app(ContentUploadService::class)->phpUploadMaxKilobytes();
+        if ($phpKb < 10240) {
+            $this->assertStringContainsString('under the 10 MB article limit', $message);
+            $this->assertStringContainsString('PHP upload limit', $message);
+            $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+        } else {
+            $this->assertStringContainsString('That file is over the 10 MB limit', $message);
+        }
     }
 
     public function test_library_upload_accepts_docx_sniffed_as_zip(): void
@@ -1187,6 +1195,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
         $this->assertStringContainsString('php_value upload_max_filesize 16M', $htaccess);
+
+        $userIni = (string) file_get_contents(public_path('.user.ini'));
+        $this->assertStringContainsString('upload_max_filesize = 16M', $userIni);
+        $this->assertStringContainsString('post_max_size = 64M', $userIni);
+        $rootIni = (string) file_get_contents(base_path('.user.ini'));
+        $this->assertStringContainsString('upload_max_filesize = 16M', $rootIni);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
