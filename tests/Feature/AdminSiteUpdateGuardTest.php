@@ -473,6 +473,39 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('https://guard-site.example/path', $site->fresh()->site_url);
     }
 
+    public function test_update_accepts_protocol_relative_and_host_port_urls(): void
+    {
+        $site = $this->site([
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => '//guard-site.example/path',
+                'example_url' => '//guard-site.example/sample',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('https://guard-site.example/path', $site->site_url);
+        $this->assertSame('https://guard-site.example/sample', $site->example_url);
+        $this->assertSame('guard-site.example', $site->domain);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'guard-site.example:8080/x',
+                'example_url' => 'guard-site.example:8080/sample',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('https://guard-site.example:8080/x', $site->site_url);
+        $this->assertSame('https://guard-site.example:8080/sample', $site->example_url);
+        $this->assertSame('guard-site.example', $site->domain);
+    }
+
     public function test_update_ignores_remote_or_non_sites_image_path(): void
     {
         $site = $this->site([

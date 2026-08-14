@@ -164,6 +164,9 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertNull($site->publisher_accepted_at);
         $this->assertFalse((bool) $site->active);
         $this->assertFalse((bool) $site->verified);
+        $this->assertSame(40, (int) $site->da);
+        $this->assertSame(45, (int) $site->dr);
+        $this->assertSame(12000, (int) $site->traffic);
         $this->assertTrue($site->isPendingPublisherAcceptance());
         $this->assertNull($site->sensitive_prices);
         $this->assertStringContainsString('Invites', (string) session('success'));
@@ -1276,6 +1279,59 @@ class MarketingAssignSiteForPublisherTest extends TestCase
 
         $this->assertNull(Site::where('domain', 'javascript')->first());
         $this->assertNull(Site::where('domain', 'js-store.example')->first());
+    }
+
+    public function test_store_accepts_protocol_relative_urls(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => '//proto-rel.example/path',
+                'example_url' => '//proto-rel.example/sample',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $site = Site::where('domain', 'proto-rel.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame('https://proto-rel.example/path', $site->site_url);
+        $this->assertSame('https://proto-rel.example/sample', $site->example_url);
+        $this->assertSame(12000, (int) $site->traffic);
+    }
+
+    public function test_store_accepts_host_port_without_scheme(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'port-paste.example:8080/x',
+                'example_url' => 'port-paste.example:8080/sample',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $site = Site::where('domain', 'port-paste.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame('https://port-paste.example:8080/x', $site->site_url);
+        $this->assertSame('https://port-paste.example:8080/sample', $site->example_url);
+        $this->assertSame('port-paste.example', $site->domain);
+        $this->assertSame(12000, (int) $site->traffic);
+    }
+
+    public function test_store_rejects_urls_with_raw_whitespace(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://space-path.example/foo bar',
+                'example_url' => 'https://space-path.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'space-path.example')->first());
     }
 
     public function test_legacy_port_domain_matches_existing_listing(): void

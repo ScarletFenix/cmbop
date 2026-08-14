@@ -936,8 +936,8 @@ class SiteController extends Controller
 
                 $site->save();
 
-                if ((int) $site->da !== $da || (int) $site->dr !== $dr) {
-                    throw new \RuntimeException('DA/DR did not persist after save.');
+                if ((int) $site->da !== $da || (int) $site->dr !== $dr || (int) $site->traffic !== $traffic) {
+                    throw new \RuntimeException('DA/DR/traffic did not persist after save.');
                 }
                 if (filled($site->publisher_accepted_at) || blank($site->assigned_by_user_id)) {
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
@@ -962,9 +962,8 @@ class SiteController extends Controller
 
             $hint = 'We could not save this website. Please try again.';
             if (str_contains($e->getMessage(), 'Unknown column')
-                || str_contains($e->getMessage(), 'publisher invite state')
-                || str_contains($e->getMessage(), 'DA/DR did not persist')) {
-                $hint = 'We could not save invite state or DA/DR. Run the latest migrations on the server, clear caches, and try again.';
+                || str_contains($e->getMessage(), 'did not persist after save.')) {
+                $hint = 'We could not save invite state, DA/DR, or monthly traffic. Run the latest migrations on the server, clear caches, and try again.';
             }
 
             return redirect()->back()
@@ -2369,13 +2368,24 @@ class SiteController extends Controller
     private function normalizeHttpUrl(string $url): string
     {
         $url = trim($url);
-        if ($url === '') {
-            return $url;
+        if ($url === '' || str_contains($url, "\0") || preg_match('/\s/u', $url) === 1) {
+            return '';
         }
 
-        if (preg_match('~^(?:https?|ftps?)://~i', $url) !== 1) {
-            if (preg_match('~^[a-z][a-z0-9+.-]*:~i', $url) === 1) {
-                return '';
+        // Protocol-relative //host → https://host (do not prefix as https:////host).
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        } elseif (preg_match('~^(?:https?|ftps?)://~i', $url) !== 1) {
+            // Reject javascript:/data:/mailto: and ftp://. Keep host:port (example.com:8080).
+            if (preg_match('~^([a-z][a-z0-9+.-]*):~i', $url, $schemeMatch) === 1) {
+                $scheme = strtolower($schemeMatch[1]);
+                $hasAuthority = preg_match('~^'.preg_quote($schemeMatch[1], '~').'://~i', $url) === 1;
+                if ($hasAuthority || in_array($scheme, ['javascript', 'data', 'mailto', 'vbscript', 'file', 'about', 'blob'], true)) {
+                    return '';
+                }
+                if (! str_contains($scheme, '.')) {
+                    return '';
+                }
             }
             $url = 'https://'.$url;
         }
@@ -2399,6 +2409,7 @@ class SiteController extends Controller
             if (is_string($ascii) && $ascii !== '') {
                 $host = $ascii;
             }
+            $host = strtolower($host);
         }
         if (str_contains($host, ':') && ! str_starts_with($host, '[')) {
             $host = '['.$host.']';
