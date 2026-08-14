@@ -4166,9 +4166,8 @@ class CatalogController extends Controller
     }
 
     /**
-     * Dual-role carts can still contain the advertiser's own publisher sites.
-     * Those lines were skipped after funds were reserved / Stripe was quoted,
-     * which locked leftover bonus/cash or overcharged the card.
+     * Defense in depth: drop the advertiser's own publisher sites if they
+     * still appear after cart prune / expandCart. Own-only carts 422 earlier.
      *
      * @param  array{lines: array<int, mixed>, schedule: array}  $checkoutContent
      * @return array{lines: array<int, mixed>, schedule: array}
