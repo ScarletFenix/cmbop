@@ -167,7 +167,7 @@
                     <div class="col-md-6">
                         <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
                         <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language') }}">
-                        <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
+                        <select id="language" class="form-select @error('language') is-invalid @enderror" required>
                             <option value="">{{ old_text('country') !== '' ? 'Select…' : 'Select country first' }}</option>
                             @foreach($languages as $language)
                                 <option value="{{ strtolower($language->code) }}"

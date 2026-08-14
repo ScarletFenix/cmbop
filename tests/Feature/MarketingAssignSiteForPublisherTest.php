@@ -1073,4 +1073,36 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             $html
         );
     }
+
+    public function test_marketing_store_rejects_whitespace_only_site_name(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_name' => '   ',
+                'site_url' => 'https://blank-name.example',
+                'example_url' => 'https://blank-name.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_name');
+
+        $this->assertNull(Site::where('domain', 'blank-name.example')->first());
+    }
+
+    public function test_marketing_store_rejects_price_over_column_max(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://huge-price.example',
+                'example_url' => 'https://huge-price.example/sample',
+                'price' => 100000000,
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('price')
+            ->assertSessionDoesntHaveErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'huge-price.example')->first());
+        $this->assertStringContainsString('999,999.99', (string) session('errors')->first('price'));
+    }
 }

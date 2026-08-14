@@ -715,6 +715,9 @@ class SiteController extends Controller
             'da' => $da,
             'dr' => $dr,
             'traffic' => $traffic,
+            'site_name' => is_string($request->input('site_name'))
+                ? trim($request->input('site_name'))
+                : $request->input('site_name'),
         ]);
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
@@ -771,7 +774,7 @@ class SiteController extends Controller
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:999999.99',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
@@ -782,6 +785,7 @@ class SiteController extends Controller
         ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
             'description.max' => 'Description must be at most 5000 characters.',
+            'price.max' => 'Price must be at most €999,999.99.',
         ]), $this->placementOfferValidationAttributes());
 
         $cleanDescription = '';
@@ -1279,13 +1283,17 @@ class SiteController extends Controller
             }
         }
 
-        ActivityLogger::log(
-            'site.updated',
-            auth()->user()->name.' modified site "'.$site->site_name.'"',
-            $site,
-            ['changes' => $changes],
-            $site->site_name
-        );
+        try {
+            ActivityLogger::log(
+                'site.updated',
+                (auth()->user()->name ?? 'Staff').' modified site "'.$site->site_name.'"',
+                $site,
+                ['changes' => $changes],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log staff site update: '.$e->getMessage());
+        }
 
         $emailSent = false;
 
@@ -1396,6 +1404,9 @@ class SiteController extends Controller
         if ($request->has('link_type') && trim((string) $request->input('link_type')) === '') {
             $request->merge(['link_type' => null]);
         }
+        if ($request->exists('site_name') && is_string($request->input('site_name'))) {
+            $request->merge(['site_name' => trim($request->input('site_name'))]);
+        }
 
         $domain = null;
         $siteUrl = $request->input('site_url', '');
@@ -1421,7 +1432,7 @@ class SiteController extends Controller
             'traffic' => 'sometimes|required|integer|min:0|max:4294967295',
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
-            'price' => 'sometimes|required|numeric|min:0',
+            'price' => 'sometimes|required|numeric|min:0|max:999999.99',
             'description' => 'sometimes|nullable|string|max:5000',
             'publication_time' => 'sometimes|nullable|string|max:20',
             // Dedicated editor is free text; modal may send dofollow/nofollow.
@@ -1440,6 +1451,7 @@ class SiteController extends Controller
             $rules,
             array_merge($this->siteImageValidationMessages(), [
                 'description.max' => 'Description must be at most 5000 characters.',
+                'price.max' => 'Price must be at most €999,999.99.',
             ]),
             $this->placementOfferValidationAttributes()
         );
@@ -1497,7 +1509,6 @@ class SiteController extends Controller
             'sponsored',
             'partner_material',
             'as_you_prefer',
-            'sensitive_prices',
             'description',
             'site_image',
         ]);
@@ -1629,10 +1640,16 @@ class SiteController extends Controller
             $rules['site_name'] = 'sometimes|required|string|max:255';
             $rules['site_url'] = 'sometimes|required|url|max:255';
             $rules['example_url'] = 'nullable|url|max:255';
-            $rules['price'] = 'sometimes|required|numeric|min:0';
+            $rules['price'] = 'sometimes|required|numeric|min:0|max:999999.99';
         }
 
-        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+        if ($request->exists('site_name') && is_string($request->input('site_name'))) {
+            $request->merge(['site_name' => trim($request->input('site_name'))]);
+        }
+
+        $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
+            'price.max' => 'Price must be at most €999,999.99.',
+        ]));
 
         // site_image is often a stored path string after upload-image; only
         // validate as a file when a real upload is present.
@@ -1830,21 +1847,21 @@ class SiteController extends Controller
     private function placementOfferValidationRules(): array
     {
         return [
-            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:999999.99',
             'sensitive.crypto' => 'nullable|boolean',
             'sensitive.trading' => 'nullable|boolean',
             'sensitive.CBD' => 'nullable|boolean',
             'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|numeric|min:0',
-            'price_sensitive.trading' => 'nullable|numeric|min:0',
-            'price_sensitive.CBD' => 'nullable|numeric|min:0',
-            'price_sensitive.forex' => 'nullable|numeric|min:0',
+            'price_sensitive.crypto' => 'nullable|numeric|min:0|max:999999.99',
+            'price_sensitive.trading' => 'nullable|numeric|min:0|max:999999.99',
+            'price_sensitive.CBD' => 'nullable|numeric|min:0|max:999999.99',
+            'price_sensitive.forex' => 'nullable|numeric|min:0|max:999999.99',
             'homepage.1' => 'nullable|boolean',
             'homepage.7' => 'nullable|boolean',
             'homepage.30' => 'nullable|boolean',
-            'price_homepage.1' => 'nullable|numeric|min:0',
-            'price_homepage.7' => 'nullable|numeric|min:0',
-            'price_homepage.30' => 'nullable|numeric|min:0',
+            'price_homepage.1' => 'nullable|numeric|min:0|max:999999.99',
+            'price_homepage.7' => 'nullable|numeric|min:0|max:999999.99',
+            'price_homepage.30' => 'nullable|numeric|min:0|max:999999.99',
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
