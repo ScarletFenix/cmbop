@@ -60,6 +60,11 @@
             @if($timeLabel)
                 <span class="nc-item-time">{{ $timeLabel }}</span>
             @endif
+            @if($isUnread)
+                <span class="nc-item-state">Unread</span>
+            @elseif(!empty($item['is_archived']))
+                <span class="nc-item-state is-archived">Archived</span>
+            @endif
             @if($url)
                 <span class="nc-item-action">{{ $item['action_label'] ?? 'View details' }} →</span>
             @endif
@@ -71,10 +76,12 @@
         @if($showTools)
             <div class="nc-item-tools">
                 @if($isUnread)
-                    <span class="nc-tool" data-nc-tool="read" data-id="{{ $item['id'] }}">Read</span>
+                    <span class="nc-tool" data-nc-tool="read" data-id="{{ $item['id'] }}">Mark as read</span>
+                @elseif(empty($item['is_archived']))
+                    <span class="nc-tool" data-nc-tool="unread" data-id="{{ $item['id'] }}">Mark as unread</span>
                 @endif
                 <span class="nc-tool" data-nc-tool="archive" data-id="{{ $item['id'] }}">Archive</span>
-                <span class="nc-tool" data-nc-tool="delete" data-id="{{ $item['id'] }}">Delete</span>
+                <span class="nc-tool nc-tool--muted" data-nc-tool="delete" data-id="{{ $item['id'] }}">Delete</span>
             </div>
         @endif
     </div>

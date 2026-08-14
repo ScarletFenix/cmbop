@@ -134,9 +134,51 @@ class ContentSubmission extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /** Orderable approved articles stay marked “Just approved” for this many days. */
+    public const JUST_APPROVED_DAYS = 7;
+
     public function isApproved(): bool
     {
         return $this->moderation_status === self::STATUS_APPROVED;
+    }
+
+    /**
+     * True when we approved this article recently and it is still waiting to be ordered.
+     */
+    public function isJustApproved(): bool
+    {
+        if (! $this->canBeOrdered() || $this->evaluated_at === null) {
+            return false;
+        }
+
+        $cutoff = now()->copy()->subDays(self::JUST_APPROVED_DAYS)->startOfDay();
+
+        return $this->evaluated_at->copy()->startOfDay()->gte($cutoff);
+    }
+
+    public function justApprovedLabel(): ?string
+    {
+        if (! $this->isJustApproved() || $this->evaluated_at === null) {
+            return null;
+        }
+
+        if ($this->evaluated_at->isSameDay(now())) {
+            return 'Approved today';
+        }
+
+        if ($this->evaluated_at->isSameDay(now()->subDay())) {
+            return 'Approved yesterday';
+        }
+
+        $days = (int) abs($this->evaluated_at->copy()->startOfDay()->diffInDays(now()->copy()->startOfDay()));
+        if ($days <= 0) {
+            return 'Approved today';
+        }
+        if ($days === 1) {
+            return 'Approved yesterday';
+        }
+
+        return 'Approved '.$days.' days ago';
     }
 
     public function needsCorrection(): bool
@@ -211,13 +253,12 @@ class ContentSubmission extends Model
     /**
      * The declaration must cover what the article actually contains: an article
      * declared image-free cannot keep images added later in the editor.
-     *
-     * Articles uploaded before declarations existed carry no claim at all, so
-     * there is nothing to contradict and editing them stays open.
+     * Articles with images and no covering claim (own / licensed) must declare
+     * before save — including new uploads that skip rights until after parse.
      */
     public function imageRightsCoverContent(): bool
     {
-        if (blank($this->image_rights) || ! $this->hasImages()) {
+        if (! $this->hasImages()) {
             return true;
         }
 
@@ -231,7 +272,37 @@ class ContentSubmission extends Model
 
     public function isExpired(): bool
     {
-        return $this->expires_at !== null && $this->expires_at->isPast();
+        // Match content:purge-expired (`expires_at <= now()`). Carbon isPast() is
+        // strictly before now, which would leave the exact expiry instant orderable
+        // in the UI while the nightly strip already treats it as expired.
+        return $this->expires_at !== null && ! $this->expires_at->isFuture();
+    }
+
+    public function hasStoredFile(): bool
+    {
+        return filled($this->path);
+    }
+
+    /**
+     * Advertiser/publisher may download the original Word file.
+     * Unused expired articles are preview-only even before the nightly strip.
+     */
+    public function canDownloadOriginal(): bool
+    {
+        if (! $this->hasStoredFile()) {
+            return false;
+        }
+
+        if ($this->isInUse()) {
+            return true;
+        }
+
+        return ! $this->isExpired();
+    }
+
+    public function canEditArticle(): bool
+    {
+        return ! $this->isInUse() && ! $this->isArchived() && ! $this->isExpired();
     }
 
     /**
@@ -255,7 +326,7 @@ class ContentSubmission extends Model
             return null;
         }
 
-        if ($this->expires_at->isPast()) {
+        if ($this->isExpired()) {
             return 0;
         }
 
@@ -455,10 +526,6 @@ class ContentSubmission extends Model
             return 'archived';
         }
 
-        if ($this->needsCorrection()) {
-            return 'needs_fix';
-        }
-
         if ($this->isPublished()) {
             return 'published';
         }
@@ -469,6 +536,10 @@ class ContentSubmission extends Model
 
         if ($this->isExpired()) {
             return 'expired';
+        }
+
+        if ($this->needsCorrection()) {
+            return 'needs_fix';
         }
 
         if ($this->isEvaluating()) {
@@ -658,5 +729,17 @@ class ContentSubmission extends Model
         if ($this->path && Storage::disk($this->disk ?: 'local')->exists($this->path)) {
             Storage::disk($this->disk ?: 'local')->delete($this->path);
         }
+    }
+
+    /**
+     * Remove the original Word file after unused expiry. Keep the row and preview.
+     */
+    public function stripStoredFileKeepPreview(): void
+    {
+        $this->deleteStoredFile();
+        $this->forceFill([
+            'path' => '',
+            'size_bytes' => 0,
+        ])->save();
     }
 }

@@ -43,25 +43,6 @@
 }
 .wizard-chrome h1, .wizard-chrome h2 { font-size:1.25rem; margin:0 0 4px; color:#1a585e; }
 .wizard-chrome .muted { color: var(--brand-ink-muted, #75787B); font-size:.875rem; margin:0; }
-.cart-checklist {
-    margin:0 0 12px; padding:10px 12px;
-    border:1px solid #e5e7eb; border-radius:10px; background:#f8fafb;
-}
-.cart-checklist ul { list-style:none; margin:0; padding:0; }
-.cart-checklist li {
-    display:flex; align-items:flex-start; gap:8px;
-    font-size:12px; color:#334155; padding:4px 0;
-}
-.cart-checklist .mark {
-    width:16px; height:16px; border-radius:50%; flex-shrink:0;
-    display:inline-flex; align-items:center; justify-content:center;
-    font-size:10px; margin-top:1px;
-}
-.cart-checklist .is-ok .mark { background:#1a585e; color:#fff; }
-.cart-checklist .is-todo .mark { background:#fdba74; color:#7c2d12; }
-#checkoutFromCart:disabled {
-    opacity:.55; cursor:not-allowed;
-}
 </style>
 <div class="wizard-stepper" role="navigation" aria-label="Place a guest post steps">
     @foreach($steps as $n => $meta)

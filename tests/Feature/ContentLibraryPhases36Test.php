@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
@@ -97,12 +98,35 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertSee('Expiring Soon Piece')
             ->assertSee('expire', false)
             ->assertSee('within 7 days', false)
-            ->assertSee('never purged', false)
+            ->assertSee('keep the original file', false)
             ->getContent();
 
         $this->assertStringContainsString('Expires in', $html);
         $this->assertStringContainsString('library-expiry-hint', $html);
+        $this->assertStringContainsString('library-expiry-hint--urgent', $html);
         $this->assertTrue($submission->fresh()->isNearExpiry(7));
+    }
+
+    public function test_far_expiry_row_hint_is_not_styled_as_urgent(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Plenty Of Time Piece',
+            'expires_at' => now()->addMonths(6),
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('Plenty Of Time Piece')
+            ->assertDontSee('within 7 days', false)
+            ->getContent();
+
+        $this->assertStringContainsString('Expires in', $html);
+        $this->assertStringContainsString('library-expiry-hint', $html);
+        $this->assertStringNotContainsString('library-expiry-hint--urgent', $html);
+        $this->assertFalse($submission->fresh()->isNearExpiry(7));
     }
 
     public function test_purge_expired_skips_articles_linked_to_orders(): void
@@ -135,12 +159,37 @@ class ContentLibraryPhases36Test extends TestCase
             'title' => 'Linked Expired',
         ]);
 
+        $unusedPath = $unused->path;
+        $unusedDisk = $unused->disk ?: 'local';
+        $this->assertTrue(Storage::disk($unusedDisk)->exists($unusedPath));
+        $preview = (string) $unused->preview_html;
+
         $exit = Artisan::call('content:purge-expired');
         $this->assertSame(0, $exit);
         $this->assertStringContainsString('unused expired', Artisan::output());
 
-        $this->assertDatabaseMissing('content_submissions', ['id' => $unused->id]);
+        $this->assertDatabaseHas('content_submissions', ['id' => $unused->id]);
+        $stripped = $unused->fresh();
+        $this->assertSame('', (string) $stripped->path);
+        $this->assertSame(0, (int) $stripped->size_bytes);
+        $this->assertSame($preview, (string) $stripped->preview_html);
+        $this->assertFalse($stripped->hasStoredFile());
+        $this->assertFalse($stripped->canDownloadOriginal());
+        $this->assertFalse($stripped->canEditArticle());
+        $this->assertFalse($stripped->canBeOrdered());
+        $this->assertFalse(Storage::disk($unusedDisk)->exists($unusedPath));
+
         $this->assertDatabaseHas('content_submissions', ['id' => $linked->id]);
+        $this->assertTrue($linked->fresh()->hasStoredFile());
+        $this->assertTrue($linked->fresh()->canDownloadOriginal());
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $linked))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-submissions.download', $linked))
+            ->assertOk();
     }
 
     public function test_completed_row_keeps_live_url_clickable_without_pointer_events_none(): void
@@ -202,7 +251,10 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertJsonPath('title', 'Preview Fetch Article')
             ->assertJsonPath('editable', true)
             ->assertJsonPath('can_order', true)
-            ->assertJsonPath('preview_html', '<p>Hello <a href="https://example.com/x">world</a></p>');
+            ->assertJsonPath('preview_html', '<p>Hello <a href="https://example.com/x">world</a></p>')
+            ->assertJsonPath('has_images', false)
+            ->assertJsonPath('needs_image_rights', false)
+            ->assertJsonPath('image_rights_covers', true);
 
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library'))

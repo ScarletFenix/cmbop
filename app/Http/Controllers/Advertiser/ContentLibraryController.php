@@ -25,6 +25,7 @@ class ContentLibraryController extends Controller
     public function index(Request $request)
     {
         $cfg = $this->uploads->effectiveConfig();
+        $cfg['max_kilobytes'] = $this->uploads->effectiveMaxKilobytes($cfg);
         // Default to Approved (available) — the All chip was removed from the UI.
         $status = strtolower(trim((string) $request->query('status', 'approved')));
         $availability = strtolower(trim((string) $request->query('availability', 'available')));
@@ -123,7 +124,10 @@ class ContentLibraryController extends Controller
                         $eval->whereIn('moderation_status', [
                             ContentSubmission::STATUS_PENDING,
                             ContentSubmission::STATUS_PROCESSING,
-                        ])->whereNull('order_id');
+                        ])->whereNull('order_id')
+                            ->where(function ($exp) {
+                                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                            });
                     });
                 });
             } elseif ($availability === 'in_progress') {
@@ -142,13 +146,15 @@ class ContentLibraryController extends Controller
             } elseif ($availability === 'expired') {
                 $query->whereNull('order_id')
                     ->whereNotNull('expires_at')
-                    ->where('expires_at', '<', now());
+                    ->where('expires_at', '<=', now());
             } elseif ($availability === 'needs_fix') {
                 $query->whereIn('moderation_status', [
                     ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
                     ContentSubmission::STATUS_REJECTED,
                     ContentSubmission::STATUS_ERROR,
-                ]);
+                ])->where(function ($exp) {
+                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                });
             } elseif ($availability === 'published') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
                 $query->whereNotNull('order_id')
@@ -229,6 +235,9 @@ class ContentLibraryController extends Controller
                     ContentSubmission::STATUS_PROCESSING,
                 ])
                 ->whereNull('order_id')
+                ->where(function ($exp) {
+                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
                 ->count(),
             'in_progress' => (int) (clone $countScope)
                 ->whereNotNull('order_id')
@@ -259,9 +268,18 @@ class ContentLibraryController extends Controller
             'expired' => (int) (clone $countScope)
                 ->whereNull('order_id')
                 ->whereNotNull('expires_at')
-                ->where('expires_at', '<', now())
+                ->where('expires_at', '<=', now())
                 ->count(),
-            'needs_fix' => (int) ($moderationCounts['needs_fix'] ?? 0),
+            'needs_fix' => (int) (clone $countScope)
+                ->whereIn('moderation_status', [
+                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
+                    ContentSubmission::STATUS_REJECTED,
+                    ContentSubmission::STATUS_ERROR,
+                ])
+                ->where(function ($exp) {
+                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })
+                ->count(),
         ];
 
         $archivedCountScope = ContentSubmission::query()
@@ -344,32 +362,39 @@ class ContentLibraryController extends Controller
         }
 
         $cfg = $this->uploads->effectiveConfig();
-        $maxKb = (int) ($cfg['max_kilobytes'] ?? 5120);
+        $maxKb = $this->uploads->effectiveMaxKilobytes($cfg);
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
+        if ($message = $this->uploads->invalidUploadMessage($request->file('file'), $cfg)) {
+            return response()->json([
+                'success' => false,
+                'title' => 'Upload failed',
+                'message' => $message,
+            ], 422);
+        }
+
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:docx'],
+            'file' => ['required', 'file', 'max:'.$maxKb, 'extensions:docx'],
             'title' => ['nullable', 'string', 'max:200'],
             'country' => ['required', 'string', 'max:10', Rule::in($allowedCountries)],
             'language' => ['required', 'string', 'max:10', Rule::in($allowedLanguages)],
             'replace_id' => ['nullable', 'integer'],
-            'image_rights' => ['required', Rule::in(ContentSubmission::imageRightsOptions())],
+            'image_rights' => ['nullable', Rule::in(ContentSubmission::imageRightsOptions())],
             'image_rights_source' => [
                 'nullable', 'string', 'max:2000',
                 'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
             ],
-        ], [
-            'image_rights.required' => 'Tell us where the images in this article came from.',
+        ], array_merge($this->uploads->uploadValidationMessages($cfg), [
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
-        ]);
+        ]));
 
         if (! $this->countryLanguagePairs->isAllowedPair($data['country'], $data['language'])) {
-            return back()
-                ->withInput()
-                ->withErrors([
-                    'language' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
-                ]);
+            return response()->json([
+                'success' => false,
+                'title' => 'Market required',
+                'message' => 'That language is not allowed for the selected country. Pick country first, then a paired language.',
+            ], 422);
         }
 
         $replace = null;
@@ -380,6 +405,13 @@ class ContentLibraryController extends Controller
                 ->whereNull('order_id')
                 ->whereNull('archived_at')
                 ->first();
+            if ($replace?->isExpired()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Expired',
+                    'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
         }
 
         $result = $this->uploads->uploadAndProcess(
@@ -392,7 +424,7 @@ class ContentLibraryController extends Controller
             title: $data['title'] ?? null,
             country: $data['country'],
             language: $data['language'],
-            imageRights: $data['image_rights'],
+            imageRights: $data['image_rights'] ?? null,
             imageRightsSource: $data['image_rights_source'] ?? null,
         );
 
@@ -434,13 +466,16 @@ class ContentLibraryController extends Controller
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if (! $submission->canBeOrdered()) {
+            $message = $submission->isExpired()
+                ? 'Expired articles are preview only and cannot be ordered.'
+                : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.';
+
             return redirect()
                 ->route('advertiser.content-library')
-                ->with('error', 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+                ->with('error', $message);
         }
 
-        // Keep existing cart sites; this article attaches when assigned in cart/checkout.
-        session()->forget(['checkout_schedule']);
+        // Keep existing cart sites and any publication date already chosen at checkout.
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('ordering_from_library', true);
 
@@ -465,6 +500,9 @@ class ContentLibraryController extends Controller
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->whereNull('archived_at')
+            ->where(function ($exp) {
+                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
             ->whereIn('moderation_status', [
                 ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
                 ContentSubmission::STATUS_REJECTED,
@@ -491,7 +529,12 @@ class ContentLibraryController extends Controller
             'word_count' => $s->word_count,
             'moderation_status' => $s->moderation_status,
             'can_order' => $s->canBeOrdered(),
+            'editable' => $s->canEditArticle(),
+            'has_file' => $s->hasStoredFile(),
             'detected_links' => $s->detectedLinks(),
+            'has_images' => $s->hasImages(),
+            'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
+            'image_rights_covers' => $s->imageRightsCoverContent(),
         ];
     }
 
@@ -519,11 +562,18 @@ class ContentLibraryController extends Controller
             'detected_links' => $s->detectedLinks(),
             'has_link' => $s->hasLink(),
             'can_order' => $s->canBeOrdered(),
+            'editable' => $s->canEditArticle(),
+            'has_file' => $s->hasStoredFile(),
             'needs_correction' => $s->needsCorrection(),
+            'has_images' => $s->hasImages(),
+            'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
+            'image_rights_covers' => $s->imageRightsCoverContent(),
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),
-            'download_url' => route('advertiser.content-submissions.download', $s),
+            'download_url' => $s->canDownloadOriginal()
+                ? route('advertiser.content-submissions.download', $s)
+                : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
     }

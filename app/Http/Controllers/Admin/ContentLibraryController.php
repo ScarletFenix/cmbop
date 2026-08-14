@@ -31,7 +31,7 @@ class ContentLibraryController extends Controller
             $query->whereNull('archived_at')
                 ->whereNull('order_id')
                 ->whereNotNull('expires_at')
-                ->where('expires_at', '<', now());
+                ->where('expires_at', '<=', now());
         } else {
             $query->whereNull('archived_at');
             if ($status !== 'all') {
@@ -80,7 +80,7 @@ class ContentLibraryController extends Controller
                 ->whereNull('archived_at')
                 ->whereNull('order_id')
                 ->whereNotNull('expires_at')
-                ->where('expires_at', '<', now())
+                ->where('expires_at', '<=', now())
                 ->count(),
         ]);
     }

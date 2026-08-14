@@ -36,7 +36,7 @@ class ContentSubmissionController extends Controller
                 'require_same_language' => $this->uploads->requireSameLanguagePlacement(),
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
-                'max_kilobytes' => (int) ($cfg['max_kilobytes'] ?? 5120),
+                'max_kilobytes' => $this->uploads->effectiveMaxKilobytes($cfg),
                 'scheduling_enabled' => (bool) ($cfg['scheduling']['enabled'] ?? true),
                 'max_schedule_months' => (int) ($cfg['scheduling']['max_months'] ?? 3),
                 'max_schedule_at' => $this->scheduler->maxScheduleAt()->toIso8601String(),
@@ -61,14 +61,21 @@ class ContentSubmissionController extends Controller
         }
 
         $cfg = $this->uploads->effectiveConfig();
-        $maxKb = (int) ($cfg['max_kilobytes'] ?? 5120);
+        $maxKb = $this->uploads->effectiveMaxKilobytes($cfg);
         $ext = implode(',', $cfg['allowed_extensions'] ?? ['docx']);
 
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
+        if ($message = $this->uploads->invalidUploadMessage($request->file('file'), $cfg)) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 422);
+        }
+
         $data = $request->validate([
-            'file' => ['required', 'file', 'max:'.$maxKb, 'mimes:docx'],
+            'file' => ['required', 'file', 'max:'.$maxKb, 'extensions:'.($ext ?: 'docx')],
             'site_id' => ['nullable', 'integer', 'exists:sites,id'],
             'copy_index' => ['nullable', 'integer', 'min:0', 'max:50'],
             'cart_key' => ['nullable', 'string', 'max:64'],
@@ -81,10 +88,10 @@ class ContentSubmissionController extends Controller
                 'nullable', 'string', 'max:2000',
                 'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
             ],
-        ], [
+        ], array_merge($this->uploads->uploadValidationMessages($cfg), [
             'image_rights.required' => 'Tell us where the images in this article came from.',
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
-        ]);
+        ]));
 
         $replace = null;
         if (! empty($data['replace_id'])) {
@@ -93,6 +100,13 @@ class ContentSubmissionController extends Controller
                 ->where('user_id', auth()->id())
                 ->whereNull('order_id')
                 ->first();
+            if ($replace?->isExpired()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Expired',
+                    'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
         }
 
         $result = $this->uploads->uploadAndProcess(
@@ -134,6 +148,10 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
         }
 
+        if ($submission->isExpired()) {
+            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
+        }
+
         $data = $request->validate([
             'preview_html' => ['required', 'string', 'max:500000'],
             'title' => ['nullable', 'string', 'max:200'],
@@ -146,21 +164,17 @@ class ContentSubmissionController extends Controller
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
-        // The editor can add images after upload, so let the declaration be
-        // updated here and re-check that it still covers the article.
-        if (! empty($data['image_rights'])) {
-            $submission->update([
-                'image_rights' => $data['image_rights'],
-                'image_rights_source' => ContentSubmission::imageRightsNeedsSource($data['image_rights'])
-                    ? ($data['image_rights_source'] ?? null)
-                    : null,
-                'image_rights_declared_at' => now(),
-            ]);
-        }
-
+        // Apply a posted declaration on a replica first. Persisting before the
+        // cover check let "this article has no images" overwrite a real claim
+        // when the HTML still contained <img>.
         $incoming = $submission->replicate();
         $incoming->preview_html = $data['preview_html'];
-        $incoming->image_rights = $submission->image_rights;
+        if (! empty($data['image_rights'])) {
+            $incoming->image_rights = $data['image_rights'];
+            $incoming->image_rights_source = ContentSubmission::imageRightsNeedsSource($data['image_rights'])
+                ? ($data['image_rights_source'] ?? null)
+                : null;
+        }
 
         if (! $incoming->imageRightsCoverContent()) {
             return response()->json([
@@ -168,6 +182,14 @@ class ContentSubmissionController extends Controller
                 'message' => 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.',
                 'needs_image_rights' => true,
             ], 422);
+        }
+
+        if (! empty($data['image_rights'])) {
+            $submission->update([
+                'image_rights' => $incoming->image_rights,
+                'image_rights_source' => $incoming->image_rights_source,
+                'image_rights_declared_at' => now(),
+            ]);
         }
 
         $result = $this->uploads->updateArticleContent(
@@ -237,6 +259,10 @@ class ContentSubmissionController extends Controller
 
         if ($submission->isArchived()) {
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
+        if ($submission->isExpired()) {
+            return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
         }
 
         $cfg = $this->uploads->effectiveConfig();
@@ -407,7 +433,7 @@ class ContentSubmissionController extends Controller
             'html' => $html,
             'links' => $submission->detectedLinks(),
             'detected_links' => $submission->detectedLinks(),
-            'editable' => ! ($submission->isInUse() || $submission->isArchived()),
+            'editable' => $submission->canEditArticle(),
             'word_count' => $submission->word_count,
             'original_filename' => $submission->original_filename,
             'moderation_status' => $submission->moderation_status,
@@ -421,6 +447,10 @@ class ContentSubmissionController extends Controller
                 : null,
             'uniqueness_score' => $submission->uniqueness_score,
             'quality_score' => $submission->quality_score,
+            'has_images' => $submission->hasImages(),
+            'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
+            'image_rights_covers' => $submission->imageRightsCoverContent(),
+            'has_file' => $submission->hasStoredFile(),
         ]);
     }
 
@@ -428,8 +458,16 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeDownload($submission);
 
+        if (! $submission->canDownloadOriginal()) {
+            $user = auth()->user();
+            $staff = $user && ($user->hasRole('admin') || $user->hasRole('marketing'));
+            if (! $staff) {
+                abort(404, 'File not found');
+            }
+        }
+
         $disk = Storage::disk($submission->disk ?: 'local');
-        if (! $disk->exists($submission->path)) {
+        if (! $submission->path || ! $disk->exists($submission->path)) {
             abort(404, 'File not found');
         }
 
@@ -557,12 +595,19 @@ class ContentSubmissionController extends Controller
             'wizard_step' => $s->wizard_step,
             'ready' => $s->isReadyForCheckout(),
             'needs_correction' => $s->needsCorrection(),
+            'has_images' => $s->hasImages(),
+            'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
+            'image_rights_covers' => $s->imageRightsCoverContent(),
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),
             'can_order' => $s->canBeOrdered(),
+            'editable' => $s->canEditArticle(),
+            'has_file' => $s->hasStoredFile(),
             'history' => $s->articleHistory(),
-            'download_url' => route('advertiser.content-submissions.download', $s),
+            'download_url' => $s->canDownloadOriginal()
+                ? route('advertiser.content-submissions.download', $s)
+                : null,
             'created_at' => optional($s->created_at)?->toIso8601String(),
             'evaluated_at' => optional($s->evaluated_at)?->toIso8601String(),
             'updated_at' => optional($s->updated_at)?->toIso8601String(),

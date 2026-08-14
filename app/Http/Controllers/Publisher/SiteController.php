@@ -10,10 +10,12 @@ use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
 use App\Models\Site;
-use App\Models\SiteClaim;
-use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\AgencySiteImportService;
+use App\Services\CheckoutSchemaService;
 use App\Services\EmailNotificationService;
+use App\Services\Marketplace\CountryLanguagePairs;
+use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
 use App\Support\UserFacingError;
@@ -351,26 +353,64 @@ class SiteController extends Controller
                             BulkSiteRequest::STATUS_CANCELLED,
                         ]);
                 });
-            })
-            ->when($status !== '' && $status !== 'all', function ($q) use ($status) {
-                match ($status) {
-                    'invites' => $q->pendingPublisherAcceptance()->notArchived(),
-                    // Pending My Sites excludes staff invites waiting for Accept/Decline.
-                    'pending' => $q->acceptedByPublisher()->where('verified', false)->where('active', false)->notArchived(),
-                    'verified' => $q->acceptedByPublisher()->where('verified', true)->notArchived(),
-                    'active' => $q->acceptedByPublisher()->where('active', true)->notArchived(),
-                    'featured' => Schema::hasColumn('sites', 'featured_until')
-                        ? $q->acceptedByPublisher()->notArchived()->whereNotNull('featured_until')->where('featured_until', '>', now())
-                        : $q->whereRaw('1 = 0'),
-                    'archived' => $q->archived(),
-                    default => $q->notArchived(),
-                };
-            }, function ($q) {
-                $q->notArchived();
-            })
-            ->when(Schema::hasTable('site_claims'), function ($q) {
-                $q->withCount([
-                    'claims as pending_claims_count' => fn ($c) => $c->where('status', 'pending'),
+
+            $waitingItemsCount = (clone $waitingItemsQuery)->count();
+            // Match list filters: Active/Pending badges exclude archived sites.
+            $sitePendingCount = (clone $acceptedBase)->notArchived()
+                ->where('active', 0)->where('verified', 0)->count();
+            $pendingCount = $sitePendingCount + $waitingItemsCount;
+            $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
+
+            $activeQuery = (clone $acceptedBase)->notArchived()->where(function ($q) {
+                $q->where('active', 1)->orWhere('verified', 1);
+            });
+            $activeCount = (clone $activeQuery)->count();
+            $activeIds = (clone $activeQuery)->orderBy('id')->pluck('id')->map(fn ($id) => (int) $id)->values()->all();
+
+            $bulkWaitingItems = collect();
+            if ($status === 'pending' && $page === 1) {
+                $bulkWaitingItems = (clone $waitingItemsQuery)
+                    ->when($query, function ($q) use ($query) {
+                        $q->where(function ($sub) use ($query) {
+                            $sub->where('site_url', 'like', "%{$query}%")
+                                ->orWhere('domain', 'like', "%{$query}%");
+                        });
+                    })
+                    ->orderBy('id')
+                    ->get();
+            }
+
+            if ($status === 'invites') {
+                $sitesQuery = (clone $base)->pendingPublisherAcceptance();
+            } elseif ($status === 'archived') {
+                $sitesQuery = (clone $acceptedBase)->archived();
+            } elseif ($status === 'all') {
+                $sitesQuery = (clone $acceptedBase)->notArchived();
+            } else {
+                $sitesQuery = (clone $acceptedBase)->notArchived()
+                    ->when($status === 'pending', function ($q) {
+                        $q->where('active', 0)->where('verified', 0);
+                    })
+                    ->when($status === 'active', function ($q) {
+                        $q->where(function ($inner) {
+                            $inner->where('active', 1)->orWhere('verified', 1);
+                        });
+                    });
+            }
+
+            $sites = $sitesQuery
+                ->when($query, function ($q) use ($query) {
+                    $q->where(function ($sub) use ($query) {
+                        $sub->where('site_name', 'like', "%{$query}%")
+                            ->orWhere('site_url', 'like', "%{$query}%")
+                            ->orWhere('domain', 'like', "%{$query}%");
+                    });
+                })
+                ->latest()
+                ->paginate(20)
+                ->appends([
+                    'status' => $status,
+                    'query' => $query,
                 ]);
 
             return view('publisher.sites.partials.table', compact(
@@ -755,95 +795,6 @@ class SiteController extends Controller
         $site->delete();
 
         return redirect()->back()->with('success', 'Site deleted successfully!');
-    }
-
-    public function acceptAssignment(Request $request, $id)
-    {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
-
-        if (! $site->isPendingPublisherAcceptance()) {
-            if ($request->expectsJson() || $request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This site is not waiting for acceptance.',
-                ], 422);
-            }
-
-            return redirect()
-                ->route('publisher.websites', ['status' => 'pending'])
-                ->with('error', 'This site is not waiting for acceptance.');
-        }
-
-        $site->publisher_accepted_at = now();
-        $site->save();
-
-        try {
-            ActivityLogger::log(
-                'site.assignment_accepted',
-                (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
-                $site,
-                [
-                    'publisher_id' => auth()->id(),
-                    'assigned_by_user_id' => $site->assigned_by_user_id,
-                    'domain' => $site->domain,
-                ],
-                $site->site_name
-            );
-        } catch (\Throwable $e) {
-            Log::warning('Failed to log publisher site acceptance: '.$e->getMessage());
-        }
-
-        try {
-            app(EmailNotificationService::class)->notifyAdminsNewSite($site, 'accept');
-        } catch (\Throwable $e) {
-            Log::warning('Failed to notify admins after publisher accepted staff-assigned site: '.$e->getMessage());
-        }
-
-        if ($request->expectsJson() || $request->ajax()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Site accepted. It now appears in My Sites.',
-                'site_id' => $site->id,
-            ]);
-        }
-
-        return redirect()
-            ->route('publisher.websites', ['status' => 'pending'])
-            ->with('success', 'Site accepted. It now appears in My Sites (Pending) until staff activate it.');
-    }
-
-    public function rejectAssignment(Request $request, $id)
-    {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
-
-        if (! $site->isPendingPublisherAcceptance()) {
-            if ($request->expectsJson() || $request->ajax()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This site is not waiting for acceptance.',
-                ], 422);
-            }
-
-            return redirect()
-                ->route('publisher.websites', ['status' => 'invites'])
-                ->with('error', 'This site is not waiting for acceptance.');
-        }
-
-        $siteId = $site->id;
-        $domain = $site->domain ?: $site->site_name;
-        $site->delete();
-
-        if ($request->expectsJson() || $request->ajax()) {
-            return response()->json([
-                'success' => true,
-                'message' => 'Site invitation declined.',
-                'site_id' => $siteId,
-            ]);
-        }
-
-        return redirect()
-            ->route('publisher.websites', ['status' => 'invites'])
-            ->with('success', 'Declined '.$domain.'. The listing was removed.');
     }
 
     public function archive(int $id)

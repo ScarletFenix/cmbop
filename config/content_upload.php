@@ -16,10 +16,13 @@ return [
     'allowed_mimes' => [
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
         'application/octet-stream',
+        // Word .docx is a ZIP package; some PHP fileinfo builds sniff it as zip.
+        'application/zip',
+        'application/x-zip-compressed',
     ],
 
-    /** Max upload size in kilobytes (5120 = 5 MB) */
-    'max_kilobytes' => (int) env('CONTENT_UPLOAD_MAX_KB', 5120),
+    /** Max upload size in kilobytes (10240 = 10 MB) */
+    'max_kilobytes' => (int) env('CONTENT_UPLOAD_MAX_KB', 10240),
 
     'disk' => env('CONTENT_UPLOAD_DISK', 'local'),
 
@@ -72,7 +75,7 @@ return [
 
     'help' => [
         'preferred_format' => 'Please upload your article as a Microsoft Word (.docx) document only. Other formats are not accepted.',
-        'before_upload' => 'Supported format: Microsoft Word (.docx) only. Maximum size: 5 MB. After upload, a report will be available with your article.',
+        'before_upload' => 'Supported format: Microsoft Word (.docx) only. Maximum size: 10 MB. Unused articles are kept for 6 months; after that the original file is removed and a preview stays in Expired.',
         'anchor_text' => 'Enter the exact anchor text that should appear in the article.',
         'target_url' => 'Enter the website URL that the anchor text should link to.',
         'feature_image' => 'If you would like the publisher to use a featured image, provide a royalty-free image URL from platforms such as Pixabay, Pexels, Unsplash, or similar sources.',

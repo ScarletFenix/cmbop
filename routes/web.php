@@ -682,6 +682,7 @@ Route::middleware(['auth', 'verified'])->group(function () {
         Route::get('/unread-count', [NotificationController::class, 'unreadCount'])->name('unread-count');
         Route::post('/read-all', [NotificationController::class, 'markAllRead'])->name('read-all');
         Route::post('/{id}/read', [NotificationController::class, 'markRead'])->name('read');
+        Route::post('/{id}/unread', [NotificationController::class, 'markUnread'])->name('unread');
         Route::post('/{id}/archive', [NotificationController::class, 'archive'])->name('archive');
         Route::delete('/{id}', [NotificationController::class, 'destroy'])->name('destroy');
         Route::get('/order/{orderId}/timeline', [NotificationController::class, 'orderTimeline'])->name('order-timeline');
@@ -829,6 +830,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Checkout routes
         Route::get('/checkout', [CatalogController::class, 'checkout'])->name('checkout');
+        Route::post('/checkout/schedule', [CatalogController::class, 'saveCheckoutSchedule'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.schedule');
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
 

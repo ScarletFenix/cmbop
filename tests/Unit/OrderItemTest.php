@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Models\OrderItem;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Tests\TestCase;
 
 class OrderItemTest extends TestCase
@@ -142,5 +144,16 @@ class OrderItemTest extends TestCase
         $this->assertFalse($item->isReadyForAutoApprove());
 
         Carbon::setTestNow();
+    }
+
+    public function test_disputes_relations_are_declared_once(): void
+    {
+        $src = (string) file_get_contents((new \ReflectionClass(OrderItem::class))->getFileName());
+        $this->assertSame(1, preg_match_all('/function disputes\s*\(/', $src));
+        $this->assertSame(1, preg_match_all('/function latestDispute\s*\(/', $src));
+
+        $item = new OrderItem;
+        $this->assertInstanceOf(HasMany::class, $item->disputes());
+        $this->assertInstanceOf(HasOne::class, $item->latestDispute());
     }
 }

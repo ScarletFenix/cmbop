@@ -41,6 +41,10 @@ class OrderItem extends Model
         'live_url_checked_at',
         'sensitive_type',
         'additional_price',
+        'homepage_days',
+        'homepage_price',
+        'social_channels',
+        'social_post_urls',
         'publisher_price',
         'platform_fee_percent',
         'platform_fee_amount',
@@ -60,11 +64,21 @@ class OrderItem extends Model
         'auto_approve_triggered',
         'auto_approve_at',
         'auto_approve_reminder_sent_at',
+        'accept_nudge_stage',
+        'accept_nudge_sent_at',
+        'publish_nudge_stage',
+        'publish_nudge_sent_at',
+        'review_nudge_sent_at',
+        'stalled_notice_sent_at',
     ];
 
     protected $casts = [
         'price' => 'decimal:2',
         'additional_price' => 'decimal:2',
+        'homepage_days' => 'integer',
+        'homepage_price' => 'decimal:2',
+        'social_channels' => 'array',
+        'social_post_urls' => 'array',
         'publisher_price' => 'decimal:2',
         'platform_fee_percent' => 'decimal:2',
         'platform_fee_amount' => 'decimal:2',
@@ -81,7 +95,9 @@ class OrderItem extends Model
         'auto_approve_reminder_sent_at' => 'datetime',
         'auto_approve_triggered' => 'boolean',
         'auto_approve_reminder_sent_at' => 'datetime',
+        'accept_nudge_stage' => 'integer',
         'accept_nudge_sent_at' => 'datetime',
+        'publish_nudge_stage' => 'integer',
         'publish_nudge_sent_at' => 'datetime',
         'review_nudge_sent_at' => 'datetime',
         'stalled_notice_sent_at' => 'datetime',
@@ -122,16 +138,6 @@ class OrderItem extends Model
     public function contentSubmission(): BelongsTo
     {
         return $this->belongsTo(ContentSubmission::class);
-    }
-
-    public function disputes()
-    {
-        return $this->hasMany(OrderItemDispute::class);
-    }
-
-    public function latestDispute()
-    {
-        return $this->hasOne(OrderItemDispute::class)->latestOfMany();
     }
 
     /**

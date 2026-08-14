@@ -253,7 +253,7 @@
     <div class="cart-header">
         <div>
             <h5 id="cartTitle" class="mb-0">Your Cart</h5>
-            <div class="small text-muted mt-1">Assign a document to each website — one article per order.</div>
+            <div id="cartHeaderMeta" class="small text-muted mt-1">Pay sites that have an article. Others stay in the cart.</div>
         </div>
         <button id="closeCart" class="btn btn-sm btn-outline-secondary" type="button" aria-label="Close cart">
             <i class="fa fa-times" aria-hidden="true"></i>
@@ -267,20 +267,27 @@
     </div>
     <div class="cart-footer">
         <div id="cartReadyNote" class="cart-ready-note d-none"></div>
-        <div class="d-flex justify-content-between mb-3">
-            <strong>Total:</strong>
-            <strong id="cartTotalAmount">€0.00</strong>
+        <div id="cartTotals" class="cart-totals d-none">
+            <div class="cart-totals__pay">
+                <span id="cartTotalLabel">Pay now</span>
+                <strong id="cartTotalAmount">€0.00</strong>
+            </div>
+            <div id="cartHeldNote" class="cart-totals__held d-none"></div>
         </div>
-        <button id="checkoutFromCart" class="btn btn-primary w-100" type="button">
+        <div id="cartScheduleHint" class="cart-schedule-hint d-none" hidden></div>
+        <button id="checkoutFromCart" class="btn btn-primary w-100 d-none" type="button" disabled>
             <i class="fa fa-credit-card"></i> Proceed to Checkout
         </button>
-        @include('partials.buy-confidence')
-        <button id="keepBrowsingCatalog" class="btn btn-outline-secondary w-100 mt-2" type="button">
-            <i class="fa fa-list"></i> Keep browsing publishers
-        </button>
         <div id="cartProceedHint" class="small text-muted mt-2 d-none">
-            Assign a document to at least one website to checkout. Sites without documents stay in your cart.
+            Assign an article to at least one website to checkout. Sites without articles stay in your cart.
         </div>
+        <details class="cart-after-pay">
+            <summary>What happens after you pay</summary>
+            @include('partials.buy-confidence')
+        </details>
+        <button id="keepBrowsingCatalog" class="cart-keep-browsing" type="button">
+            Keep browsing publishers
+        </button>
     </div>
 </div>
 
@@ -410,6 +417,7 @@
     
     let approvedArticles = [];
     let requireSameLanguage = false;
+    let cartSchedule = null;
     let contentLibraryUploadUrl = @json(route('advertiser.content-library', ['upload' => 1]));
     let catalogUrl = @json(route('advertiser.catalog'));
 
@@ -421,6 +429,7 @@
         cart = Array.isArray(data?.cart) ? data.cart : [];
         approvedArticles = Array.isArray(data?.approved_articles) ? data.approved_articles : [];
         requireSameLanguage = !!data?.require_same_language;
+        cartSchedule = data?.schedule && data.schedule.mode === 'scheduled' ? data.schedule : null;
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
@@ -595,11 +604,13 @@
         const cartTotal = cart.reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
         
         const badge = document.getElementById('cartBadge');
-        if (cartCount > 0) {
-            badge.style.display = 'flex';
-            badge.innerText = cartCount;
-        } else {
-            badge.style.display = 'none';
+        if (badge) {
+            if (cartCount > 0) {
+                badge.style.display = 'flex';
+                badge.innerText = cartCount;
+            } else {
+                badge.style.display = 'none';
+            }
         }
 
         const totalBadge = document.getElementById('cartTotalBadge');
@@ -619,6 +630,11 @@
         const checklistEl = document.getElementById('cartChecklist');
         const proceedBtn = document.getElementById('checkoutFromCart');
         const proceedHint = document.getElementById('cartProceedHint');
+        const headerMeta = document.getElementById('cartHeaderMeta');
+        const totalLabel = document.getElementById('cartTotalLabel');
+        const heldNote = document.getElementById('cartHeldNote');
+        const totalsEl = document.getElementById('cartTotals');
+        const scheduleHint = document.getElementById('cartScheduleHint');
         if (cart.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-muted px-2">
@@ -638,9 +654,28 @@
             }
             if (proceedBtn) {
                 proceedBtn.disabled = true;
+                proceedBtn.classList.add('d-none');
             }
             if (proceedHint) {
                 proceedHint.classList.add('d-none');
+            }
+            if (headerMeta) {
+                headerMeta.textContent = 'Pay sites that have an article. Others stay in the cart.';
+            }
+            if (totalLabel) {
+                totalLabel.textContent = 'Pay now';
+            }
+            if (heldNote) {
+                heldNote.classList.add('d-none');
+                heldNote.textContent = '';
+            }
+            if (totalsEl) {
+                totalsEl.classList.add('d-none');
+            }
+            if (scheduleHint) {
+                scheduleHint.classList.add('d-none');
+                scheduleHint.hidden = true;
+                scheduleHint.textContent = '';
             }
         } else {
             let html = '';
@@ -651,50 +686,44 @@
             const readyTotal = cart
                 .filter((item) => lineFullyAssigned(item))
                 .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
+            const missingSlots = cart.reduce((n, item) => (
+                n + lineContentIds(item).filter((id) => !id).length
+            ), 0);
+            const heldTotal = Math.max(0, cartTotal - readyTotal);
+            if (totalsEl) {
+                totalsEl.classList.remove('d-none');
+            }
+            if (headerMeta) {
+                headerMeta.textContent = cart.length + ' site' + (cart.length === 1 ? '' : 's')
+                    + ' · ' + readyCount + ' ready to pay';
+            }
             if (checklistEl) {
-                let list = '<div class="small fw-semibold mb-1">Before Pay</div><ul class="mb-0 ps-0">';
-                sortedCart.forEach((item) => {
-                    const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
-                    const assigned = lineFullyAssigned(item);
-                    const filled = lineContentIds(item).filter((id) => id > 0).length;
-                    const lang = String(item.language || '').toUpperCase();
-                    const cls = assigned ? 'is-ok' : 'is-todo';
-                    const mark = assigned ? '✓' : '!';
-                    const detail = assigned
-                        ? (qty > 1
-                            ? ('Ready — ' + qty + ' documents attached (publish separately)')
-                            : 'Ready — document attached')
-                        : (qty > 1
-                            ? ('Needs ' + (qty - filled) + ' more document' + ((qty - filled) === 1 ? '' : 's') + ' to publish separately')
-                            : 'Add a document for this order');
-                    list += `<li class="${cls}"><span class="mark" aria-hidden="true">${mark}</span><span><strong>${escapeHtml(item.name || 'Website')}</strong> — ${escapeHtml(detail)}</span></li>`;
-                });
-                list += '</ul>';
-                checklistEl.innerHTML = list;
-                checklistEl.classList.remove('d-none');
+                if (missing === 0) {
+                    checklistEl.classList.add('d-none');
+                    checklistEl.innerHTML = '';
+                } else {
+                    const status = readyCount === 0
+                        ? (missingSlots === 1 ? '1 article still needed' : missingSlots + ' articles still needed')
+                        : (readyCount + ' ready · ' + missingSlots + ' article' + (missingSlots === 1 ? '' : 's') + ' still needed');
+                    checklistEl.innerHTML = '<div class="cart-checklist__status">' + escapeHtml(status) + '</div>';
+                    checklistEl.classList.remove('d-none');
+                }
             }
             if (readyNote) {
-                if (readyCount === 0) {
+                if (readyCount > 0 && missing === 0) {
                     readyNote.classList.remove('d-none');
-                    readyNote.innerHTML = missing === 1
-                        ? 'Add a document to this website before checkout. You can keep browsing and finish later.'
-                        : ('Add documents to at least one website before checkout. You can keep browsing and finish later.');
-                } else if (missing > 0) {
-                    readyNote.classList.remove('d-none');
-                    readyNote.innerHTML = readyCount + ' ready to pay (€' + readyTotal.toFixed(2) + '). '
-                        + missing + ' without documents stay in your cart.';
+                    readyNote.textContent = 'Articles attached — proceed to pay, or keep browsing.';
                 } else {
-                    readyNote.classList.remove('d-none');
-                    readyNote.textContent = 'Documents attached — proceed to pay, or keep browsing to add more sites.';
+                    readyNote.classList.add('d-none');
+                    readyNote.textContent = '';
                 }
             }
             if (proceedBtn) {
                 // Checkout only for sites that are ready and need payment.
+                proceedBtn.classList.remove('d-none');
                 proceedBtn.disabled = readyCount === 0;
                 if (readyCount > 0 && missing > 0) {
                     proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Checkout ' + readyCount + ' ready site' + (readyCount === 1 ? '' : 's');
-                } else if (readyCount > 0) {
-                    proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Proceed to Checkout';
                 } else {
                     proceedBtn.innerHTML = '<i class="fa fa-credit-card"></i> Proceed to Checkout';
                 }
@@ -702,9 +731,42 @@
             if (proceedHint) {
                 proceedHint.classList.toggle('d-none', readyCount > 0);
             }
+            if (totalLabel) {
+                totalLabel.textContent = readyCount > 0 && missing === 0 ? 'Total' : 'Pay now';
+            }
+            if (scheduleHint) {
+                if (cartSchedule && cartSchedule.label) {
+                    const href = cartSchedule.checkout_url || @json(route('advertiser.checkout'));
+                    scheduleHint.innerHTML = escapeHtml(cartSchedule.label).replace(
+                        'change at checkout',
+                        '<a href="' + href + '">change at checkout</a>'
+                    );
+                    scheduleHint.classList.remove('d-none');
+                    scheduleHint.hidden = false;
+                } else {
+                    scheduleHint.classList.add('d-none');
+                    scheduleHint.hidden = true;
+                    scheduleHint.textContent = '';
+                }
+            }
+            if (heldNote) {
+                if (readyCount === 0) {
+                    heldNote.classList.remove('d-none');
+                    heldNote.textContent = 'In cart €' + cartTotal.toFixed(2);
+                } else if (missing > 0) {
+                    heldNote.classList.remove('d-none');
+                    heldNote.textContent = missing + ' site' + (missing === 1 ? '' : 's')
+                        + ' stay' + (missing === 1 ? 's' : '') + ' in cart (€' + heldTotal.toFixed(2) + ')';
+                } else {
+                    heldNote.classList.add('d-none');
+                    heldNote.textContent = '';
+                }
+            }
             
             sortedCart.forEach((item) => {
                 const itemKey = getCartItemKey(item);
+                const itemKeyAttr = escapeHtml(itemKey);
+                const sensitiveAttr = escapeHtml(item.sensitive_type || '');
                 const siteName = item.name || 'Website';
                 const sensitiveDisplay = item.sensitive_type ? 
                     `<div class="cart-item-sensitive"><small>+ ${escapeHtml(item.sensitive_type)} (€${(parseFloat(item.additional_price) || 0).toFixed(2)})</small></div>` : '';
@@ -718,26 +780,24 @@
                     ? `<div class="cart-item-social"><small>Social: ${escapeHtml(socialList.map((c) => c === 'x' ? 'X' : (c.charAt(0).toUpperCase() + c.slice(1))).join(', '))}</small></div>`
                     : '';
                 const placementIds = lineContentIds(item);
+                const qty = Math.max(1, parseInt(item.quantity, 10) || 1);
                 let articleBlock = '';
                 if (approvedArticles.length === 0 && placementIds.every((id) => !id)) {
                     articleBlock = `
-                        <div class="cart-item-article">
-                            <div class="cart-item-order-label">
-                                <span class="cart-item-order-kicker">Order document</span>
-                                <strong>${escapeHtml(siteName)}</strong>
-                            </div>
+                        <div class="cart-item-article needs-document">
                             <div class="cart-item-article-empty">
-                                No approved document yet.
-                                <a href="${contentLibraryUploadUrl}">Upload a .docx in Content Library</a>, then attach it to this website.
+                                No approved article.
+                                <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a>
                             </div>
                         </div>`;
                 } else {
                     articleBlock = placementIds.map((selectedId, copyIndex) => {
                         const options = articlesForCartPlacement(item, copyIndex);
-                        const orderLabel = placementIds.length > 1
-                            ? `Article ${copyIndex + 1} of ${placementIds.length} · ${siteName}`
-                            : `Document for · ${siteName}`;
-                        let opts = `<option value="">— Choose article ${placementIds.length > 1 ? (copyIndex + 1) + ' of ' + placementIds.length : 'for this order'} —</option>`;
+                        const slotLabel = placementIds.length > 1
+                            ? `Article ${copyIndex + 1} of ${placementIds.length}`
+                            : (selectedId ? 'Attached' : 'Add article');
+                        const selectId = 'cart-doc-' + itemKey.replace(/[^a-zA-Z0-9_-]/g, '-') + '-' + copyIndex;
+                        let opts = `<option value="">— Choose ${placementIds.length > 1 ? 'article ' + (copyIndex + 1) + ' of ' + placementIds.length : 'article'} —</option>`;
                         options.forEach((article) => {
                             const fits = articleFitsSiteLanguages(article, siteLanguageCodes(item));
                             const label = (article.title || 'Document')
@@ -751,23 +811,22 @@
                             opts += `<option value="${selectedId}" selected>Assigned document #${selectedId}</option>`;
                         }
                         const emptyHint = options.length === 0 && !selectedId
-                            ? `<div class="cart-item-article-empty mt-1">Need another document? <a href="${contentLibraryUploadUrl}">Upload in Content Library</a> — each website order needs its own.</div>`
+                            ? `<div class="cart-item-article-empty mt-1">Need another article? <a class="cart-item-upload-link cart-item-upload-link--primary" href="${contentLibraryUploadUrl}">Upload article</a></div>`
                             : '';
                         const langNote = item.language_note
                             ? `<div class="cart-item-language-note" title="Preferred match is the same language as the site">${escapeHtml(item.language_note)}</div>`
                             : '';
-                        const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">Upload new document</a>`;
+                        const uploadLink = `<a class="cart-item-upload-link" href="${contentLibraryUploadUrl}">Upload new</a>`;
                         return `
                         <div class="cart-item-article ${selectedId ? 'is-assigned' : 'needs-document'}">
                             <div class="cart-item-order-label">
-                                <span class="cart-item-order-kicker">${selectedId ? 'Document attached' : 'Add document'}</span>
-                                <strong>${escapeHtml(orderLabel)}</strong>
+                                <span class="cart-item-order-kicker">${escapeHtml(slotLabel)}</span>
                             </div>
-                            <label class="visually-hidden" for="cart-doc-${item.id}-${copyIndex}">Document for ${escapeHtml(siteName)}</label>
-                            <select id="cart-doc-${item.id}-${copyIndex}"
+                            <label class="visually-hidden" for="${selectId}">Article for ${escapeHtml(siteName)}</label>
+                            <select id="${selectId}"
                                     class="cart-article-select"
                                     data-id="${item.id}"
-                                    data-sensitive-type="${item.sensitive_type || ''}"
+                                    data-sensitive-type="${sensitiveAttr}"
                                     data-homepage-days="${cartHomepageParam(item)}"
                                     data-copy-index="${copyIndex}"
                                     data-prev-value="${selectedId || ''}">
@@ -781,9 +840,12 @@
                         </div>`;
                     }).join('');
                 }
+                const qtyNote = qty > 1
+                    ? `<div class="cart-item-qty-note">${qty} placements · ${qty} articles</div>`
+                    : '';
                 
                 html += `
-                    <div class="cart-item" data-key="${itemKey}">
+                    <div class="cart-item" data-key="${itemKeyAttr}">
                         <div class="cart-item-top">
                             <div class="cart-item-info">
                                 <div class="cart-item-name">${escapeHtml(siteName)}</div>
@@ -791,17 +853,18 @@
                                 ${homepageDisplay}
                                 ${socialDisplay}
                                 <div class="cart-item-price">€${(parseFloat(item.price) || 0).toFixed(2)} each</div>
+                                ${qtyNote}
                             </div>
                             <div class="cart-item-quantity">
-                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease quantity">
+                                <button type="button" class="decrease-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Decrease placements" title="Placements — each needs its own article">
                                     <i class="fa fa-minus" aria-hidden="true"></i>
                                 </button>
-                                <span class="quantity-number" aria-label="Quantity ${item.quantity}">${item.quantity}</span>
-                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase quantity">
+                                <span class="quantity-number" aria-label="Placements ${item.quantity}">${item.quantity}</span>
+                                <button type="button" class="increase-qty" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Increase placements — each needs its own article" title="Placements — each needs its own article">
                                     <i class="fa fa-plus" aria-hidden="true"></i>
                                 </button>
                             </div>
-                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${item.sensitive_type || ''}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
+                            <button type="button" class="cart-item-remove" data-id="${item.id}" data-sensitive-type="${sensitiveAttr}" data-homepage-days="${cartHomepageParam(item)}" aria-label="Remove ${escapeHtml(siteName)} from cart">
                                 <i class="fa fa-times" aria-hidden="true"></i>
                             </button>
                         </div>
@@ -812,7 +875,13 @@
             container.innerHTML = html;
         }
         
-        document.getElementById('cartTotalAmount').innerHTML = `€${cartTotal.toFixed(2)}`;
+        const payEl = document.getElementById('cartTotalAmount');
+        if (payEl) {
+            const payNow = cart.length === 0 ? 0 : cart
+                .filter((item) => lineFullyAssigned(item))
+                .reduce((sum, item) => sum + ((parseFloat(item.price) || 0) * (parseInt(item.quantity, 10) || 0)), 0);
+            payEl.innerHTML = `€${payNow.toFixed(2)}`;
+        }
     }
     
     // Escape HTML

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\ContentModeration\ContentModerationEngine;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ArticleLanguageGuard;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use PHPUnit\Framework\TestCase;
@@ -39,6 +40,17 @@ class ContentLibraryModerationUxTest extends TestCase
         $normalized = ArticlePreviewHtml::normalize($html);
         $this->assertStringContainsString('src="/storage/content-articles/1/a.png"', $normalized);
         $this->assertStringContainsString('<img', $normalized);
+    }
+
+    public function test_html_sanitizer_keeps_media_fallback_images_as_storage_paths(): void
+    {
+        $sanitizer = new ArticleHtmlSanitizer;
+        $clean = $sanitizer->sanitize(
+            '<p>Body</p><p><img src="/media/content-articles/1/a.png" alt="Chart"></p>'
+        );
+
+        $this->assertStringContainsString('src="/storage/content-articles/1/a.png"', $clean);
+        $this->assertStringNotContainsString('src="/media/content-articles/1/a.png"', $clean);
     }
 
     public function test_normalize_strips_legacy_detected_link_footer(): void

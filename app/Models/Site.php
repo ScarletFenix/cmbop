@@ -27,6 +27,7 @@ class Site extends Model
         'publisher_id',
         'publisher_accepted_at',
         'assigned_by_user_id',
+        'agency_site_import_id',
         'site_name',
         'site_url',
         'site_image', // ADDED - for storing site image path
@@ -62,6 +63,10 @@ class Site extends Model
         'homepage_placement_prices',
         'social_promotion',
         'verified',
+        'verified_at',
+        'verify_token',
+        'verify_token_created_at',
+        'verify_method',
         'active',
         'archived_at',
         'owner_id',
@@ -130,161 +135,12 @@ class Site extends Model
         'status_reason_at' => 'datetime',
     ];
 
-    public function awaitsPublisherDetails(): bool
-    {
-        return $this->onboarding_status === self::ONBOARDING_AWAITING_DETAILS;
-    }
-
-    public function hasDetailsComplete(): bool
-    {
-        return $this->onboarding_status === self::ONBOARDING_DETAILS_COMPLETE;
-    }
-
     /**
      * Bulk draft still owned by the publisher (filling forms or reviewing before submit).
      */
     public function isPendingPublisherBulkSubmit(): bool
     {
         return $this->awaitsPublisherDetails() || $this->hasDetailsComplete();
-    }
-
-    /**
-     * Whether required listing details look complete (used to heal stale awaiting_details).
-     * example_url is optional — publishers often leave it blank.
-     */
-    public function hasCompletedPublisherDetails(): bool
-    {
-        $description = trim((string) ($this->description ?? ''));
-        $niches = collect($this->categories_array ?? [])
-            ->map(fn ($v) => trim((string) $v))
-            ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
-            ->values()
-            ->all();
-
-        if (strlen($description) < 50) {
-            return false;
-        }
-
-        if (str_starts_with($description, 'Please replace')) {
-            return false;
-        }
-
-        if ($niches === []) {
-            return false;
-        }
-
-        if (trim((string) ($this->turnaround_time ?? '')) === '') {
-            return false;
-        }
-
-        if (trim((string) ($this->publication_time ?? '')) === '') {
-            return false;
-        }
-
-        if (trim((string) ($this->link_type ?? '')) === '') {
-            return false;
-        }
-
-        return true;
-    }
-
-    /**
-     * Promote stale bulk drafts to ready_for_review when details are already filled.
-     */
-    public function promoteFromAwaitingDetailsIfComplete(): bool
-    {
-        if (! $this->awaitsPublisherDetails()) {
-            return false;
-        }
-
-        if (! $this->hasCompletedPublisherDetails()) {
-            return false;
-        }
-
-        return $this->clearAwaitingDetailsOnboarding();
-    }
-
-    /**
-     * Admin explicit approve/activate: drop the awaiting_details lock.
-     */
-    public function clearAwaitingDetailsForAdmin(): bool
-    {
-        if (! $this->awaitsPublisherDetails()) {
-            return false;
-        }
-
-        return $this->clearAwaitingDetailsOnboarding();
-    }
-
-    private function clearAwaitingDetailsOnboarding(): bool
-    {
-        $ok = $this->markReadyForAdminReview();
-
-        if ($ok && $this->bulk_site_request_id) {
-            $this->bulkSiteRequest?->refreshProgressStatus();
-        }
-
-        return $ok;
-    }
-
-    /**
-     * Move a bulk draft into the admin review queue.
-     * Hostinger may still have a narrow ENUM/VARCHAR that rejects ready_for_review;
-     * NULL is treated as queue-eligible by needsAdminReview().
-     */
-    public function markReadyForAdminReview(): bool
-    {
-        self::ensureOnboardingStatusColumnAcceptsValues();
-
-        $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
-
-        try {
-            $this->save();
-
-            return true;
-        } catch (\Throwable $e) {
-            if (! str_contains($e->getMessage(), 'onboarding_status')) {
-                throw $e;
-            }
-
-            Log::warning('Could not set onboarding_status=ready_for_review; falling back to null', [
-                'site_id' => $this->id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $this->onboarding_status = null;
-            $this->save();
-
-            return true;
-        }
-    }
-
-    public function markDetailsComplete(): bool
-    {
-        self::ensureOnboardingStatusColumnAcceptsValues();
-
-        $previous = $this->onboarding_status;
-        $this->onboarding_status = self::ONBOARDING_DETAILS_COMPLETE;
-
-        try {
-            $this->save();
-
-            return true;
-        } catch (\Throwable $e) {
-            if (! str_contains($e->getMessage(), 'onboarding_status')) {
-                throw $e;
-            }
-
-            Log::warning('Could not set onboarding_status=details_complete', [
-                'site_id' => $this->id,
-                'error' => $e->getMessage(),
-                'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
-            ]);
-
-            $this->onboarding_status = $previous;
-
-            return false;
-        }
     }
 
     /**
@@ -393,34 +249,6 @@ class Site extends Model
                 'hint' => 'Run database/sql/fix_sites_onboarding_status.sql in phpMyAdmin',
             ]);
         }
-    }
-
-    /**
-     * Marketing may delete pending / not-live sites only (never verified or active portal listings).
-     */
-    public function canBeDeletedByMarketing(): bool
-    {
-        return ! (bool) $this->verified && ! (bool) $this->active;
-    }
-
-    public function isReadyForAdminReview(): bool
-    {
-        // details_complete = publisher preview stage; not admin-queueable yet.
-        return $this->onboarding_status === null
-            || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
-    }
-
-    /**
-     * Open admin review queue: not verified, not live, details ready
-     * (excludes awaiting_details and details_complete publisher drafts).
-     * Cleared from the queue when admin verifies and/or activates (or deletes).
-     */
-    public function needsAdminReview(): bool
-    {
-        return ! (bool) $this->verified
-            && ! (bool) $this->active
-            && $this->isReadyForAdminReview()
-            && $this->isAcceptedByPublisher();
     }
 
     /**
@@ -789,35 +617,18 @@ class Site extends Model
         return $this->belongsTo(User::class, 'publisher_id');
     }
 
-    public function assignedBy()
+    public function agencySiteImport()
     {
-        return $this->belongsTo(User::class, 'assigned_by_user_id');
+        return $this->belongsTo(AgencySiteImport::class, 'agency_site_import_id');
     }
 
-    /**
-     * Staff-assigned listing waiting for publisher Accept/Decline.
-     */
-    public function isPendingPublisherAcceptance(): bool
+    public function isFromAgencyCsvImport(): bool
     {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
+        if (! static::hasSitesColumn('agency_site_import_id')) {
             return false;
         }
 
-        return $this->publisher_accepted_at === null
-            && filled($this->assigned_by_user_id);
-    }
-
-    public function isAcceptedByPublisher(): bool
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return true;
-        }
-
-        if ($this->publisher_accepted_at !== null) {
-            return true;
-        }
-
-        return blank($this->assigned_by_user_id);
+        return (int) ($this->agency_site_import_id ?? 0) > 0;
     }
 
     public function awaitsPublisherDetails(): bool
@@ -906,113 +717,6 @@ class Site extends Model
     }
 
     /**
-     * Hostinger may miss the status_reason migration — deactivate/unverify then 500s.
-     */
-    public static function ensureStatusReasonColumns(): bool
-    {
-        static $ensured = false;
-        if ($ensured) {
-            return Schema::hasColumn('sites', 'status_reason')
-                && Schema::hasColumn('sites', 'status_reason_at')
-                && Schema::hasColumn('sites', 'status_reason_by');
-        }
-        $ensured = true;
-
-        try {
-            if (! Schema::hasTable('sites')) {
-                return false;
-            }
-
-            $driver = Schema::getConnection()->getDriverName();
-            $needsReason = ! Schema::hasColumn('sites', 'status_reason');
-            $needsAt = ! Schema::hasColumn('sites', 'status_reason_at');
-            $needsBy = ! Schema::hasColumn('sites', 'status_reason_by');
-
-            if (! $needsReason && ! $needsAt && ! $needsBy) {
-                return true;
-            }
-
-            if (in_array($driver, ['mysql', 'mariadb'], true)) {
-                if ($needsReason) {
-                    DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason` TEXT NULL');
-                }
-                if ($needsAt) {
-                    DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason_at` TIMESTAMP NULL DEFAULT NULL');
-                }
-                if ($needsBy) {
-                    try {
-                        DB::statement('ALTER TABLE `sites` ADD COLUMN `status_reason_by` BIGINT UNSIGNED NULL DEFAULT NULL');
-                        DB::statement('ALTER TABLE `sites` ADD CONSTRAINT `sites_status_reason_by_foreign` FOREIGN KEY (`status_reason_by`) REFERENCES `users` (`id`) ON DELETE SET NULL');
-                    } catch (\Throwable $e) {
-                        Log::warning('sites.status_reason_by added without FK or already present', [
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
-            } else {
-                Schema::table('sites', function ($table) use ($needsReason, $needsAt, $needsBy) {
-                    if ($needsReason) {
-                        $table->text('status_reason')->nullable();
-                    }
-                    if ($needsAt) {
-                        $table->timestamp('status_reason_at')->nullable();
-                    }
-                    if ($needsBy) {
-                        $table->foreignId('status_reason_by')->nullable()->constrained('users')->nullOnDelete();
-                    }
-                });
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Could not add sites status_reason columns', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-
-        return Schema::hasColumn('sites', 'status_reason')
-            && Schema::hasColumn('sites', 'status_reason_at')
-            && Schema::hasColumn('sites', 'status_reason_by');
-    }
-
-    /**
-     * Production sometimes has ENUM or VARCHAR(16) that rejects ready_for_review (17 chars).
-     */
-    public static function ensureOnboardingStatusColumnAcceptsValues(): void
-    {
-        static $ensured = false;
-        if ($ensured) {
-            return;
-        }
-        $ensured = true;
-
-        try {
-            $driver = Schema::getConnection()->getDriverName();
-            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
-                return;
-            }
-
-            if (! Schema::hasTable('sites') || ! Schema::hasColumn('sites', 'onboarding_status')) {
-                return;
-            }
-
-            $row = DB::selectOne("SHOW COLUMNS FROM `sites` WHERE Field = 'onboarding_status'");
-            $type = strtolower((string) ($row->Type ?? ''));
-
-            $needsWiden = str_starts_with($type, 'enum(')
-                || (preg_match('/^varchar\((\d+)\)$/', $type, $m) === 1 && (int) $m[1] < 32);
-
-            if (! $needsWiden) {
-                return;
-            }
-
-            DB::statement('ALTER TABLE `sites` MODIFY `onboarding_status` VARCHAR(32) NULL');
-        } catch (\Throwable $e) {
-            Log::warning('Could not widen sites.onboarding_status', [
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    /**
      * Marketing may delete pending / not-live sites only (never verified or active portal listings).
      */
     public function canBeDeletedByMarketing(): bool
@@ -1054,29 +758,23 @@ class Site extends Model
             return false;
         }
 
-        $this->onboarding_status = self::ONBOARDING_READY_FOR_REVIEW;
+        $ok = $this->markReadyForAdminReview();
 
-        try {
-            $this->save();
-        } catch (\Throwable $e) {
-            if (! str_contains($e->getMessage(), 'onboarding_status')) {
-                throw $e;
-            }
-
-            $this->onboarding_status = null;
-            $this->save();
+        if ($ok && $this->bulk_site_request_id) {
+            $this->bulkSiteRequest?->refreshProgressStatus();
         }
 
-        return true;
+        return $ok;
     }
 
     /**
      * Whether required listing details look complete (used to heal stale awaiting_details).
+     * example_url is optional — publishers often leave it blank.
      */
     public function hasCompletedPublisherDetails(): bool
     {
         $description = trim((string) ($this->description ?? ''));
-        $niches = collect(is_array($this->categories) ? $this->categories : [])
+        $niches = collect($this->categories_array ?? [])
             ->map(fn ($v) => trim((string) $v))
             ->filter(fn ($v) => $v !== '' && strtolower($v) !== 'pending')
             ->values()
@@ -1115,12 +813,15 @@ class Site extends Model
             return true;
         }
 
+        // details_complete = publisher preview stage; not admin-queueable yet.
         return $this->onboarding_status === null
             || $this->onboarding_status === self::ONBOARDING_READY_FOR_REVIEW;
     }
 
     /**
-     * Open admin review queue: not verified, not live, accepted by publisher.
+     * Open admin review queue: not verified, not live, details ready
+     * (excludes awaiting_details and details_complete publisher drafts).
+     * Cleared from the queue when admin verifies and/or activates (or deletes).
      */
     public function needsAdminReview(): bool
     {
@@ -1128,11 +829,6 @@ class Site extends Model
             && ! (bool) $this->active
             && $this->isReadyForAdminReview()
             && $this->isAcceptedByPublisher();
-    }
-
-    public function hasMarketplaceCountry(): bool
-    {
-        return $this->countryCodes() !== [];
     }
 
     /**
@@ -1246,35 +942,6 @@ class Site extends Model
         }
 
         return blank($this->assigned_by_user_id);
-    }
-
-    /**
-     * Sites the publisher has accepted (or created themselves).
-     */
-    public function scopeAcceptedByPublisher($query)
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return $query;
-        }
-
-        return $query->where(function ($q) {
-            $q->whereNotNull('publisher_accepted_at')
-                ->orWhereNull('assigned_by_user_id');
-        });
-    }
-
-    /**
-     * Staff-assigned sites awaiting Accept/Decline.
-     */
-    public function scopePendingPublisherAcceptance($query)
-    {
-        if (! static::hasSitesColumn('publisher_accepted_at')) {
-            return $query->whereRaw('1 = 0');
-        }
-
-        return $query
-            ->whereNull('publisher_accepted_at')
-            ->whereNotNull('assigned_by_user_id');
     }
 
     public function claims()

@@ -53,7 +53,7 @@ class ContentModerationController extends Controller
             'categories' => ['nullable', 'array'],
             'categories.*' => ['string'],
             'allowed_extensions' => ['nullable', 'string'],
-            'max_kilobytes' => ['nullable', 'integer', 'min:100', 'max:51200'],
+            'max_kilobytes' => ['nullable', 'integer', 'min:10240', 'max:51200'],
             'scheduling_enabled' => ['sometimes', 'boolean'],
             'uploads_enabled' => ['sometimes', 'boolean'],
             'require_same_language' => ['sometimes', 'boolean'],
@@ -87,7 +87,10 @@ class ContentModerationController extends Controller
         $uploadOverride['allowed_extensions'] = ['docx'];
         $uploadOverride['preferred_extension'] = 'docx';
         $uploadOverride['enabled'] = $request->boolean('uploads_enabled');
-        $uploadOverride['max_kilobytes'] = (int) ($data['max_kilobytes'] ?? 5120);
+        $uploadOverride['max_kilobytes'] = max(
+            ContentUploadService::MAX_KILOBYTES,
+            (int) ($data['max_kilobytes'] ?? ContentUploadService::MAX_KILOBYTES)
+        );
         $uploadOverride['retention_months'] = (int) ($data['retention_months'] ?? 6);
         $uploadOverride['scheduling'] = $uploadOverride['scheduling'] ?? config('content_upload.scheduling', []);
         $uploadOverride['scheduling']['enabled'] = $request->boolean('scheduling_enabled');

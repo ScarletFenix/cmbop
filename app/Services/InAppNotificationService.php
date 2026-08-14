@@ -2206,6 +2206,8 @@ class InAppNotificationService
                 $q->where('status', InAppNotification::STATUS_ARCHIVED)
                     ->orWhereNotNull('archived_at');
             });
+        } elseif ($status === 'inbox') {
+            // Show-all history: include archived, exclude only soft-deleted.
         } else {
             // active = not archived / not soft-deleted (soft deletes automatic)
             $query->where(function ($q) {

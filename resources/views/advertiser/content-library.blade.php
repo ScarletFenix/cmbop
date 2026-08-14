@@ -59,7 +59,7 @@
         ],
         'needs_fix' => [
             'label' => 'Needs corrections',
-            'count' => (int) ($moderationCounts['needs_fix'] ?? $availabilityCounts['needs_fix'] ?? 0),
+            'count' => (int) ($availabilityCounts['needs_fix'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'needs_fix'],
         ],
         'completed' => [
@@ -120,6 +120,7 @@
         return ['category' => $category, 'label' => $label];
     };
 @endphp
+<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <link href="{{ asset('assets/css/content-library.css') }}?v={{ @filemtime(public_path('assets/css/content-library.css')) ?: '1' }}" rel="stylesheet">
 
 
@@ -127,32 +128,21 @@
     @include('advertiser.partials.ordering-path', [
         'step' => 3,
         'title' => 'Place a guest post · Content',
-        'subtitle' => 'One job here: upload and approve articles. Any approved article can be placed on any catalog site.',
+        'subtitle' => 'Upload and approve articles here. You can also browse publishers first and upload when you pick a site.',
         'linkAll' => true,
         'contentRoute' => route('advertiser.content-library'),
-        'actions' => '<a href="'.e(route('advertiser.catalog')).'" class="btn btn-sm btn-outline-secondary">Browse publishers</a>',
     ])
 
     <div class="mb-3">
         <h2 class="mb-1 fw-semibold">Content Library</h2>
-        <p class="text-muted mb-0 small">
-            Upload a .docx (choose language and country yourself) → wait for approval → browse any publishers → assign in cart → pay.
-            Multi-site orders need a different approved article for each website — language does not have to match the site.
-        </p>
-        <div class="library-page-actions upload-zone">
-            @if($uploadsEnabled)
-                <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal" id="openUploadModalBtn">
-                    <i class="fa fa-upload me-1"></i> Upload article
-                </button>
-            @else
-                <button type="button" class="btn btn-upload" id="openUploadModalBtn" disabled title="Uploads are temporarily turned off">
-                    <i class="fa fa-upload me-1"></i> Uploads disabled
-                </button>
-            @endif
-            <a href="{{ route('advertiser.catalog') }}" class="btn btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn">
-                <i class="fa fa-store me-1" aria-hidden="true"></i> Browse publishers
+        <div class="library-page-actions">
+            @include('advertiser.partials.upload-article-button', [
+                'uploadButtonId' => 'openUploadModalBtn',
+                'uploadsEnabled' => $uploadsEnabled,
+            ])
+            <a href="{{ route('advertiser.catalog') }}" class="btn btn-link btn-sm library-browse-link" id="libraryBrowsePublishersBtn">
+                Browse publishers
             </a>
-            <span class="small text-muted mb-0">.docx only · pick language &amp; country before upload · use Order on a row to place an approved article</span>
         </div>
     </div>
 
@@ -168,8 +158,8 @@
             <i class="fa fa-hourglass-half me-1" aria-hidden="true"></i>
             {{ $nearExpiryCount }} unused article{{ $nearExpiryCount === 1 ? '' : 's' }}
             expire{{ $nearExpiryCount === 1 ? 's' : '' }} within {{ (int) ($nearExpiryDays ?? 7) }} days.
-            Order or download them before automatic purge removes unused expired files
-            ({{ (int) ($retentionMonths ?? 6) }}-month retention — articles linked to orders are never purged).
+            Order them before the original Word file is removed — a preview stays in Expired
+            (kept {{ (int) ($retentionMonths ?? 6) }} months; articles linked to orders keep the original file).
         </div>
     @endif
     @unless($uploadsEnabled)
@@ -178,20 +168,20 @@
         </div>
     @endunless
 
-    <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar row g-2 align-items-end mb-2">
+    <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar mb-3">
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
         <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
-        <div class="col-md-3 col-lg-3">
-            <label class="form-label small text-muted mb-1" for="librarySearchInput">Search</label>
+        <div class="library-filter-bar__search">
+            <label class="visually-hidden" for="librarySearchInput">Search</label>
             <input type="search" name="q" id="librarySearchInput" class="form-control form-control-sm"
-                   value="{{ $searchQuery ?? '' }}" placeholder="Title or filename"
+                   value="{{ $searchQuery ?? '' }}" placeholder="Search title or filename"
                    title="Results update as you type" autocomplete="off" enterkeyhint="search"
                    data-slb-live-search="form">
         </div>
-        <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Country</label>
-            <select name="country" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All</option>
+        <div class="library-filter-bar__select">
+            <label class="visually-hidden" for="libraryCountryFilter">Country</label>
+            <select name="country" id="libraryCountryFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
                 @foreach(($groupedByCountry ?? []) as $countryCode => $count)
                     <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
                         {{ strtoupper($countryCode) }} ({{ $count }})
@@ -199,10 +189,10 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-6 col-md-2">
-            <label class="form-label small text-muted mb-1">Language</label>
-            <select name="language" class="form-select form-select-sm" onchange="this.form.submit()">
-                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All</option>
+        <div class="library-filter-bar__select">
+            <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
+            <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+                <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
                 @foreach(($groupedByLanguage ?? []) as $langCode => $count)
                     <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
                         {{ strtoupper($langCode) }} ({{ $count }})
@@ -210,20 +200,26 @@
                 @endforeach
             </select>
         </div>
-        <div class="col-auto">
-            <button type="submit" class="btn btn-sm btn-primary">Apply</button>
-            @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+        @if(!empty($searchQuery) || ($activeLibraryChip ?? 'approved') !== 'approved' || ($countryFilter ?? 'all') !== 'all' || ($languageFilter ?? 'all') !== 'all')
+            <div class="library-filter-bar__actions">
                 <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
-            @endif
-        </div>
+            </div>
+        @endif
+        <button type="submit" class="visually-hidden">Search</button>
     </form>
 
-    <div class="library-status-row" role="group" aria-label="Library status filter">
+    <nav class="library-status-row" aria-label="Library status filter">
         @foreach($libraryStatusChips as $key => $chip)
+            @php
+                $chipCount = (int) ($chip['count'] ?? 0);
+                $chipActive = $activeLibraryChip === $key;
+            @endphp
             <a href="{{ $libraryRoute($chip['params']) }}"
-               class="library-status-box library-status-box--{{ $key }} @if($activeLibraryChip === $key) is-active @endif"
-               @if($activeLibraryChip === $key) aria-current="true" @endif>
+               class="library-status-box library-status-box--{{ $key }} @if($chipActive) is-active @endif"
+               @if($chipActive) aria-current="page" @endif
+               aria-label="{{ $chip['label'] }}, {{ $chipCount }} {{ $chipCount === 1 ? 'article' : 'articles' }}">
                 <span class="library-status-box__main">
+                    <span class="library-status-dot" aria-hidden="true"></span>
                     <span>{{ $chip['label'] }}</span>
                     @if($key === 'approved' && (int) ($chip['evaluating'] ?? 0) > 0)
                         <span class="library-eval-badge" title="Articles still being checked">
@@ -231,10 +227,10 @@
                         </span>
                     @endif
                 </span>
-                <span class="mod-count">{{ $chip['count'] }}</span>
+                <span class="mod-count{{ $chipCount === 0 ? ' is-zero' : '' }}">{{ $chipCount }}</span>
             </a>
         @endforeach
-    </div>
+    </nav>
 
     <div class="library-table border shadow-sm">
         <div class="table-responsive">
@@ -289,6 +285,9 @@
                             <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
                                 {{ $submission->title ?: $submission->original_filename }}
                             </div>
+                            @if($submission->isJustApproved() && ($justApprovedHint = $submission->justApprovedLabel()))
+                                <div class="library-just-approved-hint">{{ $justApprovedHint }}</div>
+                            @endif
                             @if($availability === 'published')
                                 <div class="library-live-link">
                                     <div class="library-pub-details">
@@ -365,7 +364,11 @@
                                     @endif
                                     </div>
                                 </div>
-                            @elseif($availability === 'available' && $submission->expires_at)
+                                @elseif($availability === 'expired')
+                                    <div class="library-expiry-hint">
+                                        Preview only — original file removed
+                                    </div>
+                                @elseif($availability === 'available' && $submission->expires_at)
                                 @php
                                     $daysLeft = $submission->daysUntilExpiry();
                                     $near = $submission->isNearExpiry((int) ($nearExpiryDays ?? 7));
@@ -379,7 +382,7 @@
                                         @else
                                             Expires in {{ $daysLeft }} days
                                         @endif
-                                        <span class="text-muted">· unused files are purged after expiry</span>
+                                        <span class="text-muted">· unused originals are removed after expiry; preview stays</span>
                                     </div>
                                 @endif
                             @endif
@@ -402,8 +405,10 @@
                         </td>
                         <td>
                             <div class="library-status-wrap">
-                                <span class="library-status library-status--{{ $statusCategory }}">{{ $label }}</span>
-                                @if($statusCategory === 'completed')
+                                <span class="library-status library-status--{{ $statusCategory }}"><span class="library-status-dot" aria-hidden="true"></span>{{ $label }}</span>
+                                @if($submission->isJustApproved())
+                                    <span class="library-just-approved">Just approved</span>
+                                @elseif($statusCategory === 'completed')
                                     <span class="library-status-hint">Done — not orderable</span>
                                 @elseif($availability === 'in_progress')
                                     <span class="library-status-hint">In placement</span>
@@ -446,9 +451,11 @@
                                                 </button>
                                             </li>
                                         @endif
+                                        @if($submission->canDownloadOriginal())
                                         <li>
                                             <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
                                         </li>
+                                        @endif
                                     </ul>
                                 </div>
                             </div>
@@ -487,7 +494,7 @@
                                                 </button>
                                             </li>
                                         @endif
-                                        @if(!$submission->isInUse() && !$submission->isArchived())
+                                        @if($submission->canEditArticle())
                                             <li>
                                                 <button type="button" class="dropdown-item js-open-editor"
                                                         data-submission-id="{{ $submission->id }}">
@@ -495,10 +502,12 @@
                                                 </button>
                                             </li>
                                         @endif
+                                        @if($submission->canDownloadOriginal())
                                         <li>
                                             <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
                                         </li>
-                                        @if(!$submission->isInUse() && !$submission->isArchived())
+                                        @endif
+                                        @if($submission->canEditArticle())
                                             <li>
                                                 <button type="button" class="dropdown-item" onclick="toggleLibraryTitleEdit({{ $submission->id }}, true)">Rename</button>
                                             </li>
@@ -540,18 +549,9 @@
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
-                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                    message="Upload a .docx to get your first approved article. Or browse publishers now and upload when you pick a site."
                                 >
-                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        @if($uploadsEnabled)
-                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                                <i class="fa fa-upload me-1"></i> Upload article
-                                            </button>
-                                        @endif
-                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
-                                            Guided placement
-                                        </a>
-                                    </div>
+                                    @include('advertiser.partials.library-empty-actions', ['uploadsEnabled' => $uploadsEnabled])
                                 </x-ui.empty-state>
                             @elseif(($availabilityFilter ?? 'all') === 'archived')
                                 <x-ui.empty-state
@@ -563,7 +563,7 @@
                                 <x-ui.empty-state
                                     icon="fa-hourglass-end"
                                     title="No expired articles"
-                                    message="Unused articles past their retention date appear here. Automatic purge deletes unused expired files only — articles linked to orders are never removed."
+                                    message="Unused articles past their retention date appear here as preview only — the original file is removed. Articles linked to orders keep the original file."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'completed')
                                 <x-ui.empty-state
@@ -596,18 +596,9 @@
                                 <x-ui.empty-state
                                     icon="fa-file-word"
                                     title="No articles yet"
-                                    message="Upload a .docx here. After approval, assign it in your cart and checkout."
+                                    message="Upload a .docx to get your first approved article. Or browse publishers now and upload when you pick a site."
                                 >
-                                    <div class="d-flex flex-wrap gap-2 justify-content-center">
-                                        @if($uploadsEnabled)
-                                            <button type="button" class="btn btn-upload" data-bs-toggle="modal" data-bs-target="#uploadContentModal">
-                                                <i class="fa fa-upload me-1"></i> Upload article
-                                            </button>
-                                        @endif
-                                        <a href="{{ route('advertiser.wizard.start') }}" class="btn btn-outline-secondary">
-                                            Guided placement
-                                        </a>
-                                    </div>
+                                    @include('advertiser.partials.library-empty-actions', ['uploadsEnabled' => $uploadsEnabled])
                                 </x-ui.empty-state>
                             @endif
                         </td>
@@ -624,60 +615,81 @@
 {{-- Upload modal --}}
 <div class="modal fade" id="uploadContentModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-lg">
-        <form class="modal-content" id="libraryUploadForm">
+        <form class="modal-content" id="libraryUploadForm" method="post" enctype="multipart/form-data">
             <div class="modal-header">
                 <h5 class="modal-title">Upload article</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <x-ui.callout variant="attention" class="ui-callout--sm mb-3">
-                    {{ $uploadCfg['help']['preferred_format'] ?? 'Please upload your article as a Microsoft Word (.docx) document only.' }}
-                    After upload you can preview and edit the article (add/remove images and links) before ordering.
+                @php
+                    $uploadMaxKb = (int) ($uploadCfg['max_kilobytes'] ?? 10240);
+                    $uploadMaxMb = max(1, (int) round($uploadMaxKb / 1024));
+                @endphp
+                <ol class="library-upload-steps mb-3" aria-label="Upload steps">
+                    <li data-upload-step="file" class="is-current">File</li>
+                    <li data-upload-step="market">Market</li>
+                    <li data-upload-step="rights" class="is-pending">Rights</li>
+                </ol>
+                <x-ui.callout variant="info" class="ui-callout--sm mb-3">
+                    Microsoft Word (.docx) only — not PDF, Google Doc, or pasted text.
+                    Max {{ $uploadMaxMb }} MB. Unused articles are kept {{ (int) ($retentionMonths ?? 6) }} months, then the original file is removed and a preview stays in Expired.
+                    Opens in the editor next.
+                    Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
+
                 <div class="mb-3">
-                    <label class="form-label">Title <span class="text-muted">(optional)</span></label>
-                    <input type="text" name="title" class="form-control" maxlength="200" placeholder="Article title"
-                           value="{{ $editSubmission->title ?? '' }}">
+                    <label class="library-dropzone" id="libraryDropzone" for="libraryFileInput">
+                        <input type="file" name="file" id="libraryFileInput" class="visually-hidden"
+                               accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document">
+                        <span class="library-dropzone__idle" id="libraryDropzoneIdle">
+                            <i class="fa fa-file-word" aria-hidden="true"></i>
+                            <strong>Drop a .docx here or click to browse</strong>
+                            <span>Word only — not PDF, Google Doc, or pasted text</span>
+                        </span>
+                        <span class="library-dropzone__file d-none" id="libraryDropzoneFile"></span>
+                    </label>
                 </div>
+
                 <div class="row g-2 mb-3">
                     <div class="col-md-6">
-                        <label class="form-label">Country <span class="text-danger">*</span></label>
+                        <label class="form-label" for="libraryCountry">Country <span class="text-danger">*</span></label>
                         <select name="country" id="libraryCountry" class="form-select" required>
                             <option value="">Select country</option>
                             @foreach(($countries ?? []) as $country)
                                 <option value="{{ strtolower($country->code) }}"
-                                    @selected(strtolower((string) ($editSubmission->country ?? '')) === strtolower($country->code))>
+                                    @selected(strtolower((string) ($editSubmission?->country ?? '')) === strtolower($country->code))>
                                     {{ $country->name }}
                                 </option>
                             @endforeach
                         </select>
-                        <div class="form-text">Pick the market country first.</div>
+                        <div class="form-text">Pick the market country first — language stays closed until you do.</div>
                     </div>
                     <div class="col-md-6">
-                        <label class="form-label">Language <span class="text-danger">*</span></label>
+                        <label class="form-label" for="libraryLanguage">Language <span class="text-danger">*</span></label>
                         <select name="language" id="libraryLanguage" class="form-select" required disabled>
                             <option value="">Select country first</option>
                         </select>
-                        <div class="form-text">Only languages paired with that country (e.g. Germany → German; UAE → Arabic or English).</div>
+                        <div class="form-text" id="libraryLanguageHint">Select a country first, then a paired language (e.g. Germany → German).</div>
                     </div>
                 </div>
-                <div class="mb-3">
-                    <label class="form-label">Microsoft Word document (.docx)</label>
-                    <input type="file" name="file" id="libraryFileInput" class="form-control" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required>
+                <div class="mb-3" id="libraryMarketChipWrap">
+                    <span class="library-market-chip d-none" id="libraryMarketChip"></span>
                 </div>
 
-                @include('advertiser.partials.image-rights-declaration', [
-                    'idPrefix' => 'libraryImageRights',
-                    'submission' => $editSubmission ?? null,
-                ])
+                <div class="mb-3">
+                    <label class="form-label" for="libraryTitleInput">Title <span class="text-muted">(optional)</span></label>
+                    <input type="text" name="title" id="libraryTitleInput" class="form-control" maxlength="200"
+                           placeholder="Defaults to the filename"
+                           value="{{ $editSubmission?->title ?? '' }}">
+                </div>
 
-                <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission->id ?? '' }}">
+                <input type="hidden" name="replace_id" id="replaceIdInput" value="{{ $editSubmission?->id ?? '' }}">
                 <div id="libraryUploadFeedback" class="small" aria-live="polite"></div>
                 <div class="progress d-none mt-2" id="libraryUploadProgress" style="height:6px;"><div class="progress-bar" style="width:0%"></div></div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload &amp; preview</button>
+                <button type="button" class="btn btn-outline-secondary" id="libraryUploadCancelBtn" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" class="btn btn-upload" id="libraryUploadBtn">Upload and edit</button>
             </div>
         </form>
     </div>
@@ -685,7 +697,7 @@
 
 {{-- Docs-style editor modal --}}
 <div class="modal fade" id="articleEditorModal" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-dialog modal-fullscreen">
         <div class="modal-content">
             <div class="modal-header">
                 <div>
@@ -704,6 +716,13 @@
                 </div>
                 <div class="article-docs-shell mb-3">
                     <div id="articleQuillEditor"></div>
+                    <button type="button"
+                            class="btn btn-sm btn-dark article-img-remove d-none"
+                            id="articleImageRemoveBtn"
+                            aria-label="Remove image"
+                            title="Remove image">
+                        <i class="fa fa-trash" aria-hidden="true"></i>
+                    </button>
                 </div>
 
                 {{-- Shown when the article gains images the current declaration does not cover. --}}
@@ -721,7 +740,6 @@
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
                 <button type="button" class="btn btn-outline-primary" id="articleEditorPreviewBtn">Preview</button>
                 <button type="button" class="btn btn-primary" id="articleEditorSaveBtn">Save &amp; re-check</button>
-                <a href="#" class="btn btn-success d-none" id="articleEditorOrderBtn">Order</a>
             </div>
         </div>
     </div>
@@ -737,6 +755,11 @@
                     <div class="small text-muted" id="articlePreviewHeadingHint"></div>
                 </div>
                 <div class="article-preview-toolbar d-flex flex-wrap gap-2">
+                    <button type="button"
+                            class="btn btn-sm btn-primary d-none"
+                            id="articlePreviewEditBtn">
+                        Edit article
+                    </button>
                     <button type="button"
                             class="btn btn-sm btn-outline-primary btn-copy-icon"
                             id="articleCopyHeadingBtn"
@@ -769,7 +792,6 @@
     </div>
 </div>
 
-<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
 <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
@@ -777,18 +799,18 @@ window.ContentLibraryBoot = {
     libraryUpdateUrl: @json(url('/advertiser/content-submissions')),
     libraryContentUrl: @json(url('/advertiser/content-submissions')),
     libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image')),
-    libraryOrderUrlBase: @json(url('/advertiser/content-library')),
     libraryPreviewUrlBase: @json(url('/advertiser/content-submissions')),
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
     libraryCountryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
-    libraryPreferredCountry: @json(strtolower((string) ($editSubmission->country ?? ''))),
-    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission->language ?? ''))),
+    libraryPreferredCountry: @json(strtolower((string) ($editSubmission?->country ?? ''))),
+    libraryPreferredLanguage: @json(strtolower((string) ($editSubmission?->language ?? ''))),
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
     uploadUrl: @json(route('advertiser.content-library.upload')),
     libraryIndexUrl: @json(route('advertiser.content-library')),
     editSubmission: @json($editSubmissionBoot ?? null),
+    maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 10240)),
 };
 </script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>

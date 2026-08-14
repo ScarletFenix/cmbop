@@ -17,6 +17,9 @@ use Symfony\Component\Mime\MimeTypes;
 
 class ContentUploadService
 {
+    /** Product cap for article .docx uploads (10 MB). */
+    public const MAX_KILOBYTES = 10240;
+
     public function __construct(
         private DocumentTextExtractor $extractor,
         private ArticleEvaluationService $evaluation,
@@ -28,10 +31,15 @@ class ContentUploadService
         $override = ContentModerationSetting::getValue('upload_config', []) ?: [];
 
         if (! is_array($override) || $override === []) {
+            $base['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($base['max_kilobytes'] ?? self::MAX_KILOBYTES));
+
             return $base;
         }
 
-        return array_replace_recursive($base, $override);
+        $merged = array_replace_recursive($base, $override);
+        $merged['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($merged['max_kilobytes'] ?? self::MAX_KILOBYTES));
+
+        return $merged;
     }
 
     /**
@@ -83,6 +91,7 @@ class ContentUploadService
         ?string $imageRightsSource = null,
     ): array {
         $cfg = $this->effectiveConfig();
+        $cfg['max_kilobytes'] = $this->effectiveMaxKilobytes($cfg);
         $validationError = $this->validateUpload($file, $cfg);
         if ($validationError !== null) {
             return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Upload rejected', 'message' => $validationError];
@@ -91,6 +100,16 @@ class ContentUploadService
         $marketError = $this->validateMarket($country, $language, $replace);
         if ($marketError !== null) {
             return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Market required', 'message' => $marketError];
+        }
+
+        if ($replace?->isExpired()) {
+            return [
+                'ok' => false,
+                'accepted' => false,
+                'approved' => false,
+                'title' => 'Expired',
+                'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+            ];
         }
 
         $country = strtolower(trim((string) ($country ?: $replace?->country)));
@@ -220,6 +239,8 @@ class ContentUploadService
         ]);
 
         $fresh = $submission->fresh();
+        $this->reconcileImageRightsAfterParse($fresh, $imageRights, $imageRightsSource);
+        $fresh = $fresh->fresh();
         $this->notifyAdvertiserOfEvaluation($fresh, $result);
 
         // Upload was accepted into the library; approval is separate.
@@ -234,6 +255,37 @@ class ContentUploadService
             'links' => $links,
             'has_link' => $firstLink !== null,
         ];
+    }
+
+    /**
+     * Rights are optional on upload. After parse: no images → record "none";
+     * images without own/licensed → clear so the editor asks.
+     */
+    protected function reconcileImageRightsAfterParse(
+        ContentSubmission $submission,
+        ?string $claimed,
+        ?string $source,
+    ): void {
+        if ($submission->hasImages()) {
+            if (in_array($claimed, [ContentSubmission::IMAGE_RIGHTS_OWN, ContentSubmission::IMAGE_RIGHTS_LICENSED], true)) {
+                return;
+            }
+
+            $submission->update([
+                'image_rights' => null,
+                'image_rights_source' => null,
+                'image_rights_declared_at' => null,
+            ]);
+
+            return;
+        }
+
+        $rights = $claimed ?: ContentSubmission::IMAGE_RIGHTS_NONE;
+        $submission->update([
+            'image_rights' => $rights,
+            'image_rights_source' => ContentSubmission::imageRightsNeedsSource($rights) ? $source : null,
+            'image_rights_declared_at' => now(),
+        ]);
     }
 
     /**
@@ -292,13 +344,11 @@ class ContentUploadService
 
     /**
      * Store an inline article image for preview/editor and return a public URL.
+     * May compress to WebP; the original Word file is never rewritten.
      */
     public function storeArticleImage(string $binary, string $ext, string $originalName, User $user): ?string
     {
-        $ext = strtolower(ltrim($ext, '.'));
-        if (! in_array($ext, ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'], true)) {
-            $ext = 'png';
-        }
+        [$binary, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, $ext);
 
         $dir = 'content-articles/'.$user->id;
         $filename = Str::uuid()->toString().'.'.$ext;
@@ -321,6 +371,10 @@ class ContentUploadService
     {
         if ($submission->order_id) {
             return ['ok' => false, 'approved' => false, 'message' => 'This article is already linked to an order and cannot be edited.'];
+        }
+
+        if ($submission->isExpired()) {
+            return ['ok' => false, 'approved' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'];
         }
 
         $sanitizer = new ArticleHtmlSanitizer;
@@ -472,19 +526,73 @@ class ContentUploadService
         return null;
     }
 
+    /**
+     * Article cap is 10 MB. Never advertise less than that (old admin/PHP 2–5 MB clamps).
+     */
+    public function effectiveMaxKilobytes(?array $cfg = null): int
+    {
+        $cfg = $cfg ?? $this->effectiveConfig();
+
+        return max(self::MAX_KILOBYTES, (int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function uploadValidationMessages(?array $cfg = null): array
+    {
+        $mb = max(1, (int) round($this->effectiveMaxKilobytes($cfg) / 1024));
+
+        return [
+            'file.uploaded' => 'The article could not be uploaded. Use a Word .docx under '.$mb.' MB and try again.',
+            'file.extensions' => 'Word .docx only — not PDF, Google Doc, or pasted text.',
+            'file.mimes' => 'Word .docx only — not PDF, Google Doc, or pasted text.',
+            'file.max' => 'That file is over the '.$mb.' MB limit.',
+            'file.required' => 'Drop a .docx or click the box to choose a file.',
+            'file.file' => 'Drop a .docx or click the box to choose a file.',
+        ];
+    }
+
+    /**
+     * PHP rejected the multipart file (size, tmp dir, partial, etc.) before we can parse it.
+     * Laravel's default copy is "The file failed to upload."
+     */
+    public function invalidUploadMessage(?UploadedFile $file, ?array $cfg = null): ?string
+    {
+        if (! $file instanceof UploadedFile || $file->isValid()) {
+            return null;
+        }
+
+        $mb = max(1, (int) round($this->effectiveMaxKilobytes($cfg) / 1024));
+
+        Log::notice('Content article upload rejected by PHP', [
+            'error' => $file->getError(),
+            'error_message' => $file->getErrorMessage(),
+            'user_id' => auth()->id(),
+        ]);
+
+        return match ($file->getError()) {
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'That file is over the '.$mb.' MB limit. Save as a smaller .docx and try again.',
+            UPLOAD_ERR_PARTIAL => 'The upload was interrupted. Please try again.',
+            UPLOAD_ERR_NO_FILE => 'Drop a .docx or click the box to choose a file.',
+            UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'The server could not save the upload. Please try again in a moment.',
+            default => 'The article could not be uploaded. Use a Word .docx under '.$mb.' MB and try again.',
+        };
+    }
+
     public function validateUpload(UploadedFile $file, ?array $cfg = null): ?string
     {
         $cfg = $cfg ?? $this->effectiveConfig();
-        $maxKb = max(100, (int) ($cfg['max_kilobytes'] ?? 5120));
+        $maxKb = $this->effectiveMaxKilobytes($cfg);
         $allowedExt = array_map('strtolower', $cfg['allowed_extensions'] ?? ['docx']);
         $allowedMimes = $cfg['allowed_mimes'] ?? [];
 
         if (! $file->isValid()) {
-            return 'The upload failed. Please try again.';
+            return $this->invalidUploadMessage($file, $cfg) ?? 'The article could not be uploaded. Please try again.';
         }
 
         if ($file->getSize() > $maxKb * 1024) {
-            return 'File is too large. Maximum size is '.round($maxKb / 1024, 1).' MB.';
+            return 'That file is over the '.max(1, (int) round($maxKb / 1024)).' MB limit.';
         }
 
         $extension = strtolower($file->getClientOriginalExtension() ?: '');
@@ -500,7 +608,8 @@ class ContentUploadService
             || in_array($mime, $guessed, true)
             || str_contains($mime, 'wordprocessingml')
             || str_contains($mime, 'officedocument.word')
-            || $mime === 'application/octet-stream';
+            || $mime === 'application/octet-stream'
+            || ($extension === 'docx' && (str_contains($mime, 'zip') || $mime === 'application/x-zip-compressed'));
 
         if (! $mimeOk) {
             return 'File MIME type is not allowed. Please upload a .docx file.';

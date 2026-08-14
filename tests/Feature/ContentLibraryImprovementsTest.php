@@ -2,13 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentModerationSetting;
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -125,7 +129,9 @@ class ContentLibraryImprovementsTest extends TestCase
             ->get(route('advertiser.content-library', ['country' => 'gb']))
             ->assertOk()
             ->assertSee('UK Guide')
-            ->assertDontSee('Growth Playbook');
+            ->assertDontSee('Growth Playbook')
+            ->assertSee('Reset', false)
+            ->assertDontSee('>Apply<', false);
     }
 
     public function test_library_shows_published_live_link(): void
@@ -261,6 +267,49 @@ class ContentLibraryImprovementsTest extends TestCase
             '/library-status-box--approved\s+is-active/',
             $html
         );
+        $this->assertStringContainsString('<nav class="library-status-row"', $html);
+        $this->assertStringContainsString('aria-current="page"', $html);
+        $this->assertMatchesRegularExpression(
+            '/<nav class="library-status-row"[^>]*>[\s\S]*?<\/nav>/',
+            $html
+        );
+        preg_match('/<nav class="library-status-row"[^>]*>[\s\S]*?<\/nav>/', $html, $statusNav);
+        $this->assertStringNotContainsString('role="tab', $statusNav[0]);
+        $this->assertStringContainsString('mod-count is-zero', $html);
+        $this->assertStringContainsString('id="libraryCountryFilter"', $html);
+        $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
+        $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
+        $this->assertStringContainsString('visually-hidden" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('visually-hidden">Search</button>', $html);
+        $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
+        $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
+        $this->assertStringContainsString('Search title or filename', $html);
+        $this->assertStringContainsString('All countries', $html);
+        $this->assertStringContainsString('All languages', $html);
+        $this->assertStringNotContainsString('>Apply<', $html);
+        $this->assertStringNotContainsString('form-label small text-muted mb-1" for="librarySearchInput"', $html);
+        $this->assertStringNotContainsString('library-filter-bar__actions', $html);
+
+        $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertStringContainsString('.library-status-row', $css);
+        $this->assertStringContainsString('flex-wrap: wrap', $css);
+        $this->assertStringContainsString('library-status-dot', $html);
+        $this->assertStringContainsString('.library-status-dot', $css);
+        $this->assertStringContainsString('.library-status-box--needs_fix .library-status-dot', $css);
+        $this->assertStringContainsString('.library-status-box--completed .library-status-dot', $css);
+        $this->assertStringContainsString('library-status-pulse', $css);
+        $this->assertStringContainsString('.mod-count.is-zero', $css);
+        $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
+        $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
+        $this->assertStringContainsString('.library-browse-link', $css);
+        $this->assertStringNotContainsString('.library-page-actions.upload-zone', $css);
+        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: center;", $css);
+        $this->assertStringNotContainsString('align-items: flex-end', $css);
+        $boxPos = strpos($css, '.library-status-box {');
+        $mediaPos = strpos($css, '@media (max-width: 575.98px)');
+        $this->assertNotFalse($boxPos);
+        $this->assertNotFalse($mediaPos);
+        $this->assertGreaterThan($boxPos, $mediaPos);
     }
 
     public function test_completed_filter_empty_state(): void
@@ -465,6 +514,121 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertSame('archived', $archived->fresh()->libraryAvailability());
     }
 
+    public function test_just_approved_marks_recent_orderable_articles(): void
+    {
+        $this->freezeTime();
+        $advertiser = $this->advertiser();
+
+        $fresh = $this->createApprovedSubmission($advertiser);
+        $fresh->update(['title' => 'Fresh Approved Piece']);
+        $this->assertTrue($fresh->isJustApproved());
+        $this->assertSame('Approved today', $fresh->justApprovedLabel());
+
+        $onCutoff = $this->createApprovedSubmission($advertiser);
+        $onCutoff->update([
+            'title' => 'Cutoff Approved Piece',
+            'evaluated_at' => now()->subDays(ContentSubmission::JUST_APPROVED_DAYS)->startOfDay()->addHour(),
+        ]);
+        $this->assertTrue($onCutoff->fresh()->isJustApproved());
+
+        $stale = $this->createApprovedSubmission($advertiser);
+        $stale->update([
+            'title' => 'Stale Approved Piece',
+            'evaluated_at' => now()->subDays(ContentSubmission::JUST_APPROVED_DAYS + 1)->startOfDay(),
+        ]);
+        $this->assertFalse($stale->fresh()->isJustApproved());
+        $this->assertNull($stale->fresh()->justApprovedLabel());
+
+        $yesterday = $this->createApprovedSubmission($advertiser);
+        $yesterday->update(['evaluated_at' => now()->subDay()]);
+        $this->assertSame('Approved yesterday', $yesterday->fresh()->justApprovedLabel());
+
+        $threeDays = $this->createApprovedSubmission($advertiser);
+        $threeDays->update(['evaluated_at' => now()->subDays(3)]);
+        $this->assertSame('Approved 3 days ago', $threeDays->fresh()->justApprovedLabel());
+
+        $needsFix = $this->createApprovedSubmission($advertiser);
+        $needsFix->update([
+            'title' => 'Needs Fix Piece',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluated_at' => now(),
+        ]);
+        $this->assertFalse($needsFix->fresh()->isJustApproved());
+
+        $expired = $this->createApprovedSubmission($advertiser);
+        $expired->update([
+            'title' => 'Expired Approved Piece',
+            'expires_at' => now()->subDay(),
+            'evaluated_at' => now(),
+        ]);
+        $this->assertFalse($expired->fresh()->isJustApproved());
+
+        $ordered = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser);
+        $ordered->update([
+            'title' => 'Already Ordered Piece',
+            'order_id' => $order->id,
+            'evaluated_at' => now(),
+        ]);
+        $this->assertFalse($ordered->fresh()->isJustApproved());
+
+        $archived = $this->createApprovedSubmission($advertiser);
+        $archived->update(['title' => 'Archived Just Approved Piece', 'evaluated_at' => now()]);
+        $archived->archive();
+        $this->assertFalse($archived->fresh()->isJustApproved());
+
+        $evaluating = $this->createApprovedSubmission($advertiser);
+        $evaluating->update([
+            'title' => 'Still Evaluating Piece',
+            'moderation_status' => ContentSubmission::STATUS_PROCESSING,
+            'evaluated_at' => now(),
+        ]);
+        $this->assertFalse($evaluating->fresh()->isJustApproved());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['status' => 'approved', 'availability' => 'available']))
+            ->assertOk()
+            ->assertSee('Fresh Approved Piece')
+            ->assertSee('Just approved')
+            ->assertSee('Approved today')
+            ->assertSee('Cutoff Approved Piece')
+            ->assertSee('Stale Approved Piece')
+            ->assertDontSee('Needs Fix Piece')
+            ->assertDontSee('Expired Approved Piece')
+            ->getContent();
+
+        $this->assertStringContainsString('class="library-just-approved"', $html);
+        $this->assertStringContainsString('class="library-just-approved-hint"', $html);
+        $this->assertStringNotContainsString('site-badge-new', $html);
+
+        $staleStart = strpos($html, 'Stale Approved Piece');
+        $this->assertNotFalse($staleStart);
+        $staleEnd = strpos($html, '</tr>', $staleStart);
+        $this->assertNotFalse($staleEnd);
+        $staleRow = substr($html, $staleStart, $staleEnd - $staleStart);
+        $this->assertStringNotContainsString('Just approved', $staleRow);
+        $this->assertStringNotContainsString('library-just-approved', $staleRow);
+
+        $freshStart = strpos($html, 'Fresh Approved Piece');
+        $this->assertNotFalse($freshStart);
+        $freshEnd = strpos($html, '</tr>', $freshStart);
+        $this->assertNotFalse($freshEnd);
+        $freshRow = substr($html, $freshStart, $freshEnd - $freshStart);
+        $this->assertStringContainsString('Just approved', $freshRow);
+        $this->assertStringContainsString('Approved today', $freshRow);
+
+        $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertMatchesRegularExpression(
+            '/\.library-just-approved \{[^}]*background:/s',
+            $css
+        );
+        $this->assertStringContainsString('.library-just-approved-hint {', $css);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.library-just-approved \{[^}]*animation:/s',
+            $css
+        );
+    }
+
     public function test_upload_button_sits_under_content_library_heading(): void
     {
         $advertiser = $this->advertiser();
@@ -479,6 +643,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotFalse($headingPos);
         $this->assertNotFalse($uploadPos);
         $this->assertGreaterThan($headingPos, $uploadPos);
+        $this->assertMatchesRegularExpression(
+            '/<button type="button"\s+class="btn btn-upload"[\s\S]*?id="openUploadModalBtn"[\s\S]*?btn-upload__label">Upload article<\/span>/',
+            $html
+        );
         $this->assertStringContainsString('articleQuillEditor', $html);
         $this->assertStringContainsString('Edit article', $html);
         $this->assertStringContainsString('article-preview-tools.js', $html);
@@ -487,10 +655,70 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('articlePreviewLinksList', $html);
         $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
         $this->assertStringContainsString('Browse publishers', $html);
-        $this->assertStringContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringContainsString('btn-upload__hint', $html);
+        $this->assertSame(1, substr_count($html, 'id="openUploadModalBtn"'));
+        $this->assertStringContainsString('class="library-page-actions"', $html);
+        $this->assertStringNotContainsString('library-page-actions upload-zone', $html);
+        $this->assertStringNotContainsString('btn-outline-primary btn-sm" id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringNotContainsString('btn-sm btn-outline-secondary">Browse publishers', $html);
+        $this->assertStringNotContainsString('One job here: upload and approve articles', $html);
+        $this->assertStringNotContainsString('use Order on a row to place an approved article', $html);
+        $this->assertStringContainsString('browse publishers first and upload when you pick a site', $html);
         $this->assertStringNotContainsString('library-order-soon', $html);
         $this->assertStringNotContainsString('Order your article', $html);
         $this->assertStringNotContainsString('Coming soon', $html);
+    }
+
+    public function test_library_browse_publishers_is_secondary_not_in_stepper(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('href="'.route('advertiser.catalog').'"', $html);
+
+        $chrome = $this->extractHtmlBetween($html, 'class="wizard-chrome"', 'class="library-page-actions"');
+        $this->assertNotSame('', $chrome);
+        $this->assertStringNotContainsString('id="libraryBrowsePublishersBtn"', $chrome);
+        $this->assertStringNotContainsString('id="openUploadModalBtn"', $chrome);
+        $this->assertDoesNotMatchRegularExpression('/>\s*Browse publishers\s*</', $chrome);
+
+        $actions = $this->extractHtmlBetween($html, 'class="library-page-actions"', 'id="libraryFlash"');
+        $this->assertNotSame('', $actions);
+        $this->assertStringContainsString('id="openUploadModalBtn"', $actions);
+        $this->assertStringContainsString('class="btn btn-upload"', $actions);
+        $this->assertStringContainsString('btn-upload__label">Upload article</span>', $actions);
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $actions);
+        $this->assertStringContainsString('library-browse-link', $actions);
+        $this->assertStringContainsString('btn btn-link', $actions);
+    }
+
+    public function test_empty_library_offers_upload_and_catalog_path(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('No articles yet', false)
+            ->assertSee('Upload a .docx to get your first approved article', false)
+            ->assertSee('browse publishers now and upload when you pick a site', false)
+            ->assertSee('Upload article', false)
+            ->assertSee('Browse publishers', false)
+            ->assertSee(route('advertiser.catalog'), false)
+            ->assertDontSee('Upload a .docx here. After approval, assign it in your cart and checkout.', false)
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryBrowsePublishersBtn"', $html);
+        $this->assertStringContainsString('library-browse-link', $html);
+        $this->assertSame(1, substr_count($html, 'id="openUploadModalBtn"'));
+        $this->assertGreaterThanOrEqual(2, substr_count($html, 'Browse publishers'));
+        $this->assertStringContainsString('Guided placement', $html);
+        $this->assertStringNotContainsString('btn btn-outline-secondary">Guided placement', $html);
     }
 
     public function test_advertiser_can_save_multiple_detected_links_from_preview(): void
@@ -540,6 +768,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->putJson(route('advertiser.content-submissions.content', $submission), [
                 'preview_html' => $html,
                 'title' => 'Edited Doc Title',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -555,6 +784,30 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotEmpty($fresh->articleHistory());
     }
 
+    public function test_editor_media_image_src_is_persisted_as_storage_path(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $html = '<p>Updated article body with a <a href="https://example.com/new-guide">helpful guide</a> for marketers.</p>'
+            .'<p><img src="/media/content-articles/demo.png" alt="Chart"></p>'
+            .'<p>More compliant content about software tools and productivity for digital teams worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => 'Media Path Title',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $submission->fresh();
+        $this->assertStringContainsString('src="/storage/content-articles/demo.png"', (string) $fresh->preview_html);
+        $this->assertStringNotContainsString('src="/media/content-articles/demo.png"', (string) $fresh->preview_html);
+    }
+
     public function test_preview_rewrites_absolute_storage_urls_to_relative(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -568,6 +821,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->actingAs($advertiser)
             ->putJson(route('advertiser.content-submissions.content', $submission), [
                 'preview_html' => $html,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
@@ -615,6 +869,310 @@ class ContentLibraryImprovementsTest extends TestCase
             'function openPreviewModal(title, html, links, submissionId, editable)',
             file_get_contents(public_path('assets/js/content-library.js'))
         );
+    }
+
+    public function test_article_editor_loads_html_as_quill_blots_with_undo_and_preview_edit(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $library = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="articlePreviewEditBtn"', $library);
+        $this->assertStringContainsString('id="articleImageRemoveBtn"', $library);
+        $this->assertStringContainsString('article-img-remove', $library);
+        $this->assertStringContainsString('aria-label="Remove image"', $library);
+        $this->assertStringNotContainsString('id="articlePreviewBody" contenteditable', $library);
+        $this->assertDoesNotMatchRegularExpression('/id="articlePreviewBody"[^>]*contenteditable/', $library);
+
+        $previewHeader = $this->extractHtmlBetween(
+            $library,
+            'id="articlePreviewModal"',
+            'id="articlePreviewBody"'
+        );
+        $this->assertNotSame('', $previewHeader);
+        $this->assertStringContainsString('id="articlePreviewEditBtn"', $previewHeader);
+        $this->assertMatchesRegularExpression('/>\s*Edit article\s*<\/button>/', $previewHeader);
+
+        $js = file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('dangerouslyPasteHTML', $js);
+        $this->assertStringContainsString('history.clear', $js);
+        $this->assertStringContainsString('deleteText(', $js);
+        $this->assertStringContainsString("['undo', 'redo']", $js);
+        $this->assertStringContainsString('function returnToEditorFromPreview', $js);
+        $this->assertStringContainsString('function loadArticleHtml', $js);
+        $this->assertStringNotContainsString(
+            'articleQuill.root.innerHTML = submission.preview_html',
+            $js
+        );
+
+        $css = file_get_contents(public_path('assets/css/content-library.css'));
+        $this->assertStringContainsString('.article-img-remove', $css);
+        $this->assertStringContainsString('width: 1.85rem', $css);
+        $this->assertStringContainsString('img.is-selected', $css);
+        $this->assertStringContainsString('img.is-broken', $css);
+        $this->assertStringContainsString('function patchQuillImageSanitize', $js);
+        $this->assertStringContainsString("value.startsWith('/storage/')", $js);
+        $this->assertStringContainsString("value.startsWith('/media/')", $js);
+        $this->assertStringContainsString('function publicDiskTwinSrc', $js);
+        $this->assertStringContainsString('function recoverPublicDiskImage', $js);
+        $this->assertStringContainsString('$1/media/', $js);
+        $this->assertStringContainsString('function parseLibraryJson', $js);
+        $this->assertStringContainsString('function hideBootstrapModal', $js);
+        $this->assertStringContainsString('function bindLibraryModalA11y', $js);
+        $this->assertStringContainsString('data-no-tip', $js);
+        $this->assertStringContainsString('imgRect.top - shellRect.top + 8', $js);
+        $this->assertStringContainsString('offsetWidth || 30', $js);
+        $this->assertStringNotContainsString('imgRect.bottom - shellRect.top - 36', $js);
+        $this->assertStringContainsString('handlers: {', $js);
+        $this->assertStringContainsString('undo: function () {', $js);
+        $this->assertStringContainsString('redo: function () {', $js);
+        $this->assertStringNotContainsString("toolbar.addHandler('undo'", $js);
+        $this->assertStringNotContainsString("toolbar.addHandler('redo'", $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.library-expiry-hint \{\s*font-size:[^}]*color: #b45309/',
+            $css
+        );
+        $this->assertStringContainsString('.library-expiry-hint--urgent', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-dialog', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor.ql-container', $css);
+        $this->assertStringContainsString('#articleEditorModal .article-docs-shell .article-editor-scroll .ql-editor', $css);
+        $this->assertStringContainsString('flex: 1 1 0%', $css);
+        $this->assertStringContainsString('min-height: 12rem', $css);
+        $this->assertStringContainsString('function applyArticleEditorScrollport', $js);
+        $this->assertStringContainsString('function bindArticleEditorScrollport', $js);
+        $this->assertStringContainsString('function bindArticleEditorWheel', $js);
+        $this->assertStringContainsString('function articleEditorScrollport', $js);
+        $this->assertStringContainsString('function ensureArticleEditorScrollWrap', $js);
+        $this->assertStringContainsString('function silenceArticleQuillSelectionScroll', $js);
+        $this->assertStringContainsString('scrollSelectionIntoView', $js);
+        $this->assertStringContainsString('scrollRectIntoView', $js);
+        $this->assertStringContainsString('article-editor-scroll', $css);
+        $this->assertStringContainsString('articleQuill.scrollingContainer', $js);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*overflow:\s*hidden/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/#articleEditorModal \.article-docs-shell #articleQuillEditor\.ql-container \{[^}]*height:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \{[^}]*flex:\s*1 1 0%/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \{[^}]*height:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \{[^}]*overflow-y:\s*scroll/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \.ql-editor \{[^}]*height:\s*auto/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \.ql-editor \{[^}]*overflow:\s*visible/s',
+            $css
+        );
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.article-docs-shell \.article-editor-scroll \.ql-editor \{[^}]*padding-bottom:\s*2\.75rem/s',
+            $css
+        );
+        $this->assertStringContainsString('scrollbar-gutter: stable', $css);
+        $this->assertStringContainsString('scrollbar-width: thin', $css);
+        $this->assertStringContainsString('.article-editor-scroll::-webkit-scrollbar', $css);
+        $this->assertStringContainsString('overflow-anchor: none', $css);
+        $this->assertStringContainsString('overscroll-behavior: contain', $css);
+        $this->assertStringContainsString('overscroll-behavior: none', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-body \{[^}]*overflow:\s*hidden/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog-scrollable[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
+        $this->assertStringNotContainsString('function syncEditorActions', $js);
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $library);
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $js);
+        $this->assertStringNotContainsString('libraryOrderUrlBase', $js);
+        $this->assertStringNotContainsString("saveBtn.classList.toggle('btn-outline-primary', canOrder)", $js);
+        $this->assertMatchesRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog modal-fullscreen[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
+        $editorModal = $this->extractHtmlBetween(
+            $library,
+            'id="articleEditorModal"',
+            'id="articlePreviewModal"'
+        );
+        $this->assertStringNotContainsString('id="articleEditorOrderBtn"', $editorModal);
+        $this->assertStringNotContainsString('>Order</a>', $editorModal);
+        $this->assertStringContainsString('id="articleEditorSaveBtn"', $editorModal);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-dialog \{[^}]*height:\s*100%/s',
+            $css
+        );
+        $this->assertStringContainsString('overscroll-behavior: none', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-body', $css);
+        $this->assertMatchesRegularExpression(
+            '/#articleEditorModal \.modal-body \{[^}]*overflow:\s*hidden/s',
+            $css
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="articleEditorModal"[\s\S]*?modal-dialog-scrollable[\s\S]*?id="articleQuillEditor"/',
+            $library
+        );
+        $this->assertStringContainsString('.library-row--focus', $css);
+        $this->assertStringContainsString('.library-row--focus > td', $css);
+        $this->assertStringContainsString('function goToLibraryResult', $js);
+        $this->assertStringContainsString('function libraryDestinationUrl', $js);
+        $this->assertStringContainsString("availability: 'needs_fix'", $js);
+        $this->assertStringContainsString('libraryResultFlash', $js);
+        $this->assertStringContainsString('function applyLibraryResultFocus', $js);
+        $this->assertStringNotContainsString('window.location.reload()', $js);
+    }
+
+    public function test_php_upload_error_explains_the_docx_limit_instead_of_failed_to_upload(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/oversized-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path);
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                UPLOAD_ERR_INI_SIZE,
+                true
+            ),
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+
+        @unlink($path);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringNotContainsString('The file failed to upload', $message);
+        $this->assertStringContainsString('MB limit', $message);
+    }
+
+    public function test_library_upload_accepts_docx_sniffed_as_zip(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/zip-sniff-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 60));
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile($path, 'article.docx', 'application/zip', null, true),
+            'title' => 'Zip sniffed article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+
+        @unlink($path);
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertStringNotContainsString('The file failed to upload', (string) $response->json('message'));
+        $this->assertStringNotContainsString('must be a file of type: docx', (string) $response->json('message'));
+    }
+
+    public function test_upload_form_posts_the_chosen_docx_as_multipart(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="libraryUploadForm"', $html);
+        $this->assertStringContainsString('enctype="multipart/form-data"', $html);
+
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString("fd.set('file', file, file.name)", $js);
+        $this->assertStringContainsString('function firstErrorMessage', $js);
+        $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
+        $this->assertStringContainsString('function resetLibraryUploadUi', $js);
+        $this->assertStringContainsString('function bindLibraryUploadCancel', $js);
+        $this->assertStringContainsString('function abortLibraryUpload', $js);
+        $this->assertStringContainsString('function cancelLibraryUploadHandoffState', $js);
+        $this->assertStringContainsString('pendingLibraryLanding = null', $js);
+        $this->assertStringContainsString('libraryUploadDismissGen', $js);
+        $this->assertStringContainsString('AbortController', $js);
+        $this->assertStringContainsString('isLibraryUploadAbortError', $js);
+        $this->assertStringContainsString('if (!libraryUploadHandoff)', $js);
+        $this->assertStringContainsString('libraryUploadSavedSubmission', $js);
+        $this->assertStringContainsString('id="libraryUploadCancelBtn"', $html);
+        $this->assertStringContainsString('Could not open the editor. Try again.', $js);
+        $this->assertStringContainsString('Article uploaded. It is in your library.', $js);
+    }
+
+    public function test_library_upload_allows_ten_megabyte_docx(): void
+    {
+        $advertiser = $this->advertiser();
+
+        ContentModerationSetting::setValue('upload_config', [
+            'max_kilobytes' => 2048,
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Max 10 MB', $html);
+        $this->assertStringNotContainsString('Max 2 MB', $html);
+        $this->assertStringNotContainsString('Max 5 MB', $html);
+        $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.config'))
+            ->assertOk()
+            ->assertJsonPath('config.max_kilobytes', 10240);
+
+        ContentModerationSetting::setValue('upload_config', [
+            'max_kilobytes' => 5120,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.config'))
+            ->assertOk()
+            ->assertJsonPath('config.max_kilobytes', 10240);
+
+        $service = app(ContentUploadService::class);
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 2048]));
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 5120]));
+        $this->assertSame(20480, $service->effectiveMaxKilobytes(['max_kilobytes' => 20480]));
+
+        $htaccess = (string) file_get_contents(public_path('.htaccess'));
+        $this->assertStringContainsString('lsapi_module', $htaccess);
+        $this->assertStringContainsString('php_value upload_max_filesize 16M', $htaccess);
+    }
+
+    private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
+    {
+        $start = strpos($html, $startNeedle);
+        $end = strpos($html, $endNeedle);
+        if ($start === false || $end === false || $end <= $start) {
+            return '';
+        }
+
+        return substr($html, $start, $end - $start);
     }
 
     private function makeOrder(User $advertiser): Order
