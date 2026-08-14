@@ -1192,9 +1192,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $service = app(ContentUploadService::class);
         $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 2048]));
         $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 5120]));
-        $this->assertSame(20480, $service->effectiveMaxKilobytes(['max_kilobytes' => 20480]));
-        $this->assertSame(51200, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
-        $this->assertSame(51200, $service->effectiveMaxKilobytes(['max_kilobytes' => 99999]));
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 20480]));
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
 
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
@@ -1208,7 +1207,7 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
-        $this->assertStringContainsString('boot.maxKilobytes', $js);
+        $this->assertStringContainsString('const appMaxKb = 10240;', $js);
         $this->assertStringContainsString('boot.phpMaxKilobytes', $js);
 
         $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
