@@ -162,9 +162,22 @@
     <!-- ================= USERS TABLE ================= -->
     <div id="usersSection" class="{{ !empty($flatQueue) ? 'd-none' : '' }}">
 
-        <div class="mb-2" style="max-width: 250px;">
-            <x-slb-search-field name="user_search" id="userSearch" placeholder="Search users…" mode="" />
-        </div>
+        <form method="GET" action="{{ staff_route('sites.index') }}" class="mb-2" style="max-width: 250px;" role="search">
+            @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
+                <input type="hidden" name="needs_review" value="1">
+            @endif
+            @if(!empty($flatQueue))
+                <input type="hidden" name="flat" value="1">
+            @endif
+            <x-slb-search-field
+                name="q"
+                id="userSearch"
+                :value="$publisherSearch"
+                placeholder="Search publishers…"
+                label="Search publishers"
+                label-class="visually-hidden"
+            />
+        </form>
 
         <div class="card shadow-sm border-0 mb-3 admin-table-fit">
             <div class="card-header bg-white fw-semibold">
@@ -1633,22 +1646,10 @@ document.getElementById('backBtn').addEventListener('click', function(){
 
 /* ================= SEARCH (Catalog-parity live search) ================= */
 /* Publisher search is server-side (?q=) via data-slb-live-search="form". */
+/* Site-row search stays client-side against the loaded publisher list. */
 (function initStaffSitesLiveSearch() {
-    function filterUsers(query) {
-        var val = String(query || '').toLowerCase();
-        document.querySelectorAll('#usersTable tr').forEach(function (r) {
-            r.style.display = r.innerText.toLowerCase().includes(val) ? '' : 'none';
-        });
-    }
-
     function boot() {
         if (typeof window.SlbLiveSearch !== 'undefined') {
-            window.SlbLiveSearch.init(document.getElementById('userSearch'), {
-                mode: 'client',
-                statusEl: document.getElementById('userSearchStatus'),
-                clearBtn: document.getElementById('userSearchClear'),
-                onSearch: function (detail) { filterUsers(detail.query); },
-            });
             window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
                 mode: 'client',
                 statusEl: document.getElementById('siteSearchStatus'),
@@ -1657,10 +1658,7 @@ document.getElementById('backBtn').addEventListener('click', function(){
             });
             return;
         }
-        document.getElementById('userSearch').addEventListener('keyup', function(){
-            filterUsers(this.value);
-        });
-        document.getElementById('siteSearch').addEventListener('keyup', function(){
+        document.getElementById('siteSearch')?.addEventListener('keyup', function(){
             applySiteFilters();
         });
     }
