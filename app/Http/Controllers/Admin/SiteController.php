@@ -721,11 +721,10 @@ class SiteController extends Controller
         ]);
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
-        if (! $host) {
+        $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
+        if ($domain === '') {
             return back()->withErrors(['site_url' => 'Invalid URL'])->withInput();
         }
-
-        $domain = preg_replace('/^www\./', '', strtolower($host));
 
         $resolvedNiches = Category::resolveNicheNames(
             $this->nicheNamesInput($request->input('categories', $request->input('category')))
@@ -856,8 +855,8 @@ class SiteController extends Controller
                             'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                         ]);
                     }
-                    PublicStorageLink::ensure();
                     $storedImagePath = $stored;
+                    PublicStorageLink::ensure();
                     $imagePath = $stored;
                 }
 
@@ -1414,10 +1413,12 @@ class SiteController extends Controller
         if ($siteUrl !== '') {
             $host = parse_url($siteUrl, PHP_URL_HOST);
             if (is_string($host) && $host !== '') {
-                $domain = preg_replace('/^www\./i', '', strtolower($host));
+                $normalized = $this->normalizeDomain($host);
+                $domain = $normalized !== '' ? $normalized : null;
             }
-        } elseif ($request->filled('domain')) {
-            $domain = preg_replace('/^www\./i', '', strtolower(trim((string) $request->input('domain'))));
+        } elseif (is_string($request->input('domain')) && $request->filled('domain')) {
+            $normalized = $this->normalizeDomain($request->input('domain'));
+            $domain = $normalized !== '' ? $normalized : null;
         }
 
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
@@ -1513,8 +1514,18 @@ class SiteController extends Controller
             'site_image',
         ]);
 
+        if (isset($data['domain']) && ! is_string($data['domain'])) {
+            unset($data['domain']);
+        }
         if (empty($data['domain']) && is_string($domain) && $domain !== '') {
             $data['domain'] = $domain;
+        } elseif (isset($data['domain']) && is_string($data['domain'])) {
+            $normalized = $this->normalizeDomain($data['domain']);
+            if ($normalized === '') {
+                unset($data['domain']);
+            } else {
+                $data['domain'] = $normalized;
+            }
         }
 
         if ($metricMerge !== []) {
@@ -1683,10 +1694,10 @@ class SiteController extends Controller
             if ($canFixListing && $request->filled('site_url')) {
                 $siteUrl = (string) $request->input('site_url', '');
                 $host = parse_url($siteUrl, PHP_URL_HOST);
-                if (! $host) {
+                $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
+                if ($domain === '') {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
-                    $domain = preg_replace('/^www\./', '', strtolower((string) $host));
                     $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
@@ -1732,9 +1743,12 @@ class SiteController extends Controller
             }
             if ($request->exists('site_url')) {
                 $siteUrl = (string) $request->input('site_url');
-                $host = parse_url($siteUrl, PHP_URL_HOST) ?: '';
+                $host = parse_url($siteUrl, PHP_URL_HOST);
+                $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
                 $payload['site_url'] = $siteUrl;
-                $payload['domain'] = preg_replace('/^www\./', '', strtolower((string) $host));
+                if ($domain !== '') {
+                    $payload['domain'] = $domain;
+                }
             }
             if ($request->exists('example_url')) {
                 $payload['example_url'] = $request->input('example_url');
@@ -2072,6 +2086,17 @@ class SiteController extends Controller
         }
 
         return $errors;
+    }
+
+    /**
+     * Strip www, trailing dots, and case so example.com. matches example.com.
+     */
+    private function normalizeDomain(string $host): string
+    {
+        $domain = strtolower(trim($host));
+        $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
+
+        return rtrim($domain, '.');
     }
 
     /**

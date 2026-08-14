@@ -117,6 +117,10 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertStringContainsString('data-min-da="'.Site::GOOD_MIN_DA.'"', $html);
         $this->assertStringContainsString('data-min-traffic="'.Site::GOOD_MIN_TRAFFIC.'"', $html);
         $this->assertStringContainsString('href="'.e(route('marketing.sites.index')).'"', $html);
+        $this->assertMatchesRegularExpression(
+            '/<select[^>]+id="language"[^>]+name="language"|<select[^>]+name="language"[^>]+id="language"/',
+            $html
+        );
     }
 
     public function test_marketing_create_page_prefills_publisher_query(): void
@@ -1104,5 +1108,46 @@ class MarketingAssignSiteForPublisherTest extends TestCase
 
         $this->assertNull(Site::where('domain', 'huge-price.example')->first());
         $this->assertStringContainsString('999,999.99', (string) session('errors')->first('price'));
+    }
+
+    public function test_trailing_dot_domain_matches_existing_listing(): void
+    {
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Live Dot',
+            'site_url' => 'https://dot-twin.example',
+            'domain' => 'dot-twin.example',
+            'example_url' => 'https://dot-twin.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Live trailing-dot twin description text. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://www.dot-twin.example./path',
+                'example_url' => 'https://dot-twin.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This website domain is already registered.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertNull(Site::where('domain', 'dot-twin.example.')->first());
+        $this->assertNull(Site::where('domain', 'www.dot-twin.example.')->first());
     }
 }

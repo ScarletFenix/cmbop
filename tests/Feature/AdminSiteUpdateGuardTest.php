@@ -130,6 +130,40 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('other-guard.example', $other->fresh()->domain);
     }
 
+    public function test_update_rejects_trailing_dot_duplicate_domain(): void
+    {
+        $this->site();
+        $other = $this->site([
+            'site_name' => 'Other Guard',
+            'site_url' => 'https://other-guard.example',
+            'domain' => 'other-guard.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $other->id), [
+                'site_url' => 'https://www.guard-site.example./path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->assertSame('other-guard.example', $other->fresh()->domain);
+    }
+
+    public function test_update_ignores_array_shaped_domain_field(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'domain' => ['poison-domain.example'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('guard-site.example', $site->fresh()->domain);
+        $this->assertNull(Site::where('domain', 'array')->first());
+    }
+
     public function test_update_rejects_invalid_metrics(): void
     {
         $site = $this->site();
