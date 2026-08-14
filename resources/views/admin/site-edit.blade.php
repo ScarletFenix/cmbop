@@ -8,6 +8,9 @@
     $marketingListingLocked = $marketingListingLocked ?? false;
     $categories = $categories ?? collect();
     $rawMarketingNiches = old('categories', $site->categories_array ?? []);
+    if (! is_string($rawMarketingNiches) && ! is_iterable($rawMarketingNiches)) {
+        $rawMarketingNiches = [];
+    }
     if (is_string($rawMarketingNiches)) {
         $rawMarketingNiches = preg_split('/\|/', $rawMarketingNiches) ?: [];
     }
@@ -17,7 +20,9 @@
         $marketingNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $marketingNiches) ?: [])));
     }
     $marketingNiches = collect($marketingNiches)
-        ->filter(fn ($v) => filled($v) && strtolower((string) $v) !== 'pending')
+        ->flatten()
+        ->filter(fn ($v) => is_scalar($v) && filled($v) && strtolower((string) $v) !== 'pending')
+        ->map(fn ($v) => (string) $v)
         ->values()
         ->all();
     // After save, url()->previous() is this edit page — Back would look broken.
@@ -159,7 +164,7 @@
                                 <option value="">Select…</option>
                                 @foreach($countries as $country)
                                     <option value="{{ strtolower($country->code) }}"
-                                        @selected(old('country', strtolower((string) $site->country)) === strtolower($country->code))>
+                                        @selected(old_text('country', strtolower((string) $site->country)) === strtolower($country->code))>
                                         {{ $country->name }}
                                     </option>
                                 @endforeach
@@ -173,7 +178,7 @@
                                 <option value="">Select country first</option>
                                 @foreach($languages as $language)
                                     <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        @selected(old_text('language', strtolower((string) $site->language)) === strtolower($language->code))>
                                         {{ $language->name }}
                                     </option>
                                 @endforeach
@@ -362,7 +367,7 @@
                                 <option value="">Select…</option>
                                 @foreach($countries as $country)
                                     <option value="{{ strtolower($country->code) }}"
-                                        @selected(old('country', strtolower((string) $site->country)) === strtolower($country->code))>
+                                        @selected(old_text('country', strtolower((string) $site->country)) === strtolower($country->code))>
                                         {{ $country->name }}
                                     </option>
                                 @endforeach
@@ -374,7 +379,7 @@
                                 <option value="">Select country first</option>
                                 @foreach($languages as $language)
                                     <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        @selected(old_text('language', strtolower((string) $site->language)) === strtolower($language->code))>
                                         {{ $language->name }}
                                     </option>
                                 @endforeach
@@ -423,7 +428,7 @@
                                     @foreach($homepageDays as $days)
                                         @php
                                             $checked = old("homepage.$days", array_key_exists((string) $days, $existingHomepage) || array_key_exists($days, $existingHomepage));
-                                            $priceVal = old("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
+                                            $priceVal = old_text("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
                                         @endphp
                                         <div style="min-width:140px;">
                                             <div class="form-check">
@@ -507,7 +512,7 @@
     const map = @json($countryLanguageMap ?? new \stdClass());
     const countryEl = document.getElementById('country');
     const langEl = document.getElementById('language');
-    const preferredLang = @json(old('language', strtolower((string) ($site->language ?? ''))));
+    const preferredLang = @json(old_text('language', strtolower((string) ($site->language ?? ''))));
 
     function refreshLanguages() {
         if (!countryEl || !langEl) return;

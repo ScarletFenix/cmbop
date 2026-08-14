@@ -15,7 +15,9 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class MarketingAssignSiteForPublisherTest extends TestCase
@@ -875,5 +877,145 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSessionHasErrors('categories');
 
         $this->assertSame(['News'], $pending->fresh()->categories);
+    }
+
+    public function test_duplicate_domain_prefers_live_listing_message_over_archived(): void
+    {
+        $otherPublisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $this->publisher->active_role_id,
+        ]);
+        $otherPublisher->roles()->attach($this->publisher->active_role_id);
+
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Archived Twin',
+            'site_url' => 'https://twin-domain.example',
+            'domain' => 'twin-domain.example',
+            'example_url' => 'https://twin-domain.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Archived twin listing description text. ', 3),
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        Site::create([
+            'publisher_id' => $otherPublisher->id,
+            'site_name' => 'Live Twin',
+            'site_url' => 'https://twin-domain.example',
+            'domain' => 'twin-domain.example',
+            'example_url' => 'https://twin-domain.example/live',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Live twin listing description text here. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://twin-domain.example',
+                'example_url' => 'https://twin-domain.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This website domain is already registered.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertStringNotContainsString(
+            'Ask an admin to restore',
+            (string) session('errors')->first('site_url')
+        );
+    }
+
+    public function test_image_store_failure_returns_image_error_not_generic_site_url(): void
+    {
+        $disk = \Mockery::mock();
+        $disk->shouldReceive('makeDirectory')->andReturn(true);
+        $disk->shouldReceive('putFile')->andReturn('sites/fail.jpg');
+        $disk->shouldReceive('exists')->andReturn(false);
+        Storage::shouldReceive('disk')
+            ->with('public')
+            ->andReturn($disk);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://img-fail.example',
+                'example_url' => 'https://img-fail.example/sample',
+                'site_image' => UploadedFile::fake()->image('cover.jpg', 20, 20),
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_image')
+            ->assertSessionDoesntHaveErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'img-fail.example')->first());
+        $this->assertSame(
+            'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.',
+            (string) session('errors')->first('site_image')
+        );
+    }
+
+    public function test_edit_page_survives_poisoned_niche_and_language_old_input(): void
+    {
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Edit Poison Guard',
+            'site_url' => 'https://edit-poison-guard.example',
+            'domain' => 'edit-poison-guard.example',
+            'example_url' => 'https://edit-poison-guard.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Edit poison guard description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->withSession([
+                '_old_input' => [
+                    'categories' => 1,
+                    'country' => ['de'],
+                    'language' => ['de'],
+                ],
+            ])
+            ->get(route('marketing.sites.edit', $pending->id))
+            ->assertOk()
+            ->assertSee('Fill metrics, geo & niches', false)
+            ->assertDontSee('htmlspecialchars', false)
+            ->assertSee('id="language"', false);
     }
 }

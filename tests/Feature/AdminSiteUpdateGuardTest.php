@@ -236,4 +236,45 @@ class AdminSiteUpdateGuardTest extends TestCase
 
         $this->assertSame('Guest Post', $site->fresh()->link_type);
     }
+
+    public function test_update_rejects_array_shaped_homepage_fee(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.edit', $site->id))
+            ->put(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'placement_offers_form' => 1,
+                'homepage' => ['7' => '1'],
+                'price_homepage' => ['7' => ['25']],
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('price_homepage.7');
+
+        $this->assertNull($site->fresh()->homepage_placement_prices);
+    }
+
+    public function test_edit_page_survives_array_homepage_price_old_input(): void
+    {
+        $site = $this->site([
+            'homepage_placement_prices' => ['7' => 25],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->withSession([
+                '_old_input' => [
+                    'price_homepage' => ['7' => ['25']],
+                    'language' => ['de'],
+                    'country' => ['de'],
+                    'categories' => 1,
+                ],
+            ])
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('Edit site', false)
+            ->assertDontSee('htmlspecialchars', false)
+            ->assertSee('value="25"', false);
+    }
 }

@@ -779,38 +779,13 @@ class SiteController extends Controller
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
-            'price_sensitive.*' => 'nullable|numeric|min:0',
-            'sensitive.crypto' => 'nullable|boolean',
-            'sensitive.trading' => 'nullable|boolean',
-            'sensitive.CBD' => 'nullable|boolean',
-            'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|numeric|min:0',
-            'price_sensitive.trading' => 'nullable|numeric|min:0',
-            'price_sensitive.CBD' => 'nullable|numeric|min:0',
-            'price_sensitive.forex' => 'nullable|numeric|min:0',
-            'homepage.1' => 'nullable|boolean',
-            'homepage.7' => 'nullable|boolean',
-            'homepage.30' => 'nullable|boolean',
-            'price_homepage.1' => 'nullable|numeric|min:0',
-            'price_homepage.7' => 'nullable|numeric|min:0',
-            'price_homepage.30' => 'nullable|numeric|min:0',
-            'social.facebook' => 'nullable|boolean',
-            'social.instagram' => 'nullable|boolean',
-            'social.x' => 'nullable|boolean',
-        ], array_merge($this->siteImageValidationMessages(), [
+        ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
             'description.max' => 'Description must be at most 5000 characters.',
-        ]), [
-            'price_sensitive.crypto' => 'crypto extra price',
-            'price_sensitive.trading' => 'trading extra price',
-            'price_sensitive.CBD' => 'CBD extra price',
-            'price_sensitive.forex' => 'forex extra price',
-            'price_homepage.1' => '1-day homepage fee',
-            'price_homepage.7' => '7-day homepage fee',
-            'price_homepage.30' => '30-day homepage fee',
-        ]);
+        ]), $this->placementOfferValidationAttributes());
 
-        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches) {
+        $cleanDescription = '';
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches, &$cleanDescription) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -821,7 +796,7 @@ class SiteController extends Controller
                 $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
             }
 
-            $existing = Site::where('domain', $domain)->first();
+            $existing = $this->findSiteByDomain($domain);
             if ($existing) {
                 $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
             }
@@ -841,7 +816,8 @@ class SiteController extends Controller
 
             $rawDescription = $request->input('description', '');
             if (is_string($rawDescription) && mb_strlen($rawDescription) <= 5000) {
-                foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
+                $cleanDescription = app(SiteDescriptionSanitizer::class)->sanitize($rawDescription);
+                foreach (SiteDescriptionRules::errors($cleanDescription) as $message) {
                     $validator->errors()->add('description', $message);
                 }
             }
@@ -851,14 +827,18 @@ class SiteController extends Controller
             return redirect()->back()->withErrors($validator)->withInput();
         }
 
-        $cleanDescription = app(SiteDescriptionSanitizer::class)
-            ->sanitize((string) $request->input('description'));
-
         $site = null;
         $publisherId = (int) $request->input('publisher_id');
 
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
+                $existing = $this->findSiteByDomain($domain, lock: true);
+                if ($existing) {
+                    throw ValidationException::withMessages([
+                        'site_url' => [$this->domainAlreadyRegisteredMessage($existing)],
+                    ]);
+                }
+
                 $site = new Site;
 
                 $imagePath = null;
@@ -943,12 +923,20 @@ class SiteController extends Controller
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
                 }
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Staff site-for-publisher store failed', [
                 'publisher_id' => $publisherId,
                 'domain' => $domain,
                 'error' => $e->getMessage(),
             ]);
+
+            if ($this->isDomainUniqueConstraintFailure($e)) {
+                return redirect()->back()
+                    ->withErrors(['site_url' => 'This website domain is already registered.'])
+                    ->withInput();
+            }
 
             $hint = 'We could not save this website. Please try again.';
             if (str_contains($e->getMessage(), 'Unknown column')
@@ -1413,20 +1401,31 @@ class SiteController extends Controller
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
             'price' => 'sometimes|required|numeric|min:0',
-            'description' => 'sometimes|nullable|string|min:50',
+            'description' => 'sometimes|nullable|string|max:5000',
             'publication_time' => 'sometimes|nullable|string|max:20',
             // Dedicated editor is free text; modal may send dofollow/nofollow.
             'link_type' => 'sometimes|nullable|string|max:50',
         ];
 
+        if ($request->boolean('placement_offers_form')) {
+            $rules = array_merge($rules, $this->placementOfferValidationRules());
+        }
+
         // site_image is often a stored path string after upload-image; only
         // validate as a file when a real upload is present (handled below).
 
-        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+        $validator = Validator::make(
+            $request->all(),
+            $rules,
+            array_merge($this->siteImageValidationMessages(), [
+                'description.max' => 'Description must be at most 5000 characters.',
+            ]),
+            $this->placementOfferValidationAttributes()
+        );
 
         $validator->after(function ($validator) use ($request, $site, $domain) {
             if (is_string($domain) && $domain !== '') {
-                $existing = Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->first();
+                $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                 if ($existing) {
                     $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
                 }
@@ -1444,6 +1443,14 @@ class SiteController extends Controller
                         'language',
                         'That language is not allowed for the selected country. Pick country first, then a paired language.'
                     );
+                }
+            }
+
+            $rawDescription = $request->input('description');
+            if (is_string($rawDescription) && trim($rawDescription) !== '' && mb_strlen($rawDescription) <= 5000) {
+                $clean = app(SiteDescriptionSanitizer::class)->sanitize($rawDescription);
+                foreach (SiteDescriptionRules::errors($clean) as $message) {
+                    $validator->errors()->add('description', $message);
                 }
             }
         });
@@ -1637,7 +1644,7 @@ class SiteController extends Controller
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
                     $domain = preg_replace('/^www\./', '', strtolower((string) $host));
-                    $existing = Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->first();
+                    $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
                     }
@@ -1760,6 +1767,101 @@ class SiteController extends Controller
     }
 
     /**
+     * Prefer a live listing when legacy duplicates exist so the restore copy
+     * is not shown while a non-archived row already occupies the domain.
+     */
+    private function findSiteByDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?Site
+    {
+        $query = Site::query()->where('domain', $domain);
+        if ($exceptId !== null) {
+            $query->where('id', '!=', $exceptId);
+        }
+        if (Site::hasSitesColumn('archived_at')) {
+            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
+        }
+        $query->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    private function isDomainUniqueConstraintFailure(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        $isUnique = str_contains($message, 'UNIQUE constraint failed')
+            || str_contains($message, 'Duplicate entry')
+            || str_contains($message, '1062');
+
+        return $isUnique && (str_contains($message, 'domain') || str_contains($message, 'publisher_id_domain'));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function placementOfferValidationRules(): array
+    {
+        return [
+            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'sensitive.crypto' => 'nullable|boolean',
+            'sensitive.trading' => 'nullable|boolean',
+            'sensitive.CBD' => 'nullable|boolean',
+            'sensitive.forex' => 'nullable|boolean',
+            'price_sensitive.crypto' => 'nullable|numeric|min:0',
+            'price_sensitive.trading' => 'nullable|numeric|min:0',
+            'price_sensitive.CBD' => 'nullable|numeric|min:0',
+            'price_sensitive.forex' => 'nullable|numeric|min:0',
+            'homepage.1' => 'nullable|boolean',
+            'homepage.7' => 'nullable|boolean',
+            'homepage.30' => 'nullable|boolean',
+            'price_homepage.1' => 'nullable|numeric|min:0',
+            'price_homepage.7' => 'nullable|numeric|min:0',
+            'price_homepage.30' => 'nullable|numeric|min:0',
+            'social.facebook' => 'nullable|boolean',
+            'social.instagram' => 'nullable|boolean',
+            'social.x' => 'nullable|boolean',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function placementOfferValidationAttributes(): array
+    {
+        return [
+            'price_sensitive.crypto' => 'crypto extra price',
+            'price_sensitive.trading' => 'trading extra price',
+            'price_sensitive.CBD' => 'CBD extra price',
+            'price_sensitive.forex' => 'forex extra price',
+            'price_homepage.1' => '1-day homepage fee',
+            'price_homepage.7' => '7-day homepage fee',
+            'price_homepage.30' => '30-day homepage fee',
+        ];
+    }
+
+    /**
+     * Blank/null → €0. Arrays/objects/non-numeric → null (skip; never cast to 1.0).
+     */
+    private function optionalNonNegativeMoney(mixed $raw): ?float
+    {
+        if ($raw === null || $raw === '') {
+            return 0.0;
+        }
+        if (! is_scalar($raw) || is_bool($raw)) {
+            return null;
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        $amount = round((float) $raw, 2);
+
+        return $amount < 0 ? null : $amount;
+    }
+
+    /**
      * @return array<string, float>
      */
     private function collectSensitivePrices(Request $request): array
@@ -1770,12 +1872,11 @@ class SiteController extends Controller
                 continue;
             }
 
-            $price = $request->input("price_sensitive.$topic");
-            $amount = ($price === null || $price === '') ? 0.0 : (float) $price;
-            if ($amount < 0) {
+            $amount = $this->optionalNonNegativeMoney($request->input("price_sensitive.$topic"));
+            if ($amount === null) {
                 continue;
             }
-            $sensitivePrices[$topic] = round($amount, 2);
+            $sensitivePrices[$topic] = $amount;
         }
 
         return $sensitivePrices;
@@ -1792,13 +1893,12 @@ class SiteController extends Controller
                 continue;
             }
 
-            $raw = $request->input("price_homepage.$days");
-            $price = ($raw === null || $raw === '') ? 0.0 : (float) $raw;
-            if ($price < 0) {
+            $price = $this->optionalNonNegativeMoney($request->input("price_homepage.$days"));
+            if ($price === null) {
                 continue;
             }
 
-            $out[(string) $days] = round($price, 2);
+            $out[(string) $days] = $price;
         }
 
         return $out;
