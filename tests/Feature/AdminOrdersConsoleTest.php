@@ -442,14 +442,23 @@ class AdminOrdersConsoleTest extends TestCase
 
     public function test_order_show_falls_back_to_submission_brief_fields(): void
     {
+        Storage::fake('local');
         $admin = $this->userWithRole('admin');
         $advertiser = $this->userWithRole('advertiser');
         $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
         $item = $order->items->first();
+        $path = 'content-uploads/'.$advertiser->id.'/brief-only.docx';
+        Storage::disk('local')->put($path, 'brief-bytes');
 
         $submission = ContentSubmission::create([
             'user_id' => $advertiser->id,
             'title' => 'Brief only on submission',
+            'original_filename' => 'brief-only.docx',
+            'disk' => 'local',
+            'path' => $path,
+            'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'extension' => 'docx',
+            'size_bytes' => 11,
             'moderation_status' => ContentSubmission::STATUS_APPROVED,
             'anchor_text' => 'guest post outreach kit',
             'target_url' => 'https://advertiser.example/outreach',
@@ -476,7 +485,6 @@ class AdminOrdersConsoleTest extends TestCase
         );
         $item = $order->items->first();
         $item->update([
-            'content_link' => null,
             'content_disk' => 'not-a-configured-disk',
             'content_path' => 'orphaned/article.docx',
             'content_original_name' => 'article.docx',
