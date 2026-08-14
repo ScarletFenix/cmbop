@@ -212,6 +212,24 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
             ->assertJsonPath('sites.0.archived', false);
     }
 
+    public function test_staff_site_list_marks_archived_sites(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $this->site($publisher, [
+            'site_name' => 'Archived List Site',
+            'site_url' => 'https://archived-list.example',
+            'domain' => 'archived-list.example',
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.users.sites', $publisher->id))
+            ->assertOk()
+            ->assertJsonPath('sites.0.archived', true);
+    }
+
     public function test_sites_management_ui_offers_archive_not_blind_delete(): void
     {
         $blade = file_get_contents(resource_path('views/admin/sites.blade.php'));

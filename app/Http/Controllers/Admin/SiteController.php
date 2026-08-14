@@ -516,6 +516,7 @@ class SiteController extends Controller
             'enrichment_error',
             'metrics_fetched_at',
             'onboarding_status',
+            'archived_at',
             'example_url',
             'site_image',
             'screenshot_path',
@@ -1200,9 +1201,12 @@ class SiteController extends Controller
             'price' => 'sometimes|required|numeric|min:0',
             'description' => 'sometimes|nullable|string|min:50',
             'publication_time' => 'sometimes|nullable|string|max:20',
-            'link_type' => 'sometimes|nullable|in:dofollow,nofollow',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            // Dedicated editor is free text; modal may send dofollow/nofollow.
+            'link_type' => 'sometimes|nullable|string|max:50',
         ];
+
+        // site_image is often a stored path string after upload-image; only
+        // validate as a file when a real upload is present (handled below).
 
         $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
 
@@ -1365,8 +1369,13 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
+
+        if ($request->hasFile('site_image')) {
+            $validator->addRules([
+                'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            ]);
+        }
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches) {
             $language = strtolower(trim((string) $request->input('language', '')));

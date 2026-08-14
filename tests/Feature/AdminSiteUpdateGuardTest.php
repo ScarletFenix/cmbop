@@ -202,4 +202,38 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertTrue((bool) $site->verified);
         $this->assertTrue((bool) $site->active);
     }
+
+    public function test_update_keeps_existing_site_image_path_string(): void
+    {
+        $site = $this->site([
+            'site_image' => 'sites/existing.jpg',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => 'sites/existing.jpg',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
+    }
+
+    public function test_update_accepts_free_text_link_type_from_dedicated_editor(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'link_type' => 'Guest Post',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('Guest Post', $site->fresh()->link_type);
+    }
 }
