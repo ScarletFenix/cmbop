@@ -719,7 +719,7 @@ function editSiteWithImage(siteId) {
             }
 
             const fileInput = document.getElementById('swal-site_image');
-            const file = fileInput?.files?.[0];
+            let file = fileInput?.files?.[0];
             let imagePath = null;
             let imageUrl = null;
 

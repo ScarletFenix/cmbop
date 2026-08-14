@@ -426,6 +426,8 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('site-image-upload.js', $html);
         $this->assertStringContainsString('Hover to zoom', $html);
         $this->assertStringContainsString('prepareSiteImage', $html);
+        $this->assertStringContainsString('let file = fileInput', $html);
+        $this->assertStringNotContainsString('const file = fileInput', $html);
         $this->assertStringContainsString("X-CSRF-TOKEN': CSRF_TOKEN", $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
         $this->assertStringContainsString('data-media-fallback', $html);
@@ -452,6 +454,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('function bindHoverZoom', $helper);
         $this->assertStringContainsString('function prepareSiteImage', $helper);
         $this->assertStringContainsString('any-hover: hover', $helper);
+        $this->assertStringContainsString('image\\/gif', $helper);
     }
 
     public function test_admin_upload_keeps_image_when_public_storage_probe_fails(): void

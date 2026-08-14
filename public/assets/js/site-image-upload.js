@@ -177,6 +177,11 @@
             return Promise.resolve({ error: sizeError(APP_MAX_KB) });
         }
 
+        // Canvas flatten would drop GIF animation; send the original file.
+        if (/image\/gif$/i.test(file.type || '') || /\.gif$/i.test(file.name || '')) {
+            return Promise.resolve({ file: file });
+        }
+
         var phpMax = Math.max(256 * 1024, (parseInt(phpMaxKb, 10) || APP_MAX_KB) * 1024);
         if (file.size <= phpMax && file.size <= 1.5 * 1024 * 1024) {
             return Promise.resolve({ file: file });
