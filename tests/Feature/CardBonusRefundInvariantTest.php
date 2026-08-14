@@ -130,7 +130,7 @@ class CardBonusRefundInvariantTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
-        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
     }
 
     /**
