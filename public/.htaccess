@@ -8,7 +8,11 @@
 </IfModule>
 
 # Marketer bulk Done posts many fields (up to 200 sites). Article .docx
-# uploads default to 10 MB and admin may raise to 50 MB; PHP must allow 64M.
+# uploads are fixed at 10 MB; PHP must allow at least that (64M headroom).
+# Bare php_value: some Hostinger LiteSpeed builds skip the IfModule names below.
+php_value max_input_vars 10000
+php_value post_max_size 64M
+php_value upload_max_filesize 64M
 <IfModule lsapi_module>
     php_value max_input_vars 10000
     php_value post_max_size 64M
