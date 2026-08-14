@@ -23,6 +23,7 @@ use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -1239,7 +1240,25 @@ class SiteController extends Controller
             $data['verify_token_created_at']
         );
 
-        $site->update($data);
+        if (array_key_exists('link_type', $data)) {
+            Site::ensureLinkTypeColumn();
+        }
+
+        try {
+            $site->update($data);
+        } catch (QueryException $e) {
+            $message = $e->getMessage();
+            if (array_key_exists('link_type', $data)
+                && (str_contains($message, 'link_type')
+                    || str_contains($message, 'Data truncated')
+                    || str_contains($message, '1265'))) {
+                throw ValidationException::withMessages([
+                    'link_type' => 'This link type could not be saved. Run the latest database update and try again.',
+                ]);
+            }
+
+            throw $e;
+        }
 
         $changes = [];
         foreach ($oldData as $key => $oldValue) {
@@ -1484,7 +1503,7 @@ class SiteController extends Controller
             $data['languages'] = [$data['language']];
         }
 
-        if ($request->has('categories') || $request->has('category')) {
+        if ($request->has('categories') || $request->filled('category')) {
             $raw = $request->has('categories')
                 ? $request->input('categories')
                 : $request->input('category');
@@ -1497,6 +1516,9 @@ class SiteController extends Controller
                 $categories !== [] ? (string) $categories[0] : '',
                 $categories !== [] ? $categories : null
             );
+        } elseif ($request->has('category')) {
+            // Dedicated edit always posts category; blank must not wipe niches.
+            unset($data['category']);
         }
 
         if ($request->hasFile('site_image')) {

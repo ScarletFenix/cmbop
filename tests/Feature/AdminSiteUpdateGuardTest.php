@@ -238,6 +238,7 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame('Guest Post', $site->fresh()->link_type);
+        $this->assertTrue(Site::ensureLinkTypeColumn());
     }
 
     public function test_update_syncs_categories_json_from_category_field(): void
@@ -301,6 +302,27 @@ class AdminSiteUpdateGuardTest extends TestCase
         $site->refresh();
         $this->assertSame('Business & Finance', $site->category);
         $this->assertSame(['Business & Finance', 'Technology & Gadgets'], $site->categories);
+    }
+
+    public function test_update_ignores_blank_category_and_keeps_niches(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News', 'Business & Finance'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('News', $site->category);
+        $this->assertSame(['News', 'Business & Finance'], $site->categories);
     }
 
     public function test_update_keeps_categories_when_category_is_omitted(): void

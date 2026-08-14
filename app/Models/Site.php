@@ -214,6 +214,47 @@ class Site extends Model
             && Schema::hasColumn('sites', 'status_reason_by');
     }
 
+    /**
+     * Staff edit accepts free-text link types. Older MySQL DBs still have
+     * ENUM('dofollow','nofollow') and 500 on values such as "Guest Post".
+     */
+    public static function ensureLinkTypeColumn(): bool
+    {
+        static $ensured = false;
+        if ($ensured) {
+            return true;
+        }
+        $ensured = true;
+
+        try {
+            if (! Schema::hasTable('sites') || ! Schema::hasColumn('sites', 'link_type')) {
+                return false;
+            }
+
+            $driver = Schema::getConnection()->getDriverName();
+            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+                return true;
+            }
+
+            $column = collect(DB::select('SHOW COLUMNS FROM `sites` WHERE Field = ?', ['link_type']))->first();
+            $type = strtolower((string) ($column->Type ?? ''));
+            if ($type === '' || ! str_starts_with($type, 'enum(')) {
+                return true;
+            }
+
+            DB::statement("ALTER TABLE `sites` MODIFY `link_type` VARCHAR(64) NOT NULL DEFAULT 'dofollow'");
+        } catch (\Throwable $e) {
+            Log::warning('Could not widen sites.link_type', [
+                'error' => $e->getMessage(),
+                'hint' => 'Run database/migrations/2026_08_14_120000_widen_sites_link_type_column.php',
+            ]);
+
+            return false;
+        }
+
+        return true;
+    }
+
     public static function ensureOnboardingStatusColumnAcceptsValues(): void
     {
         static $ensured = false;
