@@ -784,4 +784,96 @@ class MarketingAssignSiteForPublisherTest extends TestCase
 
         $this->assertNull(Site::where('domain', 'int-niches.example')->first());
     }
+
+    public function test_marketing_update_rejects_array_shaped_site_url(): void
+    {
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Url Guard',
+            'site_url' => 'https://pending-url-guard.example',
+            'domain' => 'pending-url-guard.example',
+            'example_url' => 'https://pending-url-guard.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending url guard description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Url Guard',
+                'site_url' => ['https://poison-edit.example'],
+                'example_url' => ['https://poison-edit.example/sample'],
+                'price' => 50,
+                'da' => 40,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => 'News',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('site_url');
+
+        $pending->refresh();
+        $this->assertSame('pending-url-guard.example', $pending->domain);
+        $this->assertNull(Site::where('domain', 'array')->first());
+    }
+
+    public function test_marketing_update_integer_categories_does_not_500(): void
+    {
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Niche Guard',
+            'site_url' => 'https://pending-niche-guard.example',
+            'domain' => 'pending-niche-guard.example',
+            'example_url' => 'https://pending-niche-guard.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending niche guard description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Niche Guard',
+                'site_url' => 'https://pending-niche-guard.example',
+                'example_url' => 'https://pending-niche-guard.example/sample',
+                'price' => 50,
+                'da' => 40,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => 1,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('categories');
+
+        $this->assertSame(['News'], $pending->fresh()->categories);
+    }
 }

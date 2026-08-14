@@ -693,20 +693,16 @@ class SiteController extends Controller
 
         $rawSiteUrl = $request->input('site_url', $request->input('siteUrl', ''));
         $rawExampleUrl = $request->input('example_url', $request->input('exampleUrl', ''));
-        if (! is_string($rawSiteUrl) || ! is_string($rawExampleUrl)) {
-            $urlErrors = [];
-            if (! is_string($rawSiteUrl)) {
-                $urlErrors['site_url'] = 'Invalid URL';
-            }
-            if (! is_string($rawExampleUrl)) {
-                $urlErrors['example_url'] = 'Invalid URL';
-            }
-
+        $urlErrors = $this->nonStringUrlErrors([
+            'site_url' => $rawSiteUrl,
+            'example_url' => $rawExampleUrl,
+        ]);
+        if ($urlErrors !== []) {
             return back()->withErrors($urlErrors)->withInput();
         }
 
-        $siteUrl = $this->normalizeHttpUrl($rawSiteUrl);
-        $exampleUrl = $this->normalizeHttpUrl($rawExampleUrl);
+        $siteUrl = $this->normalizeHttpUrl(is_string($rawSiteUrl) ? $rawSiteUrl : '');
+        $exampleUrl = $this->normalizeHttpUrl(is_string($rawExampleUrl) ? $rawExampleUrl : '');
 
         // Coerce metric fields before validation (locale number inputs / "45.0" strings).
         $da = $this->normalizeMetricInt($request->input('da'));
@@ -728,11 +724,9 @@ class SiteController extends Controller
 
         $domain = preg_replace('/^www\./', '', strtolower($host));
 
-        $rawCategories = $request->input('categories', $request->input('category'));
-        if (! is_string($rawCategories) && ! is_iterable($rawCategories)) {
-            $rawCategories = [];
-        }
-        $resolvedNiches = Category::resolveNicheNames($rawCategories);
+        $resolvedNiches = Category::resolveNicheNames(
+            $this->nicheNamesInput($request->input('categories', $request->input('category')))
+        );
         $categories = $resolvedNiches['resolved'];
         $unknownNiches = $resolvedNiches['unknown'];
         $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
@@ -1358,16 +1352,8 @@ class SiteController extends Controller
      */
     private function adminUpdatePayload(Request $request, Site $site): array
     {
-        if ($request->filled('site_url')) {
-            $request->merge([
-                'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url')),
-            ]);
-        }
-        if ($request->filled('example_url')) {
-            $request->merge([
-                'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
-            ]);
-        }
+        $this->mergeNormalizedUrlOrFail($request, 'site_url');
+        $this->mergeNormalizedUrlOrFail($request, 'example_url', nullable: true);
         $metricMerge = [];
         foreach (['da', 'dr', 'traffic'] as $field) {
             if ($request->exists($field)) {
@@ -1403,7 +1389,8 @@ class SiteController extends Controller
         }
 
         $domain = null;
-        $siteUrl = trim((string) $request->input('site_url', ''));
+        $siteUrl = $request->input('site_url', '');
+        $siteUrl = is_string($siteUrl) ? trim($siteUrl) : '';
         if ($siteUrl !== '') {
             $host = parse_url($siteUrl, PHP_URL_HOST);
             if (is_string($host) && $host !== '') {
@@ -1586,22 +1573,13 @@ class SiteController extends Controller
         $canFixListing = ! $this->marketingListingIsLocked($site);
 
         if ($canFixListing) {
-            if ($request->exists('site_url') || $request->exists('siteUrl')) {
-                $request->merge([
-                    'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', ''))),
-                ]);
-            }
-            if ($request->exists('example_url') || $request->exists('exampleUrl')) {
-                $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
-                $request->merge([
-                    'example_url' => $exampleUrl !== '' ? $exampleUrl : null,
-                ]);
-            }
+            $this->mergeNormalizedUrlOrFail($request, 'site_url', 'siteUrl');
+            $this->mergeNormalizedUrlOrFail($request, 'example_url', 'exampleUrl', nullable: true);
         }
 
         // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
         // Also recovers from urlencoded truncation of "Technology & Gadgets" → "Technology".
-        $resolved = Category::resolveNicheNames($request->input('categories', []));
+        $resolved = Category::resolveNicheNames($this->nicheNamesInput($request->input('categories', [])));
         $categories = $resolved['resolved'];
         $unknownNiches = $resolved['unknown'];
         $request->merge(['categories' => $categories]);
@@ -1901,6 +1879,61 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<string, string>
+     */
+    private function nonStringUrlErrors(array $values): array
+    {
+        $errors = [];
+        foreach ($values as $field => $value) {
+            if (! is_string($value)) {
+                $errors[$field] = 'Invalid URL';
+            }
+        }
+
+        return $errors;
+    }
+
+    /**
+     * @return string|iterable<int|string, mixed>|null
+     */
+    private function nicheNamesInput(mixed $raw): string|iterable|null
+    {
+        if (is_string($raw) || is_iterable($raw) || $raw === null) {
+            return $raw;
+        }
+
+        return [];
+    }
+
+    private function mergeNormalizedUrlOrFail(
+        Request $request,
+        string $field,
+        ?string $alt = null,
+        bool $nullable = false
+    ): void {
+        if (! $request->exists($field) && ($alt === null || ! $request->exists($alt))) {
+            return;
+        }
+
+        $raw = $request->input($field, $alt !== null ? $request->input($alt) : null);
+        if ($raw === null || $raw === '') {
+            if ($nullable) {
+                $request->merge([$field => null]);
+            }
+
+            return;
+        }
+
+        if (! is_string($raw)) {
+            throw ValidationException::withMessages([$field => ['Invalid URL']]);
+        }
+
+        $normalized = $this->normalizeHttpUrl($raw);
+        $request->merge([$field => ($nullable && $normalized === '') ? null : $normalized]);
     }
 
     private function normalizeHttpUrl(string $url): string
