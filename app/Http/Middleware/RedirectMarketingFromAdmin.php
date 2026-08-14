@@ -65,6 +65,9 @@ class RedirectMarketingFromAdmin
 
             return true;
         }
+        if ($rest === 'staff-handbook' || str_starts_with($rest, 'staff-handbook/')) {
+            return true;
+        }
         if (str_starts_with($rest, 'bulk-site-requests')) {
             return true;
         }
