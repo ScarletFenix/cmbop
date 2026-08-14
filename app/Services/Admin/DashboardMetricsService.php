@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Carbon\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -104,13 +105,17 @@ class DashboardMetricsService
             ->groupBy('day')
             ->pluck('total', 'day');
 
+        $revenueByDay = $this->indexByDay($revenueRows);
+        $signupsByDay = $this->indexByDay($signupRows);
+        $ordersByDay = $this->indexByDay($orderRows);
+
         $revenue = [];
         $signups = [];
         $orders = [];
         foreach ($labels as $day) {
-            $revenue[] = (float) ($revenueRows[$day] ?? 0);
-            $signups[] = (int) ($signupRows[$day] ?? 0);
-            $orders[] = (int) ($orderRows[$day] ?? 0);
+            $revenue[] = (float) ($revenueByDay[$day] ?? 0);
+            $signups[] = (int) ($signupsByDay[$day] ?? 0);
+            $orders[] = (int) ($ordersByDay[$day] ?? 0);
         }
 
         return [
@@ -278,5 +283,21 @@ class DashboardMetricsService
     private function paidAtSql(): string
     {
         return 'COALESCE(paid_at, created_at)';
+    }
+
+    /**
+     * DATE() keys can come back as Y-m-d or a datetime string depending on driver.
+     *
+     * @param  Collection<string, mixed>  $rows
+     * @return array<string, mixed>
+     */
+    private function indexByDay($rows): array
+    {
+        $indexed = [];
+        foreach ($rows as $day => $total) {
+            $indexed[Carbon::parse((string) $day)->toDateString()] = $total;
+        }
+
+        return $indexed;
     }
 }

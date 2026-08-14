@@ -228,6 +228,29 @@ class AdminStalledOrderQueueTest extends TestCase
         Mail::assertNotQueued(PublisherAcceptNudge::class);
     }
 
+    public function test_remind_fails_clearly_when_the_publisher_has_no_email(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $publisher->email = '';
+        $publisher->save();
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'processing', [
+            'accepted_at' => now()->subDays(5),
+            'publish_nudge_stage' => 4,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $order->items->first()->id))
+            ->assertStatus(422)
+            ->assertJson([
+                'success' => false,
+                'message' => 'No publisher email on file for this order.',
+            ]);
+
+        Mail::assertNotQueued(PublisherPublishNudge::class);
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
+    }
+
     public function test_an_unaccepted_order_is_chased_with_an_accept_nudge(): void
     {
         $admin = $this->userWithRole('admin');

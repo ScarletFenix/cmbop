@@ -326,6 +326,16 @@ function retryRow(cols, loaderName) {
     </td></tr>`;
 }
 
+function makeChart(existing, canvasId, config) {
+    if (existing) {
+        existing.destroy();
+    }
+    if (typeof Chart === 'undefined') {
+        throw new Error('Charts unavailable');
+    }
+    return new Chart(document.getElementById(canvasId), config);
+}
+
 async function loadStatistics() {
     const json = await dashboardFetch(`{{ route('admin.dashboard.statistics') }}`);
     const d = json.data;
@@ -356,7 +366,7 @@ async function loadTrends() {
         scales: { y: { beginAtZero: true } }
     };
 
-    trendChart = new Chart(document.getElementById('trendChart'), {
+    trendChart = makeChart(trendChart, 'trendChart', {
         type: 'line',
         data: {
             labels: json.labels,
@@ -390,7 +400,7 @@ async function loadTrends() {
         }
     });
 
-    signupChart = new Chart(document.getElementById('signupChart'), {
+    signupChart = makeChart(signupChart, 'signupChart', {
         type: 'bar',
         data: {
             labels: json.labels,
@@ -413,7 +423,7 @@ async function loadDistributions() {
 
     const palette = ['#1a585e', '#0ea5e9', '#3faeb2', '#75787B', '#0f766e', '#b8e4e4', '#94a3b8'];
 
-    orderStatusChart = new Chart(document.getElementById('orderStatusChart'), {
+    orderStatusChart = makeChart(orderStatusChart, 'orderStatusChart', {
         type: 'doughnut',
         data: {
             labels: json.orders.labels,
@@ -425,7 +435,7 @@ async function loadDistributions() {
         options: { plugins: { legend: { position: 'bottom' } } }
     });
 
-    roleChart = new Chart(document.getElementById('roleChart'), {
+    roleChart = makeChart(roleChart, 'roleChart', {
         type: 'doughnut',
         data: {
             labels: json.roles.labels,
@@ -554,6 +564,7 @@ document.addEventListener('click', async (e) => {
     try {
         const res = await fetch(`{{ url('admin/orders/items') }}/${btn.dataset.item}/remind-publisher`, {
             method: 'POST',
+            credentials: 'same-origin',
             headers: {
                 'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]')?.content || '',
                 'Accept': 'application/json',

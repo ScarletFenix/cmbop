@@ -67,7 +67,14 @@ class StalledOrderController extends Controller
             $site = $item->site;
             $publisher = $site?->publisher_id ? User::find($site->publisher_id) : null;
 
-            if (! $order || ! $publisher?->email) {
+            if (! $order) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order not found for this item.',
+                ], 422);
+            }
+
+            if (! $publisher?->email) {
                 return response()->json([
                     'success' => false,
                     'message' => 'No publisher email on file for this order.',
