@@ -4,6 +4,11 @@
 @section('description', __('messages.meta_register_description'))
 
 @section('content')
+@php
+    $welcomeBonusEnabled = $welcomeBonusEnabled ?? true;
+    $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 20.0;
+    $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
+@endphp
 <link href="{{ asset('assets/css/auth-pages.css') }}?v={{ @filemtime(public_path('assets/css/auth-pages.css')) ?: '1' }}" rel="stylesheet">
 
 <div class="auth-page">
@@ -30,15 +35,17 @@
                                 </p>
 
                                 <ul class="auth-proof-list" id="authProofList" aria-label="What you get with SEOLinkBuildings">
+                                    @if($welcomeBonusEnabled)
                                     <li class="benefit-advertiser">
                                         <span class="auth-proof-icon" aria-hidden="true">
                                             <svg width="24" height="24" viewBox="0 0 24 24" focusable="false"><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/><path d="M12 22V12"/><path d="M2.5 9.5h19v2.5H2.5z"/><path d="M7.5 9.5C6 9.5 5 8.2 5 7.2S6.2 5 7.5 5c2 0 2.5 2 4.5 4.5C14 7 14.5 5 16.5 5 17.8 5 19 6.2 19 7.2s-1 2.3-2.5 2.3"/></svg>
                                         </span>
                                         <div>
-                                            <strong>€20 welcome credit</strong>
+                                            <strong>{{ $welcomeBonusEuro }} welcome credit</strong>
                                             <span>Spend on your first orders — not withdrawable</span>
                                         </div>
                                     </li>
+                                    @endif
                                     <li class="benefit-advertiser">
                                         <span class="auth-proof-icon" aria-hidden="true">
                                             <svg width="24" height="24" viewBox="0 0 24 24" focusable="false"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M7 15l3.5-4 3 2.5L18 7"/></svg>
@@ -90,14 +97,16 @@
                             <p class="auth-form-sub">Build authority with verified publishers — free to start, no card required.</p>
 
                             <div class="auth-mobile-strip d-md-none" aria-label="Why join SEOLinkBuildings">
-                                <strong id="mobileBenefitTitle">Start with €20 free credit</strong>
+                                <strong id="mobileBenefitTitle">{{ $welcomeBonusEnabled ? 'Start with '.$welcomeBonusEuro.' free credit' : 'Free to start — no card required' }}</strong>
                                 <ul id="mobileBenefitList">
+                                    @if($welcomeBonusEnabled)
                                     <li class="benefit-advertiser">
                                         <span class="mi" aria-hidden="true">
                                             <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M20 12v7a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-7"/><path d="M12 22V12"/><path d="M2.5 9.5h19v2.5H2.5z"/><path d="M7.5 9.5C6 9.5 5 8.2 5 7.2S6.2 5 7.5 5c2 0 2.5 2 4.5 4.5C14 7 14.5 5 16.5 5 17.8 5 19 6.2 19 7.2s-1 2.3-2.5 2.3"/></svg>
                                         </span>
                                         Welcome bonus for first orders
                                     </li>
+                                    @endif
                                     <li class="benefit-advertiser">
                                         <span class="mi" aria-hidden="true">
                                             <svg width="22" height="22" viewBox="0 0 24 24" focusable="false"><path d="M4 19V5"/><path d="M4 19h16"/><path d="M7 15l3.5-4 3 2.5L18 7"/></svg>
@@ -259,6 +268,8 @@ function togglePassword(id, iconSpan){
 
 function updateRoleBenefits(role){
     const isPublisher = role === 'publisher';
+    const welcomeBonusEnabled = @json($welcomeBonusEnabled);
+    const welcomeBonusEuro = @json($welcomeBonusEuro);
     document.querySelectorAll('.benefit-advertiser').forEach(el => {
         el.classList.toggle('d-none', isPublisher);
     });
@@ -270,7 +281,7 @@ function updateRoleBenefits(role){
     if (mobileTitle) {
         mobileTitle.textContent = isPublisher
             ? 'Earn from your sites'
-            : 'Start with €20 free credit';
+            : (welcomeBonusEnabled ? 'Start with ' + welcomeBonusEuro + ' free credit' : 'Free to start — no card required');
     }
 
     const quote = document.getElementById('authQuote');

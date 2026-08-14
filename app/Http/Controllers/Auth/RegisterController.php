@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Models\UserConsent;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
+use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Auth\Events\Registered;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -22,11 +23,13 @@ class RegisterController extends Controller
     /**
      * Show the registration form
      */
-    public function show()
+    public function show(WelcomeBonusService $welcomeBonus)
     {
         $roles = ['advertiser' => 'Advertiser', 'publisher' => 'Publisher'];
+        $welcomeBonusEnabled = $welcomeBonus->isEnabled();
+        $welcomeBonusAmount = $welcomeBonus->amount();
 
-        return view('auth.register', compact('roles'));
+        return view('auth.register', compact('roles', 'welcomeBonusEnabled', 'welcomeBonusAmount'));
     }
 
     /**
@@ -75,7 +78,8 @@ class RegisterController extends Controller
             ], 500);
         }
 
-        $welcomeBonus = ($request->role === 'advertiser') ? 20.00 : 0.00;
+        $bonusService = app(WelcomeBonusService::class);
+        $welcomeBonus = $bonusService->amountFor($request, (string) $request->role);
         $user = null;
 
         DB::beginTransaction();
@@ -92,6 +96,10 @@ class RegisterController extends Controller
             $activeRole = $request->role === 'advertiser' ? $advertiserRole : $publisherRole;
             $user->active_role_id = $activeRole->id;
             $user->save();
+
+            if ($welcomeBonus > 0 && ! $bonusService->recordClaim($user, $request, $welcomeBonus, 'registration')) {
+                $welcomeBonus = 0.0;
+            }
 
             Wallet::insertRegistrationPair(
                 $user->id,
@@ -128,6 +136,7 @@ class RegisterController extends Controller
 
         // Side-effects after commit — never roll back a created account
         if ($welcomeBonus > 0) {
+            $bonusService->queueClaimCookie();
             try {
                 $advertiserWallet = Wallet::where('user_id', $user->id)
                     ->where('role_id', $advertiserRole->id)

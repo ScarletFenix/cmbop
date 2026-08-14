@@ -28,6 +28,7 @@ use App\Http\Controllers\Admin\SiteEnrichmentController;
 use App\Http\Controllers\Admin\SiteRatingController;
 use App\Http\Controllers\Admin\StalledOrderController as AdminStalledOrderController;
 use App\Http\Controllers\Admin\UserController;
+use App\Http\Controllers\Admin\WelcomeBonusSettingController as AdminWelcomeBonusSettingController;
 use App\Http\Controllers\Admin\WithdrawalMarkPaidConfirmController;
 use App\Http\Controllers\Advertiser\AddFundsController;
 use App\Http\Controllers\Advertiser\AnalyticsController;
@@ -605,6 +606,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             Route::resource('banners', AdminAdBannerController::class)->except(['show']);
             Route::post('banners/{banner}/toggle', [AdminAdBannerController::class, 'toggle'])
                 ->name('banners.toggle');
+
+            Route::post('welcome-bonus', [AdminWelcomeBonusSettingController::class, 'toggle'])
+                ->name('welcome-bonus.toggle');
         });
 
         Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
