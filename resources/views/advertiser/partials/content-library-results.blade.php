@@ -244,12 +244,15 @@
                                     <span class="library-reject-box__icon" aria-hidden="true"><i class="fa-solid fa-circle-exclamation"></i></span>
                                     <div>
                                     <strong>{{ $label }}</strong>
-                                    {{ $submission->evaluation_report['summary'] ?? 'Fix issues and resubmit.' }}
                                     @php
+                                        $evaluationReport = is_array($submission->evaluation_report)
+                                            ? $submission->evaluation_report
+                                            : [];
                                         $reasonGroups = $submission->evaluationReasonGroups();
-                                        $hitTerms = $submission->evaluation_report['matched_terms'] ?? [];
-                                        $blockedUrls = $submission->evaluation_report['blocked_urls'] ?? [];
+                                        $hitTerms = $evaluationReport['matched_terms'] ?? [];
+                                        $blockedUrls = $evaluationReport['blocked_urls'] ?? [];
                                     @endphp
+                                    {{ $evaluationReport['summary'] ?? 'Fix issues and resubmit.' }}
                                     @if(($reasonGroups['blocking'] ?? []) !== [])
                                         <span class="library-reason-label">Blocking</span>
                                         <ul class="library-reason-list library-reason-list--blocking">
