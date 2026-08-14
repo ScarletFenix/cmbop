@@ -385,14 +385,70 @@ class MarketingPanelHistoryTest extends TestCase
             'description' => 'Staff changed niches',
             'subject_label' => 'Edit Target',
         ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.deactivated',
+            'description' => 'Staff deactivated site "Offline Target"',
+            'subject_label' => 'Offline Target',
+        ]);
 
         $this->actingAs($this->marketer)
             ->get(route('marketing.history', ['q' => 'Activated']))
             ->assertOk()
             ->assertSee('Live Target', false)
             ->assertSee('Activated site', false)
+            ->assertSee('Activated site (1)', false)
+            ->assertSee('Deactivated site (0)', false)
             ->assertDontSee('Edit Target', false)
-            ->assertDontSee('Staff changed niches', false);
+            ->assertDontSee('Staff changed niches', false)
+            ->assertDontSee('Offline Target', false)
+            ->assertDontSee('Staff deactivated site', false)
+            ->assertDontSee('Deactivated site (1)', false);
+    }
+
+    public function test_history_rejects_impossible_calendar_dates(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Kept when February 31 is submitted',
+            'subject_label' => 'Calendar Site',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['from' => '2026-02-31', 'to' => '2026-02-31']))
+            ->assertOk()
+            ->assertSee('Use a valid From date.', false)
+            ->assertSee('Use a valid To date.', false)
+            ->assertSee('Kept when February 31 is submitted', false);
+    }
+
+    public function test_history_out_of_range_page_redirects_to_last_page(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Only row on page one',
+            'subject_label' => 'Paged Site',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->followingRedirects()
+            ->get(route('marketing.history', ['page' => 2]))
+            ->assertOk()
+            ->assertSee('Showing 1–1 of 1 task', false)
+            ->assertSee('Paged Site', false)
+            ->assertDontSee('Showing –', false)
+            ->assertDontSee('No marketing tasks recorded yet.', false);
     }
 
     public function test_history_filter_bar_lists_every_task_type_with_counts(): void

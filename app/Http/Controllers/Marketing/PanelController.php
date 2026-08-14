@@ -134,14 +134,12 @@ class PanelController extends Controller
             }
         }
 
-        if ($request->filled('q')) {
-            $raw = $request->string('q')->toString();
-            $term = '%'.$raw.'%';
-            $matchedActions = marketing_task_actions_matching($raw);
-            $query->where(function ($q) use ($term, $matchedActions) {
-                $q->where('description', 'like', $term)
-                    ->orWhere('subject_label', 'like', $term)
-                    ->orWhere('action', 'like', $term);
+        $searchNeedle = mb_strtolower(trim($request->string('q')->toString()));
+        if ($searchNeedle !== '') {
+            $matchedActions = marketing_task_actions_matching($searchNeedle);
+            $query->where(function ($q) use ($searchNeedle, $matchedActions) {
+                $this->whereHistoryDescriptionHasWord($q, $searchNeedle);
+                $q->orWhereRaw('LOWER(COALESCE(subject_label, \'\')) LIKE ?', ['%'.$searchNeedle.'%']);
                 if ($matchedActions !== []) {
                     $q->orWhereIn('action', $matchedActions);
                 }
@@ -159,9 +157,13 @@ class PanelController extends Controller
 
         $logs = $query->latest('id')->paginate(30)->withQueryString();
 
+        if ($request->integer('page') > 1 && $logs->total() > 0 && $logs->count() === 0) {
+            return redirect()->to($logs->url(max(1, $logs->lastPage())));
+        }
+
         $actions = self::TRACKED_ACTIONS;
 
-        $filtersActive = $request->filled('q')
+        $filtersActive = $searchNeedle !== ''
             || $selectedAction !== ''
             || $request->filled('from')
             || $request->filled('to');
@@ -207,17 +209,44 @@ class PanelController extends Controller
         return now()->timezone($this->marketerTimezone())->toDateString();
     }
 
+    /**
+     * Word-aware description match so "Activated" does not hit "Deactivated".
+     */
+    private function whereHistoryDescriptionHasWord(Builder $q, string $needle): void
+    {
+        $pattern = '% '.$needle.' %';
+        $driver = $q->getConnection()->getDriverName();
+        $haystack = in_array($driver, ['sqlite', 'pgsql'], true)
+            ? "(' ' || LOWER(COALESCE(description, '')) || ' ')"
+            : "CONCAT(' ', LOWER(COALESCE(description, '')), ' ')";
+
+        $q->whereRaw($haystack.' LIKE ?', [$pattern]);
+    }
+
     private function parseMarketerDay(mixed $value, bool $start): ?Carbon
     {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+
         try {
-            $local = Carbon::parse($value, $this->marketerTimezone());
+            $local = Carbon::createFromFormat('Y-m-d', $value, $this->marketerTimezone());
         } catch (\Throwable) {
             return null;
         }
 
+        if (! $local || $local->format('Y-m-d') !== $value) {
+            return null;
+        }
+
         return $start
-            ? $local->startOfDay()->utc()
-            : $local->endOfDay()->utc();
+            ? $local->copy()->startOfDay()->utc()
+            : $local->copy()->endOfDay()->utc();
     }
 
     private function marketerTimezone(): string
