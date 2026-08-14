@@ -2,6 +2,8 @@
 
 namespace Tests\Feature;
 
+use App\Mail\BulkSiteRequestItemRejected;
+use App\Mail\BulkSitesSeededNotification;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
@@ -12,6 +14,7 @@ use App\Models\Language;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\MarketingOpsQueues;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -130,7 +133,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->actingAs($this->marketer)
             ->post(route('marketing.bulk-site-requests.seed', $bulk), ['rows' => $rows])
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('success', fn ($message) => is_string($message) && str_starts_with($message, 'Seed —'));
 
         $this->assertDatabaseHas('sites', [
             'domain' => 'seed-mkt.example',
@@ -148,12 +151,121 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertOk()
             ->assertSee('History')
             ->assertSee('Cannot be deleted')
-            ->assertSee('Seeded / added sites')
+            ->assertSee('<div class="fw-semibold">Seed</div>', false)
+            ->assertDontSee('<div class="fw-semibold">Done</div>', false)
             ->assertDontSee('>bulk_request.seeded<', false)
             ->getContent();
 
         $this->assertStringContainsString('Append-only', $html);
         $this->assertStringContainsString('Done — add sites', $html);
+        $this->assertStringContainsString('data-bulk-advanced-seed', $html);
+        $this->assertStringContainsString('Legacy request', $html);
+        $this->assertStringContainsString('Seed draft sites?', $html);
+    }
+
+    public function test_advanced_seed_is_hidden_when_url_price_rows_exist(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://use-done.example',
+            'domain' => 'use-done.example',
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertDontSee('data-bulk-advanced-seed', false)
+            ->assertDontSee('Advanced: seed with per-row metrics', false)
+            ->assertSee('Done — add sites', false)
+            ->assertSee('name="items['.$bulk->items()->first()->id.'][country]"', false);
+    }
+
+    public function test_seed_is_rejected_when_url_price_rows_exist(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://no-paste-seed.example',
+            'domain' => 'no-paste-seed.example',
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), [
+                'rows' => "https://no-paste-seed.example,99,40,45,12000,{$language},{$country},Should Fail",
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('error', 'Use Done for submitted URL + price rows. Advanced Seed is only for legacy requests without that list.');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'no-paste-seed.example']);
+        $this->assertTrue($bulk->items()->first()->isPending());
+        Mail::assertNothingOutgoing();
+    }
+
+    public function test_closed_legacy_request_hides_seed_and_rejects_post(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+
+        $completed = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_COMPLETED,
+            'estimated_count' => 2,
+            'completed_at' => now(),
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $completed))
+            ->assertOk()
+            ->assertSee('Legacy request', false)
+            ->assertDontSee('Use Advanced Seed below', false)
+            ->assertDontSee('data-bulk-advanced-seed', false);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $completed))
+            ->post(route('marketing.bulk-site-requests.seed', $completed), [
+                'rows' => "https://closed-legacy.example,99,40,45,12000,{$country},{$language},Closed",
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $completed))
+            ->assertSessionHas('error', 'This request is closed. Advanced Seed is only for open legacy requests.');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'closed-legacy.example']);
+        Mail::assertNothingOutgoing();
+    }
+
+    public function test_legacy_seed_validation_error_stays_on_the_seed_box(): void
+    {
+        $bulk = $this->makeBulkRequest();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), [
+                'rows' => '',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('rows');
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertDontSee('Finish the boxes first.', false)
+            ->getContent();
+
+        $this->assertStringContainsString('data-bulk-advanced-seed', $html);
     }
 
     public function test_marketer_done_rejects_da_or_dr_above_100(): void
@@ -469,6 +581,18 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertStringContainsString('unfinished row(s) will stay pending', $html);
         $this->assertStringContainsString('MAX_SITES_PER_REQUEST', $html);
         $this->assertStringContainsString('-site batch limit', $html);
+        $this->assertStringContainsString('data-bulk-progress', $html);
+        $this->assertStringContainsString('Still to Done', $html);
+        $this->assertStringContainsString('Reject this site only. The rest of the batch stays open.', $html);
+        $this->assertStringContainsString("title: 'Done — add draft sites?'", $html);
+        $this->assertStringContainsString("confirmText: 'Done'", $html);
+        $this->assertStringNotContainsString("title: 'Seed draft sites?'", $html);
+        $this->assertStringContainsString('This removes the wrong draft.', $html);
+        $this->assertStringContainsString('The publisher will see your reason.', $html);
+        $this->assertStringContainsString('name="reason"', $html);
+        $this->assertStringContainsString('id="bulk-cancel-reason"', $html);
+        $this->assertStringContainsString('data-bulk-advanced-seed', $html);
+        $this->assertStringContainsString('Seed these pasted rows as drafts and notify the publisher?', $html);
     }
 
     public function test_marketer_done_from_items_creates_drafts_and_notifies(): void
@@ -519,7 +643,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                 ],
             ])
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('success', fn ($message) => is_string($message) && str_starts_with($message, 'Done —'));
 
         $this->assertDatabaseHas('sites', [
             'domain' => 'mkt-done-a.example',
@@ -537,6 +661,23 @@ class MarketingBulkSiteOpsTest extends TestCase
                 ->where('title', 'like', '%Pending sites%')
                 ->exists()
         );
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'bulk_request.done',
+            'user_id' => $this->marketer->id,
+        ]);
+        $this->assertDatabaseMissing('activity_logs', [
+            'action' => 'bulk_request.seeded',
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('<div class="fw-semibold">Done</div>', $html);
+        $this->assertStringNotContainsString('<div class="fw-semibold">Seed</div>', $html);
+        $this->assertStringNotContainsString('>bulk_request.done<', $html);
     }
 
     public function test_marketer_can_delete_awaiting_details_draft_and_history_remains(): void
@@ -545,7 +686,9 @@ class MarketingBulkSiteOpsTest extends TestCase
         $site = $this->seedDraft($bulk, 'oops-wrong.example');
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('marketing.sites.destroy', $site->id))
+            ->deleteJson(route('marketing.sites.destroy', $site->id), [
+                'reason' => 'Wrong domain seeded in this batch.',
+            ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -558,6 +701,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $log = ActivityLog::where('action', 'site.deleted_by_marketing')->first();
         $this->assertNotNull($log);
         $this->assertSame($bulk->id, (int) ($log->properties['bulk_site_request_id'] ?? 0));
+        $this->assertSame($this->publisher->id, (int) ($log->properties['publisher_id'] ?? 0));
         $this->assertSame('oops-wrong.example', $log->properties['domain'] ?? null);
 
         $this->actingAs($this->marketer)
@@ -579,7 +723,9 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('marketing.sites.destroy', $site->id))
+            ->deleteJson(route('marketing.sites.destroy', $site->id), [
+                'reason' => 'Publisher withdrew this pending listing.',
+            ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -641,13 +787,263 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->post(route('marketing.bulk-site-requests.cancel', $bulk))
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk), [
+                'reason' => 'Publisher asked to stop this batch.',
+            ])
             ->assertRedirect(route('marketing.bulk-site-requests.index'));
 
         $this->assertDatabaseHas('activity_logs', [
             'action' => 'bulk_request.cancelled',
             'user_id' => $this->marketer->id,
         ]);
-        $this->assertSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
+        $cancelled = $bulk->fresh();
+        $this->assertSame(BulkSiteRequest::STATUS_CANCELLED, $cancelled->status);
+        $this->assertSame('Publisher asked to stop this batch.', $cancelled->cancel_reason);
+
+        $log = ActivityLog::query()->where('action', 'bulk_request.cancelled')->latest('id')->first();
+        $this->assertSame('Publisher asked to stop this batch.', $log?->properties['reason'] ?? null);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('data-bulk-cancel-reason', false)
+            ->assertSee('Publisher asked to stop this batch.', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Cancelled bulk request', false)
+            ->assertSee('Publisher asked to stop this batch.', false);
+    }
+
+    public function test_cancel_requires_a_reason(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $bulk->update(['status' => BulkSiteRequest::STATUS_REQUESTED]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk), [
+                'reason' => '',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('reason');
+
+        $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
+        $this->assertNull($bulk->fresh()->cancel_reason);
+    }
+
+    public function test_sheet_sent_cannot_rewind_a_live_batch(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $bulk->update(['status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER]);
+        $this->seedDraft($bulk, 'sheet-rewind.example');
+
+        $this->assertFalse($bulk->fresh()->canMarkSheetSent());
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Mark sheet emailed (optional)', $html);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.sheet-sent', $bulk))
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('error', 'Sheet emailed can only be marked before drafts are added.');
+
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+    }
+
+    public function test_marketer_can_reject_one_pending_site(): void
+    {
+        Mail::fake();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+        $keep = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://keep-this.example',
+            'domain' => 'keep-this.example',
+            'price' => 40,
+        ]);
+        $drop = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://drop-this.example',
+            'domain' => 'drop-this.example',
+            'price' => 55,
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('data-bulk-progress', false)
+            ->assertSee('Added 0', false)
+            ->assertSee('Rejected 0', false)
+            ->assertSee('Still to Done 2', false)
+            ->assertSee('Publisher filling 0', false)
+            ->assertSee('Ready 0', false)
+            ->assertSee('Reject this site only. The rest of the batch stays open.', false)
+            ->getContent();
+
+        $this->assertStringContainsString(
+            staff_route('bulk-site-requests.items.reject', [$bulk->id, $drop->id], false),
+            $html
+        );
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.items.reject', [$bulk->id, $drop->id]), [
+                'reason' => 'Wrong URL / duplicate listing.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('success');
+
+        $drop->refresh();
+        $this->assertNotNull($drop->rejected_at);
+        $this->assertSame($this->marketer->id, (int) $drop->rejected_by);
+        $this->assertSame('Wrong URL / duplicate listing.', $drop->reject_reason);
+        $this->assertNull($drop->site_id);
+        $this->assertTrue($keep->fresh()->isPending());
+        $this->assertSame(1, $bulk->fresh()->pendingItemsCount());
+        $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
+        $this->assertTrue(MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists());
+
+        Mail::assertQueued(BulkSiteRequestItemRejected::class, function ($mail) {
+            return $mail->hasTo($this->publisher->email)
+                && $mail->item->domain === 'drop-this.example'
+                && $mail->reason === 'Wrong URL / duplicate listing.';
+        });
+        Mail::assertNotQueued(BulkSitesSeededNotification::class);
+        $this->assertDatabaseMissing('sites', ['domain' => 'drop-this.example']);
+
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'bulk_request.item_rejected',
+            'user_id' => $this->marketer->id,
+        ]);
+        $this->assertDatabaseHas('in_app_notifications', [
+            'user_id' => $this->publisher->id,
+            'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+        ]);
+        $bell = InAppNotification::query()->where('user_id', $this->publisher->id)->latest('id')->first();
+        $this->assertStringContainsString('drop-this.example', (string) $bell->message);
+        $this->assertStringContainsString('Wrong URL / duplicate listing.', (string) $bell->message);
+
+        $after = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Rejected 1', false)
+            ->assertSee('Still to Done 1', false)
+            ->assertSee('https://drop-this.example', false)
+            ->assertSee('Wrong URL / duplicate listing.', false)
+            ->assertSee('Rejected site from bulk', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('name="items['.$drop->id.'][country]"', $after);
+        $this->assertStringContainsString('name="items['.$keep->id.'][country]"', $after);
+    }
+
+    public function test_reject_requires_a_reason_and_skips_added_rows(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        $item = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://need-reason.example',
+            'domain' => 'need-reason.example',
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.items.reject', [$bulk->id, $item->id]), [
+                'reason' => '',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('reason');
+
+        $this->assertTrue($item->fresh()->isPending());
+
+        $draft = $this->seedDraft($bulk, 'already-added.example');
+        $added = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => $draft->site_url,
+            'domain' => $draft->domain,
+            'price' => 40,
+            'site_id' => $draft->id,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.items.reject', [$bulk->id, $added->id]), [
+                'reason' => 'Too late, already drafted.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('error', 'That website is already added or rejected.');
+
+        $this->assertNull($added->fresh()->rejected_at);
+    }
+
+    public function test_rejecting_every_pending_row_completes_the_batch(): void
+    {
+        Mail::fake();
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        $item = BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://only-row.example',
+            'domain' => 'only-row.example',
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.items.reject', [$bulk->id, $item->id]), [
+                'reason' => 'Publisher asked to drop this URL.',
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        $this->assertFalse(MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists());
+        $this->assertSame(0, $bulk->fresh()->pendingItemsCount());
+        $this->assertSame(1, $bulk->fresh()->rejectedItemsCount());
+        $this->assertDatabaseMissing('sites', ['domain' => 'only-row.example']);
+    }
+
+    public function test_rejected_rows_are_not_counted_as_pending(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_COMPLETED,
+            'estimated_count' => 1,
+            'completed_at' => now(),
+        ]);
+        BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://already-rejected.example',
+            'domain' => 'already-rejected.example',
+            'price' => 40,
+            'rejected_at' => now(),
+            'rejected_by' => $this->marketer->id,
+            'reject_reason' => 'Out of niche.',
+        ]);
+
+        $this->assertSame(0, $bulk->pendingItemsCount());
+        $this->assertSame(1, $bulk->rejectedItemsCount());
+        $this->assertFalse($bulk->items()->first()->isPending());
+        $this->assertTrue($bulk->items()->first()->isRejected());
+        $this->assertFalse(MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists());
     }
 }

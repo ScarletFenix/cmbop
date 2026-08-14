@@ -48,7 +48,8 @@ body.role-shell-marketing #sidebar a:hover i {
   line-height: 1.2;
 }
 
-#sidebar.collapsed .mkt-nav-section {
+#sidebar.collapsed .mkt-nav-section,
+#sidebar.collapsed .mkt-nav-badge {
   display: none;
 }
 

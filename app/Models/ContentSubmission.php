@@ -554,7 +554,7 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Mid-evaluation upload (pending / processing) — shown under Approved with a badge.
+     * Mid-evaluation upload (pending / processing). Not a library status tab.
      */
     public function isEvaluating(): bool
     {

@@ -30,6 +30,7 @@ class BulkSiteRequest extends Model
         'estimated_count',
         'publisher_note',
         'admin_notes',
+        'cancel_reason',
         'sheet_sent_at',
         'seeded_at',
         'completed_at',
@@ -92,17 +93,22 @@ class BulkSiteRequest extends Model
 
     public function refreshProgressStatus(): void
     {
-        if (in_array($this->status, [self::STATUS_CANCELLED, self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)) {
+        if ($this->status === self::STATUS_CANCELLED) {
             return;
         }
 
         $total = $this->sites()->count();
-        if ($total === 0) {
-            return;
-        }
-
         $pendingPublisher = $this->pendingPublisherCount();
         $pendingItems = $this->pendingItemsCount();
+
+        // Stay at the start until staff Dones a row or every submitted row is resolved.
+        if (in_array($this->status, [self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)) {
+            if ($pendingItems > 0 || ($total === 0 && $this->items()->doesntExist())) {
+                return;
+            }
+        } elseif ($total === 0 && $pendingItems > 0) {
+            return;
+        }
 
         // Publisher still filling/reviewing seeded drafts.
         if ($pendingPublisher > 0) {
@@ -124,7 +130,7 @@ class BulkSiteRequest extends Model
             return;
         }
 
-        // Every seeded site left the publisher stage and no pending rows remain.
+        // Every row is added or rejected, and no publisher work remains.
         $this->forceFill([
             'status' => self::STATUS_COMPLETED,
             'completed_at' => $this->completed_at ?? now(),
@@ -136,7 +142,17 @@ class BulkSiteRequest extends Model
      */
     public function pendingItemsCount(): int
     {
-        return $this->items()->whereNull('site_id')->count();
+        return $this->items()->pending()->count();
+    }
+
+    public function rejectedItemsCount(): int
+    {
+        return $this->items()->rejected()->count();
+    }
+
+    public function addedItemsCount(): int
+    {
+        return $this->items()->whereNotNull('site_id')->count();
     }
 
     public function hasPendingItems(): bool
@@ -174,18 +190,36 @@ class BulkSiteRequest extends Model
     }
 
     /**
+     * Sheet emailed is only a start-of-job flag. Never rewind a live batch.
+     */
+    public function canMarkSheetSent(): bool
+    {
+        if ($this->status === self::STATUS_REQUESTED) {
+            return true;
+        }
+
+        return $this->status === self::STATUS_SHEET_SENT
+            && $this->sites()->doesntExist();
+    }
+
+    /**
      * Marketer-facing status label for queue clarity.
      */
     public function statusLabel(): string
     {
-        return match ($this->status) {
+        return self::statusLabelFor($this->status);
+    }
+
+    public static function statusLabelFor(?string $status): string
+    {
+        return match ($status) {
             self::STATUS_REQUESTED => 'Waiting on marketer',
             self::STATUS_SHEET_SENT => 'Sheet emailed',
             self::STATUS_SEEDED => 'Drafts seeded',
             self::STATUS_AWAITING_PUBLISHER => 'Waiting on publisher',
             self::STATUS_COMPLETED => 'Completed — ready to verify',
             self::STATUS_CANCELLED => 'Cancelled',
-            default => str_replace('_', ' ', (string) $this->status),
+            default => str_replace('_', ' ', (string) $status),
         };
     }
 }

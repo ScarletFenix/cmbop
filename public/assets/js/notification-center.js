@@ -197,6 +197,15 @@
       });
     }
 
+    if (this.showAllLink) {
+      this.showAllLink.addEventListener('click', function (e) {
+        const href = self.showAllLink.getAttribute('href')
+          || sameOriginUrl(self.config.allUrl, '/notifications/all');
+        e.preventDefault();
+        window.location.assign(href);
+      });
+    }
+
     if (this.search) {
       // Catalog-style live search: debounce typing, Enter runs immediately.
       this.search.addEventListener('input', function () {
@@ -438,11 +447,13 @@
         }
         if (self.footer) self.footer.style.display = 'block';
         if (self.showAllLink) {
-          self.showAllLink.style.display = (data.pagination && data.pagination.total > 0) ? 'inline-flex' : 'none';
+          // Keep Show all clickable even when the active chip (Unread) is empty.
+          self.showAllLink.style.display = 'inline-flex';
           const baseAll = sameOriginUrl(self.config.allUrl, '/notifications/all');
           const allParams = new URLSearchParams();
+          // Show all is the full inbox. Do not carry the default Unread chip
+          // (that page would look empty after a task is archived).
           if (self.filter && self.filter !== 'all') allParams.set('category', self.filter);
-          if (self.status === 'unread') allParams.set('category', 'unread');
           if (self.query) allParams.set('q', self.query);
           const qs = allParams.toString();
           self.showAllLink.setAttribute('href', baseAll + (qs ? (baseAll.indexOf('?') === -1 ? '?' : '&') + qs : ''));

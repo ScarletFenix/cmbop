@@ -3,20 +3,15 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
-use App\Models\DepositRequest;
-use App\Models\Order;
-use App\Models\Role;
-use App\Models\Site;
-use App\Models\SiteClaim;
-use App\Models\User;
-use App\Models\Withdrawal;
-use Carbon\Carbon;
+use App\Services\Admin\DashboardMetricsService;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
 {
+    public function __construct(private DashboardMetricsService $metrics) {}
+
     /**
      * Admin dashboard page (marketing uses Marketing\PanelController).
      */
@@ -31,35 +26,12 @@ class DashboardController extends Controller
     public function getStatistics()
     {
         try {
-            $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
-            $publisherRoleId = Role::where('name', 'publisher')->value('id');
-            $adminRoleId = Role::where('name', 'admin')->value('id');
-
-            $data = [
-                'total_users' => User::count(),
-                'advertisers' => $advertiserRoleId
-                    ? (int) DB::table('role_user')->where('role_id', $advertiserRoleId)->distinct()->count('user_id')
-                    : 0,
-                'publishers' => $publisherRoleId
-                    ? (int) DB::table('role_user')->where('role_id', $publisherRoleId)->distinct()->count('user_id')
-                    : 0,
-                'admins' => $adminRoleId
-                    ? (int) DB::table('role_user')->where('role_id', $adminRoleId)->distinct()->count('user_id')
-                    : 0,
-                'total_sites' => Site::count(),
-                'verified_sites' => Site::where('verified', 1)->count(),
-                'unverified_sites' => Site::query()->needsAdminReview()->count(),
-                'total_orders' => Order::count(),
-                'paid_orders' => Order::where('payment_status', 'paid')->count(),
-                'revenue' => (float) Order::where('payment_status', 'paid')->sum('total_amount'),
-                'pending_deposits' => DepositRequest::where('status', 'pending')->count(),
-                'pending_withdrawals' => Withdrawal::whereIn('status', ['pending', 'processing'])->count(),
-                'new_users_7d' => User::where('created_at', '>=', now()->subDays(7))->count(),
-                'orders_7d' => Order::where('created_at', '>=', now()->subDays(7))->count(),
-                'revenue_7d' => (float) Order::where('payment_status', 'paid')
-                    ->where('created_at', '>=', now()->subDays(7))
-                    ->sum('total_amount'),
-            ];
+            $data = $this->remember('statistics', fn () => $this->metrics->statistics());
+            // Queue fields are also the nav badges (live). Overlay so a cached
+            // KPI payload cannot disagree with pending_deposits / needs_attention.
+            if ($this->cacheTtl() > 0) {
+                $data = array_merge($data, $this->metrics->queueCounts());
+            }
 
             return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
@@ -76,44 +48,10 @@ class DashboardController extends Controller
     {
         try {
             $days = min(90, max(7, (int) $request->get('days', 30)));
-            $start = now()->subDays($days - 1)->startOfDay();
-
-            $labels = [];
-            for ($i = 0; $i < $days; $i++) {
-                $labels[] = $start->copy()->addDays($i)->format('Y-m-d');
-            }
-
-            $revenueRows = Order::where('payment_status', 'paid')
-                ->where('created_at', '>=', $start)
-                ->selectRaw('DATE(created_at) as day, SUM(total_amount) as total')
-                ->groupBy('day')
-                ->pluck('total', 'day');
-
-            $signupRows = User::where('created_at', '>=', $start)
-                ->selectRaw('DATE(created_at) as day, COUNT(*) as total')
-                ->groupBy('day')
-                ->pluck('total', 'day');
-
-            $orderRows = Order::where('created_at', '>=', $start)
-                ->selectRaw('DATE(created_at) as day, COUNT(*) as total')
-                ->groupBy('day')
-                ->pluck('total', 'day');
-
-            $revenue = [];
-            $signups = [];
-            $orders = [];
-            foreach ($labels as $day) {
-                $revenue[] = (float) ($revenueRows[$day] ?? 0);
-                $signups[] = (int) ($signupRows[$day] ?? 0);
-                $orders[] = (int) ($orderRows[$day] ?? 0);
-            }
 
             return response()->json([
                 'success' => true,
-                'labels' => array_map(fn ($d) => Carbon::parse($d)->format('M j'), $labels),
-                'revenue' => $revenue,
-                'signups' => $signups,
-                'orders' => $orders,
+                ...$this->remember('trends.'.$days, fn () => $this->metrics->trends($days)),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard trends error: '.$e->getMessage());
@@ -128,26 +66,9 @@ class DashboardController extends Controller
     public function getDistributions()
     {
         try {
-            $orderStatus = Order::select('status', DB::raw('COUNT(*) as total'))
-                ->groupBy('status')
-                ->pluck('total', 'status');
-
-            $roleCounts = DB::table('role_user')
-                ->join('roles', 'roles.id', '=', 'role_user.role_id')
-                ->select('roles.name', DB::raw('COUNT(DISTINCT role_user.user_id) as total'))
-                ->groupBy('roles.name')
-                ->pluck('total', 'name');
-
             return response()->json([
                 'success' => true,
-                'orders' => [
-                    'labels' => $orderStatus->keys()->map(fn ($s) => ucfirst($s))->values(),
-                    'values' => $orderStatus->values()->map(fn ($v) => (int) $v)->values(),
-                ],
-                'roles' => [
-                    'labels' => $roleCounts->keys()->map(fn ($s) => ucfirst($s))->values(),
-                    'values' => $roleCounts->values()->map(fn ($v) => (int) $v)->values(),
-                ],
+                ...$this->remember('distributions', fn () => $this->metrics->distributions()),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard distributions error: '.$e->getMessage());
@@ -162,23 +83,10 @@ class DashboardController extends Controller
     public function getQueueCounts()
     {
         try {
-            $pendingDeposits = DepositRequest::where('status', 'pending')->count();
-            $pendingWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing'])->count();
-            // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
-            $unverifiedSites = Site::query()->needsAdminReview()->count();
-            $pendingPayments = Order::where(function ($q) {
-                $q->whereNull('payment_status')
-                    ->orWhereNotIn('payment_status', ['paid', 'refunded']);
-            })->whereIn('status', ['pending', 'processing', 'review'])->count();
-            $pendingClaims = SiteClaim::where('status', 'pending')->count();
-
+            // Nav badges poll this every 60s — do not put it behind the metrics cache.
             return response()->json([
                 'success' => true,
-                'pending_deposits' => $pendingDeposits,
-                'pending_withdrawals' => $pendingWithdrawals,
-                'unverified_sites' => $unverifiedSites,
-                'pending_payments' => $pendingPayments,
-                'pending_claims' => $pendingClaims,
+                ...$this->metrics->queueCounts(),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard queue counts error: '.$e->getMessage());
@@ -188,62 +96,53 @@ class DashboardController extends Controller
     }
 
     /**
+     * Liability + this-month margin (same source as the finance hub).
+     */
+    public function getFinanceStrip()
+    {
+        try {
+            // Due to pay now sits next to the live withdrawal queue — do not cache it.
+            return response()->json(['success' => true, 'data' => $this->metrics->financeStrip()]);
+        } catch (\Exception $e) {
+            Log::error('Admin dashboard finance strip error: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Failed to load finance'], 500);
+        }
+    }
+
+    /**
      * Items that need admin attention (AJAX)
      */
     public function getActionQueue()
     {
         try {
-            $deposits = DepositRequest::with('user:id,name,email')
-                ->where('status', 'pending')
-                ->latest()
-                ->take(5)
-                ->get()
-                ->map(fn ($d) => [
-                    'id' => $d->id,
-                    'user' => $d->user?->name ?? 'Unknown',
-                    'email' => $d->user?->email,
-                    'amount' => (float) $d->amount,
-                    'method' => $d->payment_method,
-                    'date' => optional($d->created_at)->format('d M Y H:i'),
-                ]);
-
-            $withdrawals = Withdrawal::with('user:id,name,email')
-                ->where('status', 'pending')
-                ->latest()
-                ->take(5)
-                ->get()
-                ->map(fn ($w) => [
-                    'id' => $w->id,
-                    'user' => $w->user?->name ?? 'Unknown',
-                    'email' => $w->user?->email,
-                    'amount' => (float) $w->amount,
-                    'method' => $w->payment_method,
-                    'date' => optional($w->created_at)->format('d M Y H:i'),
-                ]);
-
-            $sites = Site::with('publisher:id,name,email')
-                ->needsAdminReview()
-                ->latest()
-                ->take(5)
-                ->get()
-                ->map(fn ($s) => [
-                    'id' => $s->id,
-                    'site_name' => $s->site_name,
-                    'site_url' => $s->site_url,
-                    'publisher' => $s->publisher?->name ?? 'Unknown',
-                    'date' => optional($s->created_at)->format('d M Y'),
-                ]);
-
+            // Work list — same reason as queue-counts: do not freeze pending rows.
             return response()->json([
                 'success' => true,
-                'deposits' => $deposits,
-                'withdrawals' => $withdrawals,
-                'sites' => $sites,
+                ...$this->metrics->actionQueue(),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard action queue error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load action queue'], 500);
         }
+    }
+
+    /**
+     * Optional short-lived cache. TTL 0 (default) skips the store.
+     */
+    private function remember(string $key, callable $callback): mixed
+    {
+        $ttl = $this->cacheTtl();
+        if ($ttl <= 0) {
+            return $callback();
+        }
+
+        return Cache::remember('admin.dashboard.'.$key, $ttl, $callback);
+    }
+
+    private function cacheTtl(): int
+    {
+        return (int) config('dashboard.metrics_cache_seconds', 0);
     }
 }

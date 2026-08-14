@@ -55,8 +55,10 @@ class PaymentController extends Controller
                 });
             }
 
-            // Payment status filter
-            if ($request->filled('payment_status')) {
+            // Payment status filter. "unpaid" is the ops queue, not an enum value.
+            if ($request->input('payment_status') === 'unpaid') {
+                $query->unpaidOps();
+            } elseif ($request->filled('payment_status')) {
                 $query->where('payment_status', $request->payment_status);
             }
 

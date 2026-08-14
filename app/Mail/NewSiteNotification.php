@@ -5,6 +5,7 @@
 namespace App\Mail;
 
 use App\Models\Site;
+use App\Models\User;
 
 class NewSiteNotification extends PlatformMailable
 {
@@ -12,11 +13,12 @@ class NewSiteNotification extends PlatformMailable
 
     public $action;
 
-    public function __construct(Site $site, $action = 'create')
+    public function __construct(Site $site, $action = 'create', ?User $recipient = null)
     {
         parent::__construct();
         $this->site = $site;
         $this->action = $action;
+        $this->recipientUser = $recipient;
     }
 
     public function build()
@@ -28,7 +30,7 @@ class NewSiteNotification extends PlatformMailable
         $this->site->loadMissing('publisher');
         $publisherId = (int) ($this->site->publisher_id ?? 0);
 
-        $adminUrl = route('admin.sites.index', array_filter([
+        $adminUrl = staff_route_for($this->recipientUser, 'sites.index', array_filter([
             'needs_review' => 1,
             'publisher' => $publisherId > 0 ? $publisherId : null,
             'site' => $this->site->id,

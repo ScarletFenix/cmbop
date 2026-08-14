@@ -37,7 +37,7 @@ class ContentLibraryController extends Controller
             $status = 'approved';
         }
 
-        if (! in_array($availability, ['all', 'available', 'in_progress', 'published', 'completed', 'expired', 'archived', 'needs_fix', 'ordered'], true)) {
+        if (! in_array($availability, ['all', 'available', 'evaluating', 'in_progress', 'published', 'completed', 'expired', 'archived', 'needs_fix', 'ordered'], true)) {
             $availability = 'available';
         }
 
@@ -77,13 +77,13 @@ class ContentLibraryController extends Controller
 
         // Needs corrections / expired / archived chips must not keep the default
         // status=approved filter (that would hide rejected rows).
-        if (in_array($availability, ['needs_fix', 'expired', 'archived', 'in_progress', 'published'], true)
+        if (in_array($availability, ['needs_fix', 'expired', 'archived', 'in_progress', 'published', 'evaluating'], true)
             && ! $request->has('status')) {
             $status = 'all';
         }
 
         // Available-for-publication already constrains moderation_status = approved.
-        if ($status && $status !== 'all' && $availability !== 'available') {
+        if ($status && $status !== 'all' && ! in_array($availability, ['available', 'evaluating'], true)) {
             $query->where('moderation_status', $status);
         }
 
@@ -109,27 +109,22 @@ class ContentLibraryController extends Controller
             $query->whereNull('archived_at');
 
             if ($availability === 'available') {
-                // Approved chip: orderable articles + mid-eval uploads (Evaluating badge).
-                $query->where(function ($q) {
-                    $q->where(function ($ready) {
-                        $ready->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                            ->whereNull('order_id')
-                            ->whereNotNull('path')->where('path', '!=', '')
-                            ->whereNotNull('country')->where('country', '!=', '')
-                            ->whereNotNull('language')->where('language', '!=', '')
-                            ->where(function ($exp) {
-                                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                            });
-                    })->orWhere(function ($eval) {
-                        $eval->whereIn('moderation_status', [
-                            ContentSubmission::STATUS_PENDING,
-                            ContentSubmission::STATUS_PROCESSING,
-                        ])->whereNull('order_id')
-                            ->where(function ($exp) {
-                                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                            });
+                $query->where('moderation_status', ContentSubmission::STATUS_APPROVED)
+                    ->whereNull('order_id')
+                    ->whereNotNull('path')->where('path', '!=', '')
+                    ->whereNotNull('country')->where('country', '!=', '')
+                    ->whereNotNull('language')->where('language', '!=', '')
+                    ->where(function ($exp) {
+                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
                     });
-                });
+            } elseif ($availability === 'evaluating') {
+                $query->whereIn('moderation_status', [
+                    ContentSubmission::STATUS_PENDING,
+                    ContentSubmission::STATUS_PROCESSING,
+                ])->whereNull('order_id')
+                    ->where(function ($exp) {
+                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                    });
             } elseif ($availability === 'in_progress') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
                 $query->whereNotNull('order_id')

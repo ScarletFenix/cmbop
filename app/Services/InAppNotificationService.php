@@ -3,6 +3,7 @@
 namespace App\Services;
 
 use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\DepositRequest;
 use App\Models\InAppNotification;
 use App\Models\Order;
@@ -602,15 +603,16 @@ class InAppNotificationService
             'activated' => ['Site activated', 'Your site is active and visible to advertisers.'],
             'deactivated' => ['Site deactivated', 'Your site was deactivated and is hidden from the catalog.'],
             'removed' => ['Site submission removed', 'Your site submission was removed and will not be listed.'],
+            'archived' => ['Site archived', 'Your site was archived and is hidden from the catalog. Existing orders are unchanged.'],
         ];
 
         [$title, $defaultMessage] = $labels[$status] ?? ['Site status updated', 'Your site status was updated.'];
         $name = $site->site_name ?: ($site->site_url ?: 'Your site');
         $reason = $reason !== null ? trim($reason) : '';
-        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated', 'removed'], true)) {
+        if ($reason === '' && filled($site->status_reason) && in_array($status, ['unverified', 'deactivated', 'removed', 'archived'], true)) {
             $reason = trim((string) $site->status_reason);
         }
-        if ($reason !== '' && in_array($status, ['unverified', 'deactivated', 'removed'], true)) {
+        if ($reason !== '' && in_array($status, ['unverified', 'deactivated', 'removed', 'archived'], true)) {
             $defaultMessage .= ' Reason: '.$reason;
         }
 
@@ -622,7 +624,7 @@ class InAppNotificationService
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => in_array($status, ['verified', 'activated'], true) ? 'check-circle' : 'alert-triangle',
-                'priority' => in_array($status, ['unverified', 'deactivated', 'removed'], true)
+                'priority' => in_array($status, ['unverified', 'deactivated', 'removed', 'archived'], true)
                     ? InAppNotification::PRIORITY_HIGH
                     : InAppNotification::PRIORITY_NORMAL,
                 'related' => $site,
@@ -1620,7 +1622,11 @@ class InAppNotificationService
         $created = collect();
 
         foreach ($this->usersWithRoles($roles) as $admin) {
-            $note = $this->notify($admin, $type, $title, $message, $options);
+            $opts = $options;
+            if (array_key_exists('action_url', $opts)) {
+                $opts['action_url'] = staff_ops_url_for($admin, $opts['action_url']);
+            }
+            $note = $this->notify($admin, $type, $title, $message, $opts);
             if ($note) {
                 $created->push($note);
             }
@@ -1912,7 +1918,6 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $bulk,
                 'action_label' => 'Open bulk request',
-                // Admin route works for admins; RedirectMarketingFromAdmin remaps it for marketers.
                 'action_url' => route('admin.bulk-site-requests.show', $bulk->id, false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
@@ -1960,6 +1965,38 @@ class InAppNotificationService
                 'action_url' => route('publisher.websites', [], false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
+                    'reason' => $reason,
+                ],
+            ]
+        );
+    }
+
+    public function notifyPublisherBulkItemRejected(BulkSiteRequest $bulk, BulkSiteRequestItem $item, string $reason): void
+    {
+        $publisherId = (int) ($bulk->publisher_id ?? 0);
+        if ($publisherId <= 0) {
+            return;
+        }
+
+        $url = $item->site_url ?: $item->domain ?: 'a website';
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            'One website was not added',
+            'We did not add '.$url.' from your bulk request. Reason: '.trim($reason).' The rest of the batch is unchanged.',
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $bulk,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Open websites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'bulk_site_request_id' => $bulk->id,
+                    'item_id' => $item->id,
+                    'site_url' => $item->site_url,
                     'reason' => $reason,
                 ],
             ]
@@ -2170,6 +2207,7 @@ class InAppNotificationService
 
         return User::query()
             ->whereHas('roles', fn ($q) => $q->whereIn('name', $roleNames))
+            ->with('roles')
             ->get();
     }
 

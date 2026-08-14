@@ -104,10 +104,7 @@ class FinanceOverviewService
         $pendingDeposits = DepositRequest::where('status', 'pending');
         $userMarked = (clone $pendingDeposits)->whereNotNull('user_marked_paid_at');
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
-        $pendingPayments = Order::where(function ($q) {
-            $q->whereNull('payment_status')
-                ->orWhereNotIn('payment_status', ['paid', 'refunded']);
-        })->whereIn('status', ['pending', 'processing', 'review']);
+        $pendingPayments = Order::query()->unpaidOps();
 
         return [
             'pending_deposits' => [
@@ -120,12 +117,12 @@ class FinanceOverviewService
             'open_withdrawals' => [
                 'count' => (clone $openWithdrawals)->count(),
                 'amount' => (float) (clone $openWithdrawals)->sum('net_amount'),
-                'url' => route('admin.withdrawals'),
+                'url' => route('admin.withdrawals', ['queue' => 'open']),
             ],
             'unpaid_orders' => [
                 'count' => (clone $pendingPayments)->count(),
                 'amount' => (float) (clone $pendingPayments)->sum('total_amount'),
-                'url' => route('admin.payments'),
+                'url' => route('admin.payments', ['payment_status' => 'unpaid']),
             ],
         ];
     }

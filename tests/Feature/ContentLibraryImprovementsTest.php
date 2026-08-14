@@ -117,7 +117,11 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Ordered Piece')
             ->assertDontSee('Growth Playbook')
             ->assertSee('Approved')
-            ->assertSee('In placement');
+            ->assertSee('Processing')
+            ->assertSee('library-status--processing', false)
+            ->assertSee('library-status-sweep', false)
+            ->assertSee('Uploaded', false)
+            ->assertDontSee('>In progress</span>', false);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['q' => 'Growth']))
@@ -163,7 +167,8 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->assertSee('Live Article')
             ->assertSee('Completed/LIVE')
-            ->assertSee('Done — not orderable')
+            ->assertSee('Published', false)
+            ->assertSee('library-status-time', false)
             ->assertSee('https://live.example/post')
             ->assertSee('Published on:')
             ->assertSee($site->site_name)
@@ -250,13 +255,16 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('availability=archived', $html);
         $this->assertStringContainsString('availability=expired', $html);
+        $this->assertStringNotContainsString('availability=evaluating', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
-        $this->assertStringContainsString('>In progress</span>', $html);
+        $this->assertStringContainsString('>Processing</span>', $html);
+        $this->assertStringNotContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
         $this->assertStringContainsString('>Archived</span>', $html);
         $this->assertStringContainsString('>Expired</span>', $html);
-        $this->assertStringContainsString('library-status-box--in_progress', $html);
+        $this->assertStringContainsString('library-status-box--processing', $html);
+        $this->assertStringNotContainsString('library-status-box--in_progress', $html);
         $this->assertStringContainsString('library-status-box--archived', $html);
         $this->assertStringContainsString('library-status-box--expired', $html);
         $this->assertStringNotContainsString('>All</span>', $html);
@@ -293,11 +301,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.library-status-row', $css);
         $this->assertStringContainsString('flex-wrap: wrap', $css);
-        $this->assertStringContainsString('library-status-dot', $html);
-        $this->assertStringContainsString('.library-status-dot', $css);
-        $this->assertStringContainsString('.library-status-box--needs_fix .library-status-dot', $css);
-        $this->assertStringContainsString('.library-status-box--completed .library-status-dot', $css);
-        $this->assertStringContainsString('library-status-pulse', $css);
+        $this->assertStringNotContainsString('library-status-dot', $html);
+        $this->assertStringNotContainsString('library-eval-badge', $html);
+        $this->assertStringContainsString('.library-status-sweep', $css);
+        $this->assertStringContainsString('library-status-sweep', $css);
+        $this->assertStringContainsString('prefers-reduced-motion', $css);
+        $this->assertStringContainsString('.library-status-box.is-active', $css);
         $this->assertStringContainsString('.mod-count.is-zero', $css);
         $this->assertStringContainsString('.library-status-box.is-active .mod-count:not(.is-zero)', $css);
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
@@ -326,6 +335,20 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->assertSee('No completed articles yet')
             ->assertSee('live URL')
+            ->assertDontSee('No articles yet');
+    }
+
+    public function test_processing_filter_empty_state(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('No articles processing')
+            ->assertSee('library-status-box--processing', false)
+            ->assertDontSee('No articles in progress')
             ->assertDontSee('No articles yet');
     }
 

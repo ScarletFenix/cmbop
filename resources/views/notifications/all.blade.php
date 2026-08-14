@@ -1,5 +1,7 @@
 @extends($layout)
 
+@section('title', 'Notifications')
+
 @section('content')
 <link rel="stylesheet" href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}">
 <link rel="stylesheet" href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '4' }}">
@@ -51,7 +53,7 @@
                 'notification' => $notification,
                 'as' => 'a',
                 'showTools' => false,
-                'onclick' => 'markReadThenGo(event, ' . $notification->id . ', ' . json_encode($notification->action_url ?: '') . ')',
+                'onclick' => 'markReadThenGo(event, ' . $notification->id . ', ' . json_encode($notification->actionUrlFor(auth()->user()) ?: '') . ')',
             ])
         @empty
             <div class="nc-empty">

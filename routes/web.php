@@ -421,6 +421,8 @@ $registerStaffOpsRoutes = function () {
         ->name('bulk-site-requests.done');
     Route::post('/bulk-site-requests/{id}/cancel', [AdminBulkSiteRequestController::class, 'cancel'])
         ->name('bulk-site-requests.cancel');
+    Route::post('/bulk-site-requests/{id}/items/{itemId}/reject', [AdminBulkSiteRequestController::class, 'rejectItem'])
+        ->name('bulk-site-requests.items.reject');
 
     Route::get('/site-enrichment', [SiteEnrichmentController::class, 'index'])
         ->name('site-enrichment.index');
@@ -509,6 +511,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('dashboard.distributions');
         Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
             ->name('dashboard.action-queue');
+        Route::get('/dashboard/finance', [AdminDashboardController::class, 'getFinanceStrip'])
+            ->name('dashboard.finance');
         Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
             ->name('dashboard.queue-counts');
 
@@ -619,6 +623,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
+        Route::get('/orders/items/{orderItem}/content', [AdminOrderController::class, 'downloadContent'])
+            ->name('orders.content.download');
         Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
         Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
         Route::post('/orders/{id}/disputes', [AdminOrderDisputeController::class, 'open'])->name('orders.disputes.open');

@@ -1,7 +1,10 @@
 <?php
 
+use App\Models\ActivityLog;
 use App\Models\User;
+use App\Support\MarketingHistoryDisplay;
 use App\Support\PublicI18n;
+use App\Support\StaffWorkspace;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
 
@@ -459,6 +462,26 @@ if (! function_exists('staff_route')) {
     }
 }
 
+if (! function_exists('staff_route_for')) {
+    /**
+     * Named staff route for a recipient (bells / mail), not the current request user.
+     */
+    function staff_route_for(?User $user, string $name, mixed $parameters = [], bool $absolute = true): string
+    {
+        return StaffWorkspace::routeFor($user, $name, $parameters, $absolute);
+    }
+}
+
+if (! function_exists('staff_ops_url_for')) {
+    /**
+     * Rewrite leftover /admin/{ops} URLs to /marketing/{ops} for marketing-only users.
+     */
+    function staff_ops_url_for(?User $user, ?string $url): ?string
+    {
+        return StaffWorkspace::actionUrlFor($user, $url);
+    }
+}
+
 if (! function_exists('staff_layout')) {
     /**
      * Blade layout for shared staff ops views (marketing panel vs admin panel).
@@ -483,12 +506,17 @@ if (! function_exists('marketing_task_labels')) {
     function marketing_task_labels(): array
     {
         return [
-            'bulk_request.seeded' => 'Seeded / added sites',
+            'bulk_request.done' => 'Done',
+            'bulk_request.seeded' => 'Seed',
             'bulk_request.sheet_sent' => 'Marked sheet sent',
             'bulk_request.cancelled' => 'Cancelled bulk request',
+            'bulk_request.item_rejected' => 'Rejected site from bulk',
             'bulk_request.notes_updated' => 'Updated bulk notes',
             'site.deleted_by_marketing' => 'Deleted pending site',
             'site.updated' => 'Edited site',
+            'site.activated' => 'Activated site',
+            'site.deactivated' => 'Deactivated site',
+            'site.assigned_for_acceptance' => 'Assigned site to publisher',
             'site.image_uploaded' => 'Uploaded site image',
             'site.metrics_refreshed' => 'Refreshed metrics',
             'site.screenshot_refreshed' => 'Refreshed screenshot',
@@ -507,5 +535,60 @@ if (! function_exists('marketing_task_label')) {
         $labels = marketing_task_labels();
 
         return $labels[$action] ?? $action;
+    }
+}
+
+if (! function_exists('marketing_task_actions_matching')) {
+    /**
+     * Action codes whose friendly label or raw code contains the search needle.
+     *
+     * @return list<string>
+     */
+    function marketing_task_actions_matching(?string $q): array
+    {
+        $needle = strtolower(trim((string) $q));
+        if ($needle === '') {
+            return [];
+        }
+
+        $pattern = '/\b'.preg_quote($needle, '/').'\b/u';
+        $matched = [];
+        foreach (marketing_task_labels() as $code => $label) {
+            $codeRaw = strtolower((string) $code);
+            $codeWords = str_replace(['.', '_'], ' ', $codeRaw);
+            if (
+                preg_match($pattern, strtolower($label))
+                || preg_match($pattern, $codeRaw)
+                || preg_match($pattern, $codeWords)
+            ) {
+                $matched[] = $code;
+            }
+        }
+
+        return $matched;
+    }
+}
+
+if (! function_exists('marketing_history_subject_url')) {
+    /**
+     * Deep link for a marketing history row subject, or null when it should stay plain text.
+     *
+     * @param  ?array<string, mixed>  $lookup
+     */
+    function marketing_history_subject_url(?ActivityLog $log, ?array $lookup = null): ?string
+    {
+        return MarketingHistoryDisplay::subjectUrl($log, $lookup);
+    }
+}
+
+if (! function_exists('marketing_history_bulk_url')) {
+    /**
+     * Extra bulk-request link when the primary subject is a site on a bulk batch.
+     *
+     * @param  ?array<string, mixed>  $lookup
+     */
+    function marketing_history_bulk_url(?ActivityLog $log, ?array $lookup = null): ?string
+    {
+        return MarketingHistoryDisplay::bulkUrl($log, $lookup);
     }
 }

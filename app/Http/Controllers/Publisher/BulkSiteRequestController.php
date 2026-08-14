@@ -158,7 +158,10 @@ class BulkSiteRequestController extends Controller
 
             foreach ($recipients as $admin) {
                 if (! empty($admin->email)) {
-                    Mail::to($admin->email)->send(new BulkSiteRequestSubmitted($bulk->load('items')));
+                    Mail::to($admin->email)->send(new BulkSiteRequestSubmitted(
+                        $bulk->load('items'),
+                        $admin instanceof User ? $admin : null
+                    ));
                 }
             }
         } catch (\Throwable $e) {
