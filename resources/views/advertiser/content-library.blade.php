@@ -216,6 +216,8 @@
                     </button>
                 </div>
 
+                <div id="articleEditorFeedback" class="article-editor-feedback small" aria-live="polite"></div>
+
                 {{-- Shown when the article gains images the current declaration does not cover. --}}
                 <div id="articleEditorImageRights" class="article-editor-rights border rounded-3 d-none">
                     @include('advertiser.partials.image-rights-declaration', [
@@ -223,8 +225,6 @@
                         'submission' => null,
                     ])
                 </div>
-
-                <div id="articleEditorFeedback" class="small" aria-live="polite"></div>
             </div>
             <div class="modal-footer flex-wrap gap-2">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
