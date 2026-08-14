@@ -26,7 +26,7 @@
         <div>
             <h4 class="mb-1 fw-bold">Add site for publisher</h4>
             <p class="text-muted mb-0 small">
-                Create a draft listing. The publisher gets email + bell and must Accept it into My Sites.
+                Create a listing with core details plus optional homepage, social, and sensitive-topic prices. The publisher gets email + bell and must Accept it into My Sites.
                 @if($isMarketingEditor)
                     After Accept, admin verifies first (TXT badge). You Activate only after that — and only if DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}, and a marketplace country is set.
                 @else
@@ -194,8 +194,7 @@
                                 <div class="multi-select-empty d-none" id="categoryEmpty" role="status">No categories found</div>
                             </div>
                         </div>
-                        <div class="form-text">Same niches as Catalog. Type and press Enter to add; Backspace removes the last chip. Max 7.</div>
-                        <div class="form-text">Click niches one by one — no Ctrl needed. Max 7.</div>
+                        <div class="form-text">Click to toggle; type to search; Enter adds the highlighted match. Max 7.</div>
                         @error('categories')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
                     </div>
 
@@ -252,9 +251,77 @@
                         <label class="form-label fw-semibold" for="description">Description <span class="text-danger">*</span></label>
                         <textarea id="description" name="description" rows="5"
                                   class="form-control @error('description') is-invalid @enderror"
-                                  required minlength="50">{{ old_text('description') }}</textarea>
-                        <div class="form-text">At least 50 characters.</div>
+                                  required minlength="50" maxlength="5000">{{ old_text('description') }}</textarea>
+                        <div class="form-text">Shown to advertisers on the listing. Min {{ \App\Support\SiteDescriptionRules::MIN_CHARS }} characters, max {{ \App\Support\SiteDescriptionRules::MAX_WORDS }} words (5000 characters).</div>
                         @error('description')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                    </div>
+
+                    @php
+                        $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
+                        $hasSensitiveOld = collect(['crypto','trading','CBD','forex'])->contains(fn ($t) => filled(old("sensitive.$t")) || filled(old("price_sensitive.$t")));
+                    @endphp
+                    <div class="col-12">
+                        <input type="hidden" name="placement_offers_form" value="1">
+                        <div class="border rounded p-3 bg-light">
+                            <p class="fw-semibold mb-1">Homepage &amp; social promotions (optional)</p>
+                            <p class="small text-muted mb-3">Advertisers see these in catalog Site Details. Leave unchecked to hide the offer.</p>
+                            <p class="fw-semibold small mb-2">Homepage placement</p>
+                            <div class="d-flex flex-wrap gap-3 mb-3">
+                                @foreach($homepageDays as $days)
+                                    <div style="min-width:140px;">
+                                        <div class="form-check">
+                                            <input type="checkbox" name="homepage[{{ $days }}]" value="1"
+                                                   class="form-check-input" id="staffHomepage{{ $days }}"
+                                                   {{ old("homepage.$days") ? 'checked' : '' }}>
+                                            <label class="form-check-label" for="staffHomepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
+                                        </div>
+                                        <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
+                                               placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
+                                               value="{{ old("price_homepage.$days") }}">
+                                    </div>
+                                @endforeach
+                            </div>
+                            <p class="fw-semibold small mb-2">Social media sharing (always free)</p>
+                            <div class="d-flex flex-wrap gap-3">
+                                @foreach(['facebook' => 'Facebook', 'instagram' => 'Instagram', 'x' => 'X'] as $channel => $label)
+                                    <div class="form-check">
+                                        <input type="checkbox" name="social[{{ $channel }}]" value="1"
+                                               class="form-check-input" id="staffSocial{{ ucfirst($channel) }}"
+                                               {{ old("social.$channel") ? 'checked' : '' }}>
+                                        <label class="form-check-label" for="staffSocial{{ ucfirst($channel) }}">{{ $label }}</label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="col-12">
+                        <button type="button"
+                                class="disclosure-toggle"
+                                id="sensitiveDisclosureBtn"
+                                aria-expanded="{{ $hasSensitiveOld ? 'true' : 'false' }}"
+                                aria-controls="sensitiveDisclosurePanel">
+                            <i class="fa fa-chevron-{{ $hasSensitiveOld ? 'down' : 'right' }}" aria-hidden="true"></i>
+                            Sensitive topics (optional)
+                        </button>
+                        <p class="small text-muted mb-0 mt-1">Only open if this publisher accepts crypto, trading, CBD, or forex placements.</p>
+                        <div class="disclosure-panel" id="sensitiveDisclosurePanel" @unless($hasSensitiveOld) hidden @endunless>
+                            <div class="row bg-light p-3 rounded mt-2">
+                                <div class="col-12">
+                                    <div class="d-flex flex-wrap gap-3">
+                                        @foreach(['crypto','trading','CBD','forex'] as $topic)
+                                        <div class="me-3">
+                                            <div class="form-check">
+                                                <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
+                                                <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
+                                            </div>
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">
+                                        </div>
+                                        @endforeach
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
 
                     <div class="col-12">
@@ -408,6 +475,25 @@
         });
         publisherSelect.addEventListener('change', refreshUnverifiedPublisherWarn);
         refreshUnverifiedPublisherWarn();
+    }
+
+    const sensitiveBtn = document.getElementById('sensitiveDisclosureBtn');
+    const sensitivePanel = document.getElementById('sensitiveDisclosurePanel');
+    if (sensitiveBtn && sensitivePanel) {
+        sensitiveBtn.addEventListener('click', function () {
+            const open = sensitivePanel.hasAttribute('hidden');
+            if (open) {
+                sensitivePanel.removeAttribute('hidden');
+            } else {
+                sensitivePanel.setAttribute('hidden', '');
+            }
+            sensitiveBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+            const icon = sensitiveBtn.querySelector('i');
+            if (icon) {
+                icon.classList.toggle('fa-chevron-right', !open);
+                icon.classList.toggle('fa-chevron-down', open);
+            }
+        });
     }
 
     const form = document.getElementById('staffAssignSiteForm');

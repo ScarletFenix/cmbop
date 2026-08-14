@@ -100,6 +100,15 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('written_request', false)
             ->assertSee('I have a written request', false)
             ->assertSee('This emails and bells the publisher', false)
+            ->assertSee('Click to toggle; type to search; Enter adds the highlighted match. Max 7.', false)
+            ->assertDontSee('Click niches one by one', false)
+            ->assertSee('maxlength="5000"', false)
+            ->assertSee('max 500 words (5000 characters)', false)
+            ->assertSee('name="price_homepage[7]"', false)
+            ->assertSee('name="social[facebook]"', false)
+            ->assertSee('name="sensitive[crypto]"', false)
+            ->assertSee('name="price_sensitive[crypto]"', false)
+            ->assertSee('optional homepage, social, and sensitive-topic prices', false)
             ->getContent();
 
         $this->assertStringContainsString('data-min-da="'.Site::GOOD_MIN_DA.'"', $html);
@@ -317,5 +326,145 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSessionHasErrors('written_request');
 
         $this->assertNull(Site::where('domain', 'marketing-added-news.example')->first());
+    }
+
+    public function test_marketing_store_rejects_live_duplicate_domain(): void
+    {
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Live Duplicate',
+            'site_url' => 'https://live-dup.example',
+            'domain' => 'live-dup.example',
+            'example_url' => 'https://live-dup.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Existing live listing description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://www.live-dup.example',
+                'example_url' => 'https://www.live-dup.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This website domain is already registered.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertSame(1, Site::where('domain', 'live-dup.example')->count());
+    }
+
+    public function test_marketing_store_rejects_archived_domain_with_restore_message(): void
+    {
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Archived Duplicate',
+            'site_url' => 'https://archived-dup.example',
+            'domain' => 'archived-dup.example',
+            'example_url' => 'https://archived-dup.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Archived listing description text here. ', 3),
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://archived-dup.example',
+                'example_url' => 'https://archived-dup.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This domain is already registered (including archived). Ask an admin to restore or hard-delete.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertSame(1, Site::where('domain', 'archived-dup.example')->count());
+    }
+
+    public function test_marketing_store_rejects_description_over_character_max(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://long-desc.example',
+                'example_url' => 'https://long-desc.example/sample',
+                'description' => str_repeat('a', 5001),
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('description');
+
+        $this->assertNull(Site::where('domain', 'long-desc.example')->first());
+    }
+
+    public function test_marketing_store_rejects_description_over_word_max(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://wordy-desc.example',
+                'example_url' => 'https://wordy-desc.example/sample',
+                'description' => implode(' ', array_fill(0, 501, 'word')),
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('description');
+
+        $this->assertStringContainsString(
+            'at most 500 words',
+            (string) session('errors')->first('description')
+        );
+        $this->assertNull(Site::where('domain', 'wordy-desc.example')->first());
+    }
+
+    public function test_marketing_store_persists_homepage_social_and_sensitive_prices(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://extras-listing.example',
+                'example_url' => 'https://extras-listing.example/sample',
+                'homepage' => ['7' => '1'],
+                'price_homepage' => ['7' => '25'],
+                'social' => ['facebook' => '1', 'x' => '1'],
+                'sensitive' => ['crypto' => '1'],
+                'price_sensitive' => ['crypto' => '15'],
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $site = Site::where('domain', 'extras-listing.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame([7 => 25.0], $site->homepagePlacementOptions());
+        $this->assertSame(['facebook', 'x'], $site->enabledSocialChannels());
+        $this->assertEqualsWithDelta(15.0, (float) ($site->sensitive_prices['crypto'] ?? 0), 0.001);
+        $this->assertTrue($site->isPendingPublisherAcceptance());
     }
 }

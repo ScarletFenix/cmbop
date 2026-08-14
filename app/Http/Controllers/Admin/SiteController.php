@@ -19,6 +19,7 @@ use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
+use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -758,10 +759,28 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'description' => 'required|string|min:50',
+            'description' => 'required|string|min:50|max:5000',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
+            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'sensitive.crypto' => 'nullable|boolean',
+            'sensitive.trading' => 'nullable|boolean',
+            'sensitive.CBD' => 'nullable|boolean',
+            'sensitive.forex' => 'nullable|boolean',
+            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0',
+            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
+            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
+            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'homepage.1' => 'nullable|boolean',
+            'homepage.7' => 'nullable|boolean',
+            'homepage.30' => 'nullable|boolean',
+            'price_homepage.1' => 'nullable|numeric|min:0',
+            'price_homepage.7' => 'nullable|numeric|min:0',
+            'price_homepage.30' => 'nullable|numeric|min:0',
+            'social.facebook' => 'nullable|boolean',
+            'social.instagram' => 'nullable|boolean',
+            'social.x' => 'nullable|boolean',
         ], array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
         ]));
@@ -777,8 +796,14 @@ class SiteController extends Controller
                 $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
             }
 
-            if (Site::where('domain', $domain)->exists()) {
-                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            $existing = Site::where('domain', $domain)->first();
+            if ($existing) {
+                $validator->errors()->add(
+                    'site_url',
+                    $existing->isArchived()
+                        ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+                        : 'This website domain is already registered.'
+                );
             }
 
             $country = $countryCodes[0] ?? null;
@@ -792,6 +817,10 @@ class SiteController extends Controller
 
             foreach ($unknownNiches as $cat) {
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
+            }
+
+            foreach (SiteDescriptionRules::errors((string) $request->input('description', '')) as $message) {
+                $validator->errors()->add('description', $message);
             }
         });
 
@@ -826,6 +855,9 @@ class SiteController extends Controller
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
                 $traffic = (int) $request->input('traffic');
+                $sensitivePrices = $this->collectSensitivePrices($request);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $socialPromotion = $this->collectSocialPromotion($request);
 
                 $site->applyMarketplaceListing([
                     'publisher_id' => $publisherId,
@@ -856,7 +888,9 @@ class SiteController extends Controller
                     'active' => false,
                     'enrichment_status' => 'pending',
                     'onboarding_status' => null,
-                    'sensitive_prices' => null,
+                    'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
+                    'social_promotion' => $socialPromotion,
                     'site_image' => $imagePath,
                 ]);
 
@@ -1706,6 +1740,28 @@ class SiteController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function collectSensitivePrices(Request $request): array
+    {
+        $sensitivePrices = [];
+        foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
+            if (! $request->boolean("sensitive.$topic")) {
+                continue;
+            }
+
+            $price = $request->input("price_sensitive.$topic");
+            if ($price === null || $price === '') {
+                continue;
+            }
+
+            $sensitivePrices[$topic] = (float) $price;
+        }
+
+        return $sensitivePrices;
     }
 
     /**
