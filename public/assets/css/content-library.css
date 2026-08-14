@@ -212,6 +212,19 @@
         background: var(--lib-status, var(--brand-primary, #1a585e));
         box-shadow: 0 0 0 3px var(--lib-status-ring, rgba(26, 88, 94, .12));
     }
+    /* No leading dots on Needs corrections or Completed/LIVE (strip + row). */
+    .library-status-box--needs_fix .library-status-dot,
+    .library-status-box--completed .library-status-dot,
+    .library-status--needs_fix .library-status-dot,
+    .library-status--completed .library-status-dot,
+    .library-status--published .library-status-dot {
+        display: none;
+    }
+    .library-status--needs_fix,
+    .library-status--completed,
+    .library-status--published {
+        padding-left: .7rem;
+    }
     .library-status {
         --lib-status: var(--brand-primary, #1a585e);
         --lib-status-ring: rgba(26, 88, 94, .12);
