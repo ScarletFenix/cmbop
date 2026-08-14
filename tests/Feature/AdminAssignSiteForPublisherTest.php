@@ -361,6 +361,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertDontSee('Activate / Deactivate as usual', false)
             ->assertSee('id="selectedLanguage"', false)
             ->assertSee('name="language"', false)
+            ->assertSee('Select a language', false)
             ->assertSee('data-max-kb', false)
             ->assertSee('Site image must be under', false)
             ->getContent();

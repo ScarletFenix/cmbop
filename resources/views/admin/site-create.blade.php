@@ -257,8 +257,18 @@
 
     function syncLanguageHidden() {
         if (!langHidden) return;
-        const fromSelect = langEl && !langEl.disabled ? String(langEl.value || '') : '';
-        langHidden.value = (fromSelect || langHidden.value || '').toLowerCase();
+        if (langEl && !langEl.disabled) {
+            langHidden.value = String(langEl.value || '').toLowerCase();
+            return;
+        }
+        langHidden.value = String(langHidden.value || '').toLowerCase();
+    }
+
+    function languageValue() {
+        if (langEl && !langEl.disabled && String(langEl.value || '').trim()) {
+            return String(langEl.value).toLowerCase();
+        }
+        return String((langHidden && langHidden.value) || '').toLowerCase();
     }
 
     function refreshLanguages() {
@@ -319,13 +329,22 @@
 
     const form = document.getElementById('staffAssignSiteForm');
     const hidden = document.getElementById('selectedCategories');
-    if (form && hidden) {
+    if (form) {
         form.addEventListener('submit', function (e) {
             if (langEl) {
                 langEl.disabled = false;
             }
             syncLanguageHidden();
-            if (!String(hidden.value || '').trim()) {
+            if (!languageValue()) {
+                e.preventDefault();
+                if (window.slbAlert) {
+                    window.slbAlert({ icon: 'warning', title: 'Select a language' });
+                } else if (window.Swal) {
+                    Swal.fire({ icon: 'warning', title: 'Select a language', timer: 2200, showConfirmButton: false });
+                }
+                return;
+            }
+            if (hidden && !String(hidden.value || '').trim()) {
                 e.preventDefault();
                 if (window.slbAlert) {
                     window.slbAlert({ icon: 'warning', title: 'Select at least one niche' });
