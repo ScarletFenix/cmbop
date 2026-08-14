@@ -8,29 +8,34 @@
 
 # Marketer bulk Done posts many fields (up to 200 sites). Article .docx
 # uploads are fixed at 10 MB; PHP must allow at least that (64M headroom).
-# php_value only inside IfModule — a bare php_value 500s the site when PHP
-# is CGI/FPM and the directive is unknown. .user.ini / php.ini still apply.
+# php_value only when the PHP module is loaded. A LiteSpeed-server IfModule is
+# NOT safe — that module is always on, but php_value may be unknown (HTTP 500).
+# .user.ini / php.ini still apply for CGI.
 # LimitRequestBody: LiteSpeed/Apache can 413 a 5 MB body before PHP runs.
 LimitRequestBody 67108864
 <IfModule lsapi_module>
     php_value max_input_vars 10000
     php_value post_max_size 64M
     php_value upload_max_filesize 64M
-</IfModule>
-<IfModule LiteSpeed>
-    php_value max_input_vars 10000
-    php_value post_max_size 64M
-    php_value upload_max_filesize 64M
+    php_value max_input_time 120
+    php_value max_execution_time 120
+    php_value memory_limit 256M
 </IfModule>
 <IfModule mod_php.c>
     php_value max_input_vars 10000
     php_value post_max_size 64M
     php_value upload_max_filesize 64M
+    php_value max_input_time 120
+    php_value max_execution_time 120
+    php_value memory_limit 256M
 </IfModule>
 <IfModule mod_php8.c>
     php_value max_input_vars 10000
     php_value post_max_size 64M
     php_value upload_max_filesize 64M
+    php_value max_input_time 120
+    php_value max_execution_time 120
+    php_value memory_limit 256M
 </IfModule>
 
 <IfModule mod_rewrite.c>
@@ -54,5 +59,5 @@ LimitRequestBody 67108864
 
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteRule ^ index.php [L]
+    RewriteRule ^ index.php [L,QSA]
 </IfModule>

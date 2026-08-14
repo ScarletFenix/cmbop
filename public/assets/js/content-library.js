@@ -195,7 +195,13 @@ function libraryFileTooLargeMessage(file) {
 }
 
 function libraryUploadTransportMessage(status) {
-    if (status === 413 || status === 422 || status === 0) {
+    if (status === 419) {
+        return 'Your session expired. Refresh the page and try again.';
+    }
+    if (status === 429) {
+        return 'Too many upload attempts. Wait a minute and try again.';
+    }
+    if (status === 413 || status === 422 || status === 500 || status === 502 || status === 504 || status === 0) {
         return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
     }
     return 'Upload failed. Please try again.';
@@ -1724,6 +1730,10 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         }
         if (!data.success) {
             libraryUploadAbort = null;
+            if (res.status === 419 || res.status === 429) {
+                setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
+                return;
+            }
             setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Upload failed. Use a Word .docx and try again.'));
             return;
         }

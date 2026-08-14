@@ -1224,12 +1224,16 @@ class ContentLibraryImprovementsTest extends TestCase
             $htaccess,
             'Bare php_value outside IfModule 500s Hostinger when PHP is not an Apache module.'
         );
+        $this->assertStringNotContainsString('<IfModule LiteSpeed>', $htaccess);
         $this->assertStringContainsString('RewriteCond %{REQUEST_METHOD} GET', $htaccess);
+        $this->assertStringContainsString('RewriteRule ^ index.php [L,QSA]', $htaccess);
         $this->assertStringNotContainsString('Content-Security-Policy', $htaccess);
 
         $userIni = (string) file_get_contents(public_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
         $this->assertStringContainsString('post_max_size = 64M', $userIni);
+        $this->assertStringContainsString('max_execution_time = 120', $userIni);
+        $this->assertStringContainsString('memory_limit = 256M', $userIni);
         $rootIni = (string) file_get_contents(base_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $rootIni);
         $publicPhpIni = (string) file_get_contents(public_path('php.ini'));
@@ -1240,6 +1244,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
         $this->assertStringContainsString('X-Upload-Bytes', $js);
+        $this->assertStringContainsString('Your session expired', $js);
+        $this->assertStringContainsString('Too many upload attempts', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
         $this->assertStringNotContainsString('hosting PHP settings', $js);
