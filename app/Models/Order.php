@@ -66,11 +66,31 @@ class Order extends Model
     }
 
     /**
-     * Still waiting on the scheduled slot (list chip). Released rows are normal queue.
+     * Still waiting on the scheduled slot (list chip / status filter).
+     * Checkout keeps status=pending and stores the slot on publication_mode.
      */
     public function isAwaitingScheduledRelease(): bool
     {
-        return $this->isScheduled() && $this->schedule_released_at === null;
+        if ($this->schedule_released_at !== null) {
+            return false;
+        }
+
+        if (in_array($this->status, ['cancelled', 'completed'], true)) {
+            return false;
+        }
+
+        return $this->isScheduled();
+    }
+
+    public function scopeAwaitingScheduledRelease($query)
+    {
+        return $query
+            ->whereNull('schedule_released_at')
+            ->whereNotIn('status', ['cancelled', 'completed'])
+            ->where(function ($q) {
+                $q->where('status', 'scheduled')
+                    ->orWhere('publication_mode', 'scheduled');
+            });
     }
 
     /**

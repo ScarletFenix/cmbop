@@ -68,6 +68,25 @@ class OrderScheduleTest extends TestCase
         $this->assertTrue($order->isAwaitingScheduledRelease());
     }
 
+    public function test_cancelled_or_completed_scheduled_order_is_not_awaiting_release(): void
+    {
+        $cancelled = new Order([
+            'status' => 'cancelled',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => Carbon::parse('2026-09-15 14:00:00', 'UTC'),
+        ]);
+        $completed = new Order([
+            'status' => 'completed',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => Carbon::parse('2026-09-15 14:00:00', 'UTC'),
+        ]);
+
+        $this->assertTrue($cancelled->hasPublicationSchedule());
+        $this->assertFalse($cancelled->isAwaitingScheduledRelease());
+        $this->assertTrue($completed->hasPublicationSchedule());
+        $this->assertFalse($completed->isAwaitingScheduledRelease());
+    }
+
     public function test_invalid_schedule_timezone_falls_back_to_utc(): void
     {
         $order = new Order([

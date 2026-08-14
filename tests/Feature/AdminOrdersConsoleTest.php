@@ -588,7 +588,7 @@ class AdminOrdersConsoleTest extends TestCase
         $scheduledAt = Carbon::parse('2026-09-15 14:00:00', 'UTC');
         $scheduled = $this->orderFor($advertiser, $site);
         $scheduled->update([
-            'status' => 'scheduled',
+            'status' => 'pending',
             'publication_mode' => 'scheduled',
             'scheduled_publish_at' => $scheduledAt,
             'schedule_timezone' => 'Europe/Berlin',
@@ -601,6 +601,14 @@ class AdminOrdersConsoleTest extends TestCase
             'scheduled_publish_at' => $scheduledAt,
             'schedule_timezone' => 'Europe/Berlin',
             'schedule_released_at' => Carbon::parse('2026-09-15 14:05:00', 'UTC'),
+        ]);
+
+        $cancelledScheduled = $this->orderFor($advertiser, $site);
+        $cancelledScheduled->update([
+            'status' => 'cancelled',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $scheduledAt,
+            'schedule_timezone' => 'Europe/Berlin',
         ]);
 
         $disputed = $this->orderFor($advertiser, $site);
@@ -641,6 +649,10 @@ class AdminOrdersConsoleTest extends TestCase
             ])
             ->assertJsonFragment([
                 'order_number' => $released->order_number,
+                'is_scheduled' => false,
+            ])
+            ->assertJsonFragment([
+                'order_number' => $cancelledScheduled->order_number,
                 'is_scheduled' => false,
             ])
             ->assertJsonFragment([
@@ -863,5 +875,66 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee($at->copy()->timezone('UTC')->format('M j, Y g:i A'), false)
             ->assertSee('UTC', false)
             ->assertDontSee('Not/AZone', false);
+    }
+
+    public function test_orders_data_filters_awaiting_scheduled_release(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($this->userWithRole('publisher'));
+        $at = Carbon::parse('2026-09-15 14:00:00', 'UTC');
+
+        $upcoming = $this->orderFor($advertiser, $site);
+        $upcoming->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $at,
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $legacyStatus = $this->orderFor($advertiser, $site);
+        $legacyStatus->update([
+            'status' => 'scheduled',
+            'publication_mode' => 'immediate',
+            'scheduled_publish_at' => $at,
+        ]);
+
+        $released = $this->orderFor($advertiser, $site);
+        $released->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $at,
+            'schedule_released_at' => now(),
+        ]);
+
+        $plain = $this->orderFor($advertiser, $site);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['status' => 'scheduled']))
+            ->assertOk()
+            ->assertJsonFragment(['order_number' => $upcoming->order_number])
+            ->assertJsonFragment(['order_number' => $legacyStatus->order_number])
+            ->assertJsonMissing(['order_number' => $released->order_number])
+            ->assertJsonMissing(['order_number' => $plain->order_number]);
+    }
+
+    public function test_order_show_links_parties_and_site(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+
+        $advertiserUrl = route('admin.users.index', ['user' => $advertiser->id]).'#user-'.$advertiser->id;
+        $publisherUrl = route('admin.users.index', ['user' => $publisher->id]).'#user-'.$publisher->id;
+        $siteUrl = route('admin.sites.edit', $site->id);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee($advertiserUrl, false)
+            ->assertSee($publisherUrl, false)
+            ->assertSee($siteUrl, false);
     }
 }

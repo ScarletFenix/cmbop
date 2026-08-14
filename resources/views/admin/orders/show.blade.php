@@ -33,6 +33,12 @@
     $scheduleTimezone = $hasPublicationSchedule
         ? $order->scheduleTimezoneOrUtc()
         : null;
+    $advertiserAdminUrl = $order->user
+        ? route('admin.users.index', ['user' => $order->user->id]).'#user-'.$order->user->id
+        : null;
+    $publisherAdminUrl = $publisher
+        ? route('admin.users.index', ['user' => $publisher->id]).'#user-'.$publisher->id
+        : null;
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
@@ -84,12 +90,24 @@
                         <div class="card-body">
                             <div class="mb-3">
                                 <div class="small text-muted">Advertiser</div>
-                                <div class="fw-semibold">{{ $order->user->name ?? '—' }}</div>
+                                <div class="fw-semibold">
+                                    @if($advertiserAdminUrl)
+                                        <a href="{{ $advertiserAdminUrl }}" class="link-dark">{{ $order->user->name }}</a>
+                                    @else
+                                        {{ $order->user->name ?? '—' }}
+                                    @endif
+                                </div>
                                 <div class="small text-muted">{{ $order->user->email ?? '' }}</div>
                             </div>
                             <div>
                                 <div class="small text-muted">Publisher</div>
-                                <div class="fw-semibold">{{ $publisher->name ?? '—' }}</div>
+                                <div class="fw-semibold">
+                                    @if($publisherAdminUrl)
+                                        <a href="{{ $publisherAdminUrl }}" class="link-dark">{{ $publisher->name }}</a>
+                                    @else
+                                        {{ $publisher->name ?? '—' }}
+                                    @endif
+                                </div>
                                 <div class="small text-muted">{{ $publisher->email ?? '' }}</div>
                                 @if($remindableItems->isNotEmpty())
                                     <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" id="remind-publisher">
@@ -126,7 +144,15 @@
                                 @if(! $loop->first)
                                     <hr class="my-3">
                                 @endif
-                                <div class="mb-2"><span class="text-muted small">Site</span><div class="fw-semibold">{{ $line->site_name ?? ($lineSite->site_name ?? '—') }}</div></div>
+                                <div class="mb-2"><span class="text-muted small">Site</span>
+                                    <div class="fw-semibold">
+                                        @if($lineSite)
+                                            <a href="{{ route('admin.sites.edit', $lineSite->id) }}" class="link-dark">{{ $line->site_name ?? ($lineSite->site_name ?? '—') }}</a>
+                                        @else
+                                            {{ $line->site_name ?? '—' }}
+                                        @endif
+                                    </div>
+                                </div>
                                 @if($line->site_url || $lineSite?->site_url)
                                     <div class="mb-2"><a href="{{ $line->site_url ?? $lineSite->site_url }}" target="_blank" rel="noopener">{{ $line->site_url ?? $lineSite->site_url }}</a></div>
                                 @endif

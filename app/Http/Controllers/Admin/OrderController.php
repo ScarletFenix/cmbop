@@ -55,7 +55,11 @@ class OrderController extends Controller
             });
         }
 
-        if ($request->filled('status')) {
+        // "scheduled" is publication_mode (status stays pending). The status
+        // column value is leftover and would miss live scheduled rows.
+        if ($request->input('status') === 'scheduled') {
+            $query->awaitingScheduledRelease();
+        } elseif ($request->filled('status')) {
             $query->where('status', $request->string('status')->toString());
         }
 
