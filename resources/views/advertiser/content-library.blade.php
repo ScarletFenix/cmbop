@@ -219,6 +219,7 @@
                @if($chipActive) aria-current="page" @endif
                aria-label="{{ $chip['label'] }}, {{ $chipCount }} {{ $chipCount === 1 ? 'article' : 'articles' }}">
                 <span class="library-status-box__main">
+                    <span class="library-status-dot" aria-hidden="true"></span>
                     <span>{{ $chip['label'] }}</span>
                     @if($key === 'approved' && (int) ($chip['evaluating'] ?? 0) > 0)
                         <span class="library-eval-badge" title="Articles still being checked">
@@ -404,7 +405,7 @@
                         </td>
                         <td>
                             <div class="library-status-wrap">
-                                <span class="library-status library-status--{{ $statusCategory }}">{{ $label }}</span>
+                                <span class="library-status library-status--{{ $statusCategory }}"><span class="library-status-dot" aria-hidden="true"></span>{{ $label }}</span>
                                 @if($submission->isJustApproved())
                                     <span class="library-just-approved">Just approved</span>
                                 @elseif($statusCategory === 'completed')
