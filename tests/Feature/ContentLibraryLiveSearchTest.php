@@ -74,6 +74,16 @@ class ContentLibraryLiveSearchTest extends TestCase
             '/libraryIndexUrl:\s*["\']https?:/',
             $html
         );
+        $this->assertDoesNotMatchRegularExpression(
+            '/libraryUpdateUrl:\s*["\']https?:/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/uploadUrl:\s*["\']https?:/',
+            $html
+        );
+        $this->assertStringNotContainsString('onchange="this.form.submit()"', $html);
+        $this->assertStringContainsString('action="/advertiser/content-library"', $html);
     }
 
     public function test_word_and_requires_every_token_on_title_or_filename(): void
@@ -141,6 +151,11 @@ class ContentLibraryLiveSearchTest extends TestCase
         $this->assertStringContainsString('Page 1 of 1', $html);
         $this->assertStringContainsString('catalog-pagination__links', $html);
         $this->assertStringContainsString('aria-label="Library pages"', $html);
+        $this->assertStringContainsString('href="/advertiser/content-library?', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/library-status-box[^>]+href="https?:/',
+            $html
+        );
     }
 
     public function test_page_two_keeps_search_query_on_pager_links(): void
@@ -167,5 +182,39 @@ class ContentLibraryLiveSearchTest extends TestCase
         $this->assertStringContainsString('page=1', $html);
         $this->assertStringContainsString(route('advertiser.content-library', absolute: false), $html);
         $this->assertStringNotContainsString('/content-library/results?', $html);
+    }
+
+    public function test_results_fragment_row_actions_use_same_origin_paths(): void
+    {
+        $advertiser = $this->advertiser();
+        $article = $this->createApprovedSubmission($advertiser);
+        $article->update(['title' => 'Orderable Piece']);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.results'))
+            ->assertOk()
+            ->assertSee('Orderable Piece')
+            ->getContent();
+
+        $orderPath = route('advertiser.content-library.order', $article, false);
+        $this->assertStringContainsString('href="'.$orderPath.'"', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/href="https?:[^"]*content-library\/'.$article->id.'\/order"/',
+            $html
+        );
+    }
+
+    public function test_library_js_keeps_ui_filter_keys_and_modifier_clicks(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+
+        $this->assertStringContainsString('function libraryModifiedClick', $js);
+        $this->assertStringContainsString('if (libraryModifiedClick(e)) return;', $js);
+        $this->assertStringContainsString("if (availability === 'published') availability = 'completed';", $js);
+        $this->assertStringNotContainsString("if (availability === 'completed') availability = 'published';", $js);
+        $this->assertStringContainsString("detail.reason === 'input'", $js);
+        $this->assertStringContainsString("detail.reason === 'enter'", $js);
+        $this->assertStringContainsString("detail.reason === 'clear'", $js);
+        $this->assertStringContainsString("'completed', 'evaluating'", $js);
     }
 }

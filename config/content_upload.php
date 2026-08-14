@@ -21,7 +21,7 @@ return [
         'application/x-zip-compressed',
     ],
 
-    /** Max upload size in kilobytes (10240 = 10 MB) */
+    /** Default max upload size in kilobytes (10240 = 10 MB). Admin may raise to 51200 (50 MB). */
     'max_kilobytes' => (int) env('CONTENT_UPLOAD_MAX_KB', 10240),
 
     'disk' => env('CONTENT_UPLOAD_DISK', 'local'),

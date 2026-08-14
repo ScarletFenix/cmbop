@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\User;
+use App\Support\PhpIniSize;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -91,6 +92,16 @@ class ContentLibraryPhases710Test extends TestCase
         $this->assertStringContainsString('require_same_language', $html);
         $this->assertStringContainsString('uploads_enabled', $html);
         $this->assertStringContainsString('Browse articles', $html);
+        $this->assertStringContainsString('raise this to 20–50 MB', $html);
+        $this->assertStringContainsString('min="10240"', $html);
+        $this->assertStringContainsString('max="51200"', $html);
+        $this->assertStringNotContainsString('name="max_kilobytes" class="form-control" min="10240" max="10240"', $html);
+
+        $phpKb = PhpIniSize::uploadMaxKilobytes();
+        if ($phpKb < 10240) {
+            $this->assertStringContainsString('PHP still allows only', $html);
+            $this->assertStringContainsString('upload_max_filesize', $html);
+        }
     }
 
     public function test_legacy_wizard_partial_is_retired(): void

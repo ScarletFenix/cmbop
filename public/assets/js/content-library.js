@@ -2,20 +2,6 @@
 (function () {
 'use strict';
 const boot = window.ContentLibraryBoot || {};
-const libraryUpdateUrl = boot.libraryUpdateUrl;
-const libraryContentUrl = boot.libraryContentUrl;
-const libraryImageUploadUrl = boot.libraryImageUploadUrl;
-const libraryPreviewUrlBase = boot.libraryPreviewUrlBase;
-const libraryCsrf = boot.libraryCsrf;
-const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
-const libraryCountryLanguageMap = boot.libraryCountryLanguageMap || {};
-const libraryPreferredCountry = boot.libraryPreferredCountry || '';
-const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
-const libraryUploadsEnabled = !!boot.uploadsEnabled;
-const libraryOpenUpload = !!boot.openUpload;
-const libraryEditSubmission = boot.editSubmission || null;
-const libraryIndexUrl = boot.libraryIndexUrl || '';
-const libraryResultsUrl = boot.libraryResultsUrl || '';
 
 function librarySameOriginPath(url, fallback) {
     if (!url) return fallback || '';
@@ -26,6 +12,22 @@ function librarySameOriginPath(url, fallback) {
         return fallback || '';
     }
 }
+
+const libraryUpdateUrl = librarySameOriginPath(boot.libraryUpdateUrl, '/advertiser/content-submissions');
+const libraryContentUrl = librarySameOriginPath(boot.libraryContentUrl, '/advertiser/content-submissions');
+const libraryImageUploadUrl = librarySameOriginPath(boot.libraryImageUploadUrl, '');
+const libraryPreviewUrlBase = librarySameOriginPath(boot.libraryPreviewUrlBase, '/advertiser/content-submissions');
+const libraryCsrf = boot.libraryCsrf;
+const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
+const libraryCountryLanguageMap = boot.libraryCountryLanguageMap || {};
+const libraryPreferredCountry = boot.libraryPreferredCountry || '';
+const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
+const libraryUploadsEnabled = !!boot.uploadsEnabled;
+const libraryOpenUpload = !!boot.openUpload;
+const libraryEditSubmission = boot.editSubmission || null;
+const libraryIndexUrl = librarySameOriginPath(boot.libraryIndexUrl, '');
+const libraryResultsUrl = librarySameOriginPath(boot.libraryResultsUrl, '');
+const libraryUploadUrl = librarySameOriginPath(boot.uploadUrl, '');
 
 let articleQuill = null;
 let articleEditorSubmissionId = null;
@@ -184,17 +186,32 @@ function showDropzoneFile(file) {
     zone?.classList.remove('is-error', 'is-dragover');
 }
 
+function libraryFileTooLargeMessage(file) {
+    if (!file) return '';
+    const appMaxKb = Math.max(10240, Math.min(51200, Number(boot.maxKilobytes || 10240)));
+    const phpMaxKb = Number(boot.phpMaxKilobytes || 0);
+    const appMb = Math.max(1, Math.round(appMaxKb / 1024));
+    if (phpMaxKb > 0 && phpMaxKb < appMaxKb && file.size > phpMaxKb * 1024) {
+        const phpMb = Math.max(1, Math.round(phpMaxKb / 1024));
+        return 'This file is under the ' + appMb + ' MB article limit, but the server PHP upload limit is ' + phpMb + ' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
+    }
+    if (file.size > appMaxKb * 1024) {
+        return 'That file is over the ' + appMb + ' MB limit.';
+    }
+    return '';
+}
+
 function assignLibraryFile(file, feedback) {
     const input = document.getElementById('libraryFileInput');
-    const maxKb = Number(boot.maxKilobytes || 10240);
     if (!file || !input) return false;
     if (!/\.docx$/i.test(file.name)) {
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
-    if (file.size > maxKb * 1024) {
-        setFeedbackHtml(feedback, false, 'That file is over the ' + Math.max(1, Math.round(maxKb / 1024)) + ' MB limit.');
+    const tooLarge = libraryFileTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
@@ -1557,7 +1574,7 @@ async function deleteLibraryArticle(id, label) {
             if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not delete article.' });
             return;
         }
-        document.getElementById('library-row-' + id)?.remove();
+        refreshLibraryListAfterRowChange(id);
         showLibraryFlash('Article deleted.', true);
         if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article deleted.' });
     } catch (e) {
@@ -1587,7 +1604,7 @@ async function archiveLibraryArticle(id) {
             if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not archive article.' });
             return;
         }
-        document.getElementById('library-row-' + id)?.remove();
+        refreshLibraryListAfterRowChange(id);
         showLibraryFlash('Article archived.', true);
         if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article archived.' });
     } catch (e) {
@@ -1617,7 +1634,7 @@ async function restoreLibraryArticle(id) {
             if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not restore article.' });
             return;
         }
-        document.getElementById('library-row-' + id)?.remove();
+        refreshLibraryListAfterRowChange(id);
         showLibraryFlash('Article restored.', true);
         if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article restored.' });
     } catch (e) {
@@ -1643,6 +1660,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         return;
     }
+    const tooLarge = libraryFileTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
+        return;
+    }
     const langSelect = document.getElementById('libraryLanguage');
     if (!document.getElementById('libraryCountry').value || !langSelect?.value) {
         setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
@@ -1665,7 +1687,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
 
     let openedEditor = false;
     try {
-        const res = await fetch(boot.uploadUrl, {
+        if (!libraryUploadUrl) {
+            setFeedbackHtml(feedback, false, 'Upload URL is missing');
+            return;
+        }
+        const res = await fetch(libraryUploadUrl, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
             body: fd,
@@ -1762,18 +1788,68 @@ function syncLibrarySearchInputFromParams(params) {
     if (input.value !== next) input.value = next;
 }
 
+function libraryModifiedClick(e) {
+    return !!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey));
+}
+
+function normalizeLibraryFilters(params) {
+    const hasStatus = params.has('status');
+    const hasAvailability = params.has('availability');
+    let status = (hasStatus ? params.get('status') : 'approved') || 'approved';
+    let availability = (hasAvailability ? params.get('availability') : 'available') || 'available';
+    status = String(status).toLowerCase().trim();
+    availability = String(availability).toLowerCase().trim();
+
+    if (['all', 'approved', 'rejected', 'needs_improvement'].indexOf(status) === -1) {
+        status = 'approved';
+    }
+    if (['all', 'available', 'evaluating', 'in_progress', 'published', 'completed', 'expired', 'archived', 'needs_fix', 'ordered'].indexOf(availability) === -1) {
+        availability = 'available';
+    }
+    if (availability === 'ordered') availability = 'in_progress';
+    // Form / chips / history use the UI key "completed". The controller maps
+    // that to internal "published"; do not write "published" back into the form.
+    if (availability === 'published') availability = 'completed';
+    if (status === 'needs_improvement') {
+        status = 'all';
+        if (!hasAvailability) availability = 'needs_fix';
+    }
+    if (status === 'rejected' && !hasAvailability) {
+        availability = 'all';
+    }
+    if (status === 'approved' && availability === 'all') {
+        availability = 'available';
+    }
+    if (!hasStatus && ['needs_fix', 'expired', 'archived', 'in_progress', 'completed', 'evaluating'].indexOf(availability) !== -1) {
+        status = 'all';
+    }
+
+    return { status: status, availability: availability };
+}
+
 function syncLibraryFiltersFromParams(params) {
     const form = libraryFilterForm();
     const setNamed = function (name, value) {
         const el = form ? form.querySelector('[name="' + name + '"]') : null;
         if (el && el.value !== value) el.value = value;
     };
+    const normalized = normalizeLibraryFilters(params);
     syncLibrarySearchInputFromParams(params);
     setNamed('q', params.get('q') || '');
-    setNamed('status', params.get('status') || 'approved');
-    setNamed('availability', params.get('availability') || 'available');
+    setNamed('status', normalized.status);
+    setNamed('availability', normalized.availability);
     setNamed('country', params.get('country') || 'all');
     setNamed('language', params.get('language') || 'all');
+}
+
+function refreshLibraryListAfterRowChange(id) {
+    document.getElementById('library-row-' + id)?.remove();
+    const remaining = document.querySelectorAll('#libraryLiveRegion tbody tr[id^="library-row-"]').length;
+    fetchLibraryResults(librarySearchParamsFromForm(), {
+        historyMode: 'replace',
+        resetPage: remaining === 0,
+        keepFocus: false,
+    });
 }
 
 let libraryResultsAbort = null;
@@ -1849,7 +1925,10 @@ function bootLibraryLiveSearch() {
 
     const runFetch = function (detail) {
         const params = librarySearchParamsFromForm();
-        const keepFocus = !detail || detail.reason !== 'pager';
+        const keepFocus = !detail
+            || detail.reason === 'input'
+            || detail.reason === 'enter'
+            || detail.reason === 'clear';
         fetchLibraryResults(params, {
             historyMode: (detail && detail.historyMode) || 'replace',
             resetPage: !detail || detail.reason !== 'pager',
@@ -1888,9 +1967,31 @@ function bootLibraryLiveSearch() {
         runFetch({ reason: 'enter', historyMode: 'push' });
     });
 
+    ['libraryCountryFilter', 'libraryLanguageFilter'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('change', function () {
+            runFetch({ reason: 'filter', historyMode: 'push' });
+        });
+    });
+
+    document.getElementById('libraryFilterReset')?.addEventListener('click', function (e) {
+        const link = e.target.closest('a');
+        if (!link) return;
+        if (libraryModifiedClick(e)) return;
+        e.preventDefault();
+        syncLibraryFiltersFromParams(new URLSearchParams());
+        fetchLibraryResults(librarySearchParamsFromForm(), {
+            historyMode: 'push',
+            resetPage: true,
+            keepFocus: false,
+        });
+    });
+
     document.getElementById('libraryLiveRegion')?.addEventListener('click', function (e) {
-        const link = e.target.closest('.pagination a');
+        const chip = e.target.closest('a.library-status-box');
+        const pageLink = e.target.closest('.pagination a');
+        const link = chip || pageLink;
         if (!link || !this.contains(link)) return;
+        if (libraryModifiedClick(e)) return;
         e.preventDefault();
         let params;
         try {
@@ -1899,7 +2000,11 @@ function bootLibraryLiveSearch() {
             return;
         }
         syncLibraryFiltersFromParams(params);
-        fetchLibraryResults(params, { historyMode: 'push', resetPage: false, keepFocus: false });
+        fetchLibraryResults(params, {
+            historyMode: 'push',
+            resetPage: !pageLink,
+            keepFocus: false,
+        });
     });
 
     window.addEventListener('popstate', function () {

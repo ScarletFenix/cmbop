@@ -7,6 +7,7 @@ use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Support\PhpIniSize;
 use Illuminate\Http\Request;
 
 class ContentModerationController extends Controller
@@ -20,6 +21,10 @@ class ContentModerationController extends Controller
             ->with('user')
             ->latest('id')
             ->paginate(25);
+
+        $phpUploadMaxKb = PhpIniSize::uploadMaxKilobytes();
+        $articleUploadMaxKb = $uploads->effectiveMaxKilobytes($uploadCfg);
+        $phpBlocksArticleUploads = $phpUploadMaxKb < $articleUploadMaxKb;
 
         $extraKeywords = ContentModerationSetting::getValue('extra_keywords', []) ?: [];
         $exceptions = ContentModerationSetting::getValue('exceptions', []) ?: [];
@@ -37,11 +42,14 @@ class ContentModerationController extends Controller
             'extraKeywords',
             'exceptions',
             'disabledCategories',
-            'enabledCategories'
+            'enabledCategories',
+            'phpUploadMaxKb',
+            'articleUploadMaxKb',
+            'phpBlocksArticleUploads',
         ));
     }
 
-    public function updateSettings(Request $request)
+    public function updateSettings(Request $request, ContentUploadService $uploads)
     {
         $data = $request->validate([
             'enabled' => ['sometimes', 'boolean'],
@@ -87,8 +95,7 @@ class ContentModerationController extends Controller
         $uploadOverride['allowed_extensions'] = ['docx'];
         $uploadOverride['preferred_extension'] = 'docx';
         $uploadOverride['enabled'] = $request->boolean('uploads_enabled');
-        $uploadOverride['max_kilobytes'] = max(
-            ContentUploadService::MAX_KILOBYTES,
+        $uploadOverride['max_kilobytes'] = $uploads->clampMaxKilobytes(
             (int) ($data['max_kilobytes'] ?? ContentUploadService::MAX_KILOBYTES)
         );
         $uploadOverride['retention_months'] = (int) ($data['retention_months'] ?? 6);

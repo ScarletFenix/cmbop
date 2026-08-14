@@ -43,7 +43,7 @@
         </div>
     @endunless
 
-    <form method="GET" action="{{ route('advertiser.content-library') }}" class="library-filter-bar mb-3">
+    <form method="GET" action="{{ route('advertiser.content-library', absolute: false) }}" class="library-filter-bar mb-3">
         <input type="hidden" name="status" value="{{ $statusFilter ?? 'all' }}">
         <input type="hidden" name="availability" value="{{ $availabilityFilter ?? 'all' }}">
         <div class="library-filter-bar__search">
@@ -65,7 +65,7 @@
         </div>
         <div class="library-filter-bar__select">
             <label class="visually-hidden" for="libraryCountryFilter">Country</label>
-            <select name="country" id="libraryCountryFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+            <select name="country" id="libraryCountryFilter" class="form-select form-select-sm">
                 <option value="all" @selected(($countryFilter ?? 'all') === 'all')>All countries</option>
                 @foreach(($groupedByCountry ?? []) as $countryCode => $count)
                     <option value="{{ $countryCode }}" @selected(($countryFilter ?? 'all') === $countryCode)>
@@ -76,7 +76,7 @@
         </div>
         <div class="library-filter-bar__select">
             <label class="visually-hidden" for="libraryLanguageFilter">Language</label>
-            <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm" onchange="this.form.submit()">
+            <select name="language" id="libraryLanguageFilter" class="form-select form-select-sm">
                 <option value="all" @selected(($languageFilter ?? 'all') === 'all')>All languages</option>
                 @foreach(($groupedByLanguage ?? []) as $langCode => $count)
                     <option value="{{ $langCode }}" @selected(($languageFilter ?? 'all') === $langCode)>
@@ -91,7 +91,7 @@
             || ($languageFilter ?? 'all') !== 'all'
             || ($availabilityFilter ?? 'available') !== 'available'
         ) ? '' : ' d-none' }}">
-            <a href="{{ route('advertiser.content-library') }}" class="btn btn-sm btn-link">Reset</a>
+            <a href="{{ route('advertiser.content-library', absolute: false) }}" class="btn btn-sm btn-link">Reset</a>
         </div>
         <button type="submit" class="visually-hidden">Search</button>
     </form>
@@ -125,6 +125,14 @@
                     Opens in the editor next.
                     Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
+                @if(($uploadCfg['php_max_kilobytes'] ?? 0) > 0 && ($uploadCfg['php_max_kilobytes'] ?? 0) < $uploadMaxKb)
+                    <div class="alert alert-warning py-2 px-3 small mb-3" role="status" id="libraryPhpUploadLimitWarn">
+                        The article cap is {{ $uploadMaxMb }} MB, but server PHP still allows only
+                        {{ max(1, (int) round($uploadCfg['php_max_kilobytes'] / 1024)) }} MB.
+                        A 5 MB .docx will be rejected until hosting PHP settings set
+                        <code>upload_max_filesize</code> to 64M and <code>post_max_size</code> to 64M.
+                    </div>
+                @endif
 
                 <div class="mb-3">
                     <label class="library-dropzone" id="libraryDropzone" for="libraryFileInput">
@@ -285,10 +293,10 @@
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
 window.ContentLibraryBoot = {
-    libraryUpdateUrl: @json(url('/advertiser/content-submissions')),
-    libraryContentUrl: @json(url('/advertiser/content-submissions')),
-    libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image')),
-    libraryPreviewUrlBase: @json(url('/advertiser/content-submissions')),
+    libraryUpdateUrl: @json(parse_url(url('/advertiser/content-submissions'), PHP_URL_PATH) ?: '/advertiser/content-submissions'),
+    libraryContentUrl: @json(parse_url(url('/advertiser/content-submissions'), PHP_URL_PATH) ?: '/advertiser/content-submissions'),
+    libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image', absolute: false)),
+    libraryPreviewUrlBase: @json(parse_url(url('/advertiser/content-submissions'), PHP_URL_PATH) ?: '/advertiser/content-submissions'),
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
     libraryCountryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
@@ -296,11 +304,12 @@ window.ContentLibraryBoot = {
     libraryPreferredLanguage: @json(strtolower((string) ($editSubmission?->language ?? ''))),
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
-    uploadUrl: @json(route('advertiser.content-library.upload')),
+    uploadUrl: @json(route('advertiser.content-library.upload', absolute: false)),
     libraryIndexUrl: @json(route('advertiser.content-library', absolute: false)),
     libraryResultsUrl: @json(route('advertiser.content-library.results', absolute: false)),
     editSubmission: @json($editSubmissionBoot ?? null),
     maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 10240)),
+    phpMaxKilobytes: @json((int) ($uploadCfg['php_max_kilobytes'] ?? 0)),
 };
 </script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
