@@ -3,17 +3,36 @@
 namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
+use App\Models\Order;
 use App\Models\Project;
 use Illuminate\Http\Request;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
 {
     public function index()
     {
-        $projects = Project::where('user_id', auth()->id())
+        $userId = (int) auth()->id();
+
+        $projects = Project::where('user_id', $userId)
             ->latest()
             ->get();
+
+        $orders = Order::query()
+            ->where('user_id', $userId)
+            ->with('items')
+            ->get();
+
+        $countsByHost = Project::stageCountsByHost($orders);
+
+        foreach ($projects as $project) {
+            $host = Project::hostFromUrl($project->project_url);
+            $project->setAttribute(
+                'stage_counts',
+                $countsByHost[$host] ?? Project::emptyStageCounts()
+            );
+        }
 
         return view('advertiser.campaigns', compact('projects'));
     }
@@ -25,15 +44,13 @@ class ProjectController extends Controller
                 'required',
                 'string',
                 'max:255',
-                // ✅ unique per user
-                'unique:projects,project_name,NULL,id,user_id,'.auth()->id(),
+                Rule::unique('projects', 'project_name')->where('user_id', auth()->id()),
             ],
             'project_url' => [
                 'required',
                 'url',
                 'max:255',
-                // ✅ unique per user
-                'unique:projects,project_url,NULL,id,user_id,'.auth()->id(),
+                Rule::unique('projects', 'project_url')->where('user_id', auth()->id()),
             ],
         ]);
 
@@ -61,13 +78,17 @@ class ProjectController extends Controller
                 'string',
                 'max:255',
                 'regex:/^[a-zA-Z0-9\s\-]+$/', // clean names only
-                'unique:projects,project_name,NULL,id,user_id,'.auth()->id(),
+                Rule::unique('projects', 'project_name')
+                    ->where('user_id', auth()->id())
+                    ->ignore($project->id),
             ],
             'project_url' => [
                 'required',
                 'url',
                 'max:255',
-                'unique:projects,project_url,'.$project->id.',id,user_id,'.auth()->id(),
+                Rule::unique('projects', 'project_url')
+                    ->where('user_id', auth()->id())
+                    ->ignore($project->id),
             ],
         ]);
 

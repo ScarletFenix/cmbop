@@ -99,37 +99,40 @@
                             Guest Posting
                         </span>
 
-                        <!-- Badges -->
+                        <!-- Badges: counts of this advertiser's placements whose target URL host matches the project URL. -->
+                        @php
+                            $stageCounts = $project->stage_counts ?? \App\Models\Project::emptyStageCounts();
+                        @endphp
                         <div class="d-flex flex-wrap gap-2 ms-auto">
 
                             <span class="badge bg-primary-subtle text-primary px-2 py-1"
                                   title="Not started">
-                                {{ rand(1, 10) }}
+                                {{ $stageCounts['not_started'] }}
                             </span>
 
                             <span class="badge bg-info-subtle text-info px-2 py-1"
                                   title="In progress">
-                                {{ rand(5, 20) }}
+                                {{ $stageCounts['in_progress'] }}
                             </span>
 
                             <span class="badge bg-warning-subtle text-warning px-2 py-1"
                                   title="Waiting approval">
-                                {{ rand(1, 8) }}
+                                {{ $stageCounts['waiting_approval'] }}
                             </span>
 
                             <span class="badge bg-secondary-subtle text-secondary px-2 py-1"
                                   title="Needs improvements">
-                                {{ rand(1, 6) }}
+                                {{ $stageCounts['needs_improvements'] }}
                             </span>
 
                             <span class="badge bg-success-subtle text-success px-2 py-1"
                                   title="Completed">
-                                {{ rand(10, 50) }}
+                                {{ $stageCounts['completed'] }}
                             </span>
 
                             <span class="badge bg-danger-subtle text-danger px-2 py-1"
                                   title="Rejected">
-                                {{ rand(0, 5) }}
+                                {{ $stageCounts['rejected'] }}
                             </span>
 
                         </div>
