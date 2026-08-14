@@ -440,6 +440,7 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('.swal2-popup .site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('max-width: 520px', $staffCss);
         $this->assertStringContainsString('.site-preview-zoom-pop', $staffCss);
+        $this->assertStringContainsString('width: min(720px, calc(100vw - 32px))', $staffCss);
         $this->assertStringContainsString('@media (any-hover: hover)', $staffCss);
         $this->assertStringContainsString('@media (any-hover: none)', $staffCss);
         // Row thumbs must contain the full desktop frame (not crop/zoom like mobile).

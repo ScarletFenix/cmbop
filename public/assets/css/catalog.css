@@ -475,7 +475,7 @@
 }
 
 .catalog-card-preview {
-    max-width: 220px;
+    max-width: min(720px, 100%);
 }
 
 .catalog-card-details__description {
@@ -566,6 +566,10 @@
 
 .catalog-expand-grid > [class*="col-"] {
     min-width: 0;
+}
+
+.catalog-expand-preview {
+    max-width: 720px;
 }
 
 .catalog-expand-pricing .form-check-label {
@@ -1004,7 +1008,7 @@ body:has(.catalog-page) {
        absolute children often collapses to 0 height in WebKit. */
     position: relative;
     width: 100%;
-    max-width: 300px;
+    max-width: min(720px, 100%);
     margin: 0 auto;
     border-radius: var(--radius-md, 12px);
     overflow: hidden;
@@ -1073,7 +1077,7 @@ body:has(.catalog-page) {
 .site-preview-fallback {
     position: relative;
     width: 100%;
-    max-width: 300px;
+    max-width: min(720px, 100%);
     margin: 0 auto;
 }
 
@@ -1684,8 +1688,8 @@ body:has(.catalog-page) {
 .site-preview-zoom-pop {
     position: fixed;
     z-index: 1200;
-    width: min(440px, calc(100vw - 24px));
-    max-height: min(300px, calc(100vh - 24px));
+    width: min(720px, calc(100vw - 32px));
+    max-height: min(468px, calc(100vh - 32px));
     padding: 6px;
     border-radius: 12px;
     border: 1px solid rgba(26, 88, 94, 0.18);

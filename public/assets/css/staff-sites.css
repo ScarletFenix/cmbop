@@ -67,8 +67,9 @@
 .site-row-preview {
   --site-preview-ratio: 16 / 10;
   position: relative;
-  width: min(120px, 100%);
-  max-width: 120px;
+  width: 200px;
+  min-width: 168px;
+  max-width: 220px;
   height: auto;
   border-radius: 10px;
   overflow: hidden;
@@ -138,13 +139,13 @@
 
 .site-preview-detail {
   position: relative;
-  width: min(100%, 360px);
+  width: min(100%, 720px);
   overflow: hidden;
   border-radius: var(--radius-sm, 8px);
   margin-top: 4px;
   border: 1px solid var(--border-subtle);
   background: #f8fafc;
-  min-height: 120px;
+  min-height: 180px;
 }
 
 .site-preview-detail::before {
@@ -251,8 +252,8 @@
 .site-preview-zoom-pop {
   position: fixed;
   z-index: 1200;
-  width: min(520px, calc(100vw - 24px));
-  max-height: min(340px, calc(100vh - 24px));
+  width: min(720px, calc(100vw - 32px));
+  max-height: min(468px, calc(100vh - 32px));
   padding: 6px;
   border-radius: 12px;
   border: 1px solid rgba(26, 88, 94, 0.18);

@@ -231,6 +231,10 @@ class MarketingSitesPreviewTest extends TestCase
         $staffCss = (string) file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-row-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
+        $this->assertStringContainsString('width: 200px', $staffCss);
+        $this->assertStringContainsString('min-width: 168px', $staffCss);
+        $this->assertStringNotContainsString('width: min(120px, 100%)', $staffCss);
+        $this->assertStringContainsString('width: min(720px, calc(100vw - 32px))', $staffCss);
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
         // Absolute <img> needs the ::before padding frame — do not strip it via @supports.
