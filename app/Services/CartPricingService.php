@@ -277,7 +277,7 @@ class CartPricingService
     }
 
     /**
-     * Keep only cart lines that are still active and not archived.
+     * Keep only cart lines that are still catalog-visible.
      *
      * @param  array<int, array<string, mixed>>  $cart
      * @return array{cart: array<int, array<string, mixed>>, removed: array<int, array<string, mixed>>}

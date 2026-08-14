@@ -4499,7 +4499,7 @@ class CatalogController extends Controller
         if ($remaining === []) {
             session()->forget('cart');
         } else {
-            session()->put('cart', array_values($remaining));
+            $this->putCatalogVisibleCart($remaining);
         }
     }
 
@@ -4577,7 +4577,7 @@ class CatalogController extends Controller
         }
 
         if ($restoredCart !== []) {
-            session()->put('cart', $restoredCart);
+            $this->putCatalogVisibleCart($restoredCart);
         }
         if ($submissionId) {
             session()->put('checkout_content_submission_id', $submissionId);
