@@ -410,6 +410,9 @@
         margin: .5rem 0;
         display: block;
     }
+    #articleEditorModal .ql-editor img {
+        max-width: min(100%, 720px);
+    }
     #articlePreviewBody mark.slb-mod-hit,
     .ql-editor mark.slb-mod-hit,
     .library-preview mark.slb-mod-hit {
@@ -713,14 +716,45 @@
     #articleEditorModal .modal-body > :not(.article-docs-shell) {
         flex: 0 1 auto;
     }
-    #articleEditorImageRights {
-        max-height: 28vh;
+    #articleEditorModal .modal-body > .alert {
+        padding: .4rem .75rem;
+        margin-bottom: 0;
+    }
+    #articleEditorImageRights.article-editor-rights {
+        flex: 0 0 auto;
+        max-height: 9rem;
         overflow-x: hidden;
         overflow-y: auto;
+        padding: .5rem .75rem;
+    }
+    #articleEditorImageRights.article-editor-rights .image-rights-fieldset {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .35rem 1.25rem;
+        margin-bottom: 0;
+    }
+    #articleEditorImageRights.article-editor-rights .image-rights-fieldset > .form-text,
+    #articleEditorImageRights.article-editor-rights .form-check-label .small {
+        display: none;
+    }
+    #articleEditorImageRights.article-editor-rights legend {
+        flex: 1 0 100%;
+        font-size: .8rem;
+        margin-bottom: 0;
+    }
+    #articleEditorImageRights.article-editor-rights [data-image-rights-source-wrap] {
+        flex: 1 0 100%;
+        margin-top: 0;
+        margin-left: 0;
+    }
+    #articleEditorImageRights.article-editor-rights .form-check {
+        margin-bottom: 0;
+        min-width: 0;
     }
     #articleEditorModal .article-docs-shell {
         flex: 1 1 0%;
-        min-height: 12rem;
+        min-height: min(52vh, 28rem);
         display: flex;
         flex-direction: column;
         overflow: hidden;

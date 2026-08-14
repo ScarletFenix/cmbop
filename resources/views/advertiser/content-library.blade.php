@@ -217,8 +217,7 @@
                 </div>
 
                 {{-- Shown when the article gains images the current declaration does not cover. --}}
-                <div id="articleEditorImageRights" class="border rounded-3 p-3 mb-3 d-none">
-                    <div class="fw-semibold small mb-2">This article contains images</div>
+                <div id="articleEditorImageRights" class="article-editor-rights border rounded-3 d-none">
                     @include('advertiser.partials.image-rights-declaration', [
                         'idPrefix' => 'editorImageRights',
                         'submission' => null,

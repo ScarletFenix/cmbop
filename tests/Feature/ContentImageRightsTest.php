@@ -324,6 +324,8 @@ class ContentImageRightsTest extends TestCase
         $this->assertStringNotContainsString('id="libraryImageRightsOwn"', $library);
         $this->assertStringContainsString('id="editorImageRightsOwn"', $library);
         $this->assertStringContainsString('id="articleEditorImageRights"', $library);
+        $this->assertStringContainsString('article-editor-rights', $library);
+        $this->assertStringNotContainsString('This article contains images', $library);
         $this->assertStringContainsString('name="image_rights"', $library);
         $this->assertStringContainsString('image-rights.js', $library);
         preg_match('/id="uploadContentModal"[\s\S]*?id="libraryUploadBtn"/', $library, $uploadModal);
