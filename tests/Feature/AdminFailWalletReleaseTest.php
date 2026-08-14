@@ -165,4 +165,15 @@ class AdminFailWalletReleaseTest extends TestCase
         $this->assertEqualsWithDelta(50.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertSame('completed', $order->fresh()->status);
     }
+
+    public function test_payment_controller_imports_wallet_ledger_service(): void
+    {
+        $source = file_get_contents(app_path('Http/Controllers/Admin/PaymentController.php'));
+
+        $this->assertStringContainsString(
+            'use App\\Services\\Wallet\\WalletLedgerService;',
+            $source
+        );
+        $this->assertStringContainsString('releaseWalletHoldOnAdminFailed', $source);
+    }
 }
