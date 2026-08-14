@@ -592,11 +592,16 @@ class SiteController extends Controller
         ));
 
         $perPage = 50;
-        $paginator = Site::query()
+        $sitesQuery = Site::query()
             ->where('publisher_id', $user->id)
             ->notArchived()
-            ->latest()
-            ->paginate($perPage, $select);
+            ->latest();
+
+        if (Schema::hasTable('order_items')) {
+            $sitesQuery->withCount('orderItems');
+        }
+
+        $paginator = $sitesQuery->paginate($perPage, $select);
 
         $sites = $paginator->getCollection()
             ->map(fn (Site $site) => $this->staffSiteListRow($site))
