@@ -10,9 +10,11 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
@@ -1382,6 +1384,59 @@ class ContentLibraryImprovementsTest extends TestCase
         $response->assertOk()->assertJsonPath('success', true);
         $this->assertArrayNotHasKey('preview_html', $response->json('submission') ?? []);
         $this->assertNotEmpty($response->json('submission.id'));
+    }
+
+    public function test_article_picker_scope_omits_article_bodies(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $row = ContentSubmission::query()
+            ->forArticlePicker()
+            ->where('id', $submission->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertArrayNotHasKey('extracted_text', $row->getAttributes());
+        $this->assertArrayNotHasKey('preview_html', $row->getAttributes());
+        $this->assertTrue($row->canBeOrdered());
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->assertJsonPath('approved_articles.0.id', $submission->id)
+            ->assertJsonPath('approved_articles.0.language', 'en');
+    }
+
+    public function test_uniqueness_corpus_selects_truncated_extracted_text(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        app(ArticleEvaluationService::class)->scoreUniqueness(
+            str_repeat('Useful editorial content about productivity software for busy teams. ', 40)
+        );
+
+        $sql = strtolower(implode(' ', array_column(DB::getQueryLog(), 'query')));
+        DB::disableQueryLog();
+
+        $this->assertStringContainsString('left(extracted_text', $sql);
+    }
+
+    public function test_legacy_drafts_json_omits_article_bodies(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.drafts'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('drafts.0.preview_html')
+            ->assertJsonMissingPath('drafts.0.extracted_text');
     }
 
     public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void
