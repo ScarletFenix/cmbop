@@ -48,6 +48,55 @@ class ContentLibraryLiveSearchTest extends TestCase
         $this->assertStringContainsString('library-table', $html);
     }
 
+    public function test_results_array_q_does_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+        $article = $this->createApprovedSubmission($advertiser);
+        $article->update(['title' => 'Array Query Playbook']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.results', [
+                'q' => ['Array Query'],
+            ]))
+            ->assertOk()
+            ->assertSee('Array Query Playbook')
+            ->assertDontSee('Array to string conversion', false);
+    }
+
+    public function test_index_array_filters_do_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+        $article = $this->createApprovedSubmission($advertiser);
+        $article->update(['title' => 'Array Filter Piece']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => ['approved'],
+                'availability' => ['available'],
+                'language' => ['en'],
+                'country' => ['us'],
+                'q' => ['Array Filter'],
+            ]))
+            ->assertOk()
+            ->assertSee('Array Filter Piece')
+            ->assertDontSee('Array to string conversion', false);
+    }
+
+    public function test_index_array_upload_and_edit_do_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'upload' => ['1'],
+                'edit' => ['99'],
+            ]))
+            ->assertOk()
+            ->assertSee('Content Library')
+            ->assertDontSee('Array to string conversion', false)
+            ->assertDontSee('must be of type string', false);
+    }
+
     public function test_index_has_catalog_search_chrome(): void
     {
         $advertiser = $this->advertiser();

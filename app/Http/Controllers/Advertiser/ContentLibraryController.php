@@ -45,11 +45,11 @@ class ContentLibraryController extends Controller
         $cfg['max_kilobytes'] = $this->uploads->effectiveMaxKilobytes($cfg);
         $cfg['php_max_kilobytes'] = $this->uploads->phpUploadMaxKilobytes();
         // Default to Approved (available) — the All chip was removed from the UI.
-        $status = strtolower(trim((string) $request->query('status', 'approved')));
-        $availability = strtolower(trim((string) $request->query('availability', 'available')));
-        $languageFilter = strtolower(trim((string) $request->query('language', '')));
-        $countryFilter = strtolower(trim((string) $request->query('country', '')));
-        $search = trim((string) $request->query('q', ''));
+        $status = strtolower(trim(scalar_text($request->query('status', 'approved'))));
+        $availability = strtolower(trim(scalar_text($request->query('availability', 'available'))));
+        $languageFilter = strtolower(trim(scalar_text($request->query('language', ''))));
+        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
+        $search = trim(scalar_text($request->query('q', '')));
 
         if (! in_array($status, ['all', 'approved', 'rejected', 'needs_improvement'], true)) {
             $status = 'approved';
@@ -319,7 +319,7 @@ class ContentLibraryController extends Controller
         $languages = Language::marketplace()->orderBy('name')->get(['code', 'name']);
         $languageCountryMap = $this->languageCountryMap->map();
         $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
-        $editSubmission = $this->resolveEditableSubmission($request->query('edit'));
+        $editSubmission = $this->resolveEditableSubmission(scalar_text($request->query('edit')));
 
         return [
             'submissions' => $submissions,
@@ -341,7 +341,8 @@ class ContentLibraryController extends Controller
             'languages' => $languages,
             'languageCountryMap' => $languageCountryMap,
             'countryLanguageMap' => $countryLanguageMap,
-            'openUpload' => $request->boolean('upload') && $this->uploads->uploadsEnabled(),
+            'openUpload' => filter_var(scalar_text($request->query('upload')), FILTER_VALIDATE_BOOLEAN)
+                && $this->uploads->uploadsEnabled(),
             'editSubmission' => $editSubmission,
             'editSubmissionBoot' => $this->serializeEditBoot($editSubmission),
             'libraryFilterBase' => [
@@ -529,13 +530,14 @@ class ContentLibraryController extends Controller
 
     protected function resolveEditableSubmission(mixed $id): ?ContentSubmission
     {
-        if (! $id) {
+        $id = (int) scalar_text($id);
+        if ($id < 1) {
             return null;
         }
 
         return ContentSubmission::query()
             ->forArticlePicker()
-            ->where('id', (int) $id)
+            ->where('id', $id)
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->whereNull('archived_at')
