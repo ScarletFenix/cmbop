@@ -680,6 +680,12 @@ class SiteController extends Controller
             }
         });
 
+        $validator->after(function ($validator) use ($request) {
+            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+                $validator->errors()->add('siteDescription', $message);
+            }
+        });
+
         if ($validator->fails()) {
             return redirect()->back()
                 ->withErrors($validator)

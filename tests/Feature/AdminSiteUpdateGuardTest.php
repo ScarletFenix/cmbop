@@ -344,6 +344,54 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame(['News'], $site->categories);
     }
 
+    public function test_update_clears_empty_country_and_language(): void
+    {
+        $site = $this->site([
+            'country' => 'de',
+            'language' => 'de',
+            'countries' => ['de'],
+            'languages' => ['de'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'country' => '',
+                'language' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue(blank($site->country));
+        $this->assertTrue(blank($site->language));
+        $this->assertEmpty($site->countries);
+        $this->assertEmpty($site->languages);
+    }
+
+    public function test_update_clears_empty_description_and_example_url(): void
+    {
+        $site = $this->site([
+            'description' => str_repeat('Admin update guard listing description. ', 3),
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'description' => '',
+                'example_url' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue(blank($site->description));
+        $this->assertTrue(blank($site->example_url));
+    }
+
     public function test_update_rejects_description_over_word_max(): void
     {
         $site = $this->site();

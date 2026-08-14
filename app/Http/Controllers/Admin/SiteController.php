@@ -1580,6 +1580,24 @@ class SiteController extends Controller
             return $value !== null;
         });
 
+        // Empty optional fields are merged to null above, then stripped by
+        // array_filter. Re-apply explicit clears so dedicated edit can blank
+        // geo / description / example URL (NOT NULL columns get '').
+        if ($request->has('country') && $countryCodes === []) {
+            $data['country'] = '';
+            $data['countries'] = null;
+        }
+        if ($request->has('language') && $languageCodes === []) {
+            $data['language'] = '';
+            $data['languages'] = null;
+        }
+        if ($request->has('example_url') && trim((string) $request->input('example_url')) === '') {
+            $data['example_url'] = null;
+        }
+        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+            $data['description'] = '';
+        }
+
         if ($placementPatch !== null) {
             $data = array_merge($data, $placementPatch);
         }
