@@ -518,7 +518,7 @@ if (! function_exists('marketing_task_label')) {
 
 if (! function_exists('marketing_task_actions_matching')) {
     /**
-     * Action codes whose friendly label or raw code contains the search needle.
+     * Action codes whose friendly label or raw code starts with the search needle as a word.
      *
      * @return list<string>
      */
@@ -529,7 +529,8 @@ if (! function_exists('marketing_task_actions_matching')) {
             return [];
         }
 
-        $pattern = '/\b'.preg_quote($needle, '/').'\b/u';
+        // Word-start only: "activate" hits Activated, not Deactivated; "Seed" hits Seeded.
+        $pattern = '/\b'.preg_quote($needle, '/').'/u';
         $matched = [];
         foreach (marketing_task_labels() as $code => $label) {
             $codeRaw = strtolower((string) $code);
