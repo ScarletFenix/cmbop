@@ -41,7 +41,8 @@ class ProductionReadinessTest extends TestCase
 
     public function test_repair_seeds_missing_roles(): void
     {
-        $this->assertSame(0, Role::query()->count());
+        Role::query()->whereIn('name', ['advertiser', 'publisher', 'admin', 'marketing'])->delete();
+        $this->assertFalse(Role::query()->where('name', 'advertiser')->exists());
 
         $this->assertSame(0, Artisan::call('ops:production-ready', ['--repair' => true]));
 
