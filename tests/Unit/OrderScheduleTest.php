@@ -53,6 +53,8 @@ class OrderScheduleTest extends TestCase
     public function test_scheduled_publish_at_converts_to_advertiser_timezone(): void
     {
         $order = new Order([
+            'status' => 'scheduled',
+            'publication_mode' => 'scheduled',
             'scheduled_publish_at' => Carbon::parse('2026-09-15 14:00:00', 'UTC'),
             'schedule_timezone' => 'Europe/Berlin',
         ]);
