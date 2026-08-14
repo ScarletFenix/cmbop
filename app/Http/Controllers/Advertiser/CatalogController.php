@@ -2098,7 +2098,16 @@ class CatalogController extends Controller
 
             // For card payments — Stripe-first (Add Funds style), then materialize paid orders.
             if ($paymentMethod === 'card') {
-                return $this->processCardPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
+                $savedCardId = $request->input('payment_method_id');
+
+                return $this->processCardPayment(
+                    $payableCart,
+                    $checkoutContent,
+                    $referenceCode,
+                    $userId,
+                    $useBonus,
+                    is_string($savedCardId) ? $savedCardId : null
+                );
             }
 
             return response()->json([
@@ -2122,7 +2131,7 @@ class CatalogController extends Controller
      *
      * @param  array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}  $checkoutContent
      */
-    private function processCardPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false)
+    private function processCardPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false, ?string $paymentMethodId = null)
     {
         // Match Add Funds: only require a Stripe secret.
         if (! config('services.stripe.secret') || config('services.stripe.secret') === '') {
@@ -2307,6 +2316,19 @@ class CatalogController extends Controller
 
         $user = User::find($userId);
 
+        if (is_string($paymentMethodId) && str_starts_with($paymentMethodId, 'pm_')) {
+            return $this->chargeSavedCardForOrder(
+                (string) $referenceCode,
+                (int) $userId,
+                $user,
+                $amountDue,
+                $totalAmount,
+                $bonusApplied,
+                $paymentMethodId,
+                count($packageLines)
+            );
+        }
+
         // Same Stripe Checkout pattern as Add Funds — no pending order rows yet.
         try {
             Stripe::setApiKey(config('services.stripe.secret'));
@@ -2385,6 +2407,136 @@ class CatalogController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to create checkout session. Please try again.'),
             ]);
+        }
+    }
+
+    /**
+     * Charge a saved Stripe card for an order (same 3DS contract as Add Funds).
+     * Checkout already posts payment_method_id; ignoring it sent every saved-card
+     * order to hosted Checkout and never returned client_secret.
+     */
+    private function chargeSavedCardForOrder(
+        string $referenceCode,
+        int $userId,
+        ?User $user,
+        float $amountDue,
+        float $totalAmount,
+        float $bonusApplied,
+        string $paymentMethodId,
+        int $itemCount
+    ): JsonResponse {
+        $paymentService = app(OrderPaymentService::class);
+        $returnUrl = route('advertiser.checkout.process').'?ref='.urlencode($referenceCode);
+
+        if (! $user) {
+            $this->refundCheckoutBonus($userId, $referenceCode);
+            $paymentService->forgetPendingCheckout($referenceCode);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Unable to charge this saved card. Please try again.',
+            ], 422);
+        }
+
+        try {
+            $payResult = app(StripeCustomerService::class)->payWithSavedCard(
+                $user,
+                $paymentMethodId,
+                StripePaymentService::toCents($amountDue),
+                [
+                    'type' => 'order_payment',
+                    'reference_code' => $referenceCode,
+                    'user_id' => (string) $userId,
+                    'order_count' => (string) $itemCount,
+                    'expected_amount' => (string) $amountDue,
+                    'order_total' => (string) $totalAmount,
+                    'bonus_applied' => (string) $bonusApplied,
+                ],
+                $returnUrl,
+                'Order '.$referenceCode
+            );
+
+            if ($payResult['status'] === 'succeeded') {
+                $intent = (object) [
+                    'id' => $payResult['payment_intent_id'],
+                    'object' => 'payment_intent',
+                    'amount' => StripePaymentService::toCents($amountDue),
+                    'amount_received' => (int) ($payResult['amount_received'] ?? StripePaymentService::toCents($amountDue)),
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $referenceCode,
+                        'user_id' => (string) $userId,
+                        'expected_amount' => (string) $amountDue,
+                        'order_total' => (string) $totalAmount,
+                        'bonus_applied' => (string) $bonusApplied,
+                    ],
+                ];
+
+                $created = $paymentService->finalizeStripeFirstCheckout($referenceCode, $intent);
+                if ($created->isEmpty()) {
+                    $created = Order::query()
+                        ->where('reference_code', $referenceCode)
+                        ->where('payment_method', 'card')
+                        ->where('user_id', $userId)
+                        ->get();
+                }
+
+                if ($created->isEmpty()) {
+                    throw new \RuntimeException('Saved card payment succeeded but orders were not created');
+                }
+
+                $paymentService->notifyPublishersOfPaidOrders($created);
+                $this->restoreDeferredCartAfterPayment();
+
+                $orderNumbers = $created->pluck('order_number')->filter()->implode(', ');
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $created->count().' order(s) paid with your saved card. Order numbers: '.$orderNumbers,
+                    'reference_code' => $referenceCode,
+                ]);
+            }
+
+            if (! empty($payResult['redirect_url'])) {
+                return response()->json([
+                    'success' => true,
+                    'requires_payment' => true,
+                    'checkout_url' => $payResult['redirect_url'],
+                    'reference_code' => $referenceCode,
+                ]);
+            }
+
+            if (! empty($payResult['client_secret'])) {
+                return response()->json([
+                    'success' => true,
+                    'requires_action' => true,
+                    'client_secret' => $payResult['client_secret'],
+                    'stripe_key' => config('services.stripe.key'),
+                    'return_url' => $returnUrl,
+                    'reference_code' => $referenceCode,
+                ]);
+            }
+
+            $this->refundCheckoutBonus($userId, $referenceCode);
+            $paymentService->forgetPendingCheckout($referenceCode);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not charge this card. Try another card or pay with a new card.',
+            ], 422);
+        } catch (\Throwable $e) {
+            $this->refundCheckoutBonus($userId, $referenceCode);
+            $paymentService->forgetPendingCheckout($referenceCode);
+
+            Log::error('Saved card order checkout failed: '.$e->getMessage(), [
+                'reference_code' => $referenceCode,
+                'user_id' => $userId,
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Saved card payment failed. Please try again or use a new card.'),
+            ], 422);
         }
     }
 
