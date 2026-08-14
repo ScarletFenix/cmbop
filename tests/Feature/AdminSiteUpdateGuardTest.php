@@ -236,4 +236,10 @@ class AdminSiteUpdateGuardTest extends TestCase
 
         $this->assertSame('Guest Post', $site->fresh()->link_type);
     }
+
+    public function test_admin_update_payload_is_declared_once(): void
+    {
+        $src = (string) file_get_contents(app_path('Http/Controllers/Admin/SiteController.php'));
+        $this->assertSame(1, preg_match_all('/function adminUpdatePayload\s*\(/', $src));
+    }
 }
