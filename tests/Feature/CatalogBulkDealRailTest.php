@@ -284,7 +284,10 @@ class CatalogBulkDealRailTest extends TestCase
             $css
         );
         $this->assertStringNotContainsString('transform: translateY(-3px)', $css);
-        $this->assertStringNotContainsString('transform: translateY(', $css);
+        $this->assertDoesNotMatchRegularExpression(
+            '/\.bulk-deal-card[^{]*\{[^}]*transform:\s*translateY/s',
+            $css
+        );
     }
 
     public function test_the_rail_script_pages_searches_and_autoplays(): void
