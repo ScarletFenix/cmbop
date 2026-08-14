@@ -2691,6 +2691,7 @@ class SiteController extends Controller
         $approving = $this->requestFlag($request, 'verified');
         $reason = $this->validatedStatusReason($request, ! $approving);
 
+        try {
             $site = Site::findOrFail($id);
 
             if ($approving && $site->isPendingPublisherAcceptance()) {
@@ -2703,46 +2704,45 @@ class SiteController extends Controller
             // Heal complete drafts; admin approve also clears incomplete awaiting_details.
             $site->promoteFromAwaitingDetailsIfComplete();
             $site->refresh();
-        }
 
-        $oldStatus = (int) $site->verified;
-        $site->verified = $approving ? 1 : 0;
-        if ($site->verified) {
-            $site->verified_at = now();
-            $site->verify_method = 'manual';
-            $site->verify_token = null;
-            $site->verify_token_created_at = null;
-            // Leave the review/onboarding queue once approved.
-            $site->onboarding_status = null;
-        } else {
-            $site->verified_at = null;
-            $site->verify_method = null;
-            Site::ensureStatusReasonColumns();
-            $this->applyStatusReason($site, $reason);
-        }
-
-        try {
-            $site->save();
-        } catch (ValidationException $e) {
-            throw $e;
-        } catch (\Throwable $e) {
-            Log::error('Failed to update site verification', [
-                'site_id' => $id,
-                'error' => $e->getMessage(),
-            ]);
-
-            $hint = '';
-            if (str_contains($e->getMessage(), 'onboarding_status')) {
-                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
-            } elseif (str_contains($e->getMessage(), 'status_reason')) {
-                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
+            $oldStatus = (int) $site->verified;
+            $site->verified = $approving ? 1 : 0;
+            if ($site->verified) {
+                $site->verified_at = now();
+                $site->verify_method = 'manual';
+                $site->verify_token = null;
+                $site->verify_token_created_at = null;
+                // Leave the review/onboarding queue once approved.
+                $site->onboarding_status = null;
+            } else {
+                $site->verified_at = null;
+                $site->verify_method = null;
+                Site::ensureStatusReasonColumns();
+                $this->applyStatusReason($site, $reason);
             }
 
-            return response()->json([
-                'success' => false,
-                'message' => 'Could not update verification.'.$hint,
-            ], 500);
-        }
+            try {
+                $site->save();
+            } catch (ValidationException $e) {
+                throw $e;
+            } catch (\Throwable $e) {
+                Log::error('Failed to update site verification', [
+                    'site_id' => $id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                $hint = '';
+                if (str_contains($e->getMessage(), 'onboarding_status')) {
+                    $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
+                } elseif (str_contains($e->getMessage(), 'status_reason')) {
+                    $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not update verification.'.$hint,
+                ], 500);
+            }
 
             $action = $site->verified ? 'site.approved' : 'site.rejected';
             $label = $site->verified ? 'approved' : 'rejected';
