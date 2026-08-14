@@ -181,6 +181,7 @@ class PaymentController extends Controller
 
             // Send email notification to user when payment is marked as paid
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
+                $this->consumeReservedCheckoutBonus($order);
                 $this->sendPaymentConfirmationEmail($order);
             }
 

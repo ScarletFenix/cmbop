@@ -166,7 +166,7 @@ class NotificationBellUnreadUxTest extends TestCase
             $this->assertStringContainsString('syncUnreadLabel', $js);
             $this->assertStringContainsString('Mark as unread', $js);
             $this->assertStringContainsString('unreadItemUrl', $js);
-            $this->assertStringContainsString('window.confirm', $js);
+            $this->assertStringContainsString('slbConfirm', $js);
             $this->assertStringContainsString('Switch to All to see earlier notifications.', $js);
         }
         $this->assertSame($hashes[0], $hashes[1], 'Both notification-center.js copies must stay identical');
