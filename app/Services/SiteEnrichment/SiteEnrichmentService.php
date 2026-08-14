@@ -4,6 +4,7 @@ namespace App\Services\SiteEnrichment;
 
 use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
+use App\Support\SiteImageUpload;
 use Illuminate\Support\Facades\Log;
 
 class SiteEnrichmentService
@@ -87,10 +88,26 @@ class SiteEnrichmentService
 
     public function refreshScreenshot(Site $site, string $triggeredBy = 'system'): SiteEnrichmentRun
     {
+        $siteId = (int) $site->id;
+        $provider = (string) config('site_enrichment.screenshots.provider', 'thum_io');
+
+        if ($siteId < 1 || ! Site::query()->whereKey($siteId)->exists()) {
+            return SiteEnrichmentRun::make([
+                'site_id' => $siteId,
+                'type' => 'screenshot',
+                'provider' => $provider,
+                'status' => 'failed',
+                'triggered_by' => $triggeredBy,
+                'error' => 'Site was removed before screenshot capture.',
+                'started_at' => now(),
+                'finished_at' => now(),
+            ]);
+        }
+
         $run = SiteEnrichmentRun::create([
-            'site_id' => $site->id,
+            'site_id' => $siteId,
             'type' => 'screenshot',
-            'provider' => (string) config('site_enrichment.screenshots.provider', 'thum_io'),
+            'provider' => $provider,
             'status' => 'running',
             'triggered_by' => $triggeredBy,
             'started_at' => now(),
@@ -99,12 +116,20 @@ class SiteEnrichmentService
         try {
             $result = $this->screenshots->capture($site);
 
-            $site->forceFill([
+            $persisted = Site::query()->find($siteId);
+            if (! $persisted) {
+                $this->discardCapturedScreenshotFiles($result, $siteId);
+                $this->markScreenshotRunFailed($run, 'Site was removed during screenshot capture.');
+
+                return $run->fresh() ?? $run;
+            }
+
+            $persisted->forceFill([
                 'screenshot_path' => $result['path'],
                 'screenshot_thumb_path' => $result['thumb_path'],
                 'screenshot_fetched_at' => now(),
                 'enrichment_status' => $result['success']
-                    ? ($site->enrichment_status === 'failed' ? 'partial' : ($site->enrichment_status ?: 'ready'))
+                    ? ($persisted->enrichment_status === 'failed' ? 'partial' : ($persisted->enrichment_status ?: 'ready'))
                     : ($result['path'] ? 'partial' : 'failed'),
                 'enrichment_error' => $result['error'],
             ])->save();
@@ -121,18 +146,43 @@ class SiteEnrichmentService
             ]);
         } catch (\Throwable $e) {
             Log::error('Site screenshot refresh failed', [
-                'site_id' => $site->id,
+                'site_id' => $siteId,
                 'error' => $e->getMessage(),
             ]);
 
-            $run->update([
-                'status' => 'failed',
-                'error' => $e->getMessage(),
-                'finished_at' => now(),
-            ]);
+            $this->markScreenshotRunFailed($run, $e->getMessage());
         }
 
-        return $run->fresh();
+        return $run->fresh() ?? $run;
+    }
+
+    /**
+     * @param  array{path: ?string, thumb_path: ?string}  $result
+     */
+    private function discardCapturedScreenshotFiles(array $result, int $siteId): void
+    {
+        SiteImageUpload::deleteListingPublicMedia(
+            null,
+            isset($result['path']) && is_string($result['path']) ? $result['path'] : null,
+            isset($result['thumb_path']) && is_string($result['thumb_path']) ? $result['thumb_path'] : null,
+            $siteId
+        );
+    }
+
+    private function markScreenshotRunFailed(SiteEnrichmentRun $run, string $error): void
+    {
+        try {
+            if (! $run->exists) {
+                return;
+            }
+            $run->update([
+                'status' => 'failed',
+                'error' => $error,
+                'finished_at' => now(),
+            ]);
+        } catch (\Throwable) {
+            // The site delete may have cascade-removed this run.
+        }
     }
 
     public function enrich(Site $site, string $triggeredBy = 'system', bool $metrics = true, bool $screenshot = true): void

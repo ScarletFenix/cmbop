@@ -1797,8 +1797,7 @@ class InAppNotificationService
                             'New site to verify',
                             'Site updated — needs review',
                         ])->where(function ($meta) use ($siteId) {
-                            $meta->where('meta', 'like', '%"site_id":'.$siteId.'%')
-                                ->orWhere('meta', 'like', '%"site_id": '.$siteId.'%');
+                            $this->constrainMetaSiteId($meta, $siteId);
                         });
                     });
                 })
@@ -1847,15 +1846,10 @@ class InAppNotificationService
                         ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
                 })
                 ->where(function ($q) use ($siteId) {
-                    $q->where(function ($inner) use ($siteId) {
-                        $inner->where('related_type', Site::class)
-                            ->where('related_id', $siteId);
-                    })->orWhere(function ($inner) use ($siteId) {
-                        $inner->where(function ($meta) use ($siteId) {
-                            $meta->where('meta', 'like', '%"site_id":'.$siteId.'%')
-                                ->orWhere('meta', 'like', '%"site_id": '.$siteId.'%');
+                    $q->where('related_id', $siteId)
+                        ->orWhere(function ($meta) use ($siteId) {
+                            $this->constrainMetaSiteId($meta, $siteId);
                         });
-                    });
                 })
                 ->get();
 
@@ -1871,6 +1865,17 @@ class InAppNotificationService
         }
 
         return $completed;
+    }
+
+    /**
+     * Exact JSON meta.site_id match. LIKE "%site_id":1%" also hits 10, 11, 12…
+     */
+    private function constrainMetaSiteId($query, int $siteId): void
+    {
+        $query->where(function ($q) use ($siteId) {
+            $q->where('meta->site_id', $siteId)
+                ->orWhere('meta->site_id', (string) $siteId);
+        });
     }
 
     public function notifyAdminsNewUser(User $user): void

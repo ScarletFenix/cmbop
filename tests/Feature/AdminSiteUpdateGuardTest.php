@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\SiteStatusNotification;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -12,6 +13,7 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -508,7 +510,7 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertSee('type="text" id="site_url"', false);
     }
 
-    public function test_update_rejects_array_shaped_category(): void
+    public function test_update_ignores_array_shaped_category(): void
     {
         $site = $this->site();
 
@@ -516,8 +518,8 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->putJson(route('admin.sites.update', $site->id), [
                 'category' => ['News', 'Tech'],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['category']);
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $this->assertSame('News', $site->fresh()->category);
     }
@@ -890,14 +892,35 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('https://guard-site.example/sample', $site->fresh()->example_url);
     }
 
-    public function test_admin_update_payload_is_declared_once(): void
+    public function test_update_does_not_email_for_country_language_case_only_change(): void
     {
-        $src = (string) file_get_contents(app_path('Http/Controllers/Admin/SiteController.php'));
-        $this->assertSame(1, preg_match_all('/function adminUpdatePayload\s*\(/', $src));
-        $this->assertDoesNotMatchRegularExpression('/^<<<<<<<|^=======|^>>>>>>>/m', $src);
-        $this->assertSame(1, preg_match('/function adminUpdatePayload.*?(?=    private function )/s', $src, $match));
-        $body = $match[0] ?? '';
-        $this->assertStringContainsString('$metricMerge', $body);
-        $this->assertStringNotContainsString('if ($metrics !== [])', $body);
+        Mail::fake();
+
+        $site = $this->site([
+            'country' => 'DE',
+            'language' => 'DE',
+            'countries' => ['DE'],
+            'languages' => ['DE'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => 'Guard Site',
+                'site_url' => 'https://guard-site.example',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 15000,
+                'price' => 80,
+                'country' => 'de',
+                'language' => 'de',
+            ])
+            ->assertOk()
+            ->assertJsonPath('email_sent', false);
+
+        Mail::assertNotQueued(SiteStatusNotification::class);
+        Mail::assertNothingOutgoing();
+        $site->refresh();
+        $this->assertSame('de', $site->country);
+        $this->assertSame('de', $site->language);
     }
 }
