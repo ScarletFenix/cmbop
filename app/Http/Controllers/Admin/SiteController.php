@@ -633,17 +633,35 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
+        $selectedPublisherId = (int) (old('publisher_id') ?: $request->query('publisher', 0));
+
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->where(function ($q) use ($selectedPublisherId) {
+                $q->whereNotNull('email_verified_at');
+                if ($selectedPublisherId > 0) {
+                    $q->orWhere('id', $selectedPublisherId);
+                }
+            })
+            ->withCount('sites')
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'email_verified_at']);
+
+        $selectedPublisherUnverified = $selectedPublisherId > 0
+            && $publishers->contains(
+                fn (User $publisher) => (int) $publisher->id === $selectedPublisherId
+                    && blank($publisher->email_verified_at)
+            );
 
         $languages = Language::marketplace()->orderBy('name')->get();
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
         $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
-        $selectedPublisherId = (int) $request->query('publisher', 0);
+        $isMarketingEditor = $this->isMarketingEditor(auth()->user());
+        $sitesBackUrl = $selectedPublisherId > 0
+            ? staff_route('sites.index', ['publisher' => $selectedPublisherId])
+            : staff_route('sites.index');
 
         return view('admin.site-create', compact(
             'publishers',
@@ -651,7 +669,10 @@ class SiteController extends Controller
             'countries',
             'categories',
             'countryLanguageMap',
-            'selectedPublisherId'
+            'selectedPublisherId',
+            'selectedPublisherUnverified',
+            'isMarketingEditor',
+            'sitesBackUrl'
         ));
     }
 
@@ -691,7 +712,9 @@ class SiteController extends Controller
 
         $domain = preg_replace('/^www\./', '', strtolower($host));
 
-        $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
+        $resolvedNiches = Category::resolveNicheNames($request->input('categories', $request->input('category')));
+        $categories = $resolvedNiches['resolved'];
+        $unknownNiches = $resolvedNiches['unknown'];
         $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
         $categoriesArray = ! empty($categories) ? $categories : null;
 
@@ -709,6 +732,20 @@ class SiteController extends Controller
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
 
+        if ($allowedCountries === [] || $allowedLanguages === []) {
+            Log::error('Staff site-for-publisher store blocked: empty marketplace country/language lists', [
+                'user_id' => auth()->id(),
+                'countries' => count($allowedCountries),
+                'languages' => count($allowedLanguages),
+            ]);
+
+            return redirect()->back()
+                ->withErrors([
+                    'country' => 'Marketplace countries or languages are not configured. Please contact support — your listing was not saved.',
+                ])
+                ->withInput();
+        }
+
         $validator = Validator::make($request->all(), [
             'publisher_id' => 'required|integer|exists:users,id',
             'site_name' => 'required|string|max:255',
@@ -724,12 +761,33 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'description' => 'required|string|min:50',
+            'description' => 'required|string|min:50|max:5000',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
-        ], $this->siteImageValidationMessages());
+            'written_request' => 'accepted',
+            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'sensitive.crypto' => 'nullable|boolean',
+            'sensitive.trading' => 'nullable|boolean',
+            'sensitive.CBD' => 'nullable|boolean',
+            'sensitive.forex' => 'nullable|boolean',
+            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0',
+            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
+            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
+            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'homepage.1' => 'nullable|boolean',
+            'homepage.7' => 'nullable|boolean',
+            'homepage.30' => 'nullable|boolean',
+            'price_homepage.1' => 'nullable|numeric|min:0',
+            'price_homepage.7' => 'nullable|numeric|min:0',
+            'price_homepage.30' => 'nullable|numeric|min:0',
+            'social.facebook' => 'nullable|boolean',
+            'social.instagram' => 'nullable|boolean',
+            'social.x' => 'nullable|boolean',
+        ], array_merge($this->siteImageValidationMessages(), [
+            'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
+        ]));
 
-        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes) {
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -740,8 +798,14 @@ class SiteController extends Controller
                 $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
             }
 
-            if (Site::where('domain', $domain)->exists()) {
-                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            $existing = Site::where('domain', $domain)->first();
+            if ($existing) {
+                $validator->errors()->add(
+                    'site_url',
+                    $existing->isArchived()
+                        ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+                        : 'This website domain is already registered.'
+                );
             }
 
             $country = $countryCodes[0] ?? null;
@@ -751,6 +815,14 @@ class SiteController extends Controller
                     'language',
                     'That language is not allowed for the selected country. Pick country first, then a paired language.'
                 );
+            }
+
+            foreach ($unknownNiches as $cat) {
+                $validator->errors()->add('categories', 'Unknown niche: '.$cat);
+            }
+
+            foreach (SiteDescriptionRules::errors((string) $request->input('description', '')) as $message) {
+                $validator->errors()->add('description', $message);
             }
         });
 
@@ -768,13 +840,6 @@ class SiteController extends Controller
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
                 $site = new Site;
 
-                $sensitivePrices = [];
-                foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
-                    if ($request->input("sensitive.$topic")) {
-                        $sensitivePrices[$topic] = $request->input("price_sensitive.$topic");
-                    }
-                }
-
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
                     $stored = $this->storeStaffSiteImage($request->file('site_image'));
@@ -790,6 +855,9 @@ class SiteController extends Controller
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
                 $traffic = (int) $request->input('traffic');
+                $sensitivePrices = $this->collectSensitivePrices($request);
+                $homepagePrices = $this->collectHomepagePlacementPrices($request);
+                $socialPromotion = $this->collectSocialPromotion($request);
 
                 $site->applyMarketplaceListing([
                     'publisher_id' => $publisherId,
@@ -821,6 +889,8 @@ class SiteController extends Controller
                     'enrichment_status' => 'pending',
                     'onboarding_status' => null,
                     'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'homepage_placement_prices' => ! empty($homepagePrices) ? $homepagePrices : null,
+                    'social_promotion' => $socialPromotion,
                     'site_image' => $imagePath,
                 ]);
 
@@ -909,9 +979,19 @@ class SiteController extends Controller
             }
         }
 
+        $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.';
+        if ($site && ! $site->hasGoodMetrics()) {
+            $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
+        }
+
+        $redirectParams = ['publisher' => $publisherId];
+        if ($site?->id) {
+            $redirectParams['site'] = $site->id;
+        }
+
         return redirect()
-            ->to(staff_route('sites.index', ['publisher' => $publisherId]))
-            ->with('success', 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.');
+            ->to(staff_route('sites.index', $redirectParams))
+            ->with('success', $success);
     }
 
     // Edit page (optional)
@@ -1921,6 +2001,28 @@ class SiteController extends Controller
         }
 
         return $payload;
+    }
+
+    /**
+     * @return array<string, float>
+     */
+    private function collectSensitivePrices(Request $request): array
+    {
+        $sensitivePrices = [];
+        foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
+            if (! $request->boolean("sensitive.$topic")) {
+                continue;
+            }
+
+            $price = $request->input("price_sensitive.$topic");
+            if ($price === null || $price === '') {
+                continue;
+            }
+
+            $sensitivePrices[$topic] = (float) $price;
+        }
+
+        return $sensitivePrices;
     }
 
     /**
