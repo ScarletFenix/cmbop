@@ -630,7 +630,7 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
-        $selectedPublisherId = (int) ($request->query('publisher') ?: old('publisher_id', 0));
+        $selectedPublisherId = (int) (old('publisher_id') ?: $request->query('publisher', 0));
 
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))

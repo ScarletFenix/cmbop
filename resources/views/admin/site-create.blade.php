@@ -55,7 +55,7 @@
 
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label fw-semibold" for="publisherFilter">Publisher <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold" for="publisher_id">Publisher <span class="text-danger">*</span></label>
                         <input type="search" id="publisherFilter" class="form-control mb-2" placeholder="Type to filter publishers…" autocomplete="off" aria-label="Filter publishers">
                         <select id="publisher_id" name="publisher_id" class="form-select @error('publisher_id') is-invalid @enderror" required>
                             <option value="">Select publisher…</option>
@@ -403,7 +403,7 @@
                     opt.hidden = false;
                     return;
                 }
-                opt.hidden = q !== '' && String(opt.textContent || '').toLowerCase().indexOf(q) === -1;
+                opt.hidden = q !== '' && !opt.selected && String(opt.textContent || '').toLowerCase().indexOf(q) === -1;
             });
         });
         publisherSelect.addEventListener('change', refreshUnverifiedPublisherWarn);

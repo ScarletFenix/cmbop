@@ -274,6 +274,38 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         );
     }
 
+    public function test_validation_error_keeps_posted_publisher_on_back_and_cancel(): void
+    {
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $other = User::factory()->create([
+            'name' => 'Other Verified Pub',
+            'email' => 'other-verified-pub@example.com',
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $other->roles()->attach($publisherRole->id);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create', ['publisher' => $this->publisher->id]))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'publisher_id' => $other->id,
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create', ['publisher' => $this->publisher->id]))
+            ->assertSessionHasErrors('categories');
+
+        $create = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create', ['publisher' => $this->publisher->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option[^>]+value="'.$other->id.'"[^>]+selected/',
+            $create
+        );
+        $this->assertStringContainsString('publisher='.$other->id, $create);
+    }
+
     public function test_marketing_store_requires_written_request(): void
     {
         $this->actingAs($this->marketer)
