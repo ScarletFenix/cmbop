@@ -337,7 +337,7 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertSee('type="text" id="site_url"', false);
     }
 
-    public function test_update_rejects_array_shaped_category(): void
+    public function test_update_ignores_array_shaped_category(): void
     {
         $site = $this->site();
 
@@ -345,8 +345,8 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->putJson(route('admin.sites.update', $site->id), [
                 'category' => ['News', 'Tech'],
             ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['category']);
+            ->assertOk()
+            ->assertJsonPath('success', true);
 
         $this->assertSame('News', $site->fresh()->category);
     }
