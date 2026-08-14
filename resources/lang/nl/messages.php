@@ -625,7 +625,6 @@ return [
     'about_page_companies_house' => 'Bekijk op Companies House',
     'about_page_address_label' => 'Geregistreerd adres',
     'about_page_email_label' => 'Support-e-mail',
-    'about_page_vat_label' => 'btw',
     'about_page_markets_label' => 'Markten',
     'about_page_markets_body' => 'Europa (publieke site EN/DE/FR/NL) plus andere ondersteunde publisher-markten in de catalogus.',
     'home' => 'Home',

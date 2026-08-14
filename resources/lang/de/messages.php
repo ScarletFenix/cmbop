@@ -625,7 +625,6 @@ return [
     'about_page_companies_house' => 'Bei Companies House ansehen',
     'about_page_address_label' => 'Geschäftsadresse',
     'about_page_email_label' => 'Support-E-Mail',
-    'about_page_vat_label' => 'USt',
     'about_page_markets_label' => 'Märkte',
     'about_page_markets_body' => 'Europa (öffentliche Website EN/DE/FR/NL) sowie weitere unterstützte Publisher-Märkte im Katalog.',
     'home' => 'Startseite',

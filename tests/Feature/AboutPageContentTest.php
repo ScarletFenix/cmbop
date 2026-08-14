@@ -50,6 +50,8 @@ class AboutPageContentTest extends TestCase
             ->assertSee('/become-a-publisher', false)
             ->assertSee('/how-it-works', false)
             ->assertSee('support@seolinkbuildings.com', false)
+            ->assertDontSee('VAT:', false)
+            ->assertDontSee('Not VAT registered', false)
             ->assertDontSee('mailto:"', false)
             ->assertDontSee('"email":""', false)
             ->assertDontSee('AggregateRating', false)
