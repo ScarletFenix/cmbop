@@ -7,6 +7,8 @@ use App\Models\Category;
 use App\Models\Country;
 use App\Models\InAppNotification;
 use App\Models\Language;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -232,6 +234,67 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertJson(['success' => true]);
 
         $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+    }
+
+    public function test_publisher_reject_does_not_delete_invite_with_order_items(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Ordered Invite',
+            'site_url' => 'https://ordered-invite.example',
+            'domain' => 'ordered-invite.example',
+            'example_url' => 'https://ordered-invite.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Invite that already has an order item. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $advertiserRole = Role::where('name', 'advertiser')->firstOrFail();
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $advertiser->roles()->attach($advertiserRole->id);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-INVITE-ORD',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.reject-assignment', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('sites', ['id' => $site->id]);
+        $this->assertDatabaseHas('order_items', ['site_id' => $site->id]);
     }
 
     public function test_publisher_self_created_sites_are_accepted_immediately(): void
