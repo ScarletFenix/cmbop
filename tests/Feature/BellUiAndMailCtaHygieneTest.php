@@ -85,7 +85,7 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             $this->assertStringContainsString("next = 'all'", $js);
             $this->assertStringContainsString("this.status = 'unread'", $js);
             $this->assertStringContainsString('markUnread', $js);
-            $this->assertStringContainsString('window.confirm', $js);
+            $this->assertStringContainsString('slbConfirm', $js);
             $this->assertStringContainsString('Switch to All to see earlier notifications.', $js);
         }
     }

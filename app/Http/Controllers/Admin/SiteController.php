@@ -847,7 +847,7 @@ class SiteController extends Controller
         $publisherId = (int) $request->input('publisher_id');
 
         try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$storedImagePath, &$site) {
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
                     throw ValidationException::withMessages([
@@ -1964,6 +1964,7 @@ class SiteController extends Controller
             if ($request->exists('site_url')) {
                 $siteUrl = scalar_text($request->input('site_url'));
                 $host = parse_url($siteUrl, PHP_URL_HOST) ?: '';
+                $domain = $this->normalizeDomain($host);
                 $payload['site_url'] = $siteUrl;
                 if ($domain !== '') {
                     $payload['domain'] = $domain;
