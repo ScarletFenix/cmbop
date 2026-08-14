@@ -54,10 +54,7 @@
         </div>
     @endif
     @if($logs->total() > 0)
-        <p class="small text-muted mb-2" data-history-count>
-            Showing {{ $logs->firstItem() }}–{{ $logs->lastItem() }} of {{ $logs->total() }}
-            {{ \Illuminate\Support\Str::plural('task', $logs->total()) }}
-        </p>
+        <p class="small text-muted mb-2" data-history-count>Showing {{ $logs->firstItem() }}–{{ $logs->lastItem() }} of {{ $logs->total() }} {{ \Illuminate\Support\Str::plural('task', $logs->total()) }}</p>
     @elseif(!empty($filtersActive))
         <p class="small text-muted mb-2" data-history-count>0 tasks match these filters</p>
     @endif
