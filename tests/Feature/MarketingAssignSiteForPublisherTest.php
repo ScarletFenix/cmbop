@@ -889,6 +889,51 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame(['News'], $pending->fresh()->categories);
     }
 
+    public function test_marketing_update_rejects_array_language_without_500(): void
+    {
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Language Guard',
+            'site_url' => 'https://pending-language-guard.example',
+            'domain' => 'pending-language-guard.example',
+            'example_url' => 'https://pending-language-guard.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending language guard description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Language Guard',
+                'site_url' => 'https://pending-language-guard.example',
+                'example_url' => 'https://pending-language-guard.example/sample',
+                'price' => 50,
+                'da' => 40,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => [['de']],
+                'language' => [''],
+                'categories' => 'News',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('language');
+
+        $this->assertSame('de', $pending->fresh()->language);
+    }
+
     public function test_duplicate_domain_prefers_live_listing_message_over_archived(): void
     {
         $otherPublisher = User::factory()->create([
@@ -965,6 +1010,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
     {
         $disk = \Mockery::mock();
         $disk->shouldReceive('makeDirectory')->andReturn(true);
+        $disk->shouldReceive('put')->andReturn(false);
         $disk->shouldReceive('putFile')->andReturn('sites/fail.jpg');
         $disk->shouldReceive('putFileAs')->andReturn('sites/fail.jpg');
         $disk->shouldReceive('exists')->andReturn(false);

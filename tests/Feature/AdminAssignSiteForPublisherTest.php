@@ -18,7 +18,6 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
@@ -509,6 +508,40 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertSame(48, (int) $site->dr);
         $this->assertSame(15000, (int) $site->traffic);
         $this->assertTrue($site->isPendingPublisherAcceptance());
+    }
+
+    public function test_admin_create_rejects_array_category_without_500(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.create'))
+            ->post(route('admin.sites.store'), [
+                'publisher_id' => $this->publisher->id,
+                'site_name' => 'Array Category News',
+                'site_url' => 'https://array-category-news.example',
+                'example_url' => 'https://array-category-news.example/sample',
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'category' => ['NotARealNiche'],
+                'price' => 99,
+                'turnaround_time' => '3days',
+                'publication_time' => 'permanent',
+                'link_type' => 'dofollow',
+                'description' => str_repeat('Array category create description text. ', 4),
+                'site_tag' => 'as_you_prefer',
+                'written_request' => 1,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('categories');
+
+        $this->assertNull(Site::where('domain', 'array-category-news.example')->first());
     }
 
     public function test_heal_migration_reopens_staff_invites_wiped_by_backfill(): void

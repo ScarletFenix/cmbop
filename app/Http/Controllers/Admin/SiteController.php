@@ -23,6 +23,7 @@ use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -738,7 +739,7 @@ class SiteController extends Controller
         );
         $categories = $resolvedNiches['resolved'];
         $unknownNiches = $resolvedNiches['unknown'];
-        $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : $this->scalarString($request->input('category'));
         $categoriesArray = ! empty($categories) ? $categories : null;
 
         $countryCodes = array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1);
@@ -847,7 +848,13 @@ class SiteController extends Controller
 
         $imagePath = null;
         if ($request->hasFile('site_image')) {
-            $stored = $this->storeStaffSiteImage($request->file('site_image'));
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                throw ValidationException::withMessages([
+                    'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                ]);
+            }
+            $stored = $this->storeStaffSiteImage($upload);
             if ($stored === null) {
                 throw ValidationException::withMessages([
                     'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
@@ -855,10 +862,11 @@ class SiteController extends Controller
             }
             PublicStorageLink::ensure();
             $imagePath = $stored;
+            $storedImagePath = $stored;
         }
 
         try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site, &$storedImagePath) {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
                     throw ValidationException::withMessages([
@@ -867,27 +875,6 @@ class SiteController extends Controller
                 }
 
                 $site = new Site;
-
-                $imagePath = null;
-                if ($request->hasFile('site_image')) {
-                    $upload = $request->file('site_image');
-                    if ($upload && ! $upload->isValid()) {
-                        throw ValidationException::withMessages([
-                            'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
-                        ]);
-                    }
-                    $disk = Storage::disk('public');
-                    $disk->makeDirectory('sites');
-                    $stored = $upload->store('sites', 'public');
-                    if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
-                        throw ValidationException::withMessages([
-                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
-                        ]);
-                    }
-                    $storedImagePath = $stored;
-                    PublicStorageLink::ensure();
-                    $imagePath = $stored;
-                }
 
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
@@ -1322,6 +1309,10 @@ class SiteController extends Controller
             $data['verify_token_created_at']
         );
 
+        if (array_key_exists('link_type', $data)) {
+            Site::ensureLinkTypeColumn();
+        }
+
         $previousImage = is_string($site->site_image) ? $site->site_image : null;
 
         try {
@@ -1331,9 +1322,21 @@ class SiteController extends Controller
             if (is_string($storedThisRequest) && $storedThisRequest !== '') {
                 $this->deleteStoredSiteImage($storedThisRequest);
             }
+
+            $message = $e->getMessage();
+            if ($e instanceof QueryException
+                && array_key_exists('link_type', $data)
+                && (str_contains($message, 'link_type')
+                    || str_contains($message, 'Data truncated')
+                    || str_contains($message, '1265'))) {
+                throw ValidationException::withMessages([
+                    'link_type' => 'This link type could not be saved. Run the latest database update and try again.',
+                ]);
+            }
+
             Log::error('Staff site update failed', [
                 'site_id' => $site->id,
-                'error' => $e->getMessage(),
+                'error' => $message,
             ]);
 
             $hint = $this->isDomainUniqueConstraintFailure($e)
@@ -1483,8 +1486,8 @@ class SiteController extends Controller
                 $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
             }
         }
-        if ($metrics !== []) {
-            $request->merge($metrics);
+        if ($metricMerge !== []) {
+            $request->merge($metricMerge);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1496,18 +1499,18 @@ class SiteController extends Controller
 
         if ($countryCodes !== []) {
             $request->merge(['country' => $countryCodes[0]]);
-        } elseif ($request->has('country') && trim((string) $request->input('country')) === '') {
+        } elseif ($request->has('country') && $this->isBlankStringInput($request->input('country'))) {
             $request->merge(['country' => null]);
         }
         if ($languageCodes !== []) {
             $request->merge(['language' => $languageCodes[0]]);
-        } elseif ($request->has('language') && trim((string) $request->input('language')) === '') {
+        } elseif ($request->has('language') && $this->isBlankStringInput($request->input('language'))) {
             $request->merge(['language' => null]);
         }
-        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+        if ($request->has('description') && $this->isBlankStringInput($request->input('description'))) {
             $request->merge(['description' => null]);
         }
-        if ($request->has('link_type') && trim((string) $request->input('link_type')) === '') {
+        if ($request->has('link_type') && $this->isBlankStringInput($request->input('link_type'))) {
             $request->merge(['link_type' => null]);
         }
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
@@ -1538,7 +1541,7 @@ class SiteController extends Controller
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
             'price' => 'sometimes|required|numeric|min:0|max:999999.99',
-            'description' => 'sometimes|nullable|string|max:5000',
+            'description' => 'sometimes|nullable|string|min:50|max:5000',
             'category' => 'sometimes|nullable|string|max:255',
             'publication_time' => 'sometimes|nullable|string|max:20',
             // Dedicated editor is free text; modal may send dofollow/nofollow.
@@ -1593,8 +1596,8 @@ class SiteController extends Controller
             }
 
             if ($request->has('country') || $request->has('language')) {
-                $country = strtolower(trim((string) ($request->input('country', $site->country) ?? '')));
-                $language = strtolower(trim((string) ($request->input('language', $site->language) ?? '')));
+                $country = strtolower($this->scalarString($request->input('country', $site->country)));
+                $language = strtolower($this->scalarString($request->input('language', $site->language)));
                 if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
                     $validator->errors()->add(
                         'language',
@@ -1667,7 +1670,7 @@ class SiteController extends Controller
             }
         }
 
-        if ($metrics !== []) {
+        if ($metricMerge !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();
@@ -1681,6 +1684,24 @@ class SiteController extends Controller
         if (isset($data['language']) && $data['language'] !== null && $data['language'] !== '') {
             $data['language'] = strtolower(trim((string) $data['language']));
             $data['languages'] = [$data['language']];
+        }
+
+        if ($request->has('categories') || $request->filled('category')) {
+            $raw = $request->has('categories')
+                ? $request->input('categories')
+                : $request->input('category');
+            $resolved = Category::resolveNicheNames($raw);
+            $incoming = array_values(array_unique(array_merge($resolved['resolved'], $resolved['unknown'])));
+            $replaceAll = $request->has('categories') || count($incoming) > 1;
+            $categories = $this->mergeAdminCategoryUpdate($site, $incoming, $replaceAll);
+            $data['categories'] = $categories;
+            $data['category'] = Site::fitCategoryColumn(
+                $categories !== [] ? (string) $categories[0] : '',
+                $categories !== [] ? $categories : null
+            );
+        } elseif ($request->has('category')) {
+            // Dedicated edit always posts category; blank must not wipe niches.
+            unset($data['category']);
         }
 
         if ($request->hasFile('site_image')) {
@@ -1745,6 +1766,24 @@ class SiteController extends Controller
             return $value !== null;
         }, ARRAY_FILTER_USE_BOTH);
 
+        // Empty optional fields are merged to null above, then stripped by
+        // array_filter. Re-apply explicit clears so dedicated edit can blank
+        // geo / description / example URL (NOT NULL columns get '').
+        if ($request->has('country') && $countryCodes === []) {
+            $data['country'] = '';
+            $data['countries'] = null;
+        }
+        if ($request->has('language') && $languageCodes === []) {
+            $data['language'] = '';
+            $data['languages'] = null;
+        }
+        if ($request->has('example_url') && $this->isBlankStringInput($request->input('example_url'))) {
+            $data['example_url'] = null;
+        }
+        if ($request->has('description') && $this->isBlankStringInput($request->input('description'))) {
+            $data['description'] = '';
+        }
+
         if ($placementPatch !== null) {
             $data = array_merge($data, $placementPatch);
         }
@@ -1781,16 +1820,6 @@ class SiteController extends Controller
         if ($canFixListing) {
             $this->mergeNormalizedUrlOrFail($request, 'site_url', 'siteUrl');
             $this->mergeNormalizedUrlOrFail($request, 'example_url', 'exampleUrl', nullable: true);
-        }
-
-        $metricMerge = [];
-        foreach (['da', 'dr', 'traffic'] as $field) {
-            if ($request->exists($field)) {
-                $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
-            }
-        }
-        if ($metricMerge !== []) {
-            $request->merge($metricMerge);
         }
 
         // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
@@ -1833,8 +1862,8 @@ class SiteController extends Controller
         }
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site) {
-            $language = strtolower(trim((string) $request->input('language', '')));
-            $country = strtolower(trim((string) $request->input('country', '')));
+            $language = strtolower($this->scalarString($request->input('language')));
+            $country = strtolower($this->scalarString($request->input('country')));
 
             if ($language !== '' && ! in_array($language, $allowedLanguages, true)) {
                 $validator->errors()->add('language', 'Choose a valid marketplace language.');
@@ -1899,8 +1928,8 @@ class SiteController extends Controller
             return back()->withErrors($validator)->withInput();
         }
 
-        $language = strtolower(trim((string) $request->input('language')));
-        $country = strtolower(trim((string) $request->input('country')));
+        $language = strtolower($this->scalarString($request->input('language')));
+        $country = strtolower($this->scalarString($request->input('country')));
 
         $payload = [
             'da' => (int) $request->input('da'),
@@ -2219,17 +2248,25 @@ class SiteController extends Controller
      */
     private function storeStaffSiteImage(UploadedFile $file): ?string
     {
-        $disk = Storage::disk('public');
-        $disk->makeDirectory('sites');
+        try {
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
 
-        $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
-            ?? $file->store('sites', 'public');
+            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
+                ?? $file->store('sites', 'public');
 
-        if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                return null;
+            }
+
+            return $stored;
+        } catch (\Throwable $e) {
+            Log::error('Staff site image store failed', [
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
-
-        return $stored;
     }
 
     /**
@@ -2247,9 +2284,14 @@ class SiteController extends Controller
      */
     private function parseCodeList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
-            $parts = $value;
-        } else {
+            array_walk_recursive($value, function ($item) use (&$parts) {
+                if (is_scalar($item) && ! is_bool($item)) {
+                    $parts[] = $item;
+                }
+            });
+        } elseif (is_scalar($value) && ! is_bool($value)) {
             $parts = preg_split('/[|,]/', (string) $value) ?: [];
         }
 
@@ -2262,6 +2304,27 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * Form/JSON text. Arrays/objects must not reach (string) — PHP 8 TypeError.
+     */
+    private function scalarString(mixed $value): string
+    {
+        if (! is_scalar($value) || is_bool($value)) {
+            return '';
+        }
+
+        return trim((string) $value);
+    }
+
+    /**
+     * Empty optional text, including ConvertEmptyStringsToNull → null.
+     * Arrays are not blank — those must 422, not wipe the stored value.
+     */
+    private function isBlankStringInput(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
     }
 
     /**
@@ -2525,6 +2588,39 @@ class SiteController extends Controller
         }
 
         return max(0, (int) $value);
+    }
+
+    /**
+     * Dedicated admin edit posts a single category field. Keep extra JSON niches
+     * unless the request sent an explicit list (categories[] or pipe-separated).
+     *
+     * @param  list<string>  $incoming
+     * @return list<string>
+     */
+    private function mergeAdminCategoryUpdate(Site $site, array $incoming, bool $replaceAll): array
+    {
+        if ($replaceAll) {
+            return $incoming;
+        }
+
+        $primary = $incoming[0] ?? '';
+        $oldPrimary = trim((string) ($site->category ?? ''));
+        $kept = [];
+        foreach ($site->categories_array ?? [] as $name) {
+            $name = trim((string) $name);
+            if ($name === '') {
+                continue;
+            }
+            if ($oldPrimary !== '' && strcasecmp($name, $oldPrimary) === 0) {
+                continue;
+            }
+            if ($primary !== '' && strcasecmp($name, $primary) === 0) {
+                continue;
+            }
+            $kept[] = $name;
+        }
+
+        return $primary !== '' ? array_merge([$primary], $kept) : $kept;
     }
 
     /**

@@ -135,6 +135,34 @@ class PublisherSiteStoreTest extends TestCase
         $this->assertDatabaseMissing('sites', ['domain' => 'short-desc.example']);
     }
 
+    public function test_site_description_rejects_array_input_without_500(): void
+    {
+        $country = Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->firstOrFail();
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)->from(route('publisher.websites'))->post(route('publisher.sites.store'), [
+            'siteName' => 'Array Desc Site',
+            'siteUrl' => 'https://array-desc.example',
+            'exampleUrl' => 'https://array-desc.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => [['de']],
+            'language' => strtolower($language->code),
+            'categories' => [1, [$category->name]],
+            'price' => 80,
+            'turnaround_time' => '3days',
+            'publicationTime' => 'permanent',
+            'link_type' => 'dofollow',
+            'siteDescription' => ['<p>Poisoned description</p>'],
+            'site_tag' => 'as_you_prefer',
+        ])->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('siteDescription');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'array-desc.example']);
+    }
+
     public function test_site_description_rejects_over_five_hundred_words(): void
     {
         $country = Country::marketplace()->firstOrFail();

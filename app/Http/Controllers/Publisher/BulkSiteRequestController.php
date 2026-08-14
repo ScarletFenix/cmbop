@@ -256,7 +256,11 @@ class BulkSiteRequestController extends Controller
         });
 
         $validator->after(function ($validator) use ($request) {
-            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+            $rawDescription = $request->input('siteDescription', '');
+            if (! is_string($rawDescription)) {
+                return;
+            }
+            foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
                 $validator->errors()->add('siteDescription', $message);
             }
         });
