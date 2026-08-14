@@ -4,8 +4,7 @@ namespace App\Http\Controllers\Marketing;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
-use App\Models\BulkSiteRequest;
-use App\Models\Site;
+use App\Support\MarketingOpsQueues;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
@@ -20,6 +19,9 @@ class PanelController extends Controller
         'bulk_request.notes_updated',
         'site.deleted_by_marketing',
         'site.updated',
+        'site.activated',
+        'site.deactivated',
+        'site.assigned_for_acceptance',
         'site.image_uploaded',
         'site.metrics_refreshed',
         'site.screenshot_refreshed',
@@ -30,44 +32,43 @@ class PanelController extends Controller
     {
         $userId = (int) auth()->id();
 
+        [$todayStart, $todayEnd] = $this->marketerTodayBounds();
+
         $stats = [
-            'pending_sites' => Site::query()
-                ->where(function ($q) {
-                    $q->where('verified', 0)->orWhereNull('verified');
-                })
-                ->where(function ($q) {
-                    $q->where('active', 0)->orWhereNull('active');
-                })
-                ->count(),
-            'open_bulk_requests' => BulkSiteRequest::query()
-                ->whereNotIn('status', [
-                    BulkSiteRequest::STATUS_COMPLETED,
-                    BulkSiteRequest::STATUS_CANCELLED,
-                ])
-                ->count(),
+            'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaffCount(),
+            'bulk_waiting_on_you' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
+            'sites_waiting_on_publisher' => MarketingOpsQueues::sitesWaitingOnPublisher()->count(),
+            'bulk_waiting_on_publisher' => MarketingOpsQueues::bulkWaitingOnPublisher()->count(),
             'my_tasks_today' => $this->marketerHistoryQuery($userId)
-                ->whereDate('created_at', Carbon::today())
+                ->whereBetween('created_at', [$todayStart, $todayEnd])
                 ->count(),
             'my_tasks_total' => $this->marketerHistoryQuery($userId)->count(),
         ];
 
-        $pendingSites = Site::with('publisher:id,name,email')
-            ->where(function ($q) {
-                $q->where('verified', 0)->orWhereNull('verified');
-            })
-            ->where(function ($q) {
-                $q->where('active', 0)->orWhereNull('active');
-            })
-            ->latest()
+        $readySites = MarketingOpsQueues::sitesReadyForStaff()
+            ->with('publisher:id,name,email')
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->take(8)
             ->get();
 
-        $openBulk = BulkSiteRequest::with('publisher:id,name,email')
-            ->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
+        $waitingSites = MarketingOpsQueues::sitesWaitingOnPublisher()
+            ->with('publisher:id,name,email')
+            ->orderBy('created_at')
+            ->orderBy('id')
+            ->take(5)
+            ->get();
+
+        $openBulk = MarketingOpsQueues::bulkWaitingOnMarketer()
+            ->with([
+                'publisher:id,name,email',
+                'handler:id,name',
             ])
-            ->latest()
+            ->withCount([
+                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
+            ])
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->take(5)
             ->get();
 
@@ -78,7 +79,8 @@ class PanelController extends Controller
 
         return view('marketing.dashboard', compact(
             'stats',
-            'pendingSites',
+            'readySites',
+            'waitingSites',
             'openBulk',
             'recentHistory'
         ));
@@ -94,11 +96,11 @@ class PanelController extends Controller
         }
 
         if ($request->filled('from')) {
-            $query->whereDate('created_at', '>=', $request->date('from'));
+            $query->where('created_at', '>=', $this->marketerDayBound($request->date('from'), true));
         }
 
         if ($request->filled('to')) {
-            $query->whereDate('created_at', '<=', $request->date('to'));
+            $query->where('created_at', '<=', $this->marketerDayBound($request->date('to'), false));
         }
 
         if ($request->filled('q')) {
@@ -133,5 +135,34 @@ class PanelController extends Controller
             ->where('user_id', $userId)
             ->where('role', 'marketing')
             ->whereIn('action', self::TRACKED_ACTIONS);
+    }
+
+    /**
+     * Inclusive "today" window in the app timezone, stored as UTC bounds.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function marketerTodayBounds(): array
+    {
+        $today = now()->timezone($this->marketerTimezone());
+
+        return [
+            $today->copy()->startOfDay()->utc(),
+            $today->copy()->endOfDay()->utc(),
+        ];
+    }
+
+    private function marketerDayBound(Carbon $date, bool $start): Carbon
+    {
+        $local = $date->copy()->timezone($this->marketerTimezone());
+
+        return $start
+            ? $local->startOfDay()->utc()
+            : $local->endOfDay()->utc();
+    }
+
+    private function marketerTimezone(): string
+    {
+        return config('app.timezone') ?: 'UTC';
     }
 }

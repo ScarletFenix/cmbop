@@ -14,6 +14,7 @@ use App\Models\Site;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
+use App\Support\MarketingOpsQueues;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -35,27 +36,14 @@ class BulkSiteRequestController extends Controller
             ])
             ->latest();
 
-        if ($status !== '' && $status !== 'all') {
-            $query->where('status', $status);
-        }
+        MarketingOpsQueues::applyBulkIndexStatus($query, $status);
 
         $requests = $query->paginate(20)->withQueryString();
 
         return view('admin.bulk-site-requests.index', [
             'requests' => $requests,
             'status' => $status !== '' ? $status : 'all',
-            'openCount' => BulkSiteRequest::query()
-                ->where(function ($q) {
-                    $q->whereNotIn('status', [
-                        BulkSiteRequest::STATUS_COMPLETED,
-                        BulkSiteRequest::STATUS_CANCELLED,
-                    ])->orWhere(function ($inner) {
-                        // Partial batches: publisher finished seeded drafts, marketer still has rows.
-                        $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
-                            ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
-                    });
-                })
-                ->count(),
+            'openCount' => MarketingOpsQueues::openBulkForMarketer()->count(),
         ]);
     }
 

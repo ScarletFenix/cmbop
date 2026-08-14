@@ -58,10 +58,22 @@
 
         <div class="mkt-nav-section">Catalog ops</div>
         <a href="{{ route('marketing.sites.index') }}" class="{{ request()->routeIs('marketing.sites.*') ? 'active' : '' }}">
-            <i class="fa fa-globe"></i> <span class="nav-label">Sites</span>
+            <i class="fa fa-globe"></i>
+            <span class="d-flex align-items-center w-100">
+                <span class="nav-label">Sites</span>
+                @if(($mktReadySiteCount ?? 0) > 0)
+                    <span class="mkt-nav-badge badge bg-warning text-dark rounded-pill ms-auto" data-nav-badge="sites" data-count="{{ $mktReadySiteCount }}">{{ $mktReadySiteCount > 99 ? '99+' : $mktReadySiteCount }}</span>
+                @endif
+            </span>
         </a>
         <a href="{{ route('marketing.bulk-site-requests.index') }}" class="{{ request()->routeIs('marketing.bulk-site-requests.*') ? 'active' : '' }}">
-            <i class="fa fa-layer-group"></i> <span class="nav-label">Bulk requests</span>
+            <i class="fa fa-layer-group"></i>
+            <span class="d-flex align-items-center w-100">
+                <span class="nav-label">Bulk requests</span>
+                @if(($mktBulkWaitingCount ?? 0) > 0)
+                    <span class="mkt-nav-badge badge bg-warning text-dark rounded-pill ms-auto" data-nav-badge="bulk" data-count="{{ $mktBulkWaitingCount }}">{{ $mktBulkWaitingCount > 99 ? '99+' : $mktBulkWaitingCount }}</span>
+                @endif
+            </span>
         </a>
         <a href="{{ route('marketing.staff-handbook') }}" class="{{ request()->routeIs('marketing.staff-handbook') ? 'active' : '' }}">
             <i class="fa fa-book"></i> <span class="nav-label">Staff handbook</span>
