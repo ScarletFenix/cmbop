@@ -85,6 +85,8 @@ class MarketingSitesLoadTest extends TestCase
                 'sites' => [[
                     'id',
                     'needs_review',
+                    'missing_market',
+                    'below_quality_bar',
                     'awaits_publisher_details',
                     'preview_thumb_url',
                     'preview_full_url',

@@ -80,7 +80,7 @@ class SiteOnboardingStatusActivateTest extends TestCase
         );
     }
 
-    public function test_marketer_activate_clears_awaiting_details(): void
+    public function test_marketer_cannot_activate_awaiting_details(): void
     {
         $marketer = $this->userWithRole('marketing');
         $publisher = $this->userWithRole('publisher');
@@ -88,11 +88,12 @@ class SiteOnboardingStatusActivateTest extends TestCase
 
         $this->actingAs($marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Publisher has not finished listing details.');
 
         $site->refresh();
-        $this->assertTrue((bool) $site->active);
-        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
     }
 }

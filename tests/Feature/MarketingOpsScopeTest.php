@@ -78,7 +78,11 @@ class MarketingOpsScopeTest extends TestCase
 
     public function test_marketer_cannot_verify_but_can_activate_sites(): void
     {
-        $site = $this->makeSite();
+        $site = $this->makeSite([
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+        ]);
 
         $this->actingAs($this->marketer)
             ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])

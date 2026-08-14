@@ -1286,11 +1286,20 @@ function renderSites(data){
                 ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
                 : '';
 
-            // Always offer Deactivate after Activate for marketing/admin (toggle by live flag).
+            // Always offer Deactivate after Activate. Marketing cannot activate
+            // unfinished, missing-market, or below-quality listings (server also 422s).
+            const marketingActivateBlocked = IS_MARKETING_EDITOR && (
+                !!site.pending_publisher_acceptance
+                || !!site.awaits_publisher_details
+                || !!site.missing_market
+                || !!site.below_quality_bar
+            );
             const activeItem = CAN_TOGGLE_ACTIVE
                 ? (isActive
                     ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
-                    : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
+                    : (marketingActivateBlocked
+                        ? ''
+                        : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`))
                 : '';
 
             const verifyItem = CAN_VERIFY_SITES

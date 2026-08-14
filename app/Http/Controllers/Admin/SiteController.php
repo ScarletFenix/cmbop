@@ -440,6 +440,7 @@ class SiteController extends Controller
             'screenshot_thumb_path' => $site->screenshot_thumb_path,
             'needs_review' => $site->needsAdminReview(),
             'missing_market' => ! $site->hasMarketplaceCountry(),
+            'below_quality_bar' => ! $site->hasGoodMetrics(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
             'agency_site_import_id' => Site::hasSitesColumn('agency_site_import_id')
@@ -1663,14 +1664,39 @@ class SiteController extends Controller
                 ], 422);
             }
 
-            // Heal complete drafts; staff activate also clears incomplete awaiting_details
-            // so marketing can finish the same flow as admin from Sites Management.
+            $isMarketingActor = (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
+
+            // Heal complete drafts. Admin may still force-activate incomplete
+            // awaiting_details; marketing cannot publish unfinished listings.
             if ($activating) {
                 $site->promoteFromAwaitingDetailsIfComplete();
                 $site->refresh();
                 if ($site->awaitsPublisherDetails()) {
+                    if ($isMarketingActor) {
+                        return response()->json([
+                            'success' => false,
+                            'message' => 'Publisher has not finished listing details.',
+                        ], 422);
+                    }
+
                     $site->clearAwaitingDetailsForAdmin();
                     $site->refresh();
+                }
+
+                if ($isMarketingActor && ! $site->hasMarketplaceCountry()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Set a marketplace country before activating. This listing will not appear in country filters without one.',
+                        'missing_market' => true,
+                    ], 422);
+                }
+
+                if ($isMarketingActor && ! $site->hasGoodMetrics()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This listing is below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Update metrics before activating.',
+                        'below_quality_bar' => true,
+                    ], 422);
                 }
             }
 
