@@ -245,14 +245,11 @@
                                     <div>
                                     <strong>{{ $label }}</strong>
                                     @php
-                                        $evaluationReport = is_array($submission->evaluation_report)
-                                            ? $submission->evaluation_report
-                                            : [];
                                         $reasonGroups = $submission->evaluationReasonGroups();
-                                        $hitTerms = $evaluationReport['matched_terms'] ?? [];
-                                        $blockedUrls = $evaluationReport['blocked_urls'] ?? [];
+                                        $hitTerms = $submission->evaluationMatchedTerms();
+                                        $blockedUrls = $submission->evaluationBlockedUrls();
                                     @endphp
-                                    {{ $evaluationReport['summary'] ?? 'Fix issues and resubmit.' }}
+                                    {{ $submission->evaluationSummary() }}
                                     @if(($reasonGroups['blocking'] ?? []) !== [])
                                         <span class="library-reason-label">Blocking</span>
                                         <ul class="library-reason-list library-reason-list--blocking">

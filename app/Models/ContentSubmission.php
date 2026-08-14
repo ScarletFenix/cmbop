@@ -449,13 +449,14 @@ class ContentSubmission extends Model
         $report = is_array($this->evaluation_report) ? $this->evaluation_report : [];
         $blocking = [];
         $advisory = [];
+        $checks = is_array($report['checks'] ?? null) ? $report['checks'] : [];
 
-        foreach (($report['checks'] ?? []) as $check) {
+        foreach ($checks as $check) {
             if (! is_array($check)) {
                 continue;
             }
-            $status = strtolower((string) ($check['status'] ?? ''));
-            $detail = trim((string) ($check['detail'] ?? $check['label'] ?? ''));
+            $status = strtolower(scalar_text($check['status'] ?? ''));
+            $detail = trim(scalar_text($check['detail'] ?? $check['label'] ?? ''));
             if ($detail === '') {
                 continue;
             }
@@ -466,14 +467,46 @@ class ContentSubmission extends Model
             }
         }
 
-        if ($blocking === [] && filled($report['summary'] ?? null) && $this->needsCorrection()) {
-            $blocking[] = (string) $report['summary'];
+        $summary = trim(scalar_text($report['summary'] ?? ''));
+        if ($blocking === [] && $summary !== '' && $this->needsCorrection()) {
+            $blocking[] = $summary;
         }
 
         return [
             'blocking' => array_values(array_unique($blocking)),
             'advisory' => array_values(array_unique($advisory)),
         ];
+    }
+
+    /**
+     * One-line library / email summary. Nested JSON must not reach Blade {{ }}.
+     */
+    public function evaluationSummary(): string
+    {
+        $report = is_array($this->evaluation_report) ? $this->evaluation_report : [];
+        $summary = trim(scalar_text($report['summary'] ?? ''));
+
+        return $summary !== '' ? $summary : 'Fix issues and resubmit.';
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function evaluationMatchedTerms(): array
+    {
+        $report = is_array($this->evaluation_report) ? $this->evaluation_report : [];
+
+        return scalar_list($report['matched_terms'] ?? []);
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function evaluationBlockedUrls(): array
+    {
+        $report = is_array($this->evaluation_report) ? $this->evaluation_report : [];
+
+        return scalar_list($report['blocked_urls'] ?? []);
     }
 
     public function isArchived(): bool

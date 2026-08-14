@@ -96,6 +96,21 @@ class ContentLibraryPhases710Test extends TestCase
             ->assertDontSee('Array to string conversion', false);
     }
 
+    public function test_admin_content_library_array_page_does_not_500(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', [
+                'page' => ['2'],
+            ]))
+            ->assertOk()
+            ->assertSee('Content Library')
+            ->assertDontSee('Array to string conversion', false);
+    }
+
     public function test_admin_moderation_exposes_placement_language_toggle(): void
     {
         $admin = $this->admin();

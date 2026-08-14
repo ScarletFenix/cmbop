@@ -325,6 +325,41 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertDontSee('Trying to access array offset', false);
     }
 
+    public function test_needs_fix_with_nested_evaluation_report_does_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Nested Report Piece',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluation_status' => 'rejected',
+            'evaluation_report' => [
+                'summary' => ['Restricted content detected.'],
+                'checks' => 'not-a-list',
+                'matched_terms' => [['term' => 'casino'], 'poker'],
+                'blocked_urls' => [['url' => 'https://bet.example/x']],
+            ],
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('Nested Report Piece')
+            ->assertSee('Restricted content detected.')
+            ->assertSee('casino')
+            ->assertSee('poker')
+            ->assertSee('https://bet.example/x')
+            ->assertDontSee('Array to string conversion', false)
+            ->assertDontSee('must be of type string', false)
+            ->getContent();
+
+        $this->assertStringContainsString('Remove/rewrite:', $html);
+        $this->assertStringContainsString('Blocked links:', $html);
+    }
+
     public function test_low_score_approved_row_shows_advisory_orderable_note(): void
     {
         $advertiser = $this->advertiser();
