@@ -113,7 +113,7 @@
                                     so a 5 MB .docx is rejected even though the article cap is
                                     {{ max(1, (int) round(($articleUploadMaxKb ?? 10240) / 1024)) }} MB.
                                     In Hostinger hPanel → Advanced → PHP Configuration set
-                                    <code>upload_max_filesize</code> to 16M and <code>post_max_size</code> to 64M,
+                                    <code>upload_max_filesize</code> to 64M and <code>post_max_size</code> to 64M,
                                     then wait a minute. <code>public/.user.ini</code> already asks for those values;
                                     Hostinger often ignores them until they are set in hPanel.
                                 </div>

@@ -130,7 +130,7 @@
                         The article cap is {{ $uploadMaxMb }} MB, but server PHP still allows only
                         {{ max(1, (int) round($uploadCfg['php_max_kilobytes'] / 1024)) }} MB.
                         A 5 MB .docx will be rejected until hosting PHP settings set
-                        <code>upload_max_filesize</code> to 16M and <code>post_max_size</code> to 64M.
+                        <code>upload_max_filesize</code> to 64M and <code>post_max_size</code> to 64M.
                     </div>
                 @endif
 

@@ -35,15 +35,10 @@ class ContentUploadService
         $override = ContentModerationSetting::getValue('upload_config', []) ?: [];
 
         if (! is_array($override) || $override === []) {
-            $base['max_kilobytes'] = $this->clampMaxKilobytes((int) ($base['max_kilobytes'] ?? self::MAX_KILOBYTES));
-
-            return $base;
+            return $this->withClampedUploadLimit($base);
         }
 
-        $merged = array_replace_recursive($base, $override);
-        $merged['max_kilobytes'] = $this->clampMaxKilobytes((int) ($merged['max_kilobytes'] ?? self::MAX_KILOBYTES));
-
-        return $merged;
+        return $this->withClampedUploadLimit(array_replace_recursive($base, $override));
     }
 
     /**
@@ -545,6 +540,21 @@ class ContentUploadService
         return max(self::MAX_KILOBYTES, min(self::ABSOLUTE_MAX_KILOBYTES, $kilobytes));
     }
 
+    /**
+     * @param  array<string, mixed>  $cfg
+     * @return array<string, mixed>
+     */
+    private function withClampedUploadLimit(array $cfg): array
+    {
+        $cfg['max_kilobytes'] = $this->clampMaxKilobytes((int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
+        $mb = PhpIniSize::megabytesLabel($cfg['max_kilobytes']);
+        $help = is_array($cfg['help'] ?? null) ? $cfg['help'] : [];
+        $help['before_upload'] = 'Supported format: Microsoft Word (.docx) only. Maximum size: '.$mb.' MB. Unused articles are kept for 6 months; after that the original file is removed and a preview stays in Expired.';
+        $cfg['help'] = $help;
+
+        return $cfg;
+    }
+
     public function phpUploadMaxKilobytes(): int
     {
         return PhpIniSize::uploadMaxKilobytes(self::MAX_KILOBYTES);
@@ -565,7 +575,7 @@ class ContentUploadService
         if ($this->phpLimitBlocksArticleCap($cfg)) {
             $phpMb = PhpIniSize::megabytesLabel($this->phpUploadMaxKilobytes());
 
-            return 'This file is under the '.$appMb.' MB article limit, but the server PHP upload limit is '.$phpMb.' MB. In hosting PHP settings set upload_max_filesize to 16M and post_max_size to 64M, wait a minute, then try again.';
+            return 'This file is under the '.$appMb.' MB article limit, but the server PHP upload limit is '.$phpMb.' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
         }
 
         return 'That file is over the '.$appMb.' MB limit. Save as a smaller .docx and try again.';

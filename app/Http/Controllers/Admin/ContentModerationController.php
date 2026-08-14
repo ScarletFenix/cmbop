@@ -49,7 +49,7 @@ class ContentModerationController extends Controller
         ));
     }
 
-    public function updateSettings(Request $request)
+    public function updateSettings(Request $request, ContentUploadService $uploads)
     {
         $data = $request->validate([
             'enabled' => ['sometimes', 'boolean'],
@@ -95,7 +95,7 @@ class ContentModerationController extends Controller
         $uploadOverride['allowed_extensions'] = ['docx'];
         $uploadOverride['preferred_extension'] = 'docx';
         $uploadOverride['enabled'] = $request->boolean('uploads_enabled');
-        $uploadOverride['max_kilobytes'] = app(ContentUploadService::class)->clampMaxKilobytes(
+        $uploadOverride['max_kilobytes'] = $uploads->clampMaxKilobytes(
             (int) ($data['max_kilobytes'] ?? ContentUploadService::MAX_KILOBYTES)
         );
         $uploadOverride['retention_months'] = (int) ($data['retention_months'] ?? 6);

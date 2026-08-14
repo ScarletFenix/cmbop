@@ -1198,13 +1198,13 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
-        $this->assertStringContainsString('php_value upload_max_filesize 16M', $htaccess);
+        $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
 
         $userIni = (string) file_get_contents(public_path('.user.ini'));
-        $this->assertStringContainsString('upload_max_filesize = 16M', $userIni);
+        $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
         $this->assertStringContainsString('post_max_size = 64M', $userIni);
         $rootIni = (string) file_get_contents(base_path('.user.ini'));
-        $this->assertStringContainsString('upload_max_filesize = 16M', $rootIni);
+        $this->assertStringContainsString('upload_max_filesize = 64M', $rootIni);
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
