@@ -121,6 +121,7 @@ class AdvertiserProjectsUxTest extends TestCase
         $this->assertIsString($blade);
         $this->assertStringNotContainsString('rand(', $blade);
         $this->assertStringContainsString('data-slb-confirm="This project will be removed', $blade);
+        $this->assertStringContainsString('type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>', $blade);
     }
 
     public function test_update_keeps_the_same_project_name(): void
@@ -288,5 +289,80 @@ class AdvertiserProjectsUxTest extends TestCase
         $this->assertSame(0, $this->badgeCount($beta, 'Needs improvements'));
         $this->assertSame(0, $this->badgeCount($beta, 'Completed'));
         $this->assertSame(0, $this->badgeCount($beta, 'Rejected'));
+    }
+
+    public function test_store_rejects_names_that_would_fail_on_update(): void
+    {
+        $user = $this->advertiser();
+
+        $this->actingAs($user)
+            ->from(route('advertiser.projects.index'))
+            ->post(route('advertiser.projects.store'), [
+                'project_name' => 'Acme GmbH!',
+                'project_url' => 'https://acme-gmbh.example',
+            ])
+            ->assertRedirect(route('advertiser.projects.index'))
+            ->assertSessionHasErrors('project_name');
+
+        $this->assertSame(0, Project::where('user_id', $user->id)->count());
+    }
+
+    public function test_store_rejects_a_www_duplicate_of_an_existing_project_host(): void
+    {
+        $user = $this->advertiser();
+        Project::create([
+            'user_id' => $user->id,
+            'project_name' => 'Acme Client',
+            'project_url' => 'https://acme.example',
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('advertiser.projects.index'))
+            ->post(route('advertiser.projects.store'), [
+                'project_name' => 'Acme Www',
+                'project_url' => 'https://www.acme.example/about',
+            ])
+            ->assertRedirect(route('advertiser.projects.index'))
+            ->assertSessionHasErrors('project_url');
+
+        $this->assertSame(1, Project::where('user_id', $user->id)->count());
+    }
+
+    public function test_names_that_share_a_slug_do_not_500(): void
+    {
+        $user = $this->advertiser();
+        $first = Project::create([
+            'user_id' => $user->id,
+            'project_name' => 'Acme Client',
+            'project_url' => 'https://acme-one.example',
+        ]);
+
+        $this->actingAs($user)
+            ->from(route('advertiser.projects.index'))
+            ->post(route('advertiser.projects.store'), [
+                'project_name' => 'Acme-Client',
+                'project_url' => 'https://acme-two.example',
+            ])
+            ->assertRedirect(route('advertiser.projects.index'))
+            ->assertSessionHas('success')
+            ->assertSessionHasNoErrors();
+
+        $second = Project::where('user_id', $user->id)->where('project_name', 'Acme-Client')->first();
+        $this->assertNotNull($second);
+        $this->assertSame('acme-client-'.$user->id, $first->fresh()->slug);
+        $this->assertSame('acme-client-'.$user->id.'-2', $second->slug);
+    }
+
+    public function test_projects_page_is_linked_from_the_advertiser_sidebar(): void
+    {
+        $user = $this->advertiser();
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.projects.index'))
+            ->assertOk()
+            ->assertSee('>Projects</span>', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('advertiser.projects.index', [], false), $html);
     }
 }

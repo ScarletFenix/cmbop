@@ -36,5 +36,6 @@ class ProjectPlacementStagesTest extends TestCase
     {
         $this->assertSame('acme-client-7', Project::generateSlug('Acme Client', 7));
         $this->assertSame('acme-client-9', Project::generateSlug('Acme Client', 9));
+        $this->assertSame('acme-client-7', Project::generateSlug('Acme-Client', 7));
     }
 }

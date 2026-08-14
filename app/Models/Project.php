@@ -41,12 +41,12 @@ class Project extends Model
         parent::boot();
 
         static::creating(function ($project) {
-            $project->slug = self::generateSlug($project->project_name, $project->user_id);
+            $project->slug = self::uniqueSlug($project->project_name, $project->user_id);
         });
 
         static::updating(function ($project) {
             if ($project->isDirty('project_name') || $project->isDirty('user_id')) {
-                $project->slug = self::generateSlug($project->project_name, $project->user_id);
+                $project->slug = self::uniqueSlug($project->project_name, $project->user_id, $project->id);
             }
         });
     }
@@ -57,6 +57,41 @@ class Project extends Model
         $suffix = $userId !== null && $userId !== '' ? '-'.$userId : '';
 
         return $base.$suffix;
+    }
+
+    /**
+     * Globally unique slug. Same-user names that collapse to one slug
+     * ("Acme Client" vs "Acme-Client") get a numeric suffix instead of 500ing.
+     */
+    public static function uniqueSlug(string $name, $userId = null, ?int $ignoreId = null): string
+    {
+        $owned = self::generateSlug($name, $userId);
+        $candidate = $owned;
+        $n = 2;
+
+        while (self::query()
+            ->where('slug', $candidate)
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+            ->exists()) {
+            $candidate = $owned.'-'.$n;
+            $n++;
+        }
+
+        return $candidate;
+    }
+
+    public static function hostTakenByUser(int $userId, string $url, ?int $ignoreId = null): bool
+    {
+        $host = self::hostFromUrl($url);
+        if ($host === '') {
+            return false;
+        }
+
+        return self::query()
+            ->where('user_id', $userId)
+            ->when($ignoreId, fn ($q) => $q->where('id', '!=', $ignoreId))
+            ->get(['id', 'project_url'])
+            ->contains(fn (self $project) => self::hostFromUrl($project->project_url) === $host);
     }
 
     public function user()

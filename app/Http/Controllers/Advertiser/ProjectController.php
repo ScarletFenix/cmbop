@@ -38,20 +38,7 @@ class ProjectController extends Controller
 
     public function store(Request $request)
     {
-        $validated = $request->validate([
-            'project_name' => [
-                'required',
-                'string',
-                'max:255',
-                Rule::unique('projects', 'project_name')->where('user_id', auth()->id()),
-            ],
-            'project_url' => [
-                'required',
-                'url',
-                'max:255',
-                Rule::unique('projects', 'project_url')->where('user_id', auth()->id()),
-            ],
-        ]);
+        $validated = $request->validate($this->projectRules());
 
         Project::create([
             'user_id' => auth()->id(),
@@ -68,25 +55,7 @@ class ProjectController extends Controller
             abort(403);
         }
 
-        $validated = $request->validate([
-            'project_name' => [
-                'required',
-                'string',
-                'max:255',
-                'regex:/^[a-zA-Z0-9\s\-]+$/', // clean names only
-                Rule::unique('projects', 'project_name')
-                    ->where('user_id', auth()->id())
-                    ->ignore($project->id),
-            ],
-            'project_url' => [
-                'required',
-                'url',
-                'max:255',
-                Rule::unique('projects', 'project_url')
-                    ->where('user_id', auth()->id())
-                    ->ignore($project->id),
-            ],
-        ]);
+        $validated = $request->validate($this->projectRules($project->id));
 
         $project->update([
             'project_name' => $validated['project_name'],
@@ -105,5 +74,41 @@ class ProjectController extends Controller
         $project->delete();
 
         return back()->with('success', 'Project deleted successfully.');
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    private function projectRules(?int $ignoreId = null): array
+    {
+        $userId = (int) auth()->id();
+
+        $nameUnique = Rule::unique('projects', 'project_name')->where('user_id', $userId);
+        $urlUnique = Rule::unique('projects', 'project_url')->where('user_id', $userId);
+        if ($ignoreId !== null) {
+            $nameUnique->ignore($ignoreId);
+            $urlUnique->ignore($ignoreId);
+        }
+
+        return [
+            'project_name' => [
+                'required',
+                'string',
+                'max:255',
+                'regex:/^[a-zA-Z0-9\s\-]+$/',
+                $nameUnique,
+            ],
+            'project_url' => [
+                'required',
+                'url',
+                'max:255',
+                $urlUnique,
+                function (string $attribute, mixed $value, \Closure $fail) use ($userId, $ignoreId) {
+                    if (Project::hostTakenByUser($userId, (string) $value, $ignoreId)) {
+                        $fail('You already have a project for this website.');
+                    }
+                },
+            ],
+        ];
     }
 }
