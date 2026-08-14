@@ -576,6 +576,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $log = ActivityLog::where('action', 'site.deleted_by_marketing')->first();
         $this->assertNotNull($log);
         $this->assertSame($bulk->id, (int) ($log->properties['bulk_site_request_id'] ?? 0));
+        $this->assertSame($this->publisher->id, (int) ($log->properties['publisher_id'] ?? 0));
         $this->assertSame('oops-wrong.example', $log->properties['domain'] ?? null);
 
         $this->actingAs($this->marketer)
