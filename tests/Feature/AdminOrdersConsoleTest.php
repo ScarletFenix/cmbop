@@ -189,7 +189,22 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee("boot.get('date_to')", false)
             ->assertSee("boot.get('page')", false)
             ->assertSee('type="button" id="resetFiltersBtn"', false)
+            ->assertSee('requested > lastPage', false)
             ->assertDontSee('setTimeout(() => loadOrders(1), 0)', false);
+    }
+
+    public function test_orders_data_reports_overshot_page_so_the_list_can_clamp(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['page' => 9, 'per_page' => 20]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data', [])
+            ->assertJsonPath('pagination.current_page', 9)
+            ->assertJsonPath('pagination.last_page', 1);
     }
 
     public function test_orders_data_filters_by_created_date_range(): void
@@ -367,6 +382,105 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertStatus(403);
 
         Storage::disk('local')->delete($path);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.content.download', $item))
+            ->assertNotFound();
+    }
+
+    public function test_order_show_hides_advertiser_only_content_links(): void
+    {
+        Storage::fake('local');
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $item = $order->items->first();
+        $path = 'content-uploads/'.$advertiser->id.'/library-article.docx';
+        Storage::disk('local')->put($path, 'library-bytes');
+
+        $submission = ContentSubmission::create([
+            'user_id' => $advertiser->id,
+            'title' => 'Library article',
+            'original_filename' => 'library-article.docx',
+            'disk' => 'local',
+            'path' => $path,
+            'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'extension' => 'docx',
+            'size_bytes' => 13,
+            'moderation_status' => ContentSubmission::STATUS_APPROVED,
+        ]);
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_link' => route('advertiser.content-submissions.download', $submission),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertDontSee('Open content link', false)
+            ->assertSee(route('admin.orders.content.download', $item), false)
+            ->assertSee('library-article.docx');
+    }
+
+    public function test_order_show_keeps_external_content_links(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor(
+            $this->userWithRole('advertiser'),
+            $this->siteFor($this->userWithRole('publisher'))
+        );
+        $order->items->first()->update([
+            'content_link' => 'https://docs.google.com/document/d/abc123',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('Open content link', false)
+            ->assertSee('https://docs.google.com/document/d/abc123', false);
+    }
+
+    public function test_order_show_falls_back_to_submission_brief_fields(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $item = $order->items->first();
+
+        $submission = ContentSubmission::create([
+            'user_id' => $advertiser->id,
+            'title' => 'Brief only on submission',
+            'moderation_status' => ContentSubmission::STATUS_APPROVED,
+            'anchor_text' => 'guest post outreach kit',
+            'target_url' => 'https://advertiser.example/outreach',
+        ]);
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'anchor_text' => null,
+            'target_url' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('guest post outreach kit')
+            ->assertSee('https://advertiser.example/outreach', false);
+    }
+
+    public function test_admin_content_download_returns_404_for_unknown_disk(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor(
+            $this->userWithRole('advertiser'),
+            $this->siteFor($this->userWithRole('publisher'))
+        );
+        $item = $order->items->first();
+        $item->update([
+            'content_link' => null,
+            'content_disk' => 'not-a-configured-disk',
+            'content_path' => 'orphaned/article.docx',
+            'content_original_name' => 'article.docx',
+        ]);
 
         $this->actingAs($admin)
             ->get(route('admin.orders.content.download', $item))

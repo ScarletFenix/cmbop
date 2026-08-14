@@ -190,6 +190,13 @@
                     body.innerHTML = '<tr><td colspan="8" class="text-center text-danger py-4">Failed to load orders</td></tr>';
                     return;
                 }
+                const pagination = json.pagination || {};
+                const lastPage = Number(pagination.last_page) || 1;
+                const requested = Number(pagination.current_page) || currentPage;
+                if (requested > lastPage && lastPage >= 1 && currentPage !== lastPage) {
+                    loadOrders(lastPage);
+                    return;
+                }
                 if (!json.data.length) {
                     body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No orders found</td></tr>';
                     document.getElementById('ordersPaginationMeta').textContent = '';

@@ -10,9 +10,11 @@ use App\Models\OrderItemDispute;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OrderController extends Controller
 {
@@ -184,27 +186,59 @@ class OrderController extends Controller
         $submission = $orderItem->contentSubmission;
 
         if ($submission && $submission->hasStoredFile()) {
-            $disk = Storage::disk($submission->disk ?: 'local');
-            if ($disk->exists($submission->path)) {
-                return $disk->download(
-                    $submission->path,
-                    $submission->original_filename ?: 'article',
-                    ['Content-Type' => $submission->mime ?: 'application/octet-stream']
-                );
+            $download = $this->downloadFromDisk(
+                $submission->disk ?: 'local',
+                $submission->path,
+                $submission->original_filename ?: 'article',
+                $submission->mime ?: 'application/octet-stream',
+                $orderItem,
+            );
+            if ($download) {
+                return $download;
             }
         }
 
         if (filled($orderItem->content_path)) {
-            $disk = Storage::disk($orderItem->content_disk ?: 'local');
-            if ($disk->exists($orderItem->content_path)) {
-                return $disk->download(
-                    $orderItem->content_path,
-                    $orderItem->content_original_name ?: 'article',
-                    ['Content-Type' => $orderItem->content_mime ?: 'application/octet-stream']
-                );
+            $download = $this->downloadFromDisk(
+                $orderItem->content_disk ?: 'local',
+                $orderItem->content_path,
+                $orderItem->content_original_name ?: 'article',
+                $orderItem->content_mime ?: 'application/octet-stream',
+                $orderItem,
+            );
+            if ($download) {
+                return $download;
             }
         }
 
-        abort(404, 'File not found');
+        abort(404, 'Content file not found.');
+    }
+
+    private function downloadFromDisk(
+        string $diskName,
+        string $path,
+        string $filename,
+        string $mime,
+        OrderItem $orderItem,
+    ): ?StreamedResponse {
+        try {
+            $disk = Storage::disk($diskName);
+            if (! $disk->exists($path)) {
+                return null;
+            }
+
+            return $disk->download($path, $filename, ['Content-Type' => $mime]);
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::warning('Admin content download failed', [
+                'order_item_id' => $orderItem->id,
+                'disk' => $diskName,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+
+            abort(404, 'Content file not found.');
+        }
     }
 }

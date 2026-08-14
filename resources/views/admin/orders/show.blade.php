@@ -93,6 +93,9 @@
                                 @php
                                     $lineSite = $line->site;
                                     $linePublisher = $lineSite?->publisher;
+                                    $briefAnchor = $line->briefAnchorText();
+                                    $briefTarget = $line->briefTargetUrl();
+                                    $publicContentLink = $line->publicContentLink();
                                 @endphp
                                 @if(! $loop->first)
                                     <hr class="my-3">
@@ -136,12 +139,12 @@
                                     </div>
                                 @endif
                                 <div class="mb-2"><span class="text-muted small">Anchor text</span>
-                                    <div>{{ $line->anchor_text ?: '—' }}</div>
+                                    <div>{{ $briefAnchor ?: '—' }}</div>
                                 </div>
                                 <div class="mb-2"><span class="text-muted small">Target URL</span>
                                     <div>
-                                        @if($line->target_url)
-                                            <a href="{{ $line->target_url }}" target="_blank" rel="noopener">{{ $line->target_url }}</a>
+                                        @if($briefTarget)
+                                            <a href="{{ $briefTarget }}" target="_blank" rel="noopener">{{ $briefTarget }}</a>
                                         @else
                                             <span class="text-muted">—</span>
                                         @endif
@@ -164,8 +167,8 @@
                                 </div>
                                 <div class="mb-2"><span class="text-muted small">Content</span>
                                     <div class="d-flex flex-wrap gap-2 align-items-center">
-                                        @if($line->content_link)
-                                            <a href="{{ $line->content_link }}" target="_blank" rel="noopener">Open content link</a>
+                                        @if($publicContentLink)
+                                            <a href="{{ $publicContentLink }}" target="_blank" rel="noopener">Open content link</a>
                                         @endif
                                         @if($line->hasDownloadableContent())
                                             <a href="{{ route('admin.orders.content.download', $line) }}" class="btn btn-sm btn-outline-secondary">
@@ -173,7 +176,7 @@
                                                 {{ $line->contentSubmission?->original_filename ?: ($line->content_original_name ?: 'Download file') }}
                                             </a>
                                         @endif
-                                        @if(! $line->content_link && ! $line->hasDownloadableContent())
+                                        @if(! $publicContentLink && ! $line->hasDownloadableContent())
                                             <span class="text-muted">No file uploaded</span>
                                         @endif
                                     </div>
