@@ -15,6 +15,7 @@ use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Stripe\Checkout\Session;
 use Tests\TestCase;
 
 class MoneyUxImprovementsTest extends TestCase
@@ -264,10 +265,13 @@ class MoneyUxImprovementsTest extends TestCase
 
         $this->mock(StripeCustomerService::class, function ($mock) {
             $mock->shouldReceive('configured')->andReturn(true);
-            $mock->shouldReceive('createCheckoutSession')->once()->andReturn((object) [
-                'id' => 'cs_retry_bonus',
-                'url' => 'https://checkout.stripe.test/retry',
-            ]);
+            $mock->shouldReceive('createCheckoutSession')->once()->andReturn(
+                Session::constructFrom([
+                    'id' => 'cs_retry_bonus',
+                    'object' => 'checkout.session',
+                    'url' => 'https://checkout.stripe.test/retry',
+                ])
+            );
         });
 
         $this->actingAs($user)
