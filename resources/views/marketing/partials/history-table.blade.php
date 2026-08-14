@@ -16,8 +16,8 @@
                 @endphp
                 <tr>
                     <td class="small text-nowrap">
-                        {{ $log->created_at?->format('d M Y') }}<br>
-                        <span class="text-muted">{{ $log->created_at?->format('H:i') }}</span>
+                        <div>{{ $log->created_at?->diffForHumans() }}</div>
+                        <span class="text-muted">{{ $log->created_at?->format('d M Y H:i') }}</span>
                     </td>
                     <td>
                         <div class="fw-semibold">{{ marketing_task_label($log->action) }}</div>
@@ -39,7 +39,8 @@
             @empty
                 <tr>
                     <td colspan="4" class="text-center text-muted py-4">
-                        No marketing tasks recorded yet. Seed sites or edit listings to build your history.
+                        <div class="mb-2">No marketing tasks recorded yet. Seed sites or edit listings to build your history.</div>
+                        <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-outline-primary">Add site for publisher</a>
                     </td>
                 </tr>
             @endforelse

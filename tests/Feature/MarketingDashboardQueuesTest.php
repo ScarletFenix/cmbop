@@ -223,6 +223,51 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', $leftover), $requestedOnly);
     }
 
+    public function test_dashboard_queues_oldest_first_so_stale_rows_stay_visible(): void
+    {
+        $newest = null;
+        for ($i = 1; $i <= 6; $i++) {
+            $req = BulkSiteRequest::create([
+                'publisher_id' => $this->publisher->id,
+                'status' => BulkSiteRequest::STATUS_REQUESTED,
+                'estimated_count' => $i,
+            ]);
+            $req->forceFill([
+                'created_at' => now()->subDays(7 - $i),
+                'updated_at' => now()->subDays(7 - $i),
+            ])->save();
+            if ($i === 6) {
+                $newest = $req;
+            }
+        }
+
+        $oldest = BulkSiteRequest::query()->orderBy('created_at')->orderBy('id')->first();
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $bulkTable = $this->nodeText($html, 'data-queue', 'open-bulk');
+        $this->assertStringContainsString('#'.$oldest->id, $bulkTable);
+        $this->assertStringNotContainsString('#'.$newest->id, $bulkTable);
+    }
+
+    public function test_empty_dashboard_shows_queue_ctas(): void
+    {
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.dashboard'))
+            ->assertOk()
+            ->assertSee('No sites ready to activate.', false)
+            ->assertSee('No bulk requests waiting on you.', false)
+            ->assertSee('No listings waiting on a publisher.', false)
+            ->assertSee('No marketing tasks recorded yet.', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.sites.create', [], false), $html);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.index', [], false), $html);
+    }
+
     public function test_marketer_notification_inbox_uses_marketing_shell(): void
     {
         $html = $this->actingAs($this->marketer)

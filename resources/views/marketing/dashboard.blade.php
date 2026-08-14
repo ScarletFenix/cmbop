@@ -109,7 +109,10 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="5" class="text-center text-muted py-4">No sites ready to activate.</td>
+                                        <td colspan="5" class="text-center text-muted py-4">
+                                            <div class="mb-2">No sites ready to activate.</div>
+                                            <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-outline-primary">Add site for publisher</a>
+                                        </td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -153,7 +156,10 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">No bulk requests waiting on you.</td>
+                                        <td colspan="4" class="text-center text-muted py-4">
+                                            <div class="mb-2">No bulk requests waiting on you.</div>
+                                            <a href="{{ route('marketing.bulk-site-requests.index') }}" class="btn btn-sm btn-outline-primary">Open bulk requests</a>
+                                        </td>
                                     </tr>
                                 @endforelse
                             </tbody>
@@ -193,7 +199,10 @@
                             </tr>
                         @empty
                             <tr>
-                                <td colspan="4" class="text-center text-muted py-4">No listings waiting on a publisher.</td>
+                                <td colspan="4" class="text-center text-muted py-4">
+                                    <div class="mb-2">No listings waiting on a publisher.</div>
+                                    <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-outline-primary">Add site for publisher</a>
+                                </td>
                             </tr>
                         @endforelse
                     </tbody>

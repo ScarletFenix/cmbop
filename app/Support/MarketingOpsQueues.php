@@ -27,6 +27,25 @@ class MarketingOpsQueues
         return Site::query()->needsAdminReview()->notArchived();
     }
 
+    public static function sitesReadyForStaffCount(): int
+    {
+        return self::rememberCount('marketing.ops.ready_count', fn () => self::sitesReadyForStaff()->count());
+    }
+
+    public static function bulkWaitingOnMarketerCount(): int
+    {
+        return self::rememberCount('marketing.ops.bulk_waiting_count', fn () => self::bulkWaitingOnMarketer()->count());
+    }
+
+    private static function rememberCount(string $key, callable $resolve): int
+    {
+        if (! app()->bound($key)) {
+            app()->instance($key, (int) $resolve());
+        }
+
+        return (int) app($key);
+    }
+
     /**
      * Unpublished listings still with the publisher (details or accept).
      *

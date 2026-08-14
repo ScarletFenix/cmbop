@@ -211,8 +211,8 @@ class AppServiceProvider extends ServiceProvider
             $bulk = 0;
 
             try {
-                $ready = MarketingOpsQueues::sitesReadyForStaff()->count();
-                $bulk = MarketingOpsQueues::bulkWaitingOnMarketer()->count();
+                $ready = MarketingOpsQueues::sitesReadyForStaffCount();
+                $bulk = MarketingOpsQueues::bulkWaitingOnMarketerCount();
             } catch (\Throwable $e) {
                 Log::warning('Marketing sidebar queue badges failed', ['error' => $e->getMessage()]);
             }

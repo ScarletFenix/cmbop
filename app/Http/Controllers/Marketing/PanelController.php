@@ -32,26 +32,30 @@ class PanelController extends Controller
     {
         $userId = (int) auth()->id();
 
+        [$todayStart, $todayEnd] = $this->marketerTodayBounds();
+
         $stats = [
-            'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaff()->count(),
-            'bulk_waiting_on_you' => MarketingOpsQueues::bulkWaitingOnMarketer()->count(),
+            'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaffCount(),
+            'bulk_waiting_on_you' => MarketingOpsQueues::bulkWaitingOnMarketerCount(),
             'sites_waiting_on_publisher' => MarketingOpsQueues::sitesWaitingOnPublisher()->count(),
             'bulk_waiting_on_publisher' => MarketingOpsQueues::bulkWaitingOnPublisher()->count(),
             'my_tasks_today' => $this->marketerHistoryQuery($userId)
-                ->whereDate('created_at', Carbon::today())
+                ->whereBetween('created_at', [$todayStart, $todayEnd])
                 ->count(),
             'my_tasks_total' => $this->marketerHistoryQuery($userId)->count(),
         ];
 
         $readySites = MarketingOpsQueues::sitesReadyForStaff()
             ->with('publisher:id,name,email')
-            ->latest()
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->take(8)
             ->get();
 
         $waitingSites = MarketingOpsQueues::sitesWaitingOnPublisher()
             ->with('publisher:id,name,email')
-            ->latest()
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->take(5)
             ->get();
 
@@ -63,7 +67,8 @@ class PanelController extends Controller
             ->withCount([
                 'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
             ])
-            ->latest()
+            ->orderBy('created_at')
+            ->orderBy('id')
             ->take(5)
             ->get();
 
@@ -130,5 +135,21 @@ class PanelController extends Controller
             ->where('user_id', $userId)
             ->where('role', 'marketing')
             ->whereIn('action', self::TRACKED_ACTIONS);
+    }
+
+    /**
+     * Inclusive "today" window in the app timezone, stored as UTC bounds.
+     *
+     * @return array{0: Carbon, 1: Carbon}
+     */
+    private function marketerTodayBounds(): array
+    {
+        $tz = config('app.timezone') ?: 'UTC';
+        $today = now()->timezone($tz);
+
+        return [
+            $today->copy()->startOfDay()->utc(),
+            $today->copy()->endOfDay()->utc(),
+        ];
     }
 }
