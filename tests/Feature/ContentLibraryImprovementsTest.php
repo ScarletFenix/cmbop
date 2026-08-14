@@ -1112,10 +1112,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $response->assertStatus(422)->assertJsonPath('success', false);
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('The file failed to upload', $message);
-        $this->assertStringContainsString('MB', $message);
         $this->assertStringNotContainsString('upload_max_filesize', $message);
         $this->assertStringNotContainsString('hosting PHP settings', $message);
         $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringContainsString('Please try again', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
