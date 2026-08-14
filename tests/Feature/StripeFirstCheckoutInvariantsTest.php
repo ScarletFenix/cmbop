@@ -311,4 +311,77 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $order->total_amount, 0.01);
         $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
+
+    public function test_order_number_collision_retries_instead_of_dropping_the_paid_line(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'order-number-retry.example', 40);
+        $ref = 'ORDNUM-RETRY-1';
+
+        Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => '000001',
+            'reference_code' => 'OTHER-REF',
+            'subtotal' => 10,
+            'tax' => 0,
+            'total_amount' => 10,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+        ]);
+
+        $payments = new class extends OrderPaymentService
+        {
+            public int $orderNumberCalls = 0;
+
+            protected function freshOrderNumber(): string
+            {
+                $this->orderNumberCalls++;
+
+                return $this->orderNumberCalls === 1
+                    ? '000001'
+                    : parent::freshOrderNumber();
+            }
+        };
+
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 40),
+        ], 40));
+
+        $created = $payments->finalizeStripeFirstCheckout($ref, $this->paidSession($ref, 40, 'cs_ordnum_retry'));
+
+        $this->assertCount(1, $created);
+        $this->assertGreaterThanOrEqual(2, $payments->orderNumberCalls);
+        $this->assertSame(1, Order::where('reference_code', $ref)->count());
+        $this->assertSame($site->id, (int) Order::where('reference_code', $ref)->first()?->items()->first()?->site_id);
+        $this->assertNotSame('000001', Order::where('reference_code', $ref)->value('order_number'));
+    }
+
+    public function test_missing_stripe_amount_fields_refuse_to_finalize(): void
+    {
+        $payments = app(OrderPaymentService::class);
+        $ref = 'MISSING-AMT-1';
+        $payments->storePendingCheckout($ref, $this->package($this->makeUser('advertiser'), [], 50));
+
+        $session = (object) [
+            'id' => 'cs_missing_amount',
+            'object' => 'checkout.session',
+            'payment_intent' => 'pi_missing_amount',
+            'metadata' => (object) [
+                'expected_amount' => '50',
+                'type' => 'order_payment',
+                'reference_code' => $ref,
+            ],
+        ];
+
+        try {
+            $payments->finalizeStripeFirstCheckout($ref, $session);
+            $this->fail('Missing Stripe amount fields should refuse to finalize.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('missing', strtolower($e->getMessage()));
+        }
+
+        $this->assertSame(0, Order::where('reference_code', $ref)->count());
+    }
 }
