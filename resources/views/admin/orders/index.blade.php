@@ -193,7 +193,7 @@
             const when = order.scheduled_publish_at_human
                 ? ' title="' + escapeHtml(order.scheduled_publish_at_human) + '"'
                 : '';
-            chips.push('<span class="badge text-bg-warning text-dark"' + when + '>Scheduled</span>');
+            chips.push(textLink(order.url + '#order-schedule', 'Scheduled', 'badge text-bg-warning text-dark text-decoration-none', when));
         }
         if (!chips.length) return '';
         return '<div class="d-flex flex-wrap gap-1 mt-1">' + chips.join('') + '</div>';

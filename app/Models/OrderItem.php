@@ -508,6 +508,39 @@ class OrderItem extends Model
     }
 
     /**
+     * Staff can chase from the order show page: paid, still open, no live URL yet.
+     * Same endpoint as the stalled-order queue; does not require the cadence to be exhausted.
+     */
+    public function canAdminRemindPublisher(?Order $order = null): bool
+    {
+        $order ??= $this->relationLoaded('order') ? $this->order : $this->order()->first();
+        if (! $order || $order->payment_status !== 'paid') {
+            return false;
+        }
+        if (! in_array($order->status, ['pending', 'processing', 'review'], true)) {
+            return false;
+        }
+        if ($order->isAwaitingScheduledRelease()) {
+            return false;
+        }
+        if ($this->hasLiveUrl()) {
+            return false;
+        }
+
+        $publisher = $this->site?->publisher;
+
+        return filled($publisher?->email);
+    }
+
+    /**
+     * Track the stalled-order reminder uses: accept until accepted, then publish.
+     */
+    public function adminRemindTrack(): string
+    {
+        return $this->accepted_at === null ? 'accept' : 'publish';
+    }
+
+    /**
      * Check if modification was requested
      */
     public function isModificationRequested()

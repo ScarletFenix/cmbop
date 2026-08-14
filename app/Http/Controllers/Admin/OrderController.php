@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\User;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
@@ -54,7 +55,11 @@ class OrderController extends Controller
             });
         }
 
-        if ($request->filled('status')) {
+        // "scheduled" is publication_mode (status stays pending). The status
+        // column value is leftover and would miss live scheduled rows.
+        if ($request->input('status') === 'scheduled') {
+            $query->awaitingScheduledRelease();
+        } elseif ($request->filled('status')) {
             $query->where('status', $request->string('status')->toString());
         }
 
@@ -85,12 +90,6 @@ class OrderController extends Controller
             $site = $item?->site;
             $publisher = $site?->publisher;
             $liveUrl = $order->items->first(fn (OrderItem $line) => filled($line->live_url))?->live_url;
-            $userUrl = $order->user
-                ? route('admin.users.index').'#user-'.$order->user->id
-                : null;
-            $publisherUrl = $publisher
-                ? route('admin.users.index').'#user-'.$publisher->id
-                : null;
 
             return [
                 'id' => $order->id,
@@ -106,7 +105,7 @@ class OrderController extends Controller
                     'id' => $order->user->id,
                     'name' => $order->user->name,
                     'email' => $order->user->email,
-                    'url' => $userUrl,
+                    'url' => $this->adminUserUrl($order->user),
                 ] : null,
                 'site_name' => $item?->site_name ?: ($site?->site_name),
                 'site_admin_url' => $site ? route('admin.sites.edit', $site->id) : null,
@@ -114,15 +113,15 @@ class OrderController extends Controller
                 'publisher' => $publisher ? [
                     'id' => $publisher->id,
                     'name' => $publisher->name,
-                    'url' => $publisherUrl,
+                    'url' => $this->adminUserUrl($publisher),
                 ] : null,
                 'live_url' => $liveUrl,
                 'has_open_dispute' => OrderItemDispute::tableAvailable()
                     && (int) ($order->open_disputes_count ?? 0) > 0,
                 'has_live_url' => filled($liveUrl),
-                'is_scheduled' => $order->isScheduled(),
+                'is_scheduled' => $order->isAwaitingScheduledRelease(),
                 'scheduled_publish_at' => optional($order->scheduled_publish_at)?->toIso8601String(),
-                'scheduled_publish_at_human' => optional($order->scheduled_publish_at)?->format('M j, Y'),
+                'scheduled_publish_at_human' => $this->scheduledPublishAtHuman($order),
                 'modification_requested' => $item?->modification_requested,
                 'url' => route('admin.orders.show', $order->id),
             ];
@@ -269,5 +268,24 @@ class OrderController extends Controller
 
             abort(404, 'Content file not found.');
         }
+    }
+
+    private function scheduledPublishAtHuman(Order $order): ?string
+    {
+        $local = $order->scheduledPublishAtInScheduleTimezone();
+        if (! $local) {
+            return null;
+        }
+
+        return $local->format('M j, Y g:i A').' '.$order->scheduleTimezoneOrUtc();
+    }
+
+    private function adminUserUrl(?User $user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        return route('admin.users.index', ['user' => $user->id]).'#user-'.$user->id;
     }
 }
