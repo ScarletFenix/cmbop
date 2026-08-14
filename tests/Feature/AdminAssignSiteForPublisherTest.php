@@ -17,6 +17,7 @@ use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminAssignSiteForPublisherTest extends TestCase
@@ -203,6 +204,9 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
     public function test_publisher_reject_deletes_pending_invite(): void
     {
+        Storage::fake('public');
+        Storage::disk('public')->put('sites/decline-cover.jpg', 'cover');
+
         $site = Site::create([
             'publisher_id' => $this->publisher->id,
             'assigned_by_user_id' => $this->admin->id,
@@ -224,6 +228,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'description' => str_repeat('Decline this invite site description. ', 3),
             'verified' => false,
             'active' => false,
+            'site_image' => 'sites/decline-cover.jpg',
         ]);
 
         $this->actingAs($this->publisher)
@@ -232,6 +237,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertJson(['success' => true]);
 
         $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $this->assertFalse(Storage::disk('public')->exists('sites/decline-cover.jpg'));
     }
 
     public function test_publisher_self_created_sites_are_accepted_immediately(): void

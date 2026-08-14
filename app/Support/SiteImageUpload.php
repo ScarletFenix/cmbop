@@ -2,6 +2,10 @@
 
 namespace App\Support;
 
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
+
 /**
  * Shared limits / helpers for admin & marketing site cover uploads.
  * App cap is 10 MB; effective max also respects PHP upload_max_filesize / post_max_size.
@@ -18,6 +22,46 @@ final class SiteImageUpload
     public static function maxMegabytesLabel(): int
     {
         return max(1, (int) floor(self::maxKilobytes() / 1024));
+    }
+
+    /**
+     * Keep only a relative public-disk cover under sites/. Arrays become "Array" if cast.
+     */
+    public static function publicCoverPath(mixed $raw): ?string
+    {
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+        if (str_contains($raw, '..') || str_contains($raw, ':') || str_contains($raw, "\0")) {
+            return null;
+        }
+
+        $path = ltrim(str_replace('\\', '/', $raw), '/');
+        if (preg_match('#^sites/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $path) !== 1) {
+            return null;
+        }
+
+        return $path;
+    }
+
+    public static function deletePublicCover(?string $path): void
+    {
+        $safe = self::publicCoverPath($path);
+        if ($safe === null) {
+            return;
+        }
+
+        try {
+            $disk = Storage::disk('public');
+            if ($disk->exists($safe)) {
+                $disk->delete($safe);
+            }
+        } catch (Throwable $e) {
+            Log::warning('Failed to remove site cover', [
+                'path' => $safe,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

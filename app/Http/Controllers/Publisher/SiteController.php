@@ -18,6 +18,7 @@ use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
+use App\Support\SiteImageUpload;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -511,6 +512,7 @@ class SiteController extends Controller
 
         $siteId = $site->id;
         $domain = $site->domain ?: $site->site_name;
+        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
         if ($request->expectsJson() || $request->ajax()) {

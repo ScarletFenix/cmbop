@@ -1424,6 +1424,15 @@ class SiteController extends Controller
 
                 continue;
             }
+            if ($key === 'site_url') {
+                $oldUrl = is_string($oldValue) ? $this->normalizeHttpUrl($oldValue) : '';
+                $newUrl = is_string($newValue) ? $this->normalizeHttpUrl((string) $newValue) : '';
+                if ($oldUrl !== $newUrl) {
+                    return true;
+                }
+
+                continue;
+            }
             if ((string) $oldValue !== (string) $newValue) {
                 return true;
             }
@@ -2042,38 +2051,12 @@ class SiteController extends Controller
      */
     private function postedSiteImagePath(mixed $raw): ?string
     {
-        if (! is_string($raw) || $raw === '') {
-            return null;
-        }
-        if (str_contains($raw, '..') || str_contains($raw, ':') || str_contains($raw, "\0")) {
-            return null;
-        }
-
-        $path = ltrim(str_replace('\\', '/', $raw), '/');
-        if (preg_match('#^sites/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $path) !== 1) {
-            return null;
-        }
-
-        return $path;
+        return SiteImageUpload::publicCoverPath($raw);
     }
 
     private function deleteStoredSiteImage(?string $path): void
     {
-        if ($this->postedSiteImagePath($path) === null) {
-            return;
-        }
-
-        try {
-            $disk = Storage::disk('public');
-            if ($disk->exists($path)) {
-                $disk->delete($path);
-            }
-        } catch (\Throwable $e) {
-            Log::warning('Failed to remove orphaned staff site image', [
-                'path' => $path,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        SiteImageUpload::deletePublicCover($path);
     }
 
     /**

@@ -1692,4 +1692,59 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         Mail::assertNothingOutgoing();
         $this->assertSame(42, (int) $pending->fresh()->da);
     }
+
+    public function test_marketing_update_does_not_email_for_canonical_url_only_change(): void
+    {
+        Mail::fake();
+
+        $niche = Category::query()->where('name', 'News')->value('name')
+            ?? Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Case Url',
+            'site_url' => 'https://Pending-Case.example:443/Path',
+            'domain' => 'pending-case.example',
+            'example_url' => 'https://Pending-Case.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => $niche,
+            'categories' => [$niche],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending case url description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Case Url',
+                'site_url' => 'https://Pending-Case.example:443/Path',
+                'example_url' => 'https://Pending-Case.example/sample',
+                'price' => 50,
+                'da' => 41,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => $niche,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertStringNotContainsString('Publisher notified', (string) session('success'));
+        Mail::assertNothingOutgoing();
+        $pending->refresh();
+        $this->assertSame('https://pending-case.example/Path', $pending->site_url);
+        $this->assertSame(41, (int) $pending->da);
+    }
 }
