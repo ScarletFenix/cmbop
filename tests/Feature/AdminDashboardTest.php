@@ -67,7 +67,10 @@ class AdminDashboardTest extends TestCase
             ->assertSee('Open disputes')
             ->assertSee('Community inbox')
             ->assertSee('Enrichment failed')
-            ->assertSee(route('admin.payments'), false)
+            ->assertSee(route('admin.payments', ['payment_status' => 'pending']), false)
+            ->assertSee('unpaid ·')
+            ->assertSee('community ·')
+            ->assertSee('disputes')
             ->assertSee(route('admin.community.index'), false)
             ->assertSee(route('admin.site-enrichment.index'), false)
             ->assertSee('loadFinanceStrip');
@@ -161,8 +164,8 @@ class AdminDashboardTest extends TestCase
         Withdrawal::create([
             'user_id' => $admin->id,
             'amount' => 40,
-            'fee' => 0,
-            'net_amount' => 40,
+            'fee' => 5,
+            'net_amount' => 35,
             'payment_method' => 'paypal',
             'payment_details' => ['email' => 'a@b.com'],
             'status' => 'processing',
@@ -173,7 +176,7 @@ class AdminDashboardTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true)
             ->assertJsonPath('withdrawals.0.status', 'processing')
-            ->assertJsonPath('withdrawals.0.amount', 40);
+            ->assertJsonPath('withdrawals.0.amount', 35);
 
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.queue-counts'))

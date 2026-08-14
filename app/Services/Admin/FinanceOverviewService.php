@@ -125,7 +125,7 @@ class FinanceOverviewService
             'unpaid_orders' => [
                 'count' => (clone $pendingPayments)->count(),
                 'amount' => (float) (clone $pendingPayments)->sum('total_amount'),
-                'url' => route('admin.payments'),
+                'url' => route('admin.payments', ['payment_status' => 'pending']),
             ],
         ];
     }

@@ -85,7 +85,10 @@
                     <div class="small text-muted mt-2">
                         <span id="kpiDeposits">0</span> deposits ·
                         <span id="kpiWithdrawals">0</span> withdrawals ·
-                        <span id="kpiPayments">0</span> payments
+                        <span id="kpiPayments">0</span> unpaid ·
+                        <span id="kpiSitesReview">0</span> sites ·
+                        <span id="kpiCommunity">0</span> community ·
+                        <span id="kpiDisputes">0</span> disputes
                     </div>
                 </div>
             </div>
@@ -104,7 +107,7 @@
                 <div class="card-body py-3">
                     <div class="text-muted small">Due to pay now</div>
                     <div class="fs-4 fw-semibold text-danger" id="financeDueNow">—</div>
-                    <div class="small text-muted">Open withdrawal requests</div>
+                    <div class="small text-muted">Open withdrawal requests · <a href="{{ route('admin.withdrawals') }}" class="link-secondary">Payout queue</a></div>
                 </div>
             </div>
         </div>
@@ -206,7 +209,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-money-bill me-2 text-info"></i>Unpaid orders</strong>
-                    <a href="{{ route('admin.payments') }}" class="small">View all</a>
+                    <a href="{{ route('admin.payments', ['payment_status' => 'pending']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -502,6 +505,9 @@ async function loadStatistics() {
         document.getElementById('kpiDeposits').textContent = num(d.pending_deposits);
         document.getElementById('kpiWithdrawals').textContent = num(d.pending_withdrawals);
         document.getElementById('kpiPayments').textContent = num(d.pending_payments);
+        document.getElementById('kpiSitesReview').textContent = num(d.unverified_sites);
+        document.getElementById('kpiCommunity').textContent = num(d.pending_community);
+        document.getElementById('kpiDisputes').textContent = num(d.open_disputes);
         document.getElementById('kpiAttention').textContent = num(d.needs_attention);
         hideRetry(retryEl);
     } catch (err) {
@@ -670,11 +676,18 @@ async function loadActionQueue() {
 
     try {
         const json = await dashboardFetch(`{{ route('admin.dashboard.action-queue') }}`);
+        const deposits = json.deposits || [];
+        const withdrawals = json.withdrawals || [];
+        const sites = json.sites || [];
+        const unpaid = json.unpaid || [];
+        const disputes = json.disputes || [];
+        const community = json.community || [];
+        const enrichment = json.enrichment || [];
 
-        if (!json.deposits.length) {
+        if (!deposits.length) {
             depBody.innerHTML = emptyRow(3, 'No pending deposits');
         } else {
-            depBody.innerHTML = json.deposits.map(d => `
+            depBody.innerHTML = deposits.map(d => `
                 <tr>
                     <td>
                         <div class="fw-semibold">${cellLink(d.url, d.user)}</div>
@@ -685,10 +698,10 @@ async function loadActionQueue() {
                 </tr>`).join('');
         }
 
-        if (!json.withdrawals.length) {
+        if (!withdrawals.length) {
             wBody.innerHTML = emptyRow(3, 'No pending withdrawals');
         } else {
-            wBody.innerHTML = json.withdrawals.map(w => `
+            wBody.innerHTML = withdrawals.map(w => `
                 <tr>
                     <td>
                         <div class="fw-semibold">${cellLink(w.url, w.user)}</div>
@@ -699,10 +712,10 @@ async function loadActionQueue() {
                 </tr>`).join('');
         }
 
-        if (!json.sites.length) {
+        if (!sites.length) {
             sBody.innerHTML = emptyRow(3, 'No sites awaiting verification');
         } else {
-            sBody.innerHTML = json.sites.map(s => `
+            sBody.innerHTML = sites.map(s => `
                 <tr>
                     <td>
                         <div class="fw-semibold">${cellLink(s.url, s.site_name || '—')}</div>
@@ -713,10 +726,10 @@ async function loadActionQueue() {
                 </tr>`).join('');
         }
 
-        if (!json.unpaid.length) {
+        if (!unpaid.length) {
             unpaidBody.innerHTML = emptyRow(3, 'No unpaid orders');
         } else {
-            unpaidBody.innerHTML = json.unpaid.map(o => `
+            unpaidBody.innerHTML = unpaid.map(o => `
                 <tr>
                     <td class="fw-semibold">${cellLink(o.url, '#' + o.order_number)}</td>
                     <td>${money(o.amount)}</td>
@@ -724,10 +737,10 @@ async function loadActionQueue() {
                 </tr>`).join('');
         }
 
-        if (!json.disputes.length) {
+        if (!disputes.length) {
             disputeBody.innerHTML = emptyRow(3, 'No open disputes');
         } else {
-            disputeBody.innerHTML = json.disputes.map(d => `
+            disputeBody.innerHTML = disputes.map(d => `
                 <tr>
                     <td class="fw-semibold">${cellLink(d.url, '#' + d.order_number)}</td>
                     <td class="small text-truncate" style="max-width:120px;">${escapeHtml(d.reason || '')}</td>
@@ -735,10 +748,10 @@ async function loadActionQueue() {
                 </tr>`).join('');
         }
 
-        if (!json.community.length) {
+        if (!community.length) {
             communityBody.innerHTML = emptyRow(3, 'Inbox is clear');
         } else {
-            communityBody.innerHTML = json.community.map(c => `
+            communityBody.innerHTML = community.map(c => `
                 <tr>
                     <td><span class="badge text-bg-light">${escapeHtml(c.type)}</span></td>
                     <td>${cellLink(c.url, c.label)}</td>
@@ -746,10 +759,10 @@ async function loadActionQueue() {
                 </tr>`).join('');
         }
 
-        if (!json.enrichment.length) {
+        if (!enrichment.length) {
             enrichmentBody.innerHTML = emptyRow(3, 'No failed scans');
         } else {
-            enrichmentBody.innerHTML = json.enrichment.map(e => `
+            enrichmentBody.innerHTML = enrichment.map(e => `
                 <tr>
                     <td class="fw-semibold">${cellLink(e.url, e.site_name)}</td>
                     <td class="small text-truncate" style="max-width:120px;">${escapeHtml(e.error || '')}</td>

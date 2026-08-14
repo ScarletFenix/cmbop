@@ -17,6 +17,7 @@ use App\Models\Withdrawal;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -250,7 +251,7 @@ class DashboardMetricsService
                 'id' => $w->id,
                 'user' => $w->user?->name ?? 'Unknown',
                 'email' => $w->user?->email,
-                'amount' => (float) $w->amount,
+                'amount' => (float) $w->net_amount,
                 'method' => $w->payment_method,
                 'status' => $w->status,
                 'date' => optional($w->created_at)->format('d M Y H:i'),
@@ -419,25 +420,33 @@ class DashboardMetricsService
      */
     private function enrichmentQueue(): Collection
     {
-        if (! Schema::hasTable('site_enrichment_runs')) {
+        try {
+            if (! Schema::hasTable('site_enrichment_runs')) {
+                return collect();
+            }
+
+            return SiteEnrichmentRun::query()
+                ->with('site:id,site_name,site_url')
+                ->where('status', 'failed')
+                ->latest()
+                ->take(5)
+                ->get()
+                ->map(fn (SiteEnrichmentRun $run) => [
+                    'id' => $run->id,
+                    'site_name' => $run->site?->site_name ?: 'Unknown site',
+                    'error' => Str::limit((string) ($run->error ?: 'Enrichment failed'), 80),
+                    'date' => optional($run->created_at)->format('d M Y'),
+                    'url' => $run->site_id
+                        ? route('admin.sites.edit', $run->site_id)
+                        : route('admin.site-enrichment.index'),
+                ]);
+        } catch (\Throwable $e) {
+            // Same Hostinger/schema drift the enrichment page already swallows —
+            // do not take down deposits/withdrawals with it.
+            Log::warning('Dashboard enrichment queue failed', ['error' => $e->getMessage()]);
+
             return collect();
         }
-
-        return SiteEnrichmentRun::query()
-            ->with('site:id,site_name,site_url')
-            ->where('status', 'failed')
-            ->latest()
-            ->take(5)
-            ->get()
-            ->map(fn (SiteEnrichmentRun $run) => [
-                'id' => $run->id,
-                'site_name' => $run->site?->site_name ?: 'Unknown site',
-                'error' => Str::limit((string) ($run->error ?: 'Enrichment failed'), 80),
-                'date' => optional($run->created_at)->format('d M Y'),
-                'url' => $run->site_id
-                    ? route('admin.sites.edit', $run->site_id)
-                    : route('admin.site-enrichment.index'),
-            ]);
     }
 
     private function openDisputesCount(): int
