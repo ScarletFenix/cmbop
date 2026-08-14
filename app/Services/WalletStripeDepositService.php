@@ -5,6 +5,8 @@ namespace App\Services;
 use App\Models\DepositRequest;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
+use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
@@ -22,8 +24,38 @@ class WalletStripeDepositService
         int $userId,
         string $paymentIntentId,
         float $amountEuros,
-        string $referenceCode
+        string $referenceCode,
+        ?int $completeDepositId = null
     ): float {
+        if ($paymentIntentId === '') {
+            throw new \RuntimeException('Missing PaymentIntent id for wallet deposit');
+        }
+
+        return $this->withStripeDepositLock($paymentIntentId, '', fn () => $this->creditFromPaymentIntentLocked(
+            $userId,
+            $paymentIntentId,
+            $amountEuros,
+            $referenceCode,
+            $completeDepositId
+        ));
+    }
+
+    private function creditFromPaymentIntentLocked(
+        int $userId,
+        string $paymentIntentId,
+        float $amountEuros,
+        string $referenceCode,
+        ?int $completeDepositId = null
+    ): float {
+        if ($completeDepositId && DepositRequest::query()->whereKey($completeDepositId)->exists()) {
+            return $this->completeExistingDeposit(
+                $completeDepositId,
+                '',
+                $paymentIntentId,
+                (object) ['amount_total' => StripePaymentService::toCents($amountEuros)]
+            );
+        }
+
         $credited = 0.0;
         $notifyDepositId = null;
 
@@ -43,16 +75,26 @@ class WalletStripeDepositService
                 } while (DepositRequest::where('reference_code', $referenceCode)->exists());
             }
 
-            $deposit = DepositRequest::create([
-                'user_id' => $userId,
-                'reference_code' => $referenceCode,
-                'amount' => $amountEuros,
-                'payment_method' => 'card',
-                'status' => 'completed',
-                'stripe_payment_intent_id' => $paymentIntentId,
-                'approved_at' => now(),
-                'paid_at' => now(),
-            ]);
+            try {
+                $deposit = DepositRequest::create([
+                    'user_id' => $userId,
+                    'reference_code' => $referenceCode,
+                    'amount' => $amountEuros,
+                    'payment_method' => 'card',
+                    'status' => 'completed',
+                    'stripe_payment_intent_id' => $paymentIntentId,
+                    'approved_at' => now(),
+                    'paid_at' => now(),
+                ]);
+            } catch (QueryException $e) {
+                if (! $this->isUniqueConstraintFailure($e)) {
+                    throw $e;
+                }
+                $existing = DepositRequest::where('stripe_payment_intent_id', $paymentIntentId)->first();
+                $credited = (float) ($existing?->amount ?? 0);
+
+                return;
+            }
 
             $this->creditAdvertiserWallet($userId, (float) $deposit->amount, $deposit);
             $credited = (float) $deposit->amount;
@@ -92,7 +134,11 @@ class WalletStripeDepositService
         }
 
         if ($depositId) {
-            return $this->completeExistingDeposit((int) $depositId, $sessionId, $paymentIntentId, $session);
+            return $this->withStripeDepositLock(
+                $paymentIntentId,
+                $sessionId,
+                fn () => $this->completeExistingDeposit((int) $depositId, $sessionId, $paymentIntentId, $session)
+            );
         }
 
         if (! $userId || $sessionId === '') {
@@ -112,6 +158,28 @@ class WalletStripeDepositService
             throw new \RuntimeException('Invalid deposit amount from Stripe session');
         }
 
+        return $this->withStripeDepositLock(
+            $paymentIntentId,
+            $sessionId,
+            fn () => $this->creditFromCheckoutSessionLocked(
+                $session,
+                $sessionId,
+                $paymentIntentId,
+                (int) $userId,
+                $finalAmount,
+                $referenceCode
+            )
+        );
+    }
+
+    private function creditFromCheckoutSessionLocked(
+        object $session,
+        string $sessionId,
+        string $paymentIntentId,
+        int $userId,
+        float $finalAmount,
+        mixed $referenceCode
+    ): float {
         $credited = 0.0;
         $notifyDepositId = null;
 
@@ -146,18 +214,31 @@ class WalletStripeDepositService
                 } while (DepositRequest::where('reference_code', $ref)->exists());
             }
 
-            $deposit = DepositRequest::create([
-                'user_id' => $userId,
-                'reference_code' => $ref,
-                'amount' => $finalAmount,
-                'payment_method' => 'card',
-                'status' => 'completed',
-                'stripe_session_id' => $sessionId,
-                'stripe_payment_intent_id' => $paymentIntentId !== '' ? $paymentIntentId : null,
-                'stripe_response' => $this->encodeStripeObject($session),
-                'approved_at' => now(),
-                'paid_at' => now(),
-            ]);
+            try {
+                $deposit = DepositRequest::create([
+                    'user_id' => $userId,
+                    'reference_code' => $ref,
+                    'amount' => $finalAmount,
+                    'payment_method' => 'card',
+                    'status' => 'completed',
+                    'stripe_session_id' => $sessionId,
+                    'stripe_payment_intent_id' => $paymentIntentId !== '' ? $paymentIntentId : null,
+                    'stripe_response' => $this->encodeStripeObject($session),
+                    'approved_at' => now(),
+                    'paid_at' => now(),
+                ]);
+            } catch (QueryException $e) {
+                if (! $this->isUniqueConstraintFailure($e)) {
+                    throw $e;
+                }
+                $existing = DepositRequest::where('stripe_session_id', $sessionId)->first()
+                    ?: ($paymentIntentId !== ''
+                        ? DepositRequest::where('stripe_payment_intent_id', $paymentIntentId)->first()
+                        : null);
+                $credited = (float) ($existing?->amount ?? 0);
+
+                return;
+            }
 
             $this->creditAdvertiserWallet($userId, (float) $finalAmount, $deposit);
             $credited = (float) $finalAmount;
@@ -192,6 +273,9 @@ class WalletStripeDepositService
 
         $userId = isset($metadata['user_id']) ? (int) $metadata['user_id'] : 0;
         $referenceCode = (string) ($metadata['reference_code'] ?? str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT));
+        $completeDepositId = isset($metadata['deposit_id']) && $metadata['deposit_id'] !== ''
+            ? (int) $metadata['deposit_id']
+            : null;
 
         $amountFromStripe = isset($intent->amount_received) && (int) $intent->amount_received > 0
             ? StripePaymentService::fromCents((int) $intent->amount_received)
@@ -203,7 +287,13 @@ class WalletStripeDepositService
             throw new \RuntimeException('Invalid wallet_deposit PaymentIntent metadata/amount');
         }
 
-        return $this->creditFromPaymentIntent($userId, (string) $intent->id, $amount, $referenceCode);
+        return $this->creditFromPaymentIntent(
+            $userId,
+            (string) $intent->id,
+            $amount,
+            $referenceCode,
+            $completeDepositId
+        );
     }
 
     protected function completeExistingDeposit(
@@ -227,7 +317,46 @@ class WalletStripeDepositService
                 return;
             }
 
+            if ($paymentIntentId !== '') {
+                $already = DepositRequest::query()
+                    ->where('stripe_payment_intent_id', $paymentIntentId)
+                    ->where('id', '!=', $lockedDeposit->id)
+                    ->lockForUpdate()
+                    ->first();
+                if ($already) {
+                    $lockedDeposit->update([
+                        'status' => 'completed',
+                        'approved_at' => $lockedDeposit->approved_at ?? now(),
+                        'paid_at' => $lockedDeposit->paid_at ?? now(),
+                        'admin_notes' => trim(implode("\n", array_filter([
+                            $lockedDeposit->admin_notes,
+                            'Settled via Stripe PaymentIntent on deposit #'.$already->id,
+                        ]))),
+                    ]);
+                    $credited = (float) $already->amount;
+
+                    return;
+                }
+            }
+
+            $stripeAmount = isset($session->amount_total)
+                ? StripePaymentService::fromCents((int) $session->amount_total)
+                : null;
+            $requested = round((float) $lockedDeposit->amount, 2);
+            $creditAmount = $stripeAmount !== null ? $stripeAmount : $requested;
+            if ($creditAmount <= 0) {
+                throw new \RuntimeException('Invalid deposit amount from Stripe session');
+            }
+            if ($stripeAmount !== null && abs($stripeAmount - $requested) > 0.01) {
+                Log::warning('WalletStripeDepositService: completing deposit at Stripe amount, not request amount', [
+                    'deposit_id' => $lockedDeposit->id,
+                    'requested' => $requested,
+                    'stripe_amount' => $stripeAmount,
+                ]);
+            }
+
             $lockedDeposit->update([
+                'amount' => $creditAmount,
                 'stripe_session_id' => $sessionId !== '' ? $sessionId : $lockedDeposit->stripe_session_id,
                 'stripe_payment_intent_id' => $paymentIntentId !== '' ? $paymentIntentId : $lockedDeposit->stripe_payment_intent_id,
                 'stripe_response' => $this->encodeStripeObject($session),
@@ -238,10 +367,10 @@ class WalletStripeDepositService
 
             $this->creditAdvertiserWallet(
                 (int) $lockedDeposit->user_id,
-                (float) $lockedDeposit->amount,
+                $creditAmount,
                 $lockedDeposit
             );
-            $credited = (float) $lockedDeposit->amount;
+            $credited = $creditAmount;
             $notifyDepositId = $lockedDeposit->id;
         });
 
@@ -315,5 +444,29 @@ class WalletStripeDepositService
         }
 
         return json_encode($obj);
+    }
+
+    private function withStripeDepositLock(string $paymentIntentId, string $sessionId, callable $callback): mixed
+    {
+        $key = $paymentIntentId !== ''
+            ? 'wallet_deposit_pi:'.$paymentIntentId
+            : 'wallet_deposit_cs:'.$sessionId;
+
+        try {
+            return Cache::lock($key, 20)->block(15, $callback);
+        } catch (\BadMethodCallException) {
+            return $callback();
+        }
+    }
+
+    private function isUniqueConstraintFailure(QueryException $e): bool
+    {
+        $sqlState = (string) ($e->errorInfo[0] ?? '');
+        $message = strtolower($e->getMessage());
+
+        return $sqlState === '23000'
+            || $sqlState === '23505'
+            || str_contains($message, 'unique')
+            || str_contains($message, 'duplicate');
     }
 }

@@ -194,4 +194,207 @@ class DepositCreditAndRejectHardeningTest extends TestCase
         $this->assertSame('rejected', $deposit->fresh()->status);
         $this->assertNotNull($deposit->fresh()->rejected_at);
     }
+
+    public function test_same_payment_intent_cannot_credit_the_wallet_twice(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+        $pi = 'pi_once_'.uniqid();
+
+        $first = app(WalletStripeDepositService::class)
+            ->creditFromPaymentIntent($advertiser->id, $pi, 40.0, 'DEP-ONCE-1');
+        $second = app(WalletStripeDepositService::class)
+            ->creditFromPaymentIntent($advertiser->id, $pi, 40.0, 'DEP-ONCE-1');
+
+        $this->assertSame(40.0, $first);
+        $this->assertSame(40.0, $second);
+        $this->assertSame(40.0, (float) $wallet->fresh()->balance);
+        $this->assertSame(1, DepositRequest::where('stripe_payment_intent_id', $pi)->count());
+    }
+
+    public function test_session_and_payment_intent_for_the_same_charge_credit_once(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+        $pi = 'pi_shared_'.uniqid();
+        $sessionId = 'cs_shared_'.uniqid();
+
+        $fromPi = app(WalletStripeDepositService::class)
+            ->creditFromPaymentIntent($advertiser->id, $pi, 25.0, 'DEP-SHARED-1');
+
+        $fromSession = app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+            'id' => $sessionId,
+            'payment_status' => 'paid',
+            'amount_total' => 2500,
+            'payment_intent' => $pi,
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'amount' => '25.00',
+                'reference_code' => 'DEP-SHARED-1',
+            ],
+        ]);
+
+        $this->assertSame(25.0, $fromPi);
+        $this->assertSame(25.0, $fromSession);
+        $this->assertSame(25.0, (float) $wallet->fresh()->balance);
+        $this->assertSame(1, DepositRequest::where('stripe_payment_intent_id', $pi)->count());
+    }
+
+    public function test_checkout_session_then_payment_intent_credits_once(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+        $pi = 'pi_session_first_'.uniqid();
+        $sessionId = 'cs_session_first_'.uniqid();
+
+        $fromSession = app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+            'id' => $sessionId,
+            'payment_status' => 'paid',
+            'amount_total' => 3000,
+            'payment_intent' => $pi,
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'amount' => '30.00',
+                'reference_code' => 'DEP-SESSION-FIRST',
+            ],
+        ]);
+
+        $fromPi = app(WalletStripeDepositService::class)->creditFromPaymentIntentObject((object) [
+            'id' => $pi,
+            'status' => 'succeeded',
+            'amount' => 3000,
+            'amount_received' => 3000,
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'amount' => '30.00',
+                'reference_code' => 'DEP-SESSION-FIRST',
+            ],
+        ]);
+
+        $this->assertSame(30.0, $fromSession);
+        $this->assertSame(30.0, $fromPi);
+        $this->assertSame(30.0, (float) $wallet->fresh()->balance);
+        $this->assertSame(1, DepositRequest::where('stripe_payment_intent_id', $pi)->count());
+    }
+
+    public function test_payment_intent_with_deposit_id_completes_pending_row_once(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+        $pi = 'pi_dep_meta_'.uniqid();
+
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-META-1',
+            'amount' => 80,
+            'payment_method' => 'card',
+            'status' => 'pending',
+        ]);
+
+        $first = app(WalletStripeDepositService::class)->creditFromPaymentIntentObject((object) [
+            'id' => $pi,
+            'status' => 'succeeded',
+            'amount' => 2000,
+            'amount_received' => 2000,
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'deposit_id' => (string) $deposit->id,
+                'amount' => '80.00',
+                'reference_code' => 'DEP-META-1',
+            ],
+        ]);
+
+        $second = app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+            'id' => 'cs_dep_meta_'.uniqid(),
+            'payment_status' => 'paid',
+            'amount_total' => 2000,
+            'payment_intent' => $pi,
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'deposit_id' => (string) $deposit->id,
+                'amount' => '80.00',
+            ],
+        ]);
+
+        $this->assertSame(20.0, $first);
+        $this->assertSame(20.0, $second);
+        $this->assertSame(20.0, (float) $wallet->fresh()->balance);
+        $this->assertSame('completed', $deposit->fresh()->status);
+        $this->assertEqualsWithDelta(20.0, (float) $deposit->fresh()->amount, 0.01);
+        $this->assertSame(1, DepositRequest::where('user_id', $advertiser->id)->count());
+    }
+
+    public function test_orphan_pending_deposit_does_not_double_credit_after_pi_row(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+        $pi = 'pi_orphan_'.uniqid();
+
+        $pending = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-ORPHAN-1',
+            'amount' => 60,
+            'payment_method' => 'card',
+            'status' => 'pending',
+        ]);
+
+        $fromPi = app(WalletStripeDepositService::class)
+            ->creditFromPaymentIntent($advertiser->id, $pi, 60.0, 'DEP-ORPHAN-PI');
+
+        $fromPending = app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+            'id' => 'cs_orphan_'.uniqid(),
+            'payment_status' => 'paid',
+            'amount_total' => 6000,
+            'payment_intent' => $pi,
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'deposit_id' => (string) $pending->id,
+                'amount' => '60.00',
+            ],
+        ]);
+
+        $this->assertSame(60.0, $fromPi);
+        $this->assertSame(60.0, $fromPending);
+        $this->assertSame(60.0, (float) $wallet->fresh()->balance);
+        $this->assertSame('completed', $pending->fresh()->status);
+        $this->assertSame(1, DepositRequest::where('stripe_payment_intent_id', $pi)->count());
+    }
+
+    public function test_existing_deposit_is_completed_at_stripe_amount_not_request_amount(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+
+        $deposit = DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-AMT-1',
+            'amount' => 100,
+            'payment_method' => 'card',
+            'status' => 'pending',
+        ]);
+
+        $credited = app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+            'id' => 'cs_amt_'.uniqid(),
+            'payment_status' => 'paid',
+            'amount_total' => 1000,
+            'payment_intent' => 'pi_amt_'.uniqid(),
+            'metadata' => (object) [
+                'type' => 'wallet_deposit',
+                'user_id' => (string) $advertiser->id,
+                'deposit_id' => (string) $deposit->id,
+                'amount' => '100.00',
+            ],
+        ]);
+
+        $this->assertSame(10.0, $credited);
+        $this->assertSame(10.0, (float) $wallet->fresh()->balance);
+        $this->assertEqualsWithDelta(10.0, (float) $deposit->fresh()->amount, 0.01);
+        $this->assertSame('completed', $deposit->fresh()->status);
+    }
 }

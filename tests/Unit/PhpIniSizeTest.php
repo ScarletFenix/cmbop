@@ -31,14 +31,16 @@ class PhpIniSizeTest extends TestCase
         $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
         $this->assertStringContainsString('MB', $message);
 
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
+        $this->assertStringNotContainsString('server PHP still allows only', $message);
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+        $this->assertStringContainsString('JPG', $service->phpImageRejectedMessage());
+        $this->assertStringNotContainsString('.docx', $service->phpImageRejectedMessage());
+
         if ($phpKb < $appKb) {
             $this->assertTrue($service->phpLimitBlocksArticleCap($cfg));
-            $this->assertStringContainsString('under the 10 MB article limit', $message);
-            $this->assertStringContainsString('PHP upload limit', $message);
-            $this->assertStringContainsString('upload_max_filesize', $message);
-            $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
-        } else {
-            $this->assertStringContainsString('That file is over the 10 MB limit', $message);
         }
     }
 
@@ -46,16 +48,29 @@ class PhpIniSizeTest extends TestCase
     {
         $service = app(ContentUploadService::class);
         $cfg = ['max_kilobytes' => 10240];
-        $phpKb = $service->phpUploadMaxKilobytes();
-        if ($phpKb >= 10240) {
-            $this->assertNull($service->rejectedUploadMessage(null, $cfg, 6 * 1024 * 1024));
-
-            return;
-        }
+        $this->assertTrue($service->contentLengthLooksLikeStrippedUpload(6 * 1024 * 1024));
+        $this->assertFalse($service->contentLengthLooksLikeStrippedUpload(1024));
 
         $message = $service->rejectedUploadMessage(null, $cfg, 6 * 1024 * 1024);
         $this->assertIsString($message);
-        $this->assertStringContainsString('under the 10 MB article limit', $message);
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
         $this->assertNull($service->rejectedUploadMessage(null, $cfg, 1024));
+
+        $imageMessage = $service->rejectedImageUploadMessage(null, 3 * 1024 * 1024);
+        $this->assertIsString($imageMessage);
+        $this->assertStringContainsString('image could not be uploaded', $imageMessage);
+        $this->assertStringNotContainsString('.docx', $imageMessage);
+        $this->assertNull($service->rejectedImageUploadMessage(null, 1024));
+
+        $noLength = $service->rejectedUploadMessage(null, $cfg, null, 5 * 1024 * 1024);
+        $this->assertIsString($noLength);
+        $this->assertStringContainsString('The article could not be uploaded', $noLength);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $noLength);
+        $this->assertNull($service->rejectedUploadMessage(null, $cfg, 0, null));
+
+        $overCap = $service->rejectedUploadMessage(null, $cfg, null, 12 * 1024 * 1024);
+        $this->assertStringContainsString('That file is over the 10 MB limit', $overCap);
     }
 }

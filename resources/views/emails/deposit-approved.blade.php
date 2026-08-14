@@ -29,7 +29,7 @@ Your deposit receipt PDF is attached.
 
 ## Your Current Balance:
 
-**€{{ number_format($deposit->user->activeWallet()?->balance ?? 0, 2) }}**
+**€{{ number_format($walletBalance ?? 0, 2) }}**
 
 @component('mail::button', ['url' => $balanceUrl, 'color' => 'primary'])
 View Balance

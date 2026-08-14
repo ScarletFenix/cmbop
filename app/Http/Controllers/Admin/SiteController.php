@@ -1333,14 +1333,14 @@ class SiteController extends Controller
                 'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
             ]);
         }
-        $metricMerge = [];
+        $metrics = [];
         foreach (['da', 'dr', 'traffic'] as $metric) {
             if ($request->exists($metric)) {
-                $metricMerge[$metric] = $this->normalizeMetricInt($request->input($metric));
+                $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
             }
         }
-        if ($metricMerge !== []) {
-            $request->merge($metricMerge);
+        if ($metrics !== []) {
+            $request->merge($metrics);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1454,7 +1454,7 @@ class SiteController extends Controller
             $data['domain'] = $domain;
         }
 
-        if ($metricMerge !== []) {
+        if ($metrics !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();

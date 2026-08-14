@@ -10,6 +10,8 @@
 # Marketer bulk Done posts many fields (up to 200 sites). Article .docx
 # uploads are fixed at 10 MB; PHP must allow at least that (64M headroom).
 # Bare php_value: some Hostinger LiteSpeed builds skip the IfModule names below.
+# LimitRequestBody: LiteSpeed/Apache can 413 a 5 MB body before PHP runs.
+LimitRequestBody 67108864
 php_value max_input_vars 10000
 php_value post_max_size 64M
 php_value upload_max_filesize 64M
