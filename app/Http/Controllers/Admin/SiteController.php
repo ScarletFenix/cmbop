@@ -759,7 +759,7 @@ class SiteController extends Controller
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'description' => 'required|string|min:50|max:5000',
+            'description' => 'nullable|string|max:5000',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
@@ -768,10 +768,10 @@ class SiteController extends Controller
             'sensitive.trading' => 'nullable|boolean',
             'sensitive.CBD' => 'nullable|boolean',
             'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0',
-            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
-            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
-            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'price_sensitive.crypto' => 'nullable|numeric|min:0',
+            'price_sensitive.trading' => 'nullable|numeric|min:0',
+            'price_sensitive.CBD' => 'nullable|numeric|min:0',
+            'price_sensitive.forex' => 'nullable|numeric|min:0',
             'homepage.1' => 'nullable|boolean',
             'homepage.7' => 'nullable|boolean',
             'homepage.30' => 'nullable|boolean',
@@ -783,7 +783,16 @@ class SiteController extends Controller
             'social.x' => 'nullable|boolean',
         ], array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
-        ]));
+            'description.max' => 'Description must be at most 5000 characters.',
+        ]), [
+            'price_sensitive.crypto' => 'crypto extra price',
+            'price_sensitive.trading' => 'trading extra price',
+            'price_sensitive.CBD' => 'CBD extra price',
+            'price_sensitive.forex' => 'forex extra price',
+            'price_homepage.1' => '1-day homepage fee',
+            'price_homepage.7' => '7-day homepage fee',
+            'price_homepage.30' => '30-day homepage fee',
+        ]);
 
         $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches) {
             $publisherId = (int) $request->input('publisher_id');
@@ -819,8 +828,11 @@ class SiteController extends Controller
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
             }
 
-            foreach (SiteDescriptionRules::errors((string) $request->input('description', '')) as $message) {
-                $validator->errors()->add('description', $message);
+            $rawDescription = (string) $request->input('description', '');
+            if (mb_strlen($rawDescription) <= 5000) {
+                foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
+                    $validator->errors()->add('description', $message);
+                }
             }
         });
 
@@ -1754,11 +1766,7 @@ class SiteController extends Controller
             }
 
             $price = $request->input("price_sensitive.$topic");
-            if ($price === null || $price === '') {
-                continue;
-            }
-
-            $sensitivePrices[$topic] = (float) $price;
+            $sensitivePrices[$topic] = ($price === null || $price === '') ? 0.0 : (float) $price;
         }
 
         return $sensitivePrices;

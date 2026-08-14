@@ -372,6 +372,11 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertSee('id="publisherFilter"', false)
             ->assertSee('written_request', false)
             ->assertSee('This emails and bells the publisher', false)
+            ->assertSee('Click to toggle; type to search; Enter adds the highlighted match. Max 7.', false)
+            ->assertSee('maxlength="5000"', false)
+            ->assertSee('name="price_homepage[7]"', false)
+            ->assertSee('name="sensitive[crypto]"', false)
+            ->assertSee('optional homepage, social, and sensitive-topic prices', false)
             ->getContent();
 
         $this->assertStringNotContainsString('required disabled', $html);

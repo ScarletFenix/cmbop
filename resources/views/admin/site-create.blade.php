@@ -275,9 +275,10 @@
                                                    {{ old("homepage.$days") ? 'checked' : '' }}>
                                             <label class="form-check-label" for="staffHomepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
                                         </div>
-                                        <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
+                                        <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1 @error('price_homepage.'.$days) is-invalid @enderror"
                                                placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
-                                               value="{{ old("price_homepage.$days") }}">
+                                               value="{{ old_text('price_homepage.'.$days) }}">
+                                        @error('price_homepage.'.$days)<div class="invalid-feedback">{{ $message }}</div>@enderror
                                     </div>
                                 @endforeach
                             </div>
@@ -304,7 +305,7 @@
                             <i class="fa fa-chevron-{{ $hasSensitiveOld ? 'down' : 'right' }}" aria-hidden="true"></i>
                             Sensitive topics (optional)
                         </button>
-                        <p class="small text-muted mb-0 mt-1">Only open if this publisher accepts crypto, trading, CBD, or forex placements.</p>
+                        <p class="small text-muted mb-0 mt-1">Only open if this publisher accepts crypto, trading, CBD, or forex. Checked + blank extra = €0 surcharge.</p>
                         <div class="disclosure-panel" id="sensitiveDisclosurePanel" @unless($hasSensitiveOld) hidden @endunless>
                             <div class="row bg-light p-3 rounded mt-2">
                                 <div class="col-12">
@@ -315,7 +316,8 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 @error('price_sensitive.'.$topic) is-invalid @enderror" placeholder="Extra (€) — 0 = none" value="{{ old_text('price_sensitive.'.$topic) }}" min="0" step="0.01">
+                                            @error('price_sensitive.'.$topic)<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </div>
                                         @endforeach
                                     </div>

@@ -421,7 +421,28 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertRedirect(route('marketing.sites.create'))
             ->assertSessionHasErrors('description');
 
+        $messages = session('errors')->get('description');
+        $this->assertCount(1, $messages);
+        $this->assertStringContainsString('at most 5000 characters', $messages[0]);
         $this->assertNull(Site::where('domain', 'long-desc.example')->first());
+    }
+
+    public function test_marketing_store_rejects_short_description_once(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://short-desc.example',
+                'example_url' => 'https://short-desc.example/sample',
+                'description' => str_repeat('x', 40),
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('description');
+
+        $messages = session('errors')->get('description');
+        $this->assertCount(1, $messages);
+        $this->assertStringContainsString('at least 50 characters', $messages[0]);
+        $this->assertNull(Site::where('domain', 'short-desc.example')->first());
     }
 
     public function test_marketing_store_rejects_description_over_word_max(): void
@@ -466,5 +487,100 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame(['facebook', 'x'], $site->enabledSocialChannels());
         $this->assertEqualsWithDelta(15.0, (float) ($site->sensitive_prices['crypto'] ?? 0), 0.001);
         $this->assertTrue($site->isPendingPublisherAcceptance());
+    }
+
+    public function test_marketing_store_treats_checked_sensitive_blank_price_as_zero(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://crypto-free.example',
+                'example_url' => 'https://crypto-free.example/sample',
+                'sensitive' => ['crypto' => '1'],
+                'price_sensitive' => ['crypto' => ''],
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $site = Site::where('domain', 'crypto-free.example')->first();
+        $this->assertNotNull($site);
+        $this->assertEqualsWithDelta(0.0, (float) ($site->sensitive_prices['crypto'] ?? -1), 0.001);
+    }
+
+    public function test_validation_error_keeps_homepage_and_sensitive_old_input(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'homepage' => ['7' => '1'],
+                'price_homepage' => ['7' => '25'],
+                'social' => ['facebook' => '1'],
+                'sensitive' => ['crypto' => '1'],
+                'price_sensitive' => ['crypto' => '15'],
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('categories');
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/id="staffHomepage7"[^>]*checked|checked[^>]*id="staffHomepage7"/',
+            $html
+        );
+        $this->assertStringContainsString('value="25"', $html);
+        $this->assertMatchesRegularExpression(
+            '/id="staffSocialFacebook"[^>]*checked|checked[^>]*id="staffSocialFacebook"/',
+            $html
+        );
+        $this->assertStringContainsString('id="sensitiveDisclosurePanel"', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="sensitiveDisclosurePanel"[^>]*hidden/',
+            $html
+        );
+        $this->assertStringContainsString('value="15"', $html);
+    }
+
+    public function test_array_shaped_homepage_price_old_input_does_not_crash_create_page(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'price_homepage' => ['7' => ['25']],
+                'price_sensitive' => ['crypto' => ['15']],
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors();
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->assertDontSee('htmlspecialchars', false)
+            ->assertSee('Add site for publisher', false);
+    }
+
+    public function test_marketing_store_rejects_negative_homepage_fee_with_readable_name(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://neg-home.example',
+                'example_url' => 'https://neg-home.example/sample',
+                'homepage' => ['7' => '1'],
+                'price_homepage' => ['7' => '-5'],
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('price_homepage.7');
+
+        $this->assertStringContainsString(
+            '7-day homepage fee',
+            (string) session('errors')->first('price_homepage.7')
+        );
+        $this->assertNull(Site::where('domain', 'neg-home.example')->first());
     }
 }
