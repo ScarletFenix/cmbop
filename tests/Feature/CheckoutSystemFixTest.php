@@ -226,7 +226,8 @@ class CheckoutSystemFixTest extends TestCase
         $response->assertSee('order-summary-article', false);
         $response->assertSee('Article history', false);
         $response->assertSee('Uploaded', false);
-        $response->assertSee('2. Payment', false);
+        $response->assertSee('3. Payment', false);
+        $response->assertSee('2. Publication', false);
     }
 
     public function test_library_order_redirects_to_catalog_for_article_market(): void

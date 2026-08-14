@@ -378,6 +378,16 @@
   cursor: not-allowed;
 }
 
+.cart-schedule-hint {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  color: var(--brand-ink-muted, #697078);
+  background: #f8fafc;
+  border: 1px solid var(--border-default, #e2e8f0);
+  border-radius: 8px;
+}
+
 /* Markup may use .overlay or .cart-overlay */
 .overlay,
 .cart-overlay {

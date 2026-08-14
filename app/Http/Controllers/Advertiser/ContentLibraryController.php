@@ -475,8 +475,7 @@ class ContentLibraryController extends Controller
                 ->with('error', $message);
         }
 
-        // Keep existing cart sites; this article attaches when assigned in cart/checkout.
-        session()->forget(['checkout_schedule']);
+        // Keep existing cart sites and any publication date already chosen at checkout.
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('ordering_from_library', true);
 

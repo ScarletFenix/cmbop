@@ -829,6 +829,9 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
 
         // Checkout routes
         Route::get('/checkout', [CatalogController::class, 'checkout'])->name('checkout');
+        Route::post('/checkout/schedule', [CatalogController::class, 'saveCheckoutSchedule'])
+            ->middleware('throttle:30,1')
+            ->name('checkout.schedule');
         // IMPORTANT: This route accepts both POST (create order) and GET (Stripe callback)
         Route::match(['get', 'post'], '/checkout/process', [CatalogController::class, 'processOrder'])->name('checkout.process');
 

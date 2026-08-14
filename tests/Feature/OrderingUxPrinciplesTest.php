@@ -129,6 +129,7 @@ class OrderingUxPrinciplesTest extends TestCase
         $this->assertStringContainsString('id="cartChecklist"', $html);
         $this->assertStringContainsString('id="cartProceedHint"', $html);
         $this->assertStringContainsString('id="cartHeldNote"', $html);
+        $this->assertStringContainsString('id="cartScheduleHint"', $html);
         $this->assertStringContainsString('id="cartHeaderMeta"', $html);
         $this->assertStringContainsString('cartLinesMissingArticles', $html);
         $this->assertStringContainsString('Assign an approved article to at least one website', $html);

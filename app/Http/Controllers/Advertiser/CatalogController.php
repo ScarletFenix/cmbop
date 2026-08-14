@@ -47,6 +47,7 @@ use App\Services\StripePaymentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\AdvertiserOrderStatus;
 use App\Support\UserFacingError;
+use Carbon\CarbonInterface;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -1207,6 +1208,7 @@ class CatalogController extends Controller
             'removed_owned' => $removedOwned,
             'removed_owned_count' => count($removedOwned),
             'require_same_language' => $requireSame,
+            'schedule' => $this->checkoutScheduleClientHint(),
         ];
     }
 
@@ -1939,7 +1941,6 @@ class CatalogController extends Controller
         }
 
         $librarySubmission = $this->resolveLibrarySubmissionForCheckout($cart);
-        $checkoutSchedule = session('checkout_schedule', []);
 
         $checkoutWallet = auth()->user()->activeWallet();
         if ($checkoutWallet) {
@@ -1982,7 +1983,9 @@ class CatalogController extends Controller
         // Best-effort: auto-add Hostinger-missing Stripe columns before card checkout.
         app(StripeCustomerService::class)->ensureUserStripeColumns();
 
-        return view('advertiser.checkout', compact(
+        $scheduleContext = $this->checkoutScheduleContext();
+
+        return view('advertiser.checkout', array_merge(compact(
             'cartItems',
             'deferredItems',
             'payableReady',
@@ -1991,7 +1994,6 @@ class CatalogController extends Controller
             'total',
             'savings',
             'librarySubmission',
-            'checkoutSchedule',
             'checkoutWallet',
             'checkoutBonusBalance',
             'checkoutCashBalance',
@@ -1999,7 +2001,7 @@ class CatalogController extends Controller
             'checkoutArticles',
             'savedCards',
             'stripeConfigured',
-        ));
+        ), $scheduleContext));
     }
 
     /**
@@ -2065,6 +2067,8 @@ class CatalogController extends Controller
             if ($checkoutContent instanceof JsonResponse) {
                 return $checkoutContent;
             }
+
+            $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
 
             // Keep not-ready sites in the cart after this payment.
             session()->put('checkout_deferred_cart', array_values($deferredCart));
@@ -2528,13 +2532,19 @@ class CatalogController extends Controller
                 'scheduled' => $isScheduled,
             ]);
 
+            $scheduleLabel = $this->scheduleSuccessLabel($schedule);
             $msg = $isScheduled
-                ? count($createdOrders).' order(s) placed and charged. Publisher notified — publication date scheduled. Order numbers: '.$orderNumbers
+                ? count($createdOrders).' order(s) placed and charged. Publisher notified — they must publish on '.$scheduleLabel.'. Order numbers: '.$orderNumbers
                 : count($createdOrders).' order(s) placed successfully! Funds have been reserved from your wallet. Order numbers: '.$orderNumbers;
 
             return response()->json([
                 'success' => true,
                 'message' => $msg,
+                'scheduled' => $isScheduled,
+                'scheduled_label' => $scheduleLabel,
+                'scheduled_orders_url' => $isScheduled
+                    ? route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
+                    : null,
             ]);
         } catch (\Exception $e) {
             DB::rollBack();
@@ -2789,13 +2799,28 @@ class CatalogController extends Controller
             $orderNumbers = $orders->pluck('order_number')->implode(', ');
             $paidCount = $orders->count();
             $remaining = count(session('cart', []));
+            $scheduledOrders = $orders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
             $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
+            if ($scheduledOrders->isNotEmpty()) {
+                $first = $scheduledOrders->first();
+                $label = $this->scheduleSuccessLabel([
+                    'mode' => 'scheduled',
+                    'at' => $first->scheduled_publish_at,
+                    'timezone' => $first->schedule_timezone ?: 'UTC',
+                ]);
+                if ($label) {
+                    $successMsg .= ' Publisher notified — they must publish on '.$label.'.';
+                }
+            }
             if ($remaining > 0) {
                 $successMsg .= ' '.$remaining.' website(s) remain in your cart until they are ready for checkout.';
             }
 
-            return redirect()->route('advertiser.orders')
-                ->with('success', $successMsg);
+            $redirect = $scheduledOrders->isNotEmpty()
+                ? redirect()->route('advertiser.scheduled-orders', ['tab' => 'upcoming'])
+                : redirect()->route('advertiser.orders');
+
+            return $redirect->with('success', $successMsg);
         } catch (\Exception $e) {
             Log::error('Stripe success handling failed: '.$e->getMessage());
             Log::error('Stack trace: '.$e->getTraceAsString());
@@ -4031,6 +4056,136 @@ class CatalogController extends Controller
             'scheduled_publish_at' => $schedule['at'] ?? null,
             'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
         ];
+    }
+
+    /**
+     * @return array{
+     *     schedulingEnabled: bool,
+     *     checkoutSchedule: array<string, mixed>,
+     *     maxScheduleMonths: int,
+     *     maxScheduleDate: string,
+     *     scheduleMinDate: string,
+     *     scheduleTimezones: list<string>,
+     *     scheduleDefaultTimezone: string
+     * }
+     */
+    private function checkoutScheduleContext(): array
+    {
+        $scheduler = app(ScheduledOrderService::class);
+        $session = is_array(session('checkout_schedule')) ? session('checkout_schedule') : [];
+        $tz = is_string($session['timezone'] ?? null) && $session['timezone'] !== ''
+            ? $session['timezone']
+            : $scheduler->defaultTimezone();
+
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            $tz = 'UTC';
+        }
+
+        return [
+            'schedulingEnabled' => app(ContentUploadService::class)->schedulingEnabled(),
+            'checkoutSchedule' => $session,
+            'maxScheduleMonths' => $scheduler->maxMonths(),
+            'maxScheduleDate' => $scheduler->maxScheduleDateString($tz),
+            'scheduleMinDate' => now($tz)->toDateString(),
+            'scheduleTimezones' => $scheduler->commonTimezones(),
+            'scheduleDefaultTimezone' => $scheduler->defaultTimezone(),
+        ];
+    }
+
+    /**
+     * @return array<string, mixed>|null
+     */
+    private function checkoutScheduleClientHint(): ?array
+    {
+        if (! app(ContentUploadService::class)->schedulingEnabled()) {
+            return null;
+        }
+
+        $session = is_array(session('checkout_schedule')) ? session('checkout_schedule') : [];
+        if (($session['mode'] ?? '') !== 'scheduled' || empty($session['date'])) {
+            return null;
+        }
+
+        $tz = (string) ($session['timezone'] ?? 'UTC');
+        $time = (string) ($session['time'] ?? '09:00');
+        $date = (string) $session['date'];
+
+        return [
+            'enabled' => true,
+            'mode' => 'scheduled',
+            'date' => $date,
+            'time' => $time,
+            'timezone' => $tz,
+            'label' => 'Publication: '.$date.', '.$time.' '.$tz.' — change at checkout',
+            'checkout_url' => route('advertiser.checkout'),
+        ];
+    }
+
+    /**
+     * @param  array{mode?: string, at?: mixed, timezone?: string}  $schedule
+     */
+    private function persistCheckoutScheduleSession(array $schedule): void
+    {
+        $tz = (string) ($schedule['timezone'] ?? 'UTC');
+        $at = $schedule['at'] ?? null;
+        $local = $at instanceof CarbonInterface
+            ? $at->copy()->timezone($tz)
+            : null;
+
+        session()->put('checkout_schedule', [
+            'mode' => $schedule['mode'] ?? 'immediate',
+            'date' => $local?->toDateString(),
+            'time' => $local?->format('H:i'),
+            'timezone' => $tz,
+        ]);
+    }
+
+    private function scheduleSuccessLabel(array $schedule): ?string
+    {
+        if (($schedule['mode'] ?? '') !== 'scheduled') {
+            return null;
+        }
+
+        $at = $schedule['at'] ?? null;
+        if (! $at instanceof CarbonInterface) {
+            return null;
+        }
+
+        $tz = (string) ($schedule['timezone'] ?? 'UTC');
+
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            $tz = 'UTC';
+        }
+
+        return $at->copy()->timezone($tz)->format('d M Y, H:i').' '.$tz;
+    }
+
+    public function saveCheckoutSchedule(Request $request): JsonResponse
+    {
+        $normalized = app(ScheduledOrderService::class)->normalizeSchedule(
+            $request->input('publication_mode'),
+            $request->input('scheduled_date'),
+            $request->input('scheduled_time'),
+            $request->input('timezone'),
+        );
+
+        if (! $normalized['ok']) {
+            return response()->json([
+                'success' => false,
+                'message' => $normalized['message'] ?? 'Invalid publication schedule.',
+            ], 422);
+        }
+
+        $this->persistCheckoutScheduleSession($normalized);
+
+        return response()->json([
+            'success' => true,
+            'schedule' => $this->checkoutScheduleClientHint(),
+        ]);
     }
 
     /**
