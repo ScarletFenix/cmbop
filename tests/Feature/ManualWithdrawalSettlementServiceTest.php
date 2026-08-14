@@ -10,9 +10,9 @@ use App\Models\WalletTransaction;
 use App\Models\Withdrawal;
 use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
+use App\Services\Wallet\ManualWithdrawalUnknownWalletException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
-use RuntimeException;
 use Tests\TestCase;
 
 class ManualWithdrawalSettlementServiceTest extends TestCase
@@ -220,9 +220,20 @@ class ManualWithdrawalSettlementServiceTest extends TestCase
         try {
             app(ManualWithdrawalSettlementService::class)->reject($withdrawal, $admin, 'Ambiguous');
             $this->fail('Expected reject to fail when the source wallet is unknown.');
-        } catch (RuntimeException $e) {
+        } catch (ManualWithdrawalUnknownWalletException $e) {
             $this->assertStringContainsString('source wallet is unknown', $e->getMessage());
         }
+
+        $this->assertSame('pending', $withdrawal->fresh()->status);
+        $this->assertSame(5.0, (float) $publisherWallet->fresh()->balance);
+        $this->assertSame(10.0, (float) $advertiserWallet->fresh()->balance);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.withdrawals.reject', $withdrawal->id), [
+                'notes' => 'Ambiguous',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $this->assertSame('pending', $withdrawal->fresh()->status);
         $this->assertSame(5.0, (float) $publisherWallet->fresh()->balance);

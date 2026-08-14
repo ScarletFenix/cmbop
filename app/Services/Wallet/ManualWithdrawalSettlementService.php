@@ -185,9 +185,7 @@ class ManualWithdrawalSettlementService
     {
         $wallet = $withdrawal->resolveDebitedWallet(lockForUpdate: true);
         if (! $wallet) {
-            throw new RuntimeException(
-                'Cannot refund withdrawal #'.$withdrawal->id.': the source wallet is unknown.'
-            );
+            throw ManualWithdrawalUnknownWalletException::forWithdrawal((int) $withdrawal->id);
         }
 
         $wallet->credit((float) $withdrawal->amount);
