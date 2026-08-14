@@ -2044,6 +2044,14 @@ class CatalogController extends Controller
                 return $checkoutContent;
             }
 
+            $checkoutContent = $this->excludeSelfOwnedCheckoutLines($checkoutContent, (int) $userId);
+            if ($checkoutContent['lines'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot order placements on your own websites.',
+                ], 422);
+            }
+
             $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
 
             // Keep not-ready sites in the cart after this payment.
@@ -4146,6 +4154,28 @@ class CatalogController extends Controller
             'label' => 'Publication: '.$date.', '.$time.' '.$tz.' — change at checkout',
             'checkout_url' => route('advertiser.checkout'),
         ];
+    }
+
+    /**
+     * Dual-role carts can still contain the advertiser's own publisher sites.
+     * Those lines were skipped after funds were reserved / Stripe was quoted,
+     * which locked leftover bonus/cash or overcharged the card.
+     *
+     * @param  array{lines: array<int, mixed>, schedule: array}  $checkoutContent
+     * @return array{lines: array<int, mixed>, schedule: array}
+     */
+    private function excludeSelfOwnedCheckoutLines(array $checkoutContent, int $userId): array
+    {
+        $checkoutContent['lines'] = array_values(array_filter(
+            $checkoutContent['lines'] ?? [],
+            function ($line) use ($userId) {
+                $site = is_array($line) ? ($line['orderItem']['site'] ?? null) : null;
+
+                return ! ($site instanceof Site && (int) $site->publisher_id === (int) $userId);
+            }
+        ));
+
+        return $checkoutContent;
     }
 
     /**
