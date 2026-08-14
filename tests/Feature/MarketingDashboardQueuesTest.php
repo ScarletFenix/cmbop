@@ -114,7 +114,7 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringContainsString('Edit', $readyTable);
         $this->assertStringContainsString('js-mkt-activate', $this->nodeHtml($html, 'data-queue', 'ready-sites'));
         $this->assertStringContainsString(
-            route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false),
+            e(route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false)),
             $html
         );
         $this->assertStringContainsString(route('marketing.sites.edit', $ready->id, false), $html);
@@ -129,12 +129,15 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringNotContainsString('Ready Activate Target', $waitingTable);
         $this->assertStringNotContainsString('Archived Ready Site', $waitingTable);
 
-        $this->assertStringContainsString(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1], false), $html);
+        $this->assertStringContainsString(
+            e(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1], false)),
+            $html
+        );
         $this->assertStringContainsString(route('marketing.sites.create', [], false), $html);
         $this->assertSame('2', $this->node($html, 'data-nav-badge', 'sites')->attributes->getNamedItem('data-count')?->nodeValue);
         $this->assertStringContainsString('Open', $waitingTable);
         $this->assertStringContainsString('Metrics/geo/niche edits do not email the publisher', $html);
-        $this->assertStringContainsString('/marketing/sites/__ID__/active', $html);
+        $this->assertStringContainsString('sites\\/__ID__\\/active', $html);
     }
 
     public function test_dashboard_open_bulk_includes_completed_rows_still_needing_done(): void

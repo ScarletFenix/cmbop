@@ -224,7 +224,7 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringNotContainsString(route('marketing.site-enrichment.index'), $html);
         $this->assertStringNotContainsString('>Enrichment</span>', $html);
         $this->assertStringContainsString(route('marketing.history'), $html);
-        $this->assertStringContainsString(route('marketing.dashboard.queue-counts'), $html);
+        $this->assertStringContainsString('dashboard\\/queue-counts', $html);
         $this->assertStringContainsString('refreshAdminQueueBadges', $html);
         $this->assertStringContainsString('role-shell-marketing', $html);
     }

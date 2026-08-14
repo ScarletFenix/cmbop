@@ -293,7 +293,7 @@ class MarketingSitesIndexTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString(
-            route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false),
+            e(route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false)),
             $html
         );
         $this->assertStringContainsString(route('marketing.sites.edit', $ready->id, false), $html);
