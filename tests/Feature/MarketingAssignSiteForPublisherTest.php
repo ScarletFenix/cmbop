@@ -1377,6 +1377,46 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertNull(Site::where('domain', 'legacy-port.example')->first());
     }
 
+    public function test_legacy_non_default_port_domain_matches_existing_listing(): void
+    {
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Legacy Custom Port',
+            'site_url' => 'https://legacy-8080.example:8080',
+            'domain' => 'legacy-8080.example:8080',
+            'example_url' => 'https://legacy-8080.example:8080/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Legacy custom port listing description text. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://legacy-8080.example',
+                'example_url' => 'https://legacy-8080.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This website domain is already registered.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertNull(Site::where('domain', 'legacy-8080.example')->first());
+    }
+
     public function test_store_rejects_nbsp_only_site_name(): void
     {
         $this->actingAs($this->marketer)

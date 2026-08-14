@@ -493,6 +493,23 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('https://guard-site.example/sample', $site->fresh()->example_url);
     }
 
+    public function test_update_can_clear_example_url(): void
+    {
+        $site = $this->site([
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://guard-site.example/path',
+                'example_url' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertNull($site->fresh()->example_url);
+    }
+
     public function test_update_ignores_posted_domain_without_site_url(): void
     {
         $site = $this->site();

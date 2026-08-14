@@ -922,6 +922,8 @@ class SiteController extends Controller
                 $site->forceFill([
                     'assigned_by_user_id' => auth()->id(),
                     'publisher_accepted_at' => null,
+                    'verified' => false,
+                    'active' => false,
                     'da' => $da,
                     'dr' => $dr,
                     'traffic' => $traffic,
@@ -946,6 +948,9 @@ class SiteController extends Controller
                 }
                 if (filled($site->publisher_accepted_at) || blank($site->assigned_by_user_id)) {
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
+                }
+                if ((bool) $site->verified || (bool) $site->active) {
+                    throw new \RuntimeException('Staff site invite flags did not persist after save.');
                 }
             });
         } catch (ValidationException $e) {
@@ -1681,9 +1686,14 @@ class SiteController extends Controller
             ];
         }
 
-        $data = array_filter($data, function ($value) {
+        $data = array_filter($data, function ($value, $key) {
+            // Optional example URL must be clearable; other nulls mean "leave unchanged".
+            if ($key === 'example_url') {
+                return true;
+            }
+
             return $value !== null;
-        });
+        }, ARRAY_FILTER_USE_BOTH);
 
         if ($placementPatch !== null) {
             $data = array_merge($data, $placementPatch);
@@ -1941,7 +1951,15 @@ class SiteController extends Controller
             return null;
         }
 
-        $query = Site::query()->whereIn('domain', $candidates);
+        $normalized = $this->normalizeDomain($domain);
+        $query = Site::query()->where(function ($q) use ($candidates, $normalized) {
+            $q->whereIn('domain', $candidates);
+            if ($normalized !== '') {
+                $escaped = addcslashes($normalized, '%_\\');
+                $q->orWhere('domain', 'like', $escaped.':%')
+                    ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+            }
+        });
         if ($exceptId !== null) {
             $query->where('id', '!=', $exceptId);
         }
