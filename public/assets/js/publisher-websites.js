@@ -2043,7 +2043,8 @@ $(document).on('click', '.btn-feature-site', async function () {
         wallet = await w.json();
     } catch (e) {}
 
-    const canWallet = Number(wallet.balance || 0) >= Number(wallet.feature_price || 10);
+    const spendable = Number(wallet.withdrawable ?? wallet.balance ?? 0);
+    const canWallet = spendable >= Number(wallet.feature_price || 10);
     const featureDays = Number(wallet.feature_days || 7);
     const featurePrice = Number(wallet.feature_price || 10).toFixed(2);
     const unverifiedNote = isVerified
@@ -2058,7 +2059,7 @@ $(document).on('click', '.btn-feature-site', async function () {
         title: isLive ? 'Extend featuring?' : 'Feature this website?',
         html: `${body}
                ${unverifiedNote}
-               <p class="small text-muted">Publisher balance: €${Number(wallet.balance || 0).toFixed(2)}</p>
+               <p class="small text-muted">Publisher earnings: €${spendable.toFixed(2)} (bonus cannot be used for featuring)</p>
                <p class="small text-muted">Pay from earnings, or pay securely by card with Stripe.</p>`,
         showDenyButton: !!wallet.stripe_available,
         showCancelButton: true,

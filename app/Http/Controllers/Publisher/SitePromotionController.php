@@ -192,21 +192,24 @@ class SitePromotionController extends Controller
     public function walletSummary()
     {
         $roleId = Wallet::publisherRoleId();
-        $balance = 0.0;
+        $withdrawable = 0.0;
         if ($roleId) {
             $wallet = Wallet::where('user_id', auth()->id())->where('role_id', $roleId)->first();
-            $balance = (float) ($wallet?->balance ?? 0);
+            $withdrawable = $wallet ? $wallet->withdrawableBalance() : 0.0;
         }
 
         return response()->json([
             'success' => true,
-            'balance' => $balance,
+            // Featuring spends cash only — keep `balance` as withdrawable so the
+            // publisher UI does not offer "Pay from wallet" on bonus-inflated totals.
+            'balance' => $withdrawable,
+            'withdrawable' => $withdrawable,
             'feature_price' => $this->promotions->featurePrice(),
             'feature_days' => $this->promotions->featureDays(),
             'top_up_url' => route('publisher.balance'),
             'balance_url' => route('publisher.balance'),
             'stripe_available' => (bool) config('services.stripe.secret'),
-            'hint' => 'Pay from publisher earnings, or pay by card with Stripe. Use Balance to transfer funds between wallets.',
+            'hint' => 'Pay from publisher earnings (welcome bonus cannot be used), or pay by card with Stripe. Use Balance to transfer funds between wallets.',
         ]);
     }
 

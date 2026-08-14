@@ -305,8 +305,8 @@ class StripeWebhookController extends Controller
         }
 
         $paymentStatus = $session->payment_status ?? null;
-        if ($paymentStatus && $paymentStatus !== 'paid') {
-            throw new \RuntimeException('site_feature session not paid: '.$paymentStatus);
+        if ($paymentStatus !== 'paid') {
+            throw new \RuntimeException('site_feature session not paid: '.($paymentStatus ?? 'missing'));
         }
 
         $site = Site::find($siteId);

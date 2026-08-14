@@ -338,4 +338,44 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->assertNull($site->fresh()->featured_until);
         $this->assertSame(0, SiteFeaturePurchase::where('site_id', $site->id)->count());
     }
+
+    public function test_site_feature_unpaid_or_missing_status_is_rejected(): void
+    {
+        config([
+            'site_promotions.feature.price' => 25,
+            'site_promotions.feature.days' => 7,
+        ]);
+
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        foreach (['unpaid', null] as $status) {
+            $event = [
+                'id' => 'evt_feature_unpaid_'.uniqid(),
+                'object' => 'event',
+                'type' => 'checkout.session.completed',
+                'data' => [
+                    'object' => [
+                        'id' => 'cs_feature_unpaid_'.uniqid(),
+                        'object' => 'checkout.session',
+                        'payment_status' => $status,
+                        'payment_intent' => 'pi_feature_unpaid',
+                        'amount_total' => 2500,
+                        'metadata' => [
+                            'type' => 'site_feature',
+                            'site_id' => (string) $site->id,
+                            'user_id' => (string) $publisher->id,
+                            'price' => '25',
+                            'days' => '7',
+                        ],
+                    ],
+                ],
+            ];
+
+            $this->signedWebhook($event)->assertStatus(500);
+        }
+
+        $this->assertNull($site->fresh()->featured_until);
+        $this->assertSame(0, SiteFeaturePurchase::where('site_id', $site->id)->count());
+    }
 }
