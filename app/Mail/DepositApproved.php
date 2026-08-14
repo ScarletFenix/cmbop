@@ -4,6 +4,7 @@ namespace App\Mail;
 
 use App\Models\DepositRequest;
 use App\Models\Invoice;
+use App\Models\Wallet;
 use App\Services\Billing\DepositReceiptService;
 use App\Services\Billing\InvoicePdfGenerator;
 
@@ -33,11 +34,17 @@ class DepositApproved extends PlatformMailable
             ? 'Wallet topped up — €'.$amount
             : 'Deposit Approved - €'.$amount;
 
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        $advertiserWallet = $advertiserRoleId
+            ? $deposit->user?->wallets()->where('role_id', $advertiserRoleId)->first()
+            : null;
+
         $mail = $this->subject($subject)
             ->markdown('emails.deposit-approved', [
                 'deposit' => $deposit,
                 'isCard' => $isCard,
                 'receipt' => $receipt,
+                'walletBalance' => (float) ($advertiserWallet?->balance ?? 0),
                 'balanceUrl' => route('advertiser.balance'),
                 'downloadReceiptUrl' => $receipt
                     ? route('advertiser.billing.download', $receipt)
