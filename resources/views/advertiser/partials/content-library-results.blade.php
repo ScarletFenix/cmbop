@@ -11,7 +11,7 @@
         if (($params['q'] ?? '') === '') {
             unset($params['q']);
         }
-        return route('advertiser.content-library', $params);
+        return route('advertiser.content-library', $params, false);
     };
     $statusLabels = [
         'available' => 'Approved',
