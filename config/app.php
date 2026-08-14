@@ -29,6 +29,13 @@ return [
     'cron_secret' => (string) env('CRON_SECRET', ''),
 
     /*
+    | Hostinger often has no SSH cron. When true (default), production web
+    | traffic runs pending migrations / MEDIA_PATH / APP_URL repair and
+    | schedule:run after the response is flushed.
+    */
+    'web_heal' => (bool) env('HOSTINGER_WEB_HEAL', true),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Environment
     |--------------------------------------------------------------------------

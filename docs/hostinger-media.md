@@ -34,6 +34,12 @@ throws on boot** so misconfiguration is obvious.
 
 ## Phase 2 — One-time Hostinger setup (ops)
 
+This agent cannot SSH to live Hostinger. The first production page view (or
+`php artisan ops:production-ready --repair`) creates
+`/home/USER/persistent/media`, writes `MEDIA_PATH` in `.env`, and repairs
+`public/storage`. Still run the rsync below if images already live under
+`public_html` and you need to keep them.
+
 Do this once on live, during a short maintenance window. Replace `USER` with
 the Hostinger account user.
 

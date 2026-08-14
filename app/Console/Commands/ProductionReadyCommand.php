@@ -3,27 +3,30 @@
 namespace App\Console\Commands;
 
 use App\Support\ProductionReadiness;
-use App\Support\PublicStorageLink;
-use Database\Seeders\RolesTableSeeder;
+use App\Support\ProductionRepair;
 use Illuminate\Console\Command;
 
 /**
- * Confirm the Hostinger / production settings that make the launch path work:
- * MySQL, APP_URL, MEDIA_PATH, migrate, 64M uploads, scheduler/queue, then
- * register → verify email → catalog image → wallet order → chat mail.
+ * Confirm — and repair — the Hostinger / production settings that make the
+ * launch path work: MySQL, APP_URL, MEDIA_PATH, migrate, 64M uploads,
+ * scheduler/queue, then register → verify email → catalog image → wallet
+ * order → chat mail.
  */
 class ProductionReadyCommand extends Command
 {
     protected $signature = 'ops:production-ready
                             {--strict : Fail on warnings as well as failures}
-                            {--repair : Seed missing roles and recreate the public/storage symlink}';
+                            {--repair : Migrate, seed roles, set Hostinger MEDIA_PATH / APP_URL, recreate public/storage}';
 
     protected $description = 'Check MySQL, APP_URL, MEDIA_PATH, migrations, uploads, mail drain, and roles';
 
-    public function handle(ProductionReadiness $readiness): int
+    public function handle(ProductionReadiness $readiness, ProductionRepair $repair): int
     {
         if ($this->option('repair')) {
-            $this->repair();
+            $this->info('Repairing Hostinger production path…');
+            foreach ($repair->run() as $note) {
+                $this->line('  '.$note);
+            }
         }
 
         $rows = [];
@@ -57,26 +60,5 @@ class ProductionReadyCommand extends Command
             : 'Production readiness: FAIL');
 
         return self::FAILURE;
-    }
-
-    private function repair(): void
-    {
-        $this->info('Repairing roles and public/storage…');
-
-        try {
-            (new RolesTableSeeder)->run();
-            $this->line('  roles seeded (advertiser, publisher, admin, marketing)');
-        } catch (\Throwable $e) {
-            $this->error('  Could not seed roles: '.$e->getMessage());
-        }
-
-        $link = PublicStorageLink::ensure();
-        if ($link['ok']) {
-            $this->line($link['repaired']
-                ? '  public/storage symlink repaired'
-                : '  public/storage already correct');
-        } else {
-            $this->error('  '.$link['message']);
-        }
     }
 }

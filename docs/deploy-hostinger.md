@@ -6,31 +6,45 @@ Use this on **every** code update. Full media background:
 ## Do not touch
 
 - `/home/USER/persistent/media/**` (all `/storage/...` uploads)
-- Live `.env` (unless you intend to change secrets / `MEDIA_PATH`)
+- Live `.env` secrets (DB, Stripe, mail). `MEDIA_PATH` and a leftover loopback
+  `APP_URL` are written automatically by `--repair` / the first production page view.
 - Do not “replace all” in a way that deletes `public/storage` without recreating it
 
 ## After upload / sync
 
-1. `grep '^MEDIA_PATH=' .env` — must be absolute path outside `public_html`
-2. `ls -la public/storage` — must symlink to that path; if not:
+This agent cannot SSH to live Hostinger. `HOSTINGER_WEB_HEAL` (default on) plus
+`php artisan ops:production-ready --repair` cover migrate, `APP_URL`,
+`MEDIA_PATH`, roles, `public/storage`, and `schedule:run` without a login.
+
+1. Open any production page (or run `php artisan ops:production-ready --repair`).
+   That writes `MEDIA_PATH=/home/USER/persistent/media` when it is empty or still
+   under `public_html`, copies `APP_URL` from `PUBLIC_APP_URL` if it is still
+   loopback, runs `migrate --force` (bootstrapping users/sites/orders/order_items
+   first when the schema is empty), seeds roles, and repairs `public/storage`.
+2. `grep '^MEDIA_PATH=' .env` — must be absolute path outside `public_html`
+3. `ls -la public/storage` — must symlink to that path; if not:
    `rm -f public/storage && php artisan storage:link`
-3. `php artisan migrate --force` (or run pending SQL under `database/sql/`, e.g. `add_homepage_social_placement.sql` so catalog Site Details can show Homepage promotions + Social, and `restrict_order_items_site_id_on_delete.sql` so deleting a site cannot cascade-wipe orders)
-4. `php artisan config:clear` (and `config:cache` if you normally cache)
-5. Open 2 known image URLs (`/storage/sites/...`, `/storage/site-screenshots/...`)
-6. Confirm a new upload lands under `persistent/media`, not a wiped folder
-7. Article .docx uploads are fixed at 10 MB (admin cannot raise this). In hPanel →
+4. Pending SQL under `database/sql/` is still manual (e.g. `add_homepage_social_placement.sql`
+   so catalog Site Details can show Homepage promotions + Social, and
+   `restrict_order_items_site_id_on_delete.sql` so deleting a site cannot cascade-wipe orders)
+5. `php artisan config:clear` (and `config:cache` if you normally cache) — `--repair`
+   already clears a cached config after it writes `.env`
+6. Open 2 known image URLs (`/storage/sites/...`, `/storage/site-screenshots/...`)
+7. Confirm a new upload lands under `persistent/media`, not a wiped folder
+8. Article .docx uploads are fixed at 10 MB (admin cannot raise this). In hPanel →
    Advanced → PHP Configuration set `upload_max_filesize=64M` and
    `post_max_size=64M`. Confirm with
    `php -r 'echo ini_get("upload_max_filesize"), " ", ini_get("post_max_size"), "\n";'`
    from `public_html` (or `public/`). `public/.htaccess` and `public/.user.ini`
    already request 64M/64M; Hostinger LiteSpeed often ignores `php_value` until
    the same numbers are saved in hPanel. A 5 MB Word file is rejected as
-   `UPLOAD_ERR_INI_SIZE` while PHP stays at the default 2M.
-8. `php artisan db:seed --force` if roles were never seeded (registration otherwise
-   returns “temporarily unavailable”).
+   `UPLOAD_ERR_INI_SIZE` while PHP stays at the default 2M. This cannot be
+   self-healed from PHP.
 9. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
    `php artisan ops:production-ready --repair --strict`
-   Then spot-check register → verify email → catalog image → wallet order → chat mail.
+   Web traffic also runs `schedule:run` about once a minute. Add system cron if
+   the site is quiet overnight. Then spot-check register → verify email →
+   catalog image → wallet order → chat mail.
 
 ## Weekly
 

@@ -43,10 +43,12 @@ database is normally still present after restart.
 
 After migrate + seed (or `composer setup`), confirm the launch path:
 ```
-php artisan ops:production-ready
+php artisan ops:production-ready --repair
 ```
-`--repair` seeds missing roles and recreates `public/storage`. `--strict` fails
-on warnings too (use on Hostinger after deploy).
+`--repair` runs `migrate --force`, seeds roles, sets Hostinger `MEDIA_PATH` /
+`APP_URL`, and recreates `public/storage`. Production page views do the same
+(`HOSTINGER_WEB_HEAL`, default on) so live Hostinger does not need SSH from
+this agent. `--strict` fails on warnings too.
 
 ### Seeders
 `php artisan db:seed` now includes `RolesTableSeeder` (advertiser, publisher,
@@ -99,8 +101,9 @@ See [`docs/ops-mail-reminders.md`](docs/ops-mail-reminders.md) for `APP_URL` /
 
 ### Durable media (Hostinger)
 Public uploads use the `public` disk (`/storage/...`). Leave `MEDIA_PATH` empty
-locally (defaults to `storage/app/public`). On Hostinger set an absolute path
-**outside** `public_html` so code deploys cannot wipe images.
+locally (defaults to `storage/app/public`). On Hostinger the first production
+page view (or `--repair`) creates `/home/USER/persistent/media` outside
+`public_html` and writes `MEDIA_PATH` so code deploys cannot wipe images.
 
 - Ops runbook (one-time migrate + weekly backup): [`docs/hostinger-media.md`](docs/hostinger-media.md)
 - **Pinned every-deploy checklist:** [`docs/deploy-hostinger.md`](docs/deploy-hostinger.md)

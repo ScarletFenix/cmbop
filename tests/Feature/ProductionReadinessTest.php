@@ -83,6 +83,7 @@ class ProductionReadinessTest extends TestCase
         $this->assertStringContainsString('DB_CONNECTION=mysql', $example);
         $this->assertStringContainsString('MAIL_QUEUE_AUTO_DRAIN=true', $example);
         $this->assertStringContainsString('MEDIA_PATH=', $example);
+        $this->assertStringContainsString('HOSTINGER_WEB_HEAL=true', $example);
 
         $agents = (string) file_get_contents(base_path('AGENTS.md'));
         $this->assertStringContainsString('ops:production-ready', $agents);

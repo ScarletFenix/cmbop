@@ -32,7 +32,8 @@
                         </li>
                     @endforeach
                 </ul>
-                Run <code>php artisan ops:production-ready --repair</code> then <code>php artisan migrate --force</code>.
+                The next production page view repairs migrate, MEDIA_PATH, APP_URL, and the storage link automatically.
+                Or run <code>php artisan ops:production-ready --repair</code>.
             </div>
         </div>
     @endif
