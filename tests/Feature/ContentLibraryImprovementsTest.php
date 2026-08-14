@@ -550,6 +550,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $fresh = $this->createApprovedSubmission($advertiser);
         $fresh->update(['title' => 'Fresh Approved Piece']);
         $this->assertTrue($fresh->isJustApproved());
+        $this->assertTrue($fresh->showJustApprovedBadge());
         $this->assertSame('Approved today', $fresh->justApprovedLabel());
 
         $onCutoff = $this->createApprovedSubmission($advertiser);
@@ -568,11 +569,20 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNull($stale->fresh()->justApprovedLabel());
 
         $yesterday = $this->createApprovedSubmission($advertiser);
-        $yesterday->update(['evaluated_at' => now()->subDay()]);
+        $yesterday->update([
+            'title' => 'Yesterday Approved Piece',
+            'evaluated_at' => now()->subDay(),
+        ]);
+        $this->assertTrue($yesterday->fresh()->isJustApproved());
+        $this->assertFalse($yesterday->fresh()->showJustApprovedBadge());
         $this->assertSame('Approved yesterday', $yesterday->fresh()->justApprovedLabel());
 
         $threeDays = $this->createApprovedSubmission($advertiser);
-        $threeDays->update(['evaluated_at' => now()->subDays(3)]);
+        $threeDays->update([
+            'title' => 'Three Day Approved Piece',
+            'evaluated_at' => now()->subDays(3),
+        ]);
+        $this->assertFalse($threeDays->fresh()->showJustApprovedBadge());
         $this->assertSame('Approved 3 days ago', $threeDays->fresh()->justApprovedLabel());
 
         $needsFix = $this->createApprovedSubmission($advertiser);
@@ -619,6 +629,8 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Fresh Approved Piece')
             ->assertSee('Just approved')
             ->assertSee('Approved today')
+            ->assertSee('Yesterday Approved Piece')
+            ->assertSee('Approved yesterday')
             ->assertSee('Cutoff Approved Piece')
             ->assertSee('Stale Approved Piece')
             ->assertDontSee('Needs Fix Piece')
@@ -644,6 +656,14 @@ class ContentLibraryImprovementsTest extends TestCase
         $freshRow = substr($html, $freshStart, $freshEnd - $freshStart);
         $this->assertStringContainsString('Just approved', $freshRow);
         $this->assertStringContainsString('Approved today', $freshRow);
+
+        $yesterdayStart = strpos($html, 'Yesterday Approved Piece');
+        $this->assertNotFalse($yesterdayStart);
+        $yesterdayEnd = strpos($html, '</tr>', $yesterdayStart);
+        $this->assertNotFalse($yesterdayEnd);
+        $yesterdayRow = substr($html, $yesterdayStart, $yesterdayEnd - $yesterdayStart);
+        $this->assertStringContainsString('Approved yesterday', $yesterdayRow);
+        $this->assertStringNotContainsString('Just approved', $yesterdayRow);
 
         $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertMatchesRegularExpression(

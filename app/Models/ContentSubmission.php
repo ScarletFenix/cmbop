@@ -157,6 +157,17 @@ class ContentSubmission extends Model
         return $this->evaluated_at->copy()->startOfDay()->gte($cutoff);
     }
 
+    /**
+     * The “Just approved” chip is only for the same calendar day.
+     * Older rows keep the relative line (Approved yesterday / N days ago).
+     */
+    public function showJustApprovedBadge(): bool
+    {
+        return $this->isJustApproved()
+            && $this->evaluated_at !== null
+            && $this->evaluated_at->isSameDay(now());
+    }
+
     public function justApprovedLabel(): ?string
     {
         if (! $this->isJustApproved() || $this->evaluated_at === null) {
