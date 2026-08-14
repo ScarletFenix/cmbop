@@ -111,7 +111,11 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->get('/')
             ->assertOk()
             ->assertSee('"@type":"WebSite"', false)
-            ->assertSee('"@type":"Organization"', false);
+            ->assertSee('"@type":"Organization"', false)
+            ->assertSee('https://www.facebook.com/seolinkbuildings/', false)
+            ->assertSee('https://www.instagram.com/seolinkbuildings', false)
+            ->assertSee('https://x.com/seolinbuildings', false)
+            ->assertSee('https://www.youtube.com/@seolinkbuildingss', false);
     }
 
     public function test_faq_page_includes_faqpage_schema(): void

@@ -26,6 +26,8 @@ class AboutPageContentTest extends TestCase
             ->assertSee('knowsAbout', false)
             ->assertSee('16607074', false)
             ->assertSee('find-and-update.company-information.service.gov.uk/company/16607074', false)
+            ->assertSee('https://www.facebook.com/seolinkbuildings/', false)
+            ->assertSee('https://www.youtube.com/@seolinkbuildingss', false)
             ->assertSee(__('messages.about_page_europe_title'), false)
             ->assertSee(__('messages.about_page_proof_title'))
             ->assertSee(__('messages.about_page_proof_intro'))

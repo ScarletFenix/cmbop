@@ -134,6 +134,20 @@ footer.slb-footer .slb-footer-brand img {
   background: transparent;
 }
 
+.slb-social-icons {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.slb-social-icons__link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 /* —— Shared home section shell —— */
 .slb-section {
   position: relative;
