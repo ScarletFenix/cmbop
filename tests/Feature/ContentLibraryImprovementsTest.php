@@ -1219,6 +1219,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('lsapi_module', $htaccess);
         $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
         $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
+        $this->assertStringNotContainsString('Content-Security-Policy', $htaccess);
 
         $userIni = (string) file_get_contents(public_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
