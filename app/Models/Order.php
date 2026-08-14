@@ -13,6 +13,7 @@ class Order extends Model
         'user_id',
         'order_number',
         'reference_code',
+        'checkout_line_key',
         'stripe_session_id',
         'stripe_payment_intent_id',
         'stripe_response',

@@ -192,7 +192,12 @@ class StripeWebhookController extends Controller
             return;
         }
 
-        app(OrderPaymentService::class)->markOrdersFailedFromReference($referenceCode, $reason);
+        $userId = isset($metadata['user_id']) ? (int) $metadata['user_id'] : null;
+        app(OrderPaymentService::class)->markOrdersFailedFromReference(
+            $referenceCode,
+            $reason,
+            $userId && $userId > 0 ? $userId : null
+        );
     }
 
     private function handleOrderPaymentSession(object $session): void
@@ -271,7 +276,11 @@ class StripeWebhookController extends Controller
                 return;
             }
 
-            throw new \RuntimeException('No pending card orders for PaymentIntent ref '.$referenceCode);
+            $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $intent);
+
+            if ($newlyPaid->isEmpty()) {
+                throw new \RuntimeException('No pending card orders or checkout package found for PaymentIntent ref '.$referenceCode);
+            }
         }
 
         $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
