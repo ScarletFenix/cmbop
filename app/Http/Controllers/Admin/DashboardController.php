@@ -26,7 +26,14 @@ class DashboardController extends Controller
     public function getStatistics()
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->remember('statistics', fn () => $this->metrics->statistics())]);
+            $data = $this->remember('statistics', fn () => $this->metrics->statistics());
+            // Queue fields are also the nav badges (live). Overlay so a cached
+            // KPI payload cannot disagree with pending_deposits / needs_attention.
+            if ($this->cacheTtl() > 0) {
+                $data = array_merge($data, $this->metrics->queueCounts());
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard statistics error: '.$e->getMessage());
 
@@ -108,9 +115,10 @@ class DashboardController extends Controller
     public function getActionQueue()
     {
         try {
+            // Work list — same reason as queue-counts: do not freeze pending rows.
             return response()->json([
                 'success' => true,
-                ...$this->remember('action-queue', fn () => $this->metrics->actionQueue()),
+                ...$this->metrics->actionQueue(),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard action queue error: '.$e->getMessage());
@@ -124,11 +132,16 @@ class DashboardController extends Controller
      */
     private function remember(string $key, callable $callback): mixed
     {
-        $ttl = (int) config('dashboard.metrics_cache_seconds', 0);
+        $ttl = $this->cacheTtl();
         if ($ttl <= 0) {
             return $callback();
         }
 
         return Cache::remember('admin.dashboard.'.$key, $ttl, $callback);
+    }
+
+    private function cacheTtl(): int
+    {
+        return (int) config('dashboard.metrics_cache_seconds', 0);
     }
 }

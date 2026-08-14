@@ -611,5 +611,17 @@ class AdminDashboardTest extends TestCase
             ->getJson(route('admin.dashboard.queue-counts'))
             ->assertOk()
             ->assertJsonPath('pending_deposits', 1);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2)
+            ->assertJsonPath('data.pending_deposits', 1)
+            ->assertJsonPath('data.needs_attention', 1);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJsonPath('deposits.0.amount', 10);
     }
 }
