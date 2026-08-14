@@ -1156,7 +1156,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('enctype="multipart/form-data"', $html);
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
-        $this->assertStringContainsString("fd.set('file', file, file.name)", $js);
+        $this->assertStringContainsString('function postLibraryUpload', $js);
+        $this->assertStringContainsString('function librarySafeDocxFilename', $js);
+        $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
+        $this->assertStringContainsString("fd.set('file', file, safeName)", $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
         $this->assertStringContainsString('function resetLibraryUploadUi', $js);
@@ -1250,6 +1253,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
         $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
+        $this->assertStringContainsString('function postLibraryUpload', $js);
+        $this->assertStringContainsString('function librarySafeDocxFilename', $js);
+        $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
+        $this->assertStringContainsString('1536 * 1024', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
         $this->assertStringContainsString('X-Upload-Bytes', $js);
         $this->assertStringContainsString('X-Requested-With', $js);
@@ -1486,6 +1493,110 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonMissingPath('drafts.0.preview_html')
             ->assertJsonMissingPath('drafts.0.extracted_text');
+    }
+
+    public function test_library_upload_accepts_chunked_docx(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/chunk-src-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 80));
+        $bytes = (string) file_get_contents($path);
+        @unlink($path);
+        $this->assertGreaterThan(200, strlen($bytes));
+
+        $mid = (int) intdiv(strlen($bytes), 2);
+        $uploadId = '11111111-1111-4111-8111-111111111111';
+        $partOne = sys_get_temp_dir().'/chunk-a-'.uniqid('', true).'.docx';
+        $partTwo = sys_get_temp_dir().'/chunk-b-'.uniqid('', true).'.docx';
+        file_put_contents($partOne, substr($bytes, 0, $mid));
+        file_put_contents($partTwo, substr($bytes, $mid));
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($partOne, "Europe's long-tail article.docx", 'application/octet-stream', null, true),
+                'country' => 'ch',
+                'language' => 'de',
+                'title' => 'AUTODOC delivery',
+                'chunk_index' => 0,
+                'chunk_total' => 2,
+                'upload_id' => $uploadId,
+                'original_filename' => "letemps.ch How AUTODOC is solving Europe's long-tail delivery.docx",
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('chunk_received', true)
+            ->assertJsonPath('received', 1)
+            ->assertJsonPath('total', 2);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($partTwo, "Europe's long-tail article.docx", 'application/octet-stream', null, true),
+                'country' => 'ch',
+                'language' => 'de',
+                'title' => 'AUTODOC delivery',
+                'chunk_index' => 1,
+                'chunk_total' => 2,
+                'upload_id' => $uploadId,
+                'original_filename' => "letemps.ch How AUTODOC is solving Europe's long-tail delivery.docx",
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('chunk_received');
+
+        $this->assertDatabaseHas('content_submissions', [
+            'user_id' => $advertiser->id,
+            'title' => 'AUTODOC delivery',
+            'country' => 'ch',
+            'language' => 'de',
+        ]);
+
+        $stored = ContentSubmission::query()
+            ->where('user_id', $advertiser->id)
+            ->where('title', 'AUTODOC delivery')
+            ->first();
+        $this->assertNotNull($stored);
+        $this->assertSame('letemps.ch How AUTODOC is solving Europes long-tail delivery.docx', $stored->original_filename);
+
+        @unlink($partOne);
+        @unlink($partTwo);
+    }
+
+    public function test_safe_docx_filename_strips_apostrophes(): void
+    {
+        $service = app(ContentUploadService::class);
+        $this->assertSame(
+            'letemps.ch How AUTODOC is solving Europes long-tail delivery.docx',
+            $service->safeDocxFilename("letemps.ch How AUTODOC is solving Europe's long-tail delivery.docx")
+        );
+    }
+
+    public function test_stripped_5mb_upload_does_not_blame_the_10mb_cap(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->call(
+            'POST',
+            route('advertiser.content-library.upload', ['client_bytes' => 5400000]),
+            ['country' => 'ch', 'language' => 'de'],
+            [],
+            [],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+                'HTTP_X_UPLOAD_BYTES' => '5400000',
+                'CONTENT_LENGTH' => '5400000',
+            ]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('Please try again', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
     public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void

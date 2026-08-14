@@ -62,9 +62,11 @@ return Application::configure(basePath: dirname(__DIR__))
                 return null;
             }
 
+            [, $clientBytes] = $uploads->uploadByteHints($request);
+
             return response()->json([
                 'success' => false,
-                'message' => $uploads->phpSizeRejectedMessage(),
+                'message' => $uploads->phpSizeRejectedMessage(null, $clientBytes),
             ], 422);
         });
     })

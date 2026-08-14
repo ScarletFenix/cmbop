@@ -22,6 +22,12 @@ class ContentUploadService
     /** Hard article .docx cap (10 MB). Admin cannot raise this. */
     public const MAX_KILOBYTES = 10240;
 
+    /**
+     * Slice size for library uploads. Hostinger LiteSpeed often still drops a
+     * 5 MB body at the default 2M pipe even when .user.ini already says 64M.
+     */
+    public const CHUNK_KILOBYTES = 1536;
+
     /** Editor / draft HTML cap. Quill inflates markup; 500k rejected real 10 MB articles. */
     public const PREVIEW_HTML_MAX_CHARS = 8000000;
 
@@ -575,14 +581,18 @@ class ContentUploadService
      * PHP rejected the file before Laravel saw the bytes (UPLOAD_ERR_INI_SIZE /
      * FORM_SIZE / empty body after post_max_size).
      *
-     * Never blame the 10 MB article cap here. ini_get() can already read 64M
-     * from .user.ini while LiteSpeed still enforces 2M, and a 5 MB .docx then
-     * looks "over the 10 MB limit". The cap message is only for a measured
-     * file that is actually larger than 10 MB (JS + file.max + validateUpload).
+     * Never blame the 10 MB article cap when the browser already reported a
+     * file at or under that cap. ini_get() can read 64M from .user.ini while
+     * LiteSpeed still enforces 2M; a 5.4 MB .docx then looks "over 10 MB".
+     * The cap sentence is only when we do not know the client size.
      */
-    public function phpSizeRejectedMessage(?array $cfg = null): string
+    public function phpSizeRejectedMessage(?array $cfg = null, ?int $clientFileBytes = null): string
     {
         $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
+        $cap = self::MAX_KILOBYTES * 1024;
+        if ($clientFileBytes !== null && $clientFileBytes > 0 && $clientFileBytes <= $cap) {
+            return 'The article could not be uploaded. Please try again.';
+        }
 
         return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
     }
@@ -620,7 +630,7 @@ class ContentUploadService
     public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
     {
         if ($file instanceof UploadedFile) {
-            return $this->invalidUploadMessage($file, $cfg);
+            return $this->invalidUploadMessage($file, $cfg, $clientFileBytes);
         }
 
         if ($clientFileBytes !== null && $clientFileBytes > self::MAX_KILOBYTES * 1024) {
@@ -631,7 +641,7 @@ class ContentUploadService
 
         $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
         if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
-            return $this->phpSizeRejectedMessage($cfg);
+            return $this->phpSizeRejectedMessage($cfg, $clientFileBytes ?? $contentLengthBytes);
         }
 
         return null;
@@ -714,7 +724,7 @@ class ContentUploadService
      * PHP rejected the multipart file (size, tmp dir, partial, etc.) before we can parse it.
      * Laravel's default copy is "The file failed to upload."
      */
-    public function invalidUploadMessage(?UploadedFile $file, ?array $cfg = null): ?string
+    public function invalidUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $clientFileBytes = null): ?string
     {
         if (! $file instanceof UploadedFile || $file->isValid()) {
             return null;
@@ -728,8 +738,10 @@ class ContentUploadService
             'user_id' => auth()->id(),
         ]);
 
+        $knownBytes = $clientFileBytes ?: ($file->getSize() ?: null);
+
         return match ($file->getError()) {
-            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => $this->phpSizeRejectedMessage($cfg),
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => $this->phpSizeRejectedMessage($cfg, $knownBytes),
             UPLOAD_ERR_PARTIAL => 'The upload was interrupted. Please try again.',
             UPLOAD_ERR_NO_FILE => 'Drop a .docx or click the box to choose a file.',
             UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'The server could not save the upload. Please try again in a moment.',
@@ -783,5 +795,170 @@ class ContentUploadService
         }
 
         return null;
+    }
+
+    /**
+     * Accept one slice of a .docx when the host drops a 5 MB body at 2M.
+     *
+     * @return array{ok:true, complete:false, received:int, total:int}|array{ok:true, complete:true, file:UploadedFile}|array{ok:false, message:string}|null
+     */
+    public function receiveArticleChunk(Request $request, User $user): ?array
+    {
+        if (! $request->exists('chunk_index') && ! $request->exists('upload_id')) {
+            return null;
+        }
+
+        $index = (int) scalar_text($request->input('chunk_index'));
+        $total = (int) scalar_text($request->input('chunk_total'));
+        $uploadId = strtolower(trim(scalar_text($request->input('upload_id'))));
+        $file = $request->file('file');
+
+        if ($total < 2 || $total > 16 || $index < 0 || $index >= $total) {
+            return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+        }
+
+        if (! preg_match('/^[a-f0-9]{8}-[a-f0-9]{4}-[1-8][a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/', $uploadId)) {
+            return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+        }
+
+        if (! $file instanceof UploadedFile || ! $file->isValid()) {
+            return [
+                'ok' => false,
+                'message' => $this->invalidUploadMessage($file instanceof UploadedFile ? $file : null)
+                    ?? 'The article could not be uploaded. Please try again.',
+            ];
+        }
+
+        if ($file->getSize() > self::CHUNK_KILOBYTES * 1024) {
+            return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+        }
+
+        $this->purgeStaleArticleChunks();
+
+        $dir = $this->articleChunkDirectory((int) $user->id, $uploadId);
+        Storage::disk('local')->put($dir.'/'.$index.'.part', (string) file_get_contents($file->getRealPath()));
+
+        $received = 0;
+        for ($i = 0; $i < $total; $i++) {
+            if (Storage::disk('local')->exists($dir.'/'.$i.'.part')) {
+                $received++;
+            }
+        }
+
+        if ($received < $total) {
+            return ['ok' => true, 'complete' => false, 'received' => $received, 'total' => $total];
+        }
+
+        return $this->assembleArticleChunks($user, $uploadId, $total, scalar_text($request->input('original_filename')));
+    }
+
+    private function articleChunkDirectory(int $userId, string $uploadId): string
+    {
+        return 'article-chunks/'.$userId.'/'.$uploadId;
+    }
+
+    /**
+     * @return array{ok:true, complete:true, file:UploadedFile}|array{ok:false, message:string}
+     */
+    private function assembleArticleChunks(User $user, string $uploadId, int $total, string $originalName): array
+    {
+        $dir = $this->articleChunkDirectory((int) $user->id, $uploadId);
+        $tmp = tempnam(sys_get_temp_dir(), 'libdocx');
+        if ($tmp === false) {
+            Storage::disk('local')->deleteDirectory($dir);
+
+            return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+        }
+
+        $handle = fopen($tmp, 'wb');
+        if ($handle === false) {
+            @unlink($tmp);
+            Storage::disk('local')->deleteDirectory($dir);
+
+            return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+        }
+
+        $bytes = 0;
+        for ($i = 0; $i < $total; $i++) {
+            $part = $dir.'/'.$i.'.part';
+            if (! Storage::disk('local')->exists($part)) {
+                fclose($handle);
+                @unlink($tmp);
+                Storage::disk('local')->deleteDirectory($dir);
+
+                return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+            }
+            $chunk = Storage::disk('local')->get($part);
+            $bytes += strlen((string) $chunk);
+            if ($bytes > self::MAX_KILOBYTES * 1024) {
+                fclose($handle);
+                @unlink($tmp);
+                Storage::disk('local')->deleteDirectory($dir);
+
+                return ['ok' => false, 'message' => 'That file is over the 10 MB limit.'];
+            }
+            fwrite($handle, (string) $chunk);
+        }
+        fclose($handle);
+        Storage::disk('local')->deleteDirectory($dir);
+
+        $head = (string) @file_get_contents($tmp, false, null, 0, 2);
+        if ($head !== 'PK') {
+            @unlink($tmp);
+
+            return ['ok' => false, 'message' => 'This does not look like a valid .docx file. Please re-save as Microsoft Word (.docx) and try again.'];
+        }
+
+        $safeName = $this->safeDocxFilename($originalName);
+
+        return [
+            'ok' => true,
+            'complete' => true,
+            'file' => new UploadedFile(
+                $tmp,
+                $safeName,
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                UPLOAD_ERR_OK,
+                true
+            ),
+        ];
+    }
+
+    public function safeDocxFilename(string $name): string
+    {
+        $base = preg_replace('/\.docx$/i', '', $name) ?? '';
+        $base = str_replace(["'", '’', '`'], '', $base);
+        $base = preg_replace('/[^\w.\- ]+/u', '', $base) ?? '';
+        $base = trim(preg_replace('/\s+/', ' ', $base) ?? '');
+        $base = substr($base, 0, 80);
+        if ($base === '') {
+            $base = 'article';
+        }
+
+        return $base.'.docx';
+    }
+
+    private function purgeStaleArticleChunks(): void
+    {
+        $root = 'article-chunks';
+        if (! Storage::disk('local')->exists($root)) {
+            return;
+        }
+
+        try {
+            $cutoff = now()->subHours(2)->getTimestamp();
+            foreach (Storage::disk('local')->directories($root) as $userDir) {
+                foreach (Storage::disk('local')->directories($userDir) as $uploadDir) {
+                    $stamp = Storage::disk('local')->lastModified($uploadDir);
+                    if ($stamp !== false && $stamp < $cutoff) {
+                        Storage::disk('local')->deleteDirectory($uploadDir);
+                    }
+                }
+            }
+        } catch (\Throwable $e) {
+            Log::notice('Could not purge stale article upload chunks', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

@@ -38,6 +38,9 @@ class PhpIniSizeTest extends TestCase
         $this->assertStringNotContainsString('server PHP still allows only', $message);
         $this->assertStringContainsString('The article could not be uploaded', $message);
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+        $underCap = $service->phpSizeRejectedMessage($cfg, 5400000);
+        $this->assertStringContainsString('Please try again', $underCap);
+        $this->assertStringNotContainsString('under 10 MB', $underCap);
         $this->assertStringContainsString('JPG', $service->phpImageRejectedMessage());
         $this->assertStringNotContainsString('.docx', $service->phpImageRejectedMessage());
         $uploaded = $service->uploadValidationMessages($cfg)['file.uploaded'] ?? '';
