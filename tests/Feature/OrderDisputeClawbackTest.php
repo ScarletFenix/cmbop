@@ -12,6 +12,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\Wallet\WalletLedgerService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -389,6 +390,44 @@ class OrderDisputeClawbackTest extends TestCase
         $order->refresh();
         $this->assertSame('completed', $order->status);
         $this->assertNotNull($order->completed_at);
+    }
+
+    public function test_uphold_restores_purchase_bonus_as_spend_only(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site);
+        $this->publisherWallet($publisher, 100);
+        $advWallet = $this->advertiserWallet($advertiser, 10);
+
+        app(WalletLedgerService::class)->recordPurchase(
+            $advWallet,
+            115,
+            20,
+            $order,
+            $order->reference_code
+        );
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'The live article was deleted two days after completion.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed 404. Refund must not turn promo credit into cash.']
+        )->assertOk()->assertJson(['success' => true]);
+
+        $advWallet->refresh();
+        $this->assertEqualsWithDelta(125.0, (float) $advWallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $advWallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(105.0, $advWallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, $advWallet->lockedBonusBalance(), 0.01);
     }
 
     public function test_admin_can_clear_wallet_debt(): void
