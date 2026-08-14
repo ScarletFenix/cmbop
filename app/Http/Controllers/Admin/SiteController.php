@@ -693,8 +693,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
-        $rawSiteUrl = $request->input('site_url', $request->input('siteUrl', ''));
-        $rawExampleUrl = $request->input('example_url', $request->input('exampleUrl', ''));
+        $rawSiteUrl = $this->firstScalarString($request->input('site_url', $request->input('siteUrl', '')));
+        $rawExampleUrl = $this->firstScalarString($request->input('example_url', $request->input('exampleUrl', '')));
         $urlErrors = $this->nonStringUrlErrors([
             'site_url' => $rawSiteUrl,
             'example_url' => $rawExampleUrl,
@@ -1490,8 +1490,8 @@ class SiteController extends Controller
                 $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
             }
         }
-        if ($metrics !== []) {
-            $request->merge($metrics);
+        if ($metricMerge !== []) {
+            $request->merge($metricMerge);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1674,7 +1674,7 @@ class SiteController extends Controller
             }
         }
 
-        if ($metrics !== []) {
+        if ($metricMerge !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();
@@ -1788,16 +1788,6 @@ class SiteController extends Controller
         if ($canFixListing) {
             $this->mergeNormalizedUrlOrFail($request, 'site_url', 'siteUrl');
             $this->mergeNormalizedUrlOrFail($request, 'example_url', 'exampleUrl', nullable: true);
-        }
-
-        $metricMerge = [];
-        foreach (['da', 'dr', 'traffic'] as $field) {
-            if ($request->exists($field)) {
-                $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
-            }
-        }
-        if ($metricMerge !== []) {
-            $request->merge($metricMerge);
         }
 
         // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
@@ -2275,6 +2265,15 @@ class SiteController extends Controller
      * @param  array<string, mixed>  $values
      * @return array<string, string>
      */
+    private function firstScalarString(mixed $raw): mixed
+    {
+        if (is_array($raw)) {
+            $raw = reset($raw);
+        }
+
+        return $raw;
+    }
+
     private function nonStringUrlErrors(array $values): array
     {
         $errors = [];
