@@ -13,6 +13,7 @@ use App\Services\ContentUpload\ContentUploadService;
 use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -37,6 +38,7 @@ class ContentSubmissionController extends Controller
                 'preferred_extension' => $cfg['preferred_extension'] ?? 'docx',
                 'allowed_extensions' => $cfg['allowed_extensions'] ?? ['docx'],
                 'max_kilobytes' => $this->uploads->effectiveMaxKilobytes($cfg),
+                'php_max_kilobytes' => $this->uploads->phpUploadMaxKilobytes(),
                 'scheduling_enabled' => (bool) ($cfg['scheduling']['enabled'] ?? true),
                 'max_schedule_months' => (int) ($cfg['scheduling']['max_months'] ?? 3),
                 'max_schedule_at' => $this->scheduler->maxScheduleAt()->toIso8601String(),
@@ -67,7 +69,11 @@ class ContentSubmissionController extends Controller
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
-        if ($message = $this->uploads->invalidUploadMessage($request->file('file'), $cfg)) {
+        if ($message = $this->uploads->rejectedUploadMessage(
+            $request->file('file'),
+            $cfg,
+            $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null,
+        )) {
             return response()->json([
                 'success' => false,
                 'message' => $message,
@@ -224,6 +230,24 @@ class ContentSubmissionController extends Controller
                 'success' => false,
                 'message' => 'Content uploads are temporarily turned off.',
             ], 403);
+        }
+
+        $image = $request->file('image');
+        if ($image instanceof UploadedFile && ! $image->isValid()) {
+            return response()->json([
+                'success' => false,
+                'message' => $this->uploads->phpSizeRejectedMessage(),
+            ], 422);
+        }
+        if ($message = $this->uploads->rejectedUploadMessage(
+            null,
+            null,
+            $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null,
+        )) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+            ], 422);
         }
 
         $request->validate([

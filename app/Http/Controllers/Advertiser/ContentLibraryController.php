@@ -43,6 +43,7 @@ class ContentLibraryController extends Controller
     {
         $cfg = $this->uploads->effectiveConfig();
         $cfg['max_kilobytes'] = $this->uploads->effectiveMaxKilobytes($cfg);
+        $cfg['php_max_kilobytes'] = $this->uploads->phpUploadMaxKilobytes();
         // Default to Approved (available) — the All chip was removed from the UI.
         $status = strtolower(trim((string) $request->query('status', 'approved')));
         $availability = strtolower(trim((string) $request->query('availability', 'available')));
@@ -367,7 +368,11 @@ class ContentLibraryController extends Controller
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
-        if ($message = $this->uploads->invalidUploadMessage($request->file('file'), $cfg)) {
+        if ($message = $this->uploads->rejectedUploadMessage(
+            $request->file('file'),
+            $cfg,
+            $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null,
+        )) {
             return response()->json([
                 'success' => false,
                 'title' => 'Upload failed',

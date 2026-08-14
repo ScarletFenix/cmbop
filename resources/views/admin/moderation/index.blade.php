@@ -105,7 +105,19 @@
                             <label class="form-label">Max upload size (KB)</label>
                             <input type="number" name="max_kilobytes" class="form-control" min="10240" max="51200"
                                    value="{{ old_text('max_kilobytes', $uploadCfg['max_kilobytes'] ?? 10240) }}">
-                            <div class="form-text">Advertiser article uploads. Minimum 10 MB (10240 KB).</div>
+                            <div class="form-text">Advertiser article uploads. Minimum 10 MB (10240 KB). You can raise this to 20–50 MB (up to 51200 KB).</div>
+                            @if($phpBlocksArticleUploads ?? false)
+                                <div class="alert alert-warning py-2 px-3 small mt-2 mb-0" role="status">
+                                    PHP still allows only {{ max(1, (int) round(($phpUploadMaxKb ?? 0) / 1024)) }} MB
+                                    (<code>upload_max_filesize</code> / <code>post_max_size</code>),
+                                    so a 5 MB .docx is rejected even though the article cap is
+                                    {{ max(1, (int) round(($articleUploadMaxKb ?? 10240) / 1024)) }} MB.
+                                    In Hostinger hPanel → Advanced → PHP Configuration set
+                                    <code>upload_max_filesize</code> to 64M and <code>post_max_size</code> to 64M,
+                                    then wait a minute. <code>public/.user.ini</code> already asks for those values;
+                                    Hostinger often ignores them until they are set in hPanel.
+                                </div>
+                            @endif
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Document retention (months)</label>

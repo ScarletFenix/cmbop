@@ -186,17 +186,32 @@ function showDropzoneFile(file) {
     zone?.classList.remove('is-error', 'is-dragover');
 }
 
+function libraryFileTooLargeMessage(file) {
+    if (!file) return '';
+    const appMaxKb = Math.max(10240, Math.min(51200, Number(boot.maxKilobytes || 10240)));
+    const phpMaxKb = Number(boot.phpMaxKilobytes || 0);
+    const appMb = Math.max(1, Math.round(appMaxKb / 1024));
+    if (phpMaxKb > 0 && phpMaxKb < appMaxKb && file.size > phpMaxKb * 1024) {
+        const phpMb = Math.max(1, Math.round(phpMaxKb / 1024));
+        return 'This file is under the ' + appMb + ' MB article limit, but the server PHP upload limit is ' + phpMb + ' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
+    }
+    if (file.size > appMaxKb * 1024) {
+        return 'That file is over the ' + appMb + ' MB limit.';
+    }
+    return '';
+}
+
 function assignLibraryFile(file, feedback) {
     const input = document.getElementById('libraryFileInput');
-    const maxKb = Number(boot.maxKilobytes || 10240);
     if (!file || !input) return false;
     if (!/\.docx$/i.test(file.name)) {
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
-    if (file.size > maxKb * 1024) {
-        setFeedbackHtml(feedback, false, 'That file is over the ' + Math.max(1, Math.round(maxKb / 1024)) + ' MB limit.');
+    const tooLarge = libraryFileTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
@@ -1643,6 +1658,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     }
     if (!/\.docx$/i.test(file.name)) {
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
+        return;
+    }
+    const tooLarge = libraryFileTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
         return;
     }
     const langSelect = document.getElementById('libraryLanguage');

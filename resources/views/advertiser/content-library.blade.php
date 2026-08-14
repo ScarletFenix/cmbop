@@ -125,6 +125,14 @@
                     Opens in the editor next.
                     Image rights are asked after we read the file, and only if it contains pictures.
                 </x-ui.callout>
+                @if(($uploadCfg['php_max_kilobytes'] ?? 0) > 0 && ($uploadCfg['php_max_kilobytes'] ?? 0) < $uploadMaxKb)
+                    <div class="alert alert-warning py-2 px-3 small mb-3" role="status" id="libraryPhpUploadLimitWarn">
+                        The article cap is {{ $uploadMaxMb }} MB, but server PHP still allows only
+                        {{ max(1, (int) round($uploadCfg['php_max_kilobytes'] / 1024)) }} MB.
+                        A 5 MB .docx will be rejected until hosting PHP settings set
+                        <code>upload_max_filesize</code> to 64M and <code>post_max_size</code> to 64M.
+                    </div>
+                @endif
 
                 <div class="mb-3">
                     <label class="library-dropzone" id="libraryDropzone" for="libraryFileInput">
@@ -301,6 +309,7 @@ window.ContentLibraryBoot = {
     libraryResultsUrl: @json(route('advertiser.content-library.results', absolute: false)),
     editSubmission: @json($editSubmissionBoot ?? null),
     maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 10240)),
+    phpMaxKilobytes: @json((int) ($uploadCfg['php_max_kilobytes'] ?? 0)),
 };
 </script>
 <script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
