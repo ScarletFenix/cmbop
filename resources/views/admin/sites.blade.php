@@ -307,9 +307,11 @@
 
 
 
+<script src="{{ asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
 <script>
 const STAFF_BASE = @json(staff_base_path());
 const SITE_IMAGE_MAX_KB = {{ (int) \App\Support\SiteImageUpload::maxKilobytes() }};
+const SITE_IMAGE_PHP_MAX_KB = {{ (int) \App\Support\SiteImageUpload::phpUploadMaxKilobytes() }};
 const CSRF_TOKEN = @json(csrf_token());
 const CAN_DELETE_ANY_SITE = @json(auth()->user()->isAdmin());
 const CAN_DELETE_PENDING_SITES = @json(auth()->user()->isAdmin() || auth()->user()->isMarketing());
@@ -619,15 +621,6 @@ function editSiteWithImage(siteId) {
         allowEscapeKey: () => !Swal.isLoading(),
         html: `
             <div style="text-align: left;">
-                <label style="font-weight:600; margin-bottom:5px; display:block;">Site Image (Upload)</label>
-                <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp">
-                <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
-                    ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
-                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" data-media-fallback="${escapeHtml(siteMediaUrl(site.site_image) || '')}" onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">`
-                        : '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>'}
-                </div>
-                <small class="text-muted" style="display:block; margin-top:5px; margin-bottom:12px;">Desktop-size preview (16:10). Leave empty to keep the current image.</small>
-
                 <label style="font-weight:600; margin-bottom:5px; display:block;">Site Name</label>
                 <input id="swal-site_name" class="swal2-input" value="${escapeHtml(site.site_name ?? '')}" placeholder="Site Name">
                 
@@ -642,15 +635,44 @@ function editSiteWithImage(siteId) {
                 
                 <label style="font-weight:600; margin-bottom:5px; margin-top:10px; display:block;">Traffic (monthly visitors)</label>
                 <input id="swal-traffic" class="swal2-input" type="number" value="${site.traffic ?? ''}" placeholder="e.g. 1500000" min="0" max="4294967295" step="1" inputmode="numeric">
+
+                <label style="font-weight:600; margin-bottom:5px; margin-top:14px; display:block;">Site Image (Upload)</label>
+                <input type="file" id="swal-site_image" class="form-control" accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp" data-max-kb="${SITE_IMAGE_MAX_KB}" data-php-max-kb="${SITE_IMAGE_PHP_MAX_KB}">
+                <div id="imagePreviewContainer" class="site-image-desktop-preview ${(site.image_url || site.preview_full_url || site.site_image) ? '' : 'is-empty'}">
+                    ${(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))
+                        ? `<img id="imagePreview" src="${escapeHtml(site.image_url || site.preview_full_url || siteStorageUrl(site.site_image))}" alt="Current site image" data-media-fallback="${escapeHtml(siteMediaUrl(site.site_image) || '')}" onerror="if(!this.dataset.triedMedia&&this.dataset.mediaFallback){this.dataset.triedMedia='1';this.src=this.dataset.mediaFallback;}else{this.parentElement.classList.add('is-empty');this.remove();}">`
+                        : '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>'}
+                </div>
+                <small class="text-muted" style="display:block; margin-top:5px; margin-bottom:12px;">Desktop-size preview (16:10). Hover to zoom. JPEG/PNG/GIF/WebP up to ${Math.floor(SITE_IMAGE_MAX_KB / 1024)} MB. Leave empty to keep the current image.</small>
             </div>
         `,
         didOpen: () => {
-            // Preview new image when selected
             const fileInput = document.getElementById('swal-site_image');
             const previewContainer = document.getElementById('imagePreviewContainer');
-            
+            const existingSrc = site.image_url || site.preview_full_url || siteStorageUrl(site.site_image);
+            const emptyHtml = '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>';
+
+            if (window.SiteImageUpload) {
+                window.SiteImageUpload.bindSiteImageInput({
+                    input: fileInput,
+                    preview: previewContainer,
+                    maxKb: SITE_IMAGE_MAX_KB,
+                    phpMaxKb: SITE_IMAGE_PHP_MAX_KB,
+                    existingSrc: existingSrc || '',
+                    emptyHtml: emptyHtml,
+                    onError: function (msg) {
+                        Swal.showValidationMessage(msg);
+                    },
+                    onReady: function (file) {
+                        if (file && typeof Swal.resetValidationMessage === 'function') {
+                            Swal.resetValidationMessage();
+                        }
+                    },
+                });
+                return;
+            }
+
             if (fileInput && previewContainer) {
-                const existingSrc = site.image_url || site.preview_full_url || siteStorageUrl(site.site_image);
                 fileInput.addEventListener('change', function() {
                     const file = this.files[0];
                     if (file) {
@@ -673,7 +695,7 @@ function editSiteWithImage(siteId) {
                         previewContainer.innerHTML = `<img src="${existingSrc}" alt="Current site image">`;
                     } else {
                         previewContainer.classList.add('is-empty');
-                        previewContainer.innerHTML = '<span>No image uploaded — pick a desktop screenshot (16:10, JPEG/PNG/WebP)</span>';
+                        previewContainer.innerHTML = emptyHtml;
                     }
                 });
             }
@@ -703,7 +725,17 @@ function editSiteWithImage(siteId) {
 
             // Upload first when a new file is chosen (persists even before metrics update).
             if (file) {
-                if (file.size > SITE_IMAGE_MAX_KB * 1024) {
+                if (window.SiteImageUpload) {
+                    const prepared = await window.SiteImageUpload.prepareSiteImage(file, SITE_IMAGE_PHP_MAX_KB);
+                    if (prepared.error) {
+                        Swal.showValidationMessage(prepared.error);
+                        return false;
+                    }
+                    if (prepared.file) {
+                        file = prepared.file;
+                        window.SiteImageUpload.assignInputFile(fileInput, file);
+                    }
+                } else if (file.size > SITE_IMAGE_MAX_KB * 1024) {
                     Swal.showValidationMessage('Site image must be under ' + Math.floor(SITE_IMAGE_MAX_KB / 1024) + ' MB');
                     return false;
                 }
@@ -1366,7 +1398,8 @@ function hydrateSiteDetailImages(scope) {
 
 function initSitePreviewZoom(root) {
     const scope = root || document;
-    if (!window.matchMedia || window.matchMedia('(hover: none)').matches) return;
+    if (window.SiteImageUpload && !window.SiteImageUpload.canHoverZoom()) return;
+    if (!window.SiteImageUpload && window.matchMedia && !window.matchMedia('(any-hover: hover)').matches && !window.matchMedia('(hover: hover) and (pointer: fine)').matches) return;
 
     let pop = document.getElementById('sitePreviewZoomPop');
     if (!pop) {
