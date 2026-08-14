@@ -17,6 +17,16 @@ const libraryEditSubmission = boot.editSubmission || null;
 const libraryIndexUrl = boot.libraryIndexUrl || '';
 const libraryResultsUrl = boot.libraryResultsUrl || '';
 
+function librarySameOriginPath(url, fallback) {
+    if (!url) return fallback || '';
+    try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.pathname + (parsed.search || '');
+    } catch (err) {
+        return fallback || '';
+    }
+}
+
 let articleQuill = null;
 let articleEditorSubmissionId = null;
 let articleEditorDetectedLinks = [];
@@ -310,7 +320,7 @@ function libraryResultMessage(submission, fallback, ok) {
 }
 
 function libraryDestinationUrl(submission) {
-    const url = new URL(libraryIndexUrl || window.location.pathname, window.location.origin);
+    const url = new URL(librarySameOriginPath(libraryIndexUrl, window.location.pathname), window.location.origin);
     const chip = libraryChipParams(submission);
     url.search = '';
     url.searchParams.set('status', chip.status);
@@ -1752,20 +1762,36 @@ function syncLibrarySearchInputFromParams(params) {
     if (input.value !== next) input.value = next;
 }
 
+function syncLibraryFiltersFromParams(params) {
+    const form = libraryFilterForm();
+    const setNamed = function (name, value) {
+        const el = form ? form.querySelector('[name="' + name + '"]') : null;
+        if (el && el.value !== value) el.value = value;
+    };
+    syncLibrarySearchInputFromParams(params);
+    setNamed('q', params.get('q') || '');
+    setNamed('status', params.get('status') || 'approved');
+    setNamed('availability', params.get('availability') || 'available');
+    setNamed('country', params.get('country') || 'all');
+    setNamed('language', params.get('language') || 'all');
+}
+
 let libraryResultsAbort = null;
 let libraryResultsSeq = 0;
 
 function fetchLibraryResults(params, options) {
     const opts = options || {};
     const region = document.getElementById('libraryLiveRegion');
-    const resultsUrl = libraryResultsUrl || (libraryIndexUrl ? libraryIndexUrl.replace(/\/?$/, '/') + 'results' : '');
+    const indexPath = librarySameOriginPath(libraryIndexUrl, window.location.pathname);
+    const resultsUrl = librarySameOriginPath(libraryResultsUrl, '')
+        || (indexPath ? indexPath.replace(/\/?$/, '/') + 'results' : '');
     if (!region || !resultsUrl) return false;
 
     const query = new URLSearchParams(params);
     if (opts.resetPage) query.delete('page');
 
     const href = resultsUrl + (query.toString() ? '?' + query.toString() : '');
-    const pageHref = (libraryIndexUrl || window.location.pathname)
+    const pageHref = (indexPath || window.location.pathname)
         + (query.toString() ? '?' + query.toString() : '');
 
     if (libraryResultsAbort) {
@@ -1789,10 +1815,14 @@ function fetchLibraryResults(params, options) {
         region.innerHTML = html;
         syncLibraryResetVisibility(query);
         const historyMode = opts.historyMode || 'replace';
-        if (historyMode === 'push') {
-            window.history.pushState({ libraryLive: 1 }, '', pageHref);
-        } else if (historyMode !== 'none') {
-            window.history.replaceState({ libraryLive: 1 }, '', pageHref);
+        try {
+            if (historyMode === 'push') {
+                window.history.pushState({ libraryLive: 1 }, '', pageHref);
+            } else if (historyMode !== 'none') {
+                window.history.replaceState({ libraryLive: 1 }, '', pageHref);
+            }
+        } catch (err) {
+            console.error('Library history update failed', err);
         }
         if (opts.keepFocus) {
             const input = document.getElementById('librarySearchInput');
@@ -1868,18 +1898,13 @@ function bootLibraryLiveSearch() {
         } catch (err) {
             return;
         }
-        syncLibrarySearchInputFromParams(params);
+        syncLibraryFiltersFromParams(params);
         fetchLibraryResults(params, { historyMode: 'push', resetPage: false, keepFocus: false });
     });
 
     window.addEventListener('popstate', function () {
         const params = new URLSearchParams(window.location.search);
-        syncLibrarySearchInputFromParams(params);
-        const formEl = libraryFilterForm();
-        if (formEl) {
-            const q = formEl.querySelector('[name="q"]');
-            if (q) q.value = params.get('q') || '';
-        }
+        syncLibraryFiltersFromParams(params);
         fetchLibraryResults(params, { historyMode: 'none', resetPage: false, keepFocus: false });
     });
 }

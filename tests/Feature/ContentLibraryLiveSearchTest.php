@@ -52,14 +52,28 @@ class ContentLibraryLiveSearchTest extends TestCase
     {
         $advertiser = $this->advertiser();
 
-        $this->actingAs($advertiser)
+        $html = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library'))
             ->assertOk()
             ->assertSee('for="librarySearchInput">Search</label>', false)
             ->assertSee('id="librarySearchClear"', false)
             ->assertSee('id="librarySearchStatus"', false)
             ->assertSee('id="libraryLiveRegion"', false)
-            ->assertDontSee('data-slb-live-search="form"', false);
+            ->assertDontSee('data-slb-live-search="form"', false)
+            ->getContent();
+        $this->assertTrue(
+            str_contains($html, 'libraryResultsUrl: "/advertiser/content-library/results"')
+            || str_contains($html, 'libraryResultsUrl: "\/advertiser\/content-library\/results"'),
+            'library results URL should be a same-origin relative path'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/libraryResultsUrl:\s*["\']https?:/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/libraryIndexUrl:\s*["\']https?:/',
+            $html
+        );
     }
 
     public function test_word_and_requires_every_token_on_title_or_filename(): void

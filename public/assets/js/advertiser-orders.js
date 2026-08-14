@@ -803,7 +803,8 @@ function bootAdvertiserOrdersPage() {
                     </tr>
                 `;
                 updateResultsCount(null);
-                document.getElementById('paginationNav').innerHTML = '';
+                const emptyNav = document.getElementById('paginationNav');
+                if (emptyNav) emptyNav.innerHTML = '';
                 updateNeedsActionBanner(0);
                 setOrdersSearchStatus(data.message || 'No orders found');
                 return;
@@ -826,7 +827,8 @@ function bootAdvertiserOrdersPage() {
                 </tr>
             `;
             updateResultsCount(null);
-            document.getElementById('paginationNav').innerHTML = '';
+            const failNav = document.getElementById('paginationNav');
+            if (failNav) failNav.innerHTML = '';
             setOrdersSearchStatus('Search failed');
             document.getElementById('retryOrdersBtn')?.addEventListener('click', () => fetchOrders(currentPage));
         })
@@ -1068,7 +1070,8 @@ function bootAdvertiserOrdersPage() {
                 });
             }
             updateResultsCount(null);
-            document.getElementById('paginationNav').innerHTML = '';
+            const emptyListNav = document.getElementById('paginationNav');
+            if (emptyListNav) emptyListNav.innerHTML = '';
             return;
         }
 

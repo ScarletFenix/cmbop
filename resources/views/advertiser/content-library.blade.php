@@ -297,8 +297,8 @@ window.ContentLibraryBoot = {
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
     uploadUrl: @json(route('advertiser.content-library.upload')),
-    libraryIndexUrl: @json(route('advertiser.content-library')),
-    libraryResultsUrl: @json(route('advertiser.content-library.results')),
+    libraryIndexUrl: @json(route('advertiser.content-library', absolute: false)),
+    libraryResultsUrl: @json(route('advertiser.content-library.results', absolute: false)),
     editSubmission: @json($editSubmissionBoot ?? null),
     maxKilobytes: @json((int) ($uploadCfg['max_kilobytes'] ?? 10240)),
 };
