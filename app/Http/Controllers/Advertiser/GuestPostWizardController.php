@@ -326,7 +326,7 @@ class GuestPostWizardController extends Controller
     private function nicheCategories(): array
     {
         $fromDb = Site::query()
-            ->where('active', 1)
+            ->catalogVisible()
             ->whereNotNull('category')
             ->where('category', '!=', '')
             ->pluck('category')

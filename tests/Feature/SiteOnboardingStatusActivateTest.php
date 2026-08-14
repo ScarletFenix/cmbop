@@ -58,7 +58,7 @@ class SiteOnboardingStatusActivateTest extends TestCase
         ]);
     }
 
-    public function test_admin_activate_clears_awaiting_details_to_ready_for_review(): void
+    public function test_admin_activate_is_blocked_while_awaiting_details(): void
     {
         $admin = $this->userWithRole('admin');
         $publisher = $this->userWithRole('publisher');
@@ -68,19 +68,15 @@ class SiteOnboardingStatusActivateTest extends TestCase
 
         $this->actingAs($admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $site->refresh();
-        $this->assertTrue((bool) $site->active);
-        $this->assertFalse($site->awaitsPublisherDetails());
-        $this->assertTrue(
-            $site->onboarding_status === Site::ONBOARDING_READY_FOR_REVIEW
-            || $site->onboarding_status === null
-        );
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
     }
 
-    public function test_marketer_activate_clears_awaiting_details(): void
+    public function test_marketer_activate_is_blocked_while_awaiting_details(): void
     {
         $marketer = $this->userWithRole('marketing');
         $publisher = $this->userWithRole('publisher');
@@ -88,11 +84,11 @@ class SiteOnboardingStatusActivateTest extends TestCase
 
         $this->actingAs($marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $site->refresh();
-        $this->assertTrue((bool) $site->active);
-        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
     }
 }

@@ -431,6 +431,8 @@ class SiteController extends Controller
                 : null,
             'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'archived' => $site->isArchived(),
+            'can_activate' => $site->canBeActivated(),
+            'activate_block_reason' => $site->activationBlockReason(),
             'orders_count' => $site->orderItemsCount(),
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
@@ -1764,21 +1766,13 @@ class SiteController extends Controller
             // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
 
-            if ($activating && $site->isPendingPublisherAcceptance()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This site is waiting for the publisher to accept it into My Sites.',
-                ], 422);
-            }
-
-            // Heal complete drafts; staff activate also clears incomplete awaiting_details
-            // so marketing can finish the same flow as admin from Sites Management.
             if ($activating) {
-                $site->promoteFromAwaitingDetailsIfComplete();
-                $site->refresh();
-                if ($site->awaitsPublisherDetails()) {
-                    $site->clearAwaitingDetailsForAdmin();
-                    $site->refresh();
+                $block = $site->activationBlockReason();
+                if ($block !== null) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $block,
+                    ], 422);
                 }
             }
 
@@ -1821,15 +1815,9 @@ class SiteController extends Controller
             $status = $site->active ? 'activated' : 'deactivated';
             $notifyReason = $activating ? null : $reason;
             $belowQualityBar = $activating && ! $site->hasGoodMetrics();
-            $missingMarketWarning = null;
-            if ($activating && ! $site->hasMarketplaceCountry()) {
-                $missingMarketWarning = 'Activated without a marketplace country — this listing will not appear in country filters. Edit the site to set a country.';
-            }
-            $qualityWarning = $belowQualityBar
+            $warning = $belowQualityBar
                 ? 'Activated below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Listing is live; consider updating metrics before promoting it.'
                 : null;
-            // Prefer the missing-market warning when both apply; quality is still flagged via below_quality_bar.
-            $warning = $missingMarketWarning ?? $qualityWarning;
 
             try {
                 $publisher = $site->publisher;
@@ -1851,7 +1839,7 @@ class SiteController extends Controller
                 'active' => (bool) $site->active,
                 'reason' => $notifyReason,
                 'warning' => $warning,
-                'missing_market' => $missingMarketWarning !== null,
+                'missing_market' => false,
                 'below_quality_bar' => $belowQualityBar,
             ]);
         } catch (ValidationException $e) {

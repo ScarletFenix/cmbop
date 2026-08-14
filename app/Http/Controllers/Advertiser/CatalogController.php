@@ -338,7 +338,7 @@ class CatalogController extends Controller
         }
 
         $query = Site::query()
-            ->where('active', 1)
+            ->catalogVisible()
             ->where('bulk_discount_enabled', 1)
             ->whereNotNull('bulk_discount_percent');
 
@@ -442,7 +442,7 @@ class CatalogController extends Controller
         $favorites = UserFavorite::where('user_id', $userId)->pluck('site_id')->toArray();
         $blacklist = UserBlacklist::where('user_id', $userId)->pluck('site_id')->toArray();
 
-        $query = Site::where('active', 1);
+        $query = Site::query()->catalogVisible();
 
         // Free-text search: name / category / domain (always open for advertisers).
         // Hide mode only masks how rows render — it does not limit domain matches.
@@ -1234,7 +1234,7 @@ class CatalogController extends Controller
             ]);
         }
 
-        $query = Site::query()->where('active', 1);
+        $query = Site::query()->catalogVisible();
         $hostNeedle = $this->catalogSearchHostNeedle($text);
         $catalogSearch->applyTextConstraints(
             $query,
@@ -1371,7 +1371,7 @@ class CatalogController extends Controller
             $siteIds = collect($incoming)->pluck('id')->filter()->unique()->values();
             $sites = $siteIds->isEmpty()
                 ? collect()
-                : Site::query()->notArchived()->whereIn('id', $siteIds)->where('active', 1)->get()->keyBy('id');
+                : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
 
             $merged = [];
             foreach ($incoming as $row) {
@@ -1463,7 +1463,7 @@ class CatalogController extends Controller
             return response()->json(['success' => false, 'error' => 'That website is not in your cart.'], 404);
         }
 
-        $site = Site::query()->notArchived()->where('id', $siteId)->where('active', 1)->first();
+        $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
         if (! $site) {
             return response()->json(['success' => false, 'error' => 'Site not found or inactive.'], 404);
         }
@@ -1561,7 +1561,7 @@ class CatalogController extends Controller
             $hasHomepageInput = $request->exists('homepage_days');
             $homepageInput = $hasHomepageInput ? $request->input('homepage_days') : null;
 
-            $site = Site::query()->notArchived()->where('id', $id)->where('active', 1)->first();
+            $site = Site::query()->catalogVisible()->where('id', $id)->first();
             if (! $site) {
                 return response()->json([
                     'success' => false,
@@ -1849,7 +1849,7 @@ class CatalogController extends Controller
                     break;
                 }
 
-                $site = Site::query()->notArchived()->where('id', $id)->where('active', 1)->first();
+                $site = Site::query()->catalogVisible()->where('id', $id)->first();
                 if (! $site) {
                     unset($cart[$key]);
                     break;
@@ -4354,7 +4354,7 @@ class CatalogController extends Controller
                 continue;
             }
 
-            $site = Site::query()->notArchived()->where('id', $siteId)->where('active', 1)->first();
+            $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
             if (! $site) {
                 // Inactive / missing sites are not payable.
                 $deferred[] = $item;

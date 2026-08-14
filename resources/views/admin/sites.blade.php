@@ -1341,10 +1341,14 @@ function renderSites(data){
                         : ''));
 
             // Always offer Deactivate after Activate for marketing/admin (toggle by live flag).
+            const activateBlocked = site.can_activate === false;
+            const activateBlockReason = site.activate_block_reason || 'Cannot activate this listing yet.';
             const activeItem = CAN_TOGGLE_ACTIVE
                 ? (isActive
                     ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
-                    : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
+                    : (activateBlocked
+                        ? `<li><button type="button" class="dropdown-item disabled" disabled title="${escapeHtml(activateBlockReason)}"><i class="fa fa-ban me-2"></i>Cannot activate</button></li>`
+                        : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`))
                 : '';
 
             const verifyItem = CAN_VERIFY_SITES
