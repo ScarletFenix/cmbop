@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
+use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
@@ -20,9 +21,25 @@ class ContentLibraryController extends Controller
         private ContentUploadService $uploads,
         private LanguageCountryMap $languageCountryMap,
         private CountryLanguagePairs $countryLanguagePairs,
+        private ContentLibrarySearchQuery $librarySearch,
     ) {}
 
     public function index(Request $request)
+    {
+        return view('advertiser.content-library', $this->libraryPageData($request));
+    }
+
+    public function results(Request $request)
+    {
+        return response()
+            ->view('advertiser.partials.content-library-results', $this->libraryPageData($request))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    protected function libraryPageData(Request $request): array
     {
         $cfg = $this->uploads->effectiveConfig();
         $cfg['max_kilobytes'] = $this->uploads->effectiveMaxKilobytes($cfg);
@@ -96,11 +113,7 @@ class ContentLibraryController extends Controller
         }
 
         if ($search !== '') {
-            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
-            $query->where(function ($q) use ($like) {
-                $q->where('title', 'like', $like)
-                    ->orWhere('original_filename', 'like', $like);
-            });
+            $this->librarySearch->apply($query, $search);
         }
 
         if ($availability === 'archived') {
@@ -198,11 +211,7 @@ class ContentLibraryController extends Controller
         }
 
         if ($search !== '') {
-            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
-            $countScope->where(function ($q) use ($like) {
-                $q->where('title', 'like', $like)
-                    ->orWhere('original_filename', 'like', $like);
-            });
+            $this->librarySearch->apply($countScope, $search);
         }
 
         $statusTotals = (clone $countScope)
@@ -287,11 +296,7 @@ class ContentLibraryController extends Controller
             $archivedCountScope->where('country', $countryFilter);
         }
         if ($search !== '') {
-            $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], $search).'%';
-            $archivedCountScope->where(function ($q) use ($like) {
-                $q->where('title', 'like', $like)
-                    ->orWhere('original_filename', 'like', $like);
-            });
+            $this->librarySearch->apply($archivedCountScope, $search);
         }
         $availabilityCounts['archived'] = (int) $archivedCountScope->count();
 
@@ -313,7 +318,7 @@ class ContentLibraryController extends Controller
         $countryLanguageMap = $this->countryLanguagePairs->mapWithNames();
         $editSubmission = $this->resolveEditableSubmission($request->query('edit'));
 
-        return view('advertiser.content-library', [
+        return [
             'submissions' => $submissions,
             'uploadCfg' => $cfg,
             'uploadsEnabled' => $this->uploads->uploadsEnabled(),
@@ -343,7 +348,7 @@ class ContentLibraryController extends Controller
                 'country' => $countryFilter ?: 'all',
                 'q' => $search,
             ],
-        ]);
+        ];
     }
 
     public function upload(Request $request)

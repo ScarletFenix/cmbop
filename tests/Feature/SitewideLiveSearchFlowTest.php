@@ -26,6 +26,7 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString("reason: 'clear'", $js);
         $this->assertStringContainsString('Type at least 2 characters to search', $js);
         $this->assertStringContainsString('slb:livesearch', $js);
+        $this->assertStringContainsString("reason === 'enter' || reason === 'clear'", $js);
     }
 
     public function test_every_layout_loads_the_shared_live_search_assets(): void
@@ -79,7 +80,6 @@ class SitewideLiveSearchFlowTest extends TestCase
 
         $forms = [
             resource_path('views/notifications/all.blade.php'),
-            resource_path('views/advertiser/content-library.blade.php'),
             resource_path('views/advertiser/billing/index.blade.php'),
             resource_path('views/admin/deposits.blade.php'),
             resource_path('views/marketing/history.blade.php'),
@@ -89,5 +89,16 @@ class SitewideLiveSearchFlowTest extends TestCase
             $body = (string) file_get_contents($path);
             $this->assertStringContainsString('data-slb-live-search="form"', $body, basename($path));
         }
+
+        $library = (string) file_get_contents(resource_path('views/advertiser/content-library.blade.php'));
+        $this->assertStringNotContainsString('data-slb-live-search="form"', $library);
+        $this->assertStringContainsString('for="librarySearchInput">Search</label>', $library);
+        $this->assertStringContainsString('id="librarySearchClear"', $library);
+        $this->assertStringContainsString('id="librarySearchStatus"', $library);
+        $this->assertStringContainsString('libraryResultsUrl', $library);
+
+        $libraryJs = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('SlbLiveSearch.init', $libraryJs);
+        $this->assertStringContainsString('fetchLibraryResults', $libraryJs);
     }
 }
