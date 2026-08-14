@@ -861,27 +861,57 @@ class SiteController extends Controller
 
     public function destroy($id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $deleted = DB::transaction(function () use ($id) {
+            $site = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
 
-        if ($site->verified || $site->active) {
+            if ($site->verified || $site->active) {
+                return ['status' => 'live'];
+            }
+
+            if ($site->isArchived()) {
+                return ['status' => 'archived'];
+            }
+
+            if ($site->orderItemsCount() > 0) {
+                return ['status' => 'has_orders'];
+            }
+
+            try {
+                app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
+            }
+
+            $snapshot = [
+                'status' => 'deleted',
+                'cover' => is_string($site->site_image) ? $site->site_image : null,
+                'screenshot' => is_string($site->screenshot_path) ? $site->screenshot_path : null,
+                'thumb' => is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null,
+                'id' => (int) $site->id,
+            ];
+            $site->delete();
+
+            return $snapshot;
+        });
+
+        if (($deleted['status'] ?? '') === 'live') {
             return redirect()->back()->with('error', 'You cannot delete an active or verified site. Archive it instead.');
         }
 
-        if ($site->isArchived()) {
+        if (($deleted['status'] ?? '') === 'archived') {
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
-        try {
-            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
+        if (($deleted['status'] ?? '') === 'has_orders') {
+            return redirect()->back()->with('error', 'This site has orders and cannot be deleted.');
         }
-        $cover = is_string($site->site_image) ? $site->site_image : null;
-        $screenshot = is_string($site->screenshot_path) ? $site->screenshot_path : null;
-        $thumb = is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null;
-        $siteId = (int) $site->id;
-        $site->delete();
-        SiteImageUpload::deleteListingPublicMedia($cover, $screenshot, $thumb, $siteId);
+
+        SiteImageUpload::deleteListingPublicMedia(
+            $deleted['cover'] ?? null,
+            $deleted['screenshot'] ?? null,
+            $deleted['thumb'] ?? null,
+            (int) ($deleted['id'] ?? 0)
+        );
 
         return redirect()->back()->with('success', 'Site deleted successfully!');
     }

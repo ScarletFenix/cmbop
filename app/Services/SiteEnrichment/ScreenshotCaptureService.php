@@ -72,7 +72,7 @@ class ScreenshotCaptureService
 
     public function homepageUrl(Site $site): string
     {
-        $url = trim((string) ($site->url ?: ''));
+        $url = trim((string) ($site->site_url ?: ''));
         if ($url === '') {
             $url = 'https://'.ltrim((string) $site->domain, '/');
         }

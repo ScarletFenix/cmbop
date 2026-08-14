@@ -421,6 +421,42 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertNotNull($site->fresh()->publisher_accepted_at);
     }
 
+    public function test_staff_can_still_delete_invite_after_publisher_accepts(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Accepted Then Staff Rejected',
+            'site_url' => 'https://accepted-staff-reject.example',
+            'domain' => 'accepted-staff-reject.example',
+            'example_url' => 'https://accepted-staff-reject.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Staff may still reject after accept. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->deleteJson(route('admin.sites.destroy', $site->id), [
+                'reason' => 'Publisher asked us to withdraw after accepting.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('archived', false);
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+    }
+
     public function test_decline_does_not_archive_sibling_site_id_prefix_bell(): void
     {
         $site = Site::create([

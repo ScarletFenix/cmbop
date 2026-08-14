@@ -274,6 +274,13 @@ class MarketingSiteImageUploadTest extends TestCase
         $site = Site::query()->where('domain', 'marketer-create-webp.example')->first();
         $this->assertNotNull($site);
         $this->assertCoverStoredAsWebp($site->site_image);
+
+        $covers = array_values(array_filter(
+            Storage::disk('public')->allFiles('sites'),
+            fn (string $path) => ! str_contains($path, '.gitignore')
+        ));
+        $this->assertCount(1, $covers, 'Staff create must not leave a leftover cover from a double upload.');
+        $this->assertSame($site->site_image, $covers[0]);
     }
 
     public function test_admin_update_converts_png_cover_to_webp(): void

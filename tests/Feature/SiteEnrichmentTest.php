@@ -334,13 +334,75 @@ class SiteEnrichmentTest extends TestCase
             'image.thum.io/*' => Http::response($png, 200, ['Content-Type' => 'image/png']),
         ]);
 
-        $site = $this->makeSite(['site_url' => 'https://desktop-shot.example']);
+        $site = $this->makeSite([
+            'site_url' => 'https://desktop-shot.example:8080/home',
+            'domain' => 'desktop-shot.example',
+        ]);
+        $this->assertSame(
+            'https://desktop-shot.example:8080/home',
+            app(ScreenshotCaptureService::class)->homepageUrl($site)
+        );
         $result = app(ScreenshotCaptureService::class)->capture($site);
 
         $this->assertTrue($result['success']);
         $this->assertNotEmpty($result['path']);
         Http::assertSent(function ($request) {
-            return str_contains($request->url(), 'image.thum.io/get/width/1280/crop/800/viewportWidth/1280/');
+            return str_contains($request->url(), 'image.thum.io/get/width/1280/crop/800/viewportWidth/1280/')
+                && str_contains($request->url(), rawurlencode('https://desktop-shot.example:8080/home'));
         });
+    }
+
+    public function test_refresh_screenshot_discards_files_when_site_is_deleted_mid_capture(): void
+    {
+        Storage::fake('public');
+
+        $site = $this->makeSite([
+            'site_url' => 'https://gone-during-shot.example',
+            'domain' => 'gone-during-shot.example',
+        ]);
+        $path = 'site-screenshots/site-'.$site->id.'-orphan.webp';
+        $thumb = 'site-screenshots/site-'.$site->id.'-orphan-thumb.webp';
+        Storage::disk('public')->put($path, 'full');
+        Storage::disk('public')->put($thumb, 'thumb');
+
+        $this->mock(ScreenshotCaptureService::class, function ($mock) use ($site, $path, $thumb) {
+            $mock->shouldReceive('capture')->once()->andReturnUsing(function () use ($site, $path, $thumb) {
+                $site->delete();
+
+                return [
+                    'path' => $path,
+                    'thumb_path' => $thumb,
+                    'success' => true,
+                    'error' => null,
+                    'used_placeholder' => false,
+                ];
+            });
+        });
+
+        $run = app(SiteEnrichmentService::class)->refreshScreenshot($site->fresh(), 'test');
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $this->assertFalse(Storage::disk('public')->exists($path));
+        $this->assertFalse(Storage::disk('public')->exists($thumb));
+        $this->assertContains($run->status, ['failed', 'running']);
+    }
+
+    public function test_refresh_screenshot_skips_missing_site_without_writing_files(): void
+    {
+        Storage::fake('public');
+        config(['site_enrichment.screenshots.provider' => 'none']);
+
+        $site = $this->makeSite([
+            'site_url' => 'https://already-gone.example',
+            'domain' => 'already-gone.example',
+        ]);
+        $stale = $site->fresh();
+        $site->delete();
+
+        $run = app(SiteEnrichmentService::class)->refreshScreenshot($stale, 'test');
+
+        $this->assertSame('failed', $run->status);
+        $this->assertStringContainsString('removed before screenshot', (string) $run->error);
+        $this->assertSame([], Storage::disk('public')->allFiles('site-screenshots'));
     }
 }
