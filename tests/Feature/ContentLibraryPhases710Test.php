@@ -92,10 +92,10 @@ class ContentLibraryPhases710Test extends TestCase
         $this->assertStringContainsString('require_same_language', $html);
         $this->assertStringContainsString('uploads_enabled', $html);
         $this->assertStringContainsString('Browse articles', $html);
-        $this->assertStringContainsString('raise this to 20–50 MB', $html);
-        $this->assertStringContainsString('min="10240"', $html);
-        $this->assertStringContainsString('max="51200"', $html);
-        $this->assertStringNotContainsString('name="max_kilobytes" class="form-control" min="10240" max="10240"', $html);
+        $this->assertStringContainsString('Fixed at 10 MB', $html);
+        $this->assertStringContainsString('max="10240"', $html);
+        $this->assertStringContainsString('Admin cannot raise this limit', $html);
+        $this->assertStringNotContainsString('max="51200"', $html);
 
         $phpKb = PhpIniSize::uploadMaxKilobytes();
         if ($phpKb < 10240) {

@@ -18,11 +18,8 @@ use Symfony\Component\Mime\MimeTypes;
 
 class ContentUploadService
 {
-    /** Default / minimum article .docx cap (10 MB). */
+    /** Hard article .docx cap (10 MB). Admin cannot raise this. */
     public const MAX_KILOBYTES = 10240;
-
-    /** Admin may raise the cap this high (50 MB). */
-    public const ABSOLUTE_MAX_KILOBYTES = 51200;
 
     public function __construct(
         private DocumentTextExtractor $extractor,
@@ -526,18 +523,17 @@ class ContentUploadService
     }
 
     /**
-     * Article cap: at least 10 MB, at most 50 MB when admin raises it.
+     * Hard article cap: 10 MB. Files at or under this size are allowed;
+     * anything larger is rejected. Admin / env cannot raise this.
      */
     public function effectiveMaxKilobytes(?array $cfg = null): int
     {
-        $cfg = $cfg ?? $this->effectiveConfig();
-
-        return $this->clampMaxKilobytes((int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
+        return self::MAX_KILOBYTES;
     }
 
     public function clampMaxKilobytes(int $kilobytes): int
     {
-        return max(self::MAX_KILOBYTES, min(self::ABSOLUTE_MAX_KILOBYTES, $kilobytes));
+        return self::MAX_KILOBYTES;
     }
 
     /**
@@ -546,10 +542,9 @@ class ContentUploadService
      */
     private function withClampedUploadLimit(array $cfg): array
     {
-        $cfg['max_kilobytes'] = $this->clampMaxKilobytes((int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
-        $mb = PhpIniSize::megabytesLabel($cfg['max_kilobytes']);
+        $cfg['max_kilobytes'] = self::MAX_KILOBYTES;
         $help = is_array($cfg['help'] ?? null) ? $cfg['help'] : [];
-        $help['before_upload'] = 'Supported format: Microsoft Word (.docx) only. Maximum size: '.$mb.' MB. Unused articles are kept for 6 months; after that the original file is removed and a preview stays in Expired.';
+        $help['before_upload'] = 'Supported format: Microsoft Word (.docx) only. Maximum size: 10 MB. Unused articles are kept for 6 months; after that the original file is removed and a preview stays in Expired.';
         $cfg['help'] = $help;
 
         return $cfg;

@@ -2,6 +2,7 @@
 
 namespace App\Services\SiteEnrichment;
 
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -147,5 +148,42 @@ class ImageOptimizationService
         }
 
         return $this->storeOptimizedWebp($binary, $directory, $basename.'-placeholder');
+    }
+
+    /**
+     * Convert a staff-uploaded cover (JPEG/PNG/GIF/WebP) to WebP on the public disk.
+     * Returns null so the caller can store the original (animated GIF, missing GD, corrupt file).
+     */
+    public function storeUploadedImageAsWebp(UploadedFile $file, string $directory = 'sites'): ?string
+    {
+        $sourcePath = $file->getRealPath() ?: $file->getPathname();
+        if (! is_string($sourcePath) || $sourcePath === '' || ! is_file($sourcePath)) {
+            return null;
+        }
+
+        $binary = (string) file_get_contents($sourcePath);
+        if ($binary === '') {
+            return null;
+        }
+
+        $ext = strtolower((string) ($file->getClientOriginalExtension() ?: $file->extension() ?: ''));
+        if ($ext === 'gif') {
+            return null;
+        }
+
+        $webp = $this->toWebp($binary, (int) config('site_enrichment.screenshots.quality', 82));
+        if ($webp === null || $webp === '') {
+            return null;
+        }
+
+        $directory = trim($directory, '/');
+        $stem = Str::slug((string) pathinfo((string) $file->getClientOriginalName(), PATHINFO_FILENAME));
+        $basename = ($stem !== '' ? $stem : 'site').'-'.Str::lower(Str::random(8));
+        $path = $directory.'/'.$basename.'.webp';
+
+        $disk = Storage::disk('public');
+        $disk->put($path, $webp);
+
+        return $disk->exists($path) ? $path : null;
     }
 }

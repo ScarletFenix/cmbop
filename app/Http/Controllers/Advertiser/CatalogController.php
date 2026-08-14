@@ -2133,8 +2133,12 @@ class CatalogController extends Controller
             ]);
         }
 
-        // Fully covered by bonus — create paid wallet orders without Stripe (like a free checkout).
+        // Fully covered by bonus — create paid wallet orders without Stripe.
+        // Keep the bonus reserved until approve/reject (same as processWalletPayment).
+        // Consuming here made approveOrder() consumeReserved() again (negative reserved)
+        // and reject refundReserved() mint withdrawable cash from a zero reserved bucket.
         if ($amountDue <= 0 && $bonusApplied > 0) {
+            $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
             try {
                 app(CheckoutSchemaService::class)->ensureCheckoutTables();
                 $schema = app(CheckoutSchemaService::class);
@@ -2170,7 +2174,7 @@ class CatalogController extends Controller
                     $created->push($order);
                 }
                 DB::commit();
-                $this->consumeCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
+                $this->forgetCheckoutBonus((int) $userId, (string) $referenceCode);
                 $this->restoreDeferredCartAfterPayment();
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
@@ -2294,6 +2298,8 @@ class CatalogController extends Controller
                         'reference_code' => $referenceCode,
                         'user_id' => (string) $userId,
                         'bonus_applied' => (string) $bonusApplied,
+                        'expected_amount' => (string) $amountDue,
+                        'order_total' => (string) $totalAmount,
                     ],
                 ],
             ];
@@ -3259,6 +3265,9 @@ class CatalogController extends Controller
                         'type' => 'order_payment',
                         'reference_code' => $referenceCode,
                         'user_id' => (string) auth()->id(),
+                        'expected_amount' => (string) $packageTotal,
+                        'order_total' => (string) $packageTotal,
+                        'bonus_applied' => '0',
                     ],
                 ],
             ];
@@ -4258,6 +4267,11 @@ class CatalogController extends Controller
     private function rememberCheckoutBonus(int $userId, string $referenceCode, float $amount): void
     {
         Cache::put($this->checkoutBonusCacheKey($userId, $referenceCode), round($amount, 2), now()->addHours(12));
+    }
+
+    private function forgetCheckoutBonus(int $userId, string $referenceCode): void
+    {
+        Cache::forget($this->checkoutBonusCacheKey($userId, $referenceCode));
     }
 
     private function consumeCheckoutBonus(int $userId, string $referenceCode, ?float $amount = null): void
