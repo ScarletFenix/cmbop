@@ -123,8 +123,11 @@ class WelcomeBonusService
     public function normalizedIp(Request $request): ?string
     {
         $ip = trim((string) $request->ip());
+        if ($ip === '' || strlen($ip) > 45) {
+            return null;
+        }
 
-        return $ip !== '' ? $ip : null;
+        return $ip;
     }
 
     public function ipAlreadyClaimed(string $ip): bool

@@ -71,19 +71,27 @@ return new class extends Migration
                 $ip = is_string($raw) && trim($raw) !== '' ? trim($raw) : null;
             }
 
-            if ($ip !== null && isset($claimedIps[$ip])) {
+            if ($ip !== null && (
+                isset($claimedIps[$ip])
+                || DB::table('welcome_bonus_claims')->where('ip_address', $ip)->exists()
+            )) {
                 continue;
             }
 
-            DB::table('welcome_bonus_claims')->insert([
-                'user_id' => $userId,
-                'ip_address' => $ip,
-                'user_agent' => null,
-                'source' => 'backfill',
-                'amount' => $row->amount,
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            try {
+                DB::table('welcome_bonus_claims')->insert([
+                    'user_id' => $userId,
+                    'ip_address' => $ip,
+                    'user_agent' => null,
+                    'source' => 'backfill',
+                    'amount' => $row->amount,
+                    'created_at' => now(),
+                    'updated_at' => now(),
+                ]);
+            } catch (Throwable) {
+                // Orphaned user_id or a raced unique IP must not fail migrate.
+                continue;
+            }
 
             if ($ip !== null) {
                 $claimedIps[$ip] = true;

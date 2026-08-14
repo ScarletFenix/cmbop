@@ -75,6 +75,18 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_oversized_ip_is_ignored_instead_of_breaking_signup(): void
+    {
+        $request = $this->request(str_repeat('1', 50));
+
+        $this->assertNull($this->service->normalizedIp($request));
+        $this->assertSame(20.0, $this->service->amountFor($request, 'advertiser'));
+
+        $user = User::factory()->create();
+        $this->assertTrue($this->service->recordClaim($user, $request, 20.0, 'registration'));
+        $this->assertNull(WelcomeBonusClaim::query()->where('user_id', $user->id)->value('ip_address'));
+    }
+
     public function test_settings_default_enabled_until_toggled(): void
     {
         $this->assertTrue(WelcomeBonusSetting::isEnabled());
