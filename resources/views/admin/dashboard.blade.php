@@ -31,22 +31,24 @@
     <div class="row g-3 mb-4">
         <div class="col-12 d-none" id="kpiRetry"></div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.users.index') }}">
                 <div class="card-body">
                     <div class="text-muted small">Total Users</div>
                     <div class="d-flex align-items-end justify-content-between">
                         <h3 class="mb-0" id="kpiUsers">—</h3>
                         <span class="badge bg-primary-subtle text-primary" id="kpiUsers7d">+0 / 7d</span>
                     </div>
-                    <div class="small text-muted mt-2">
+                    <div class="small text-muted mt-1 js-kpi-users-caption">All accounts. Role counts can overlap.</div>
+                    <div class="small text-muted mt-1">
                         <span id="kpiAdvertisers">0</span> advertisers ·
-                        <span id="kpiPublishers">0</span> publishers
+                        <span id="kpiPublishers">0</span> publishers ·
+                        <span id="kpiAdmins">0</span> admins
                     </div>
                 </div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
                 <div class="card-body">
                     <div class="text-muted small">GMV (paid orders)</div>
                     <div class="d-flex align-items-end justify-content-between">
@@ -55,13 +57,13 @@
                     </div>
                     <div class="small text-muted mt-2">
                         <span id="kpiPaidOrders">0</span> paid orders
-                        · <a href="{{ route('admin.finance') }}" class="link-secondary">Margin &amp; wallets</a>
+                        · Margin &amp; wallets
                     </div>
                 </div>
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.sites.index') }}">
                 <div class="card-body">
                     <div class="text-muted small">Sites</div>
                     <div class="d-flex align-items-end justify-content-between">
@@ -75,7 +77,7 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="#dashboardActionQueues">
                 <div class="card-body">
                     <div class="text-muted small">Needs Attention</div>
                     <div class="d-flex align-items-end justify-content-between">
@@ -103,7 +105,7 @@
         </div>
         <div class="col-12 d-none" id="financeRetry"></div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
+            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.withdrawals') }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Due to pay now</div>
                     <div class="fs-4 fw-semibold text-danger" id="financeDueNow">—</div>
@@ -112,7 +114,7 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">In publisher wallets</div>
                     <div class="fs-4 fw-semibold" id="financeInWallets">—</div>
@@ -121,7 +123,7 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Total publisher liability</div>
                     <div class="fs-4 fw-semibold" id="financeLiability">—</div>
@@ -130,7 +132,7 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Margin (this month)</div>
                     <div class="fs-4 fw-semibold" id="financeMargin">—</div>
@@ -141,7 +143,7 @@
     </div>
 
     <!-- Action queues (first viewport priority) -->
-    <div class="row g-3 mb-4">
+    <div class="row g-3 mb-4" id="dashboardActionQueues">
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
@@ -324,9 +326,16 @@
     <div class="row g-3 mb-4">
         <div class="col-lg-8">
             <div class="card border-0 shadow-sm h-100">
-                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-chart-line me-2 text-primary"></i>Revenue &amp; Orders (30 days)</strong>
-                    <span class="text-muted small">Paid revenue vs order volume</span>
+                <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
+                    <strong><i class="fa fa-chart-line me-2 text-primary"></i>Revenue &amp; Orders (<span class="js-chart-range-label">30 days</span>)</strong>
+                    <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted small">Paid revenue vs order volume</span>
+                        <div class="btn-group btn-group-sm js-chart-range" role="group" aria-label="Chart range">
+                            <button type="button" class="btn btn-outline-secondary" data-days="7">7</button>
+                            <button type="button" class="btn btn-primary" data-days="30">30</button>
+                            <button type="button" class="btn btn-outline-secondary" data-days="90">90</button>
+                        </div>
+                    </div>
                 </div>
                 <div class="card-body">
                     <canvas id="trendChart" height="110"></canvas>
@@ -337,7 +346,7 @@
         <div class="col-lg-4">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0">
-                    <strong><i class="fa fa-user-plus me-2 text-success"></i>New Signups (30 days)</strong>
+                    <strong><i class="fa fa-user-plus me-2 text-success"></i>New Signups (<span class="js-chart-range-label">30 days</span>)</strong>
                 </div>
                 <div class="card-body">
                     <canvas id="signupChart" height="110"></canvas>
@@ -427,12 +436,13 @@
 
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="{{ asset('js/chart.umd.min.js') }}?v={{ filemtime(public_path('js/chart.umd.min.js')) }}"></script>
 <script>
 const money = (n) => '€' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const num = (n) => Number(n || 0).toLocaleString();
 
 let trendChart, signupChart, orderStatusChart, roleChart;
+let chartDays = 30;
 
 async function dashboardFetch(url) {
     const res = await fetch(url, {
@@ -496,6 +506,7 @@ async function loadStatistics() {
         document.getElementById('kpiUsers7d').textContent = '+' + num(d.new_users_7d) + ' / 7d';
         document.getElementById('kpiAdvertisers').textContent = num(d.advertisers);
         document.getElementById('kpiPublishers').textContent = num(d.publishers);
+        document.getElementById('kpiAdmins').textContent = num(d.admins);
         document.getElementById('kpiRevenue').textContent = money(d.revenue);
         document.getElementById('kpiRevenue7d').textContent = money(d.revenue_7d) + ' / 7d';
         document.getElementById('kpiPaidOrders').textContent = num(d.paid_orders);
@@ -539,7 +550,7 @@ async function loadTrends() {
         document.getElementById('signupRetry'),
     ];
     try {
-        const json = await dashboardFetch(`{{ route('admin.dashboard.trends') }}?days=30`);
+        const json = await dashboardFetch(`{{ route('admin.dashboard.trends') }}?days=${chartDays}`);
 
         const commonOpts = {
             responsive: true,
@@ -871,13 +882,54 @@ const dashboardLoaders = {
     loadStalledOrders,
 };
 
+function followKpiLink(card) {
+    const href = card.getAttribute('data-href');
+    if (!href) return;
+    window.location.href = href;
+}
+
+function setChartRange(days) {
+    chartDays = days;
+    document.querySelectorAll('.js-chart-range-label').forEach((el) => {
+        el.textContent = days + ' days';
+    });
+    document.querySelectorAll('.js-chart-range [data-days]').forEach((btn) => {
+        const active = Number(btn.dataset.days) === days;
+        btn.classList.toggle('btn-primary', active);
+        btn.classList.toggle('btn-outline-secondary', !active);
+    });
+}
+
 document.addEventListener('click', (e) => {
     const retry = e.target.closest('.js-dashboard-retry');
-    if (!retry) return;
-    const loader = dashboardLoaders[retry.dataset.loader];
-    if (typeof loader === 'function') {
-        loader().catch(err => console.error('Dashboard retry failed', err));
+    if (retry) {
+        const loader = dashboardLoaders[retry.dataset.loader];
+        if (typeof loader === 'function') {
+            loader().catch(err => console.error('Dashboard retry failed', err));
+        }
+        return;
     }
+
+    const rangeBtn = e.target.closest('.js-chart-range [data-days]');
+    if (rangeBtn) {
+        const days = Number(rangeBtn.dataset.days);
+        if (!days || days === chartDays) return;
+        setChartRange(days);
+        loadTrends().catch(err => console.error('Dashboard range reload failed', err));
+        return;
+    }
+
+    const kpi = e.target.closest('.js-kpi-link');
+    if (!kpi || e.target.closest('a, button')) return;
+    followKpiLink(kpi);
+});
+
+document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    const kpi = e.target.closest('.js-kpi-link');
+    if (!kpi || e.target !== kpi) return;
+    e.preventDefault();
+    followKpiLink(kpi);
 });
 
 Promise.all([loadStatistics(), loadFinanceStrip(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Services\Admin\DashboardMetricsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
@@ -25,7 +26,7 @@ class DashboardController extends Controller
     public function getStatistics()
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->metrics->statistics()]);
+            return response()->json(['success' => true, 'data' => $this->remember('statistics', fn () => $this->metrics->statistics())]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard statistics error: '.$e->getMessage());
 
@@ -39,9 +40,11 @@ class DashboardController extends Controller
     public function getTrends(Request $request)
     {
         try {
+            $days = min(90, max(7, (int) $request->get('days', 30)));
+
             return response()->json([
                 'success' => true,
-                ...$this->metrics->trends((int) $request->get('days', 30)),
+                ...$this->remember('trends.'.$days, fn () => $this->metrics->trends($days)),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard trends error: '.$e->getMessage());
@@ -58,7 +61,7 @@ class DashboardController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                ...$this->metrics->distributions(),
+                ...$this->remember('distributions', fn () => $this->metrics->distributions()),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard distributions error: '.$e->getMessage());
@@ -75,7 +78,7 @@ class DashboardController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                ...$this->metrics->queueCounts(),
+                ...$this->remember('queue-counts', fn () => $this->metrics->queueCounts()),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard queue counts error: '.$e->getMessage());
@@ -90,7 +93,7 @@ class DashboardController extends Controller
     public function getFinanceStrip()
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->metrics->financeStrip()]);
+            return response()->json(['success' => true, 'data' => $this->remember('finance', fn () => $this->metrics->financeStrip())]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard finance strip error: '.$e->getMessage());
 
@@ -106,12 +109,25 @@ class DashboardController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                ...$this->metrics->actionQueue(),
+                ...$this->remember('action-queue', fn () => $this->metrics->actionQueue()),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard action queue error: '.$e->getMessage());
 
             return response()->json(['success' => false, 'message' => 'Failed to load action queue'], 500);
         }
+    }
+
+    /**
+     * Optional short-lived cache. TTL 0 (default) skips the store.
+     */
+    private function remember(string $key, callable $callback): mixed
+    {
+        $ttl = (int) config('dashboard.metrics_cache_seconds', 0);
+        if ($ttl <= 0) {
+            return $callback();
+        }
+
+        return Cache::remember('admin.dashboard.'.$key, $ttl, $callback);
     }
 }

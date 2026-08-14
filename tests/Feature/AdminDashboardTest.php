@@ -73,7 +73,19 @@ class AdminDashboardTest extends TestCase
             ->assertSee('disputes')
             ->assertSee(route('admin.community.index'), false)
             ->assertSee(route('admin.site-enrichment.index'), false)
-            ->assertSee('loadFinanceStrip');
+            ->assertSee('loadFinanceStrip')
+            ->assertSee('js-kpi-link')
+            ->assertSee('js-kpi-users-caption')
+            ->assertSee('All accounts. Role counts can overlap.')
+            ->assertSee('kpiAdmins')
+            ->assertSee('js-chart-range')
+            ->assertSee('js-chart-range-label')
+            ->assertSee('id="dashboardActionQueues"', false)
+            ->assertSee(route('admin.users.index'), false)
+            ->assertSee(route('admin.sites.index'), false)
+            ->assertSee(route('admin.finance'), false)
+            ->assertSee('js/chart.umd.min.js')
+            ->assertDontSee('cdn.jsdelivr.net/npm/chart.js', false);
     }
 
     public function test_admin_queue_counts_endpoint(): void
@@ -122,6 +134,23 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonCount(30, 'labels')
             ->assertJsonCount(30, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends', ['days' => 7]))
+            ->assertOk()
+            ->assertJsonCount(7, 'labels')
+            ->assertJsonCount(7, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends', ['days' => 90]))
+            ->assertOk()
+            ->assertJsonCount(90, 'labels')
+            ->assertJsonCount(90, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends', ['days' => 3]))
+            ->assertOk()
+            ->assertJsonCount(7, 'labels');
 
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.distributions'))
@@ -532,5 +561,36 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems']))
             ->assertJsonPath('enrichment.0.site_name', 'Failed enrich')
             ->assertJsonPath('enrichment.0.url', route('admin.sites.edit', $site->id));
+    }
+
+    public function test_metrics_cache_is_off_by_default_and_can_be_enabled(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 1);
+
+        User::factory()->create(['email_verified_at' => now()]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2);
+
+        config(['dashboard.metrics_cache_seconds' => 60]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2);
+
+        User::factory()->create(['email_verified_at' => now()]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2);
     }
 }
