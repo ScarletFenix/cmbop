@@ -241,4 +241,11 @@ class CatalogCategoryParamTest extends TestCase
 
         $this->assertSame(['Marketing, PR & Advertising'], $labels);
     }
+
+    public function test_resolve_niche_names_accepts_scalar_and_rejects_objects(): void
+    {
+        $this->assertSame(['1'], Category::resolveNicheNames(1)['unknown']);
+        $this->assertSame([], Category::resolveNicheNames(new \stdClass)['resolved']);
+        $this->assertSame([], Category::resolveNicheNames(new \stdClass)['unknown']);
+    }
 }
