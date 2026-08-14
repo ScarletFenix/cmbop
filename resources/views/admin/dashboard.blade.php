@@ -100,7 +100,7 @@
     <!-- Finance strip (same numbers as /admin/finance) -->
     <div class="row g-3 mb-4">
         <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <strong class="text-muted text-uppercase small">Finance <span id="financePeriod" class="fw-normal"></span></strong>
+            <strong class="text-muted small"><span class="text-uppercase">Finance</span> <span id="financePeriod" class="fw-normal"></span></strong>
             <a href="{{ route('admin.finance') }}" class="small">Open finance</a>
         </div>
         <div class="col-12 d-none" id="financeRetry"></div>

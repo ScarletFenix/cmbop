@@ -101,7 +101,8 @@ class DashboardController extends Controller
     public function getFinanceStrip()
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->remember('finance', fn () => $this->metrics->financeStrip())]);
+            // Due to pay now sits next to the live withdrawal queue — do not cache it.
+            return response()->json(['success' => true, 'data' => $this->metrics->financeStrip()]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard finance strip error: '.$e->getMessage());
 

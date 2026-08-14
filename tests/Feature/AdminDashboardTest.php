@@ -63,6 +63,9 @@ class AdminDashboardTest extends TestCase
             ->assertSee('Total publisher liability')
             ->assertSee('Margin (this month)')
             ->assertSee('Open finance')
+            ->assertSee('id="financePeriod"', false)
+            ->assertDontSee('id="financePeriod" class="fw-normal text-capitalize"', false)
+            ->assertDontSee('text-uppercase small">Finance', false)
             ->assertSee('Unpaid orders')
             ->assertSee('Open disputes')
             ->assertSee('Community inbox')
@@ -623,5 +626,25 @@ class AdminDashboardTest extends TestCase
             ->getJson(route('admin.dashboard.action-queue'))
             ->assertOk()
             ->assertJsonPath('deposits.0.amount', 10);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.finance'))
+            ->assertOk()
+            ->assertJsonPath('data.due_to_pay_now', 0);
+
+        Withdrawal::create([
+            'user_id' => $admin->id,
+            'amount' => 20,
+            'fee' => 5,
+            'net_amount' => 15,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'a@b.com'],
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.finance'))
+            ->assertOk()
+            ->assertJsonPath('data.due_to_pay_now', 15);
     }
 }
