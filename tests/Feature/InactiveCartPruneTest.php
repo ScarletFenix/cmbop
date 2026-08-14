@@ -175,7 +175,7 @@ class InactiveCartPruneTest extends TestCase
         $html = $this->actingAs($this->advertiser)
             ->withSession([
                 'cart' => [
-                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 2],
                     ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 2],
                 ],
             ])
@@ -218,5 +218,51 @@ class InactiveCartPruneTest extends TestCase
         $this->assertStringContainsString('removed_inactive', $html);
         $this->assertStringContainsString('was deactivated and removed from your cart.', $html);
         $this->assertStringContainsString('showToast', $html);
+    }
+
+    public function test_add_to_cart_404_prunes_hidden_siblings(): void
+    {
+        $live = $this->makeSite('add-keep', true);
+        $unverified = $this->makeSite('add-unverified', true, ['verified' => false]);
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.cart.add'), ['id' => $unverified->id])
+            ->assertNotFound()
+            ->assertJsonPath('error', 'Site not found or inactive.');
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
+    }
+
+    public function test_save_cart_drops_hidden_and_invalid_ids(): void
+    {
+        $live = $this->makeSite('save-keep', true);
+        $unverified = $this->makeSite('save-unverified', true, ['verified' => false]);
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.cart.save'), [
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                    ['id' => 0, 'name' => 'Broken line', 'price' => 10, 'quantity' => 1],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('cart_count', 1);
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
     }
 }

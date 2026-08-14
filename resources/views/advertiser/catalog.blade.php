@@ -110,7 +110,11 @@
 
     @php
         $catalogCart = is_array($cart ?? null) ? $cart : session('cart', []);
-        $catalogCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), is_array($catalogCart) ? $catalogCart : []));
+        $catalogCartCount = collect(is_array($catalogCart) ? $catalogCart : [])
+            ->pluck('id')
+            ->filter()
+            ->unique()
+            ->count();
         $cartRemovedInactive = is_array($cartRemovedInactive ?? null) ? $cartRemovedInactive : [];
     @endphp
     @if($cartRemovedInactive !== [])
