@@ -1807,6 +1807,7 @@ function bootAdvertiserOrdersPage() {
 
         nav.querySelectorAll('a.page-link[data-page]').forEach((link) => {
             link.addEventListener('click', function (e) {
+                if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
                 e.preventDefault();
                 const page = parseInt(this.dataset.page, 10);
                 if (!Number.isFinite(page) || page < 1) return;

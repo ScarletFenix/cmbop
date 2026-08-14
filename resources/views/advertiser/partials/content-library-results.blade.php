@@ -366,7 +366,7 @@
                                         @endif
                                         @if($submission->canDownloadOriginal())
                                         <li>
-                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
+                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission, false) }}">Download</a>
                                         </li>
                                         @endif
                                     </ul>
@@ -376,18 +376,18 @@
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
                                 @if($submission->canBeOrdered())
                                     <a class="btn btn-sm btn-primary"
-                                       href="{{ route('advertiser.content-library.order', $submission) }}">
+                                       href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
                                     </a>
                                 @elseif($availability === 'evaluating')
                                     <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
                                     <a class="btn btn-sm btn-outline-primary"
-                                       href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1]) }}">
+                                       href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1], false) }}">
                                         Resubmit
                                     </a>
                                 @elseif($availability === 'in_progress')
-                                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.orders') }}">View order</a>
+                                    <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.orders', absolute: false) }}">View order</a>
                                 @endif
 
                                 <div class="dropdown">
@@ -415,7 +415,7 @@
                                         @endif
                                         @if($submission->canDownloadOriginal())
                                         <li>
-                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission) }}">Download</a>
+                                            <a class="dropdown-item" href="{{ route('advertiser.content-submissions.download', $submission, false) }}">Download</a>
                                         </li>
                                         @endif
                                         @if($submission->canEditArticle())
