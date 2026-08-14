@@ -63,7 +63,31 @@ class StalledOrderQueue
 
     public function count(): int
     {
-        return $this->items(200)->count();
+        if (! Schema::hasColumn('order_items', 'publish_nudge_stage')) {
+            return 0;
+        }
+
+        $stalledFrom = (int) config('reminders.publisher_publish.stalled_from_stage', 4);
+        $acceptStages = count((array) config('reminders.publisher_accept.stages_hours', [12, 36, 72]));
+
+        $unpublished = OrderItem::query()
+            ->whereNotNull('accepted_at')
+            ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
+            ->where('publish_nudge_stage', '>=', $stalledFrom)
+            ->whereHas('order', function ($q) {
+                $q->where('payment_status', 'paid')->whereIn('status', ['processing', 'pending']);
+            })
+            ->count();
+
+        $unaccepted = OrderItem::query()
+            ->whereNull('accepted_at')
+            ->where('accept_nudge_stage', '>=', $acceptStages)
+            ->whereHas('order', function ($q) {
+                $q->where('payment_status', 'paid')->where('status', 'pending');
+            })
+            ->count();
+
+        return $unpublished + $unaccepted;
     }
 
     /**
@@ -96,7 +120,10 @@ class StalledOrderQueue
             'amount' => (float) ($item->price ?? 0),
             'due_at' => $dueAt?->format('d M Y H:i'),
             'hours_overdue' => $hoursOverdue,
-            'days_overdue' => max(1, (int) round($hoursOverdue / 24)),
+            'days_overdue' => $hoursOverdue >= 24 ? (int) round($hoursOverdue / 24) : 0,
+            'late_label' => $hoursOverdue >= 24
+                ? ((int) round($hoursOverdue / 24)).' day(s)'
+                : max(0, $hoursOverdue).'h',
             'last_reminded_at' => optional(
                 $track === 'accept' ? $item->accept_nudge_sent_at : $item->publish_nudge_sent_at
             )?->format('d M Y H:i'),

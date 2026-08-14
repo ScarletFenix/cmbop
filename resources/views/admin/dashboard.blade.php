@@ -47,13 +47,14 @@
         <div class="col-6 col-xl-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Paid Revenue</div>
+                    <div class="text-muted small">GMV (paid orders)</div>
                     <div class="d-flex align-items-end justify-content-between">
                         <h3 class="mb-0" id="kpiRevenue">—</h3>
                         <span class="badge bg-success-subtle text-success" id="kpiRevenue7d">€0 / 7d</span>
                     </div>
                     <div class="small text-muted mt-2">
                         <span id="kpiPaidOrders">0</span> paid orders
+                        · <a href="{{ route('admin.finance') }}" class="link-secondary">Margin &amp; wallets</a>
                     </div>
                 </div>
             </div>
@@ -64,10 +65,10 @@
                     <div class="text-muted small">Sites</div>
                     <div class="d-flex align-items-end justify-content-between">
                         <h3 class="mb-0" id="kpiSites">—</h3>
-                        <span class="badge bg-warning-subtle text-warning" id="kpiUnverified">0 pending</span>
+                        <span class="badge bg-warning-subtle text-warning" id="kpiUnverified">0 in review</span>
                     </div>
                     <div class="small text-muted mt-2">
-                        <span id="kpiVerified">0</span> verified
+                        <span id="kpiVerified">0</span> live in catalog
                     </div>
                 </div>
             </div>
@@ -82,7 +83,8 @@
                     </div>
                     <div class="small text-muted mt-2">
                         <span id="kpiDeposits">0</span> deposits ·
-                        <span id="kpiWithdrawals">0</span> withdrawals
+                        <span id="kpiWithdrawals">0</span> withdrawals ·
+                        <span id="kpiPayments">0</span> payments
                     </div>
                 </div>
             </div>
@@ -296,10 +298,36 @@ const num = (n) => Number(n || 0).toLocaleString();
 
 let trendChart, signupChart, orderStatusChart, roleChart;
 
+async function dashboardFetch(url) {
+    const res = await fetch(url, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin',
+    });
+    let json = null;
+    try {
+        json = await res.json();
+    } catch (e) {
+        json = null;
+    }
+    if (!res.ok || !json || !json.success) {
+        const message = (json && json.message) ? json.message : 'Could not load this panel';
+        if (window.showAppToast) {
+            window.showAppToast(message, 'error');
+        }
+        throw new Error(message);
+    }
+    return json;
+}
+
+function retryRow(cols, loaderName) {
+    return `<tr><td colspan="${cols}" class="text-center text-muted py-3">
+        Couldn’t load —
+        <button type="button" class="btn btn-link btn-sm p-0 align-baseline js-dashboard-retry" data-loader="${escapeHtml(loaderName)}">retry</button>
+    </td></tr>`;
+}
+
 async function loadStatistics() {
-    const res = await fetch(`{{ route('admin.dashboard.statistics') }}`);
-    const json = await res.json();
-    if (!json.success) return;
+    const json = await dashboardFetch(`{{ route('admin.dashboard.statistics') }}`);
     const d = json.data;
 
     document.getElementById('kpiUsers').textContent = num(d.total_users);
@@ -310,19 +338,16 @@ async function loadStatistics() {
     document.getElementById('kpiRevenue7d').textContent = money(d.revenue_7d) + ' / 7d';
     document.getElementById('kpiPaidOrders').textContent = num(d.paid_orders);
     document.getElementById('kpiSites').textContent = num(d.total_sites);
-    document.getElementById('kpiVerified').textContent = num(d.verified_sites);
-    document.getElementById('kpiUnverified').textContent = num(d.unverified_sites) + ' pending';
+    document.getElementById('kpiVerified').textContent = num(d.live_sites ?? d.verified_sites);
+    document.getElementById('kpiUnverified').textContent = num(d.unverified_sites) + ' in review';
     document.getElementById('kpiDeposits').textContent = num(d.pending_deposits);
     document.getElementById('kpiWithdrawals').textContent = num(d.pending_withdrawals);
-    document.getElementById('kpiAttention').textContent = num(
-        d.pending_deposits + d.pending_withdrawals + d.unverified_sites
-    );
+    document.getElementById('kpiPayments').textContent = num(d.pending_payments);
+    document.getElementById('kpiAttention').textContent = num(d.needs_attention);
 }
 
 async function loadTrends() {
-    const res = await fetch(`{{ route('admin.dashboard.trends') }}?days=30`);
-    const json = await res.json();
-    if (!json.success) return;
+    const json = await dashboardFetch(`{{ route('admin.dashboard.trends') }}?days=30`);
 
     const commonOpts = {
         responsive: true,
@@ -384,9 +409,7 @@ async function loadTrends() {
 }
 
 async function loadDistributions() {
-    const res = await fetch(`{{ route('admin.dashboard.distributions') }}`);
-    const json = await res.json();
-    if (!json.success) return;
+    const json = await dashboardFetch(`{{ route('admin.dashboard.distributions') }}`);
 
     const palette = ['#1a585e', '#0ea5e9', '#3faeb2', '#75787B', '#0f766e', '#b8e4e4', '#94a3b8'];
 
@@ -430,84 +453,95 @@ function escapeHtml(str) {
 }
 
 async function loadActionQueue() {
-    const res = await fetch(`{{ route('admin.dashboard.action-queue') }}`);
-    const json = await res.json();
-    if (!json.success) return;
-
     const depBody = document.getElementById('queueDeposits');
-    if (!json.deposits.length) {
-        depBody.innerHTML = emptyRow(3, 'No pending deposits');
-    } else {
-        depBody.innerHTML = json.deposits.map(d => `
-            <tr>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(d.user)}</div>
-                    <div class="small text-muted">${escapeHtml(d.email || '')}</div>
-                </td>
-                <td>${money(d.amount)}</td>
-                <td class="small text-muted">${escapeHtml(d.date)}</td>
-            </tr>`).join('');
-    }
-
     const wBody = document.getElementById('queueWithdrawals');
-    if (!json.withdrawals.length) {
-        wBody.innerHTML = emptyRow(3, 'No pending withdrawals');
-    } else {
-        wBody.innerHTML = json.withdrawals.map(w => `
-            <tr>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(w.user)}</div>
-                    <div class="small text-muted">${escapeHtml(w.email || '')}</div>
-                </td>
-                <td>${money(w.amount)}</td>
-                <td class="small text-muted">${escapeHtml(w.date)}</td>
-            </tr>`).join('');
-    }
-
     const sBody = document.getElementById('queueSites');
-    if (!json.sites.length) {
-        sBody.innerHTML = emptyRow(3, 'No sites awaiting verification');
-    } else {
-        sBody.innerHTML = json.sites.map(s => `
-            <tr>
-                <td>
-                    <div class="fw-semibold">${escapeHtml(s.site_name || '—')}</div>
-                    <div class="small text-muted text-truncate" style="max-width:140px;">${escapeHtml(s.site_url || '')}</div>
-                </td>
-                <td>${escapeHtml(s.publisher)}</td>
-                <td class="small text-muted">${escapeHtml(s.date)}</td>
-            </tr>`).join('');
+
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.action-queue') }}`);
+
+        if (!json.deposits.length) {
+            depBody.innerHTML = emptyRow(3, 'No pending deposits');
+        } else {
+            depBody.innerHTML = json.deposits.map(d => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${escapeHtml(d.user)}</div>
+                        <div class="small text-muted">${escapeHtml(d.email || '')}</div>
+                    </td>
+                    <td>${money(d.amount)}</td>
+                    <td class="small text-muted">${escapeHtml(d.date)}</td>
+                </tr>`).join('');
+        }
+
+        if (!json.withdrawals.length) {
+            wBody.innerHTML = emptyRow(3, 'No pending withdrawals');
+        } else {
+            wBody.innerHTML = json.withdrawals.map(w => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${escapeHtml(w.user)}</div>
+                        <div class="small text-muted">${escapeHtml(w.email || '')}${w.status && w.status !== 'pending' ? ' · ' + escapeHtml(w.status) : ''}</div>
+                    </td>
+                    <td>${money(w.amount)}</td>
+                    <td class="small text-muted">${escapeHtml(w.date)}</td>
+                </tr>`).join('');
+        }
+
+        if (!json.sites.length) {
+            sBody.innerHTML = emptyRow(3, 'No sites awaiting verification');
+        } else {
+            sBody.innerHTML = json.sites.map(s => `
+                <tr>
+                    <td>
+                        <div class="fw-semibold">${escapeHtml(s.site_name || '—')}</div>
+                        <div class="small text-muted text-truncate" style="max-width:140px;">${escapeHtml(s.site_url || '')}</div>
+                    </td>
+                    <td>${escapeHtml(s.publisher)}</td>
+                    <td class="small text-muted">${escapeHtml(s.date)}</td>
+                </tr>`).join('');
+        }
+    } catch (err) {
+        depBody.innerHTML = retryRow(3, 'loadActionQueue');
+        wBody.innerHTML = retryRow(3, 'loadActionQueue');
+        sBody.innerHTML = retryRow(3, 'loadActionQueue');
+        throw err;
     }
 }
 
 async function loadStalledOrders() {
-    const res = await fetch(`{{ route('admin.dashboard.stalled-orders') }}`);
-    const json = await res.json();
-    if (!json.success || !json.items.length) return;
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.stalled-orders') }}`);
+        if (!json.items.length) return;
 
-    document.getElementById('stalledOrdersRow').classList.remove('d-none');
-    document.getElementById('stalledOrdersCount').textContent = json.count;
+        document.getElementById('stalledOrdersRow').classList.remove('d-none');
+        document.getElementById('stalledOrdersCount').textContent = json.count;
 
-    document.getElementById('queueStalled').innerHTML = json.items.map(i => `
-        <tr>
-            <td class="fw-semibold">#${escapeHtml(i.order_number)}</td>
-            <td>${escapeHtml(i.site_name)}</td>
-            <td>
-                <div>${escapeHtml(i.publisher)}</div>
-                <div class="small text-muted">${escapeHtml(i.publisher_email || '')}</div>
-            </td>
-            <td>${escapeHtml(i.advertiser)}</td>
-            <td><span class="badge text-bg-warning">${i.track === 'accept' ? 'Not accepted' : 'Not published'}</span></td>
-            <td>
-                <div>${i.days_overdue} day(s)</div>
-                <div class="small text-muted">${i.last_reminded_at ? 'Reminded ' + escapeHtml(i.last_reminded_at) : ''}</div>
-            </td>
-            <td class="text-end">
-                <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
-                    Remind now
-                </button>
-            </td>
-        </tr>`).join('');
+        document.getElementById('queueStalled').innerHTML = json.items.map(i => `
+            <tr>
+                <td class="fw-semibold">#${escapeHtml(i.order_number)}</td>
+                <td>${escapeHtml(i.site_name)}</td>
+                <td>
+                    <div>${escapeHtml(i.publisher)}</div>
+                    <div class="small text-muted">${escapeHtml(i.publisher_email || '')}</div>
+                </td>
+                <td>${escapeHtml(i.advertiser)}</td>
+                <td><span class="badge text-bg-warning">${i.track === 'accept' ? 'Not accepted' : 'Not published'}</span></td>
+                <td>
+                    <div>${escapeHtml(i.late_label || (i.days_overdue + ' day(s)'))}</div>
+                    <div class="small text-muted">${i.last_reminded_at ? 'Reminded ' + escapeHtml(i.last_reminded_at) : ''}</div>
+                </td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
+                        Remind now
+                    </button>
+                </td>
+            </tr>`).join('');
+    } catch (err) {
+        document.getElementById('stalledOrdersRow').classList.remove('d-none');
+        document.getElementById('queueStalled').innerHTML = retryRow(7, 'loadStalledOrders');
+        throw err;
+    }
 }
 
 document.addEventListener('click', async (e) => {
@@ -549,6 +583,23 @@ document.addEventListener('click', async (e) => {
         if (window.showAppToast) {
             window.showAppToast('Could not send the reminder', 'error');
         }
+    }
+});
+
+const dashboardLoaders = {
+    loadStatistics,
+    loadTrends,
+    loadDistributions,
+    loadActionQueue,
+    loadStalledOrders,
+};
+
+document.addEventListener('click', (e) => {
+    const retry = e.target.closest('.js-dashboard-retry');
+    if (!retry) return;
+    const loader = dashboardLoaders[retry.dataset.loader];
+    if (typeof loader === 'function') {
+        loader().catch(err => console.error('Dashboard retry failed', err));
     }
 });
 

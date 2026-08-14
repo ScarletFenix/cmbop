@@ -4,19 +4,24 @@ namespace App\Services\Admin;
 
 use App\Models\DepositRequest;
 use App\Models\Order;
+use App\Models\OrderItemDispute;
+use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
+use App\Models\Suggestion;
 use App\Models\User;
+use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 /**
  * Query layer for the admin dashboard JSON endpoints.
  *
  * Controllers stay responsible for HTTP wrapping; this class owns the counts
- * and series so later dashboard work can reuse one definition of each metric.
+ * and series so KPI cards, sidebar badges, and action queues share one definition.
  */
 class DashboardMetricsService
 {
@@ -30,6 +35,7 @@ class DashboardMetricsService
         $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
         $publisherRoleId = Role::where('name', 'publisher')->value('id');
         $adminRoleId = Role::where('name', 'admin')->value('id');
+        $queues = $this->queueCounts();
 
         return [
             'total_users' => User::count(),
@@ -44,16 +50,21 @@ class DashboardMetricsService
                 : 0,
             'total_sites' => Site::count(),
             'verified_sites' => Site::where('verified', 1)->count(),
-            'unverified_sites' => Site::query()->needsAdminReview()->count(),
+            'live_sites' => Site::where('verified', 1)->where('active', 1)->count(),
+            'unverified_sites' => $queues['unverified_sites'],
             'total_orders' => Order::count(),
             'paid_orders' => Order::where('payment_status', 'paid')->count(),
             'revenue' => (float) Order::where('payment_status', 'paid')->sum('total_amount'),
-            'pending_deposits' => DepositRequest::where('status', 'pending')->count(),
-            'pending_withdrawals' => Withdrawal::whereIn('status', ['pending', 'processing'])->count(),
+            'pending_deposits' => $queues['pending_deposits'],
+            'pending_withdrawals' => $queues['pending_withdrawals'],
+            'pending_payments' => $queues['pending_payments'],
+            'pending_community' => $queues['pending_community'],
+            'open_disputes' => $queues['open_disputes'],
+            'needs_attention' => $queues['needs_attention'],
             'new_users_7d' => User::where('created_at', '>=', now()->subDays(7))->count(),
             'orders_7d' => Order::where('created_at', '>=', now()->subDays(7))->count(),
             'revenue_7d' => (float) Order::where('payment_status', 'paid')
-                ->where('created_at', '>=', now()->subDays(7))
+                ->whereRaw($this->paidAtSql().' >= ?', [now()->subDays(7)])
                 ->sum('total_amount'),
         ];
     }
@@ -61,12 +72,16 @@ class DashboardMetricsService
     /**
      * Revenue + user signup series for the last N days (clamped 7–90).
      *
+     * Paid GMV is bucketed by COALESCE(paid_at, created_at) so an order paid
+     * this week is not missing because it was created earlier.
+     *
      * @return array{labels: list<string>, revenue: list<float>, signups: list<int>, orders: list<int>}
      */
     public function trends(int $days = 30): array
     {
         $days = min(90, max(7, $days));
         $start = now()->subDays($days - 1)->startOfDay();
+        $paidAt = $this->paidAtSql();
 
         $labels = [];
         for ($i = 0; $i < $days; $i++) {
@@ -74,8 +89,8 @@ class DashboardMetricsService
         }
 
         $revenueRows = Order::where('payment_status', 'paid')
-            ->where('created_at', '>=', $start)
-            ->selectRaw('DATE(created_at) as day, SUM(total_amount) as total')
+            ->whereRaw($paidAt.' >= ?', [$start])
+            ->selectRaw('DATE('.$paidAt.') as day, SUM(total_amount) as total')
             ->groupBy('day')
             ->pluck('total', 'day');
 
@@ -146,11 +161,19 @@ class DashboardMetricsService
         $pendingWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing'])->count();
         // Ready-for-admin queue only (exclude unfinished awaiting_details drafts)
         $unverifiedSites = Site::query()->needsAdminReview()->count();
-        $pendingPayments = Order::where(function ($q) {
-            $q->whereNull('payment_status')
-                ->orWhereNotIn('payment_status', ['paid', 'refunded']);
-        })->whereIn('status', ['pending', 'processing', 'review'])->count();
-        $pendingClaims = SiteClaim::where('status', 'pending')->count();
+        $pendingPayments = $this->unpaidOrdersCount();
+        $pendingClaims = $this->pendingCount(SiteClaim::class, 'site_claims');
+        $pendingProblems = $this->pendingCount(ProblemReport::class, 'problem_reports');
+        $pendingSuggestions = $this->pendingCount(Suggestion::class, 'suggestions');
+        $pendingWebsites = $this->pendingCount(WebsiteSuggestion::class, 'website_suggestions');
+        $pendingCommunity = $pendingClaims + $pendingProblems + $pendingSuggestions + $pendingWebsites;
+        $openDisputes = $this->openDisputesCount();
+        $needsAttention = $pendingDeposits
+            + $pendingWithdrawals
+            + $unverifiedSites
+            + $pendingPayments
+            + $pendingCommunity
+            + $openDisputes;
 
         return [
             'pending_deposits' => $pendingDeposits,
@@ -158,6 +181,12 @@ class DashboardMetricsService
             'unverified_sites' => $unverifiedSites,
             'pending_payments' => $pendingPayments,
             'pending_claims' => $pendingClaims,
+            'pending_problems' => $pendingProblems,
+            'pending_suggestions' => $pendingSuggestions,
+            'pending_websites' => $pendingWebsites,
+            'pending_community' => $pendingCommunity,
+            'open_disputes' => $openDisputes,
+            'needs_attention' => $needsAttention,
         ];
     }
 
@@ -183,7 +212,7 @@ class DashboardMetricsService
             ]);
 
         $withdrawals = Withdrawal::with('user:id,name,email')
-            ->where('status', 'pending')
+            ->whereIn('status', ['pending', 'processing'])
             ->latest()
             ->take(5)
             ->get()
@@ -193,6 +222,7 @@ class DashboardMetricsService
                 'email' => $w->user?->email,
                 'amount' => (float) $w->amount,
                 'method' => $w->payment_method,
+                'status' => $w->status,
                 'date' => optional($w->created_at)->format('d M Y H:i'),
             ]);
 
@@ -214,5 +244,39 @@ class DashboardMetricsService
             'withdrawals' => $withdrawals,
             'sites' => $sites,
         ];
+    }
+
+    private function unpaidOrdersCount(): int
+    {
+        return Order::where(function ($q) {
+            $q->whereNull('payment_status')
+                ->orWhereNotIn('payment_status', ['paid', 'refunded']);
+        })->whereIn('status', ['pending', 'processing', 'review'])->count();
+    }
+
+    private function openDisputesCount(): int
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0;
+        }
+
+        return OrderItemDispute::where('status', OrderItemDispute::STATUS_OPEN)->count();
+    }
+
+    /**
+     * @param  class-string  $model
+     */
+    private function pendingCount(string $model, string $table): int
+    {
+        if (! Schema::hasTable($table)) {
+            return 0;
+        }
+
+        return $model::where('status', 'pending')->count();
+    }
+
+    private function paidAtSql(): string
+    {
+        return 'COALESCE(paid_at, created_at)';
     }
 }

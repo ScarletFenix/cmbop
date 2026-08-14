@@ -32,7 +32,7 @@ class StalledOrderController extends Controller
             return response()->json([
                 'success' => true,
                 'items' => $items,
-                'count' => $items->count(),
+                'count' => $queue->count(),
             ]);
         } catch (\Throwable $e) {
             Log::error('Stalled order queue failed', ['error' => $e->getMessage()]);
@@ -77,10 +77,19 @@ class StalledOrderController extends Controller
             $track = $item->accepted_at === null ? 'accept' : 'publish';
 
             if ($track === 'accept') {
-                $hoursOverdue = $this->sendAcceptReminder($mailer, $bells, $item, $order, $site, $publisher);
+                $sent = $this->sendAcceptReminder($mailer, $bells, $item, $order, $site, $publisher);
             } else {
-                $hoursOverdue = $this->sendPublishReminder($mailer, $bells, $deadlines, $item, $order, $site, $publisher);
+                $sent = $this->sendPublishReminder($mailer, $bells, $deadlines, $item, $order, $site, $publisher);
             }
+
+            if ($sent === null) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not send the reminder. The publisher may have this email turned off.',
+                ], 422);
+            }
+
+            $hoursOverdue = $sent;
 
             ActivityLogger::log(
                 'order.publisher_reminded',
@@ -119,7 +128,7 @@ class StalledOrderController extends Controller
         Order $order,
         ?Site $site,
         User $publisher,
-    ): int {
+    ): ?int {
         $anchor = $order->paid_at ?? $order->created_at;
         $hoursWaiting = $anchor ? max(0, (int) $anchor->diffInHours(now())) : 0;
         $stage = max(1, (int) $item->accept_nudge_stage);
@@ -136,7 +145,9 @@ class StalledOrderController extends Controller
         // scheduled one for the same stage.
         $mailable->dedupeKey = 'publisher_accept_nudge:manual:'.$item->id.':'.now()->timestamp;
 
-        $mailer->sendReminder($publisher, $mailable);
+        if (! $mailer->sendReminder($publisher, $mailable)) {
+            return null;
+        }
 
         try {
             $bells->notifyPublisherAcceptNudge($order, $item, $publisher, $stage);
@@ -155,23 +166,23 @@ class StalledOrderController extends Controller
         Order $order,
         ?Site $site,
         User $publisher,
-    ): int {
+    ): ?int {
         $deadline = $deadlines->for($item, $order, $site);
         $hoursOverdue = $deadline ? max(0, (int) $deadline->diffInHours(now(), false)) : 0;
         $stage = max(1, (int) $item->publish_nudge_stage);
 
-        $mailer->sendReminder($publisher, new PublisherPublishNudge(
+        $queued = $mailer->sendReminder($publisher, new PublisherPublishNudge(
             $publisher,
             collect([[
                 'order_id' => (int) $order->id,
                 'order_number' => (string) $order->order_number,
-                'site_name' => (string) ($site->site_name ?: $item->site_name ?: 'your site'),
+                'site_name' => (string) ($site?->site_name ?: $item->site_name ?: 'your site'),
                 'due_at' => $deadline ?? now(),
                 'hours_overdue' => $hoursOverdue,
                 'overdue_label' => $hoursOverdue >= 48
                     ? ((int) round($hoursOverdue / 24)).' days late'
                     : $hoursOverdue.'h late',
-                'promised' => (string) ($site->turnaround_time ?: 'listed'),
+                'promised' => (string) ($site?->turnaround_time ?: 'listed'),
                 'payout' => (float) $item->publisherPayoutAmount(),
             ]]),
             $stage,
@@ -179,6 +190,10 @@ class StalledOrderController extends Controller
             // scheduled one for the same stage.
             'manual:'.$item->id.':'.now()->timestamp
         ));
+
+        if (! $queued) {
+            return null;
+        }
 
         try {
             $bells->notifyPublisherPublishNudge($order, $item, $publisher, $stage, $hoursOverdue);

@@ -266,4 +266,43 @@ class AdminStalledOrderQueueTest extends TestCase
 
         $this->assertSame(3, (int) $item->fresh()->accept_nudge_stage);
     }
+
+    public function test_stalled_count_is_not_capped_by_the_table_limit(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site($publisher);
+
+        for ($i = 0; $i < 26; $i++) {
+            $this->order($advertiser, $site, 'processing', [
+                'accepted_at' => now()->subDays(5),
+                'publish_nudge_stage' => 4,
+            ]);
+        }
+
+        $response = $this->actingAs($admin)->getJson(route('admin.dashboard.stalled-orders'));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('count', 26);
+        $this->assertCount(25, $response->json('items'));
+    }
+
+    public function test_recently_overdue_stalled_orders_show_hours_not_a_full_day(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $order->paid_at = now()->subHours(5);
+        $order->save();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.stalled-orders'))
+            ->assertOk()
+            ->assertJsonPath('items.0.late_label', '5h')
+            ->assertJsonPath('items.0.days_overdue', 0);
+    }
 }
