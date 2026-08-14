@@ -435,6 +435,8 @@ $registerStaffOpsRoutes = function () {
         ->name('sites.manual-metrics');
     Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
         ->name('site-enrichment.rerun-failed');
+    Route::post('/site-enrichment/queue-stale', [SiteEnrichmentController::class, 'queueStale'])
+        ->name('site-enrichment.queue-stale');
 
     // Activate/deactivate: admin and marketing (shared Sites Management).
     Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])

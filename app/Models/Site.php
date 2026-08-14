@@ -326,6 +326,104 @@ class Site extends Model
         return $this->hasMany(SiteEnrichmentRun::class);
     }
 
+    public function latestEnrichmentRun()
+    {
+        return $this->hasOne(SiteEnrichmentRun::class)->latestOfMany();
+    }
+
+    /**
+     * Listings that need a metrics and/or screenshot refresh.
+     *
+     * Callers add `where('active', 1)` so the admin stale card, stale table,
+     * queue-stale, and `sites:enrich --stale` share the same freshness rules.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeStaleForEnrichment(Builder $query): Builder
+    {
+        $maxAgeDays = max(1, (int) config('site_enrichment.max_age_days', 90));
+        $cutoff = now()->subDays($maxAgeDays);
+        $hasMetricsAt = static::hasSitesColumn('metrics_fetched_at');
+        $hasScreenshot = static::hasSitesColumn('screenshot_path');
+        $hasScreenshotAt = static::hasSitesColumn('screenshot_fetched_at');
+        $placeholderIds = SiteEnrichmentRun::placeholderScreenshotSiteIds();
+
+        if (! $hasMetricsAt && ! $hasScreenshot && ! $hasScreenshotAt && $placeholderIds === []) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where(function (Builder $inner) use ($cutoff, $hasMetricsAt, $hasScreenshot, $hasScreenshotAt, $placeholderIds) {
+            if ($hasMetricsAt) {
+                $inner->whereNull('metrics_fetched_at')
+                    ->orWhere('metrics_fetched_at', '<', $cutoff);
+            }
+
+            if ($hasScreenshot) {
+                if ($hasMetricsAt) {
+                    $inner->orWhereNull('screenshot_path');
+                } else {
+                    $inner->whereNull('screenshot_path');
+                }
+            }
+
+            if ($hasScreenshotAt) {
+                if ($hasMetricsAt || $hasScreenshot) {
+                    $inner->orWhereNull('screenshot_fetched_at')
+                        ->orWhere('screenshot_fetched_at', '<', $cutoff);
+                } else {
+                    $inner->whereNull('screenshot_fetched_at')
+                        ->orWhere('screenshot_fetched_at', '<', $cutoff);
+                }
+            }
+
+            if ($placeholderIds !== []) {
+                $inner->orWhereIn('id', $placeholderIds);
+            }
+        });
+    }
+
+    /**
+     * Human labels for why this listing is in the stale set.
+     *
+     * @return list<string>
+     */
+    public function enrichmentStaleReasons(bool $hasPlaceholderScreenshot = false): array
+    {
+        $reasons = [];
+        $maxAgeDays = max(1, (int) config('site_enrichment.max_age_days', 90));
+        $cutoff = now()->subDays($maxAgeDays);
+
+        if (static::hasSitesColumn('metrics_fetched_at')) {
+            $at = $this->metrics_fetched_at;
+            if ($at === null) {
+                $reasons[] = 'No metrics';
+            } elseif ($at->lt($cutoff)) {
+                $reasons[] = 'Metrics stale';
+            }
+        }
+
+        $hasPathColumn = static::hasSitesColumn('screenshot_path');
+        $hasPath = $hasPathColumn && filled($this->screenshot_path);
+
+        if ($hasPathColumn && ! $hasPath) {
+            $reasons[] = 'No screenshot';
+        }
+
+        if ($hasPlaceholderScreenshot) {
+            $reasons[] = 'Placeholder screenshot';
+        }
+
+        if (static::hasSitesColumn('screenshot_fetched_at') && $hasPath) {
+            $shotAt = $this->screenshot_fetched_at;
+            if ($shotAt === null || $shotAt->lt($cutoff)) {
+                $reasons[] = 'Screenshot stale';
+            }
+        }
+
+        return $reasons;
+    }
+
     public function orderItems()
     {
         return $this->hasMany(OrderItem::class);

@@ -41,8 +41,6 @@ class EnrichSitesCommand extends Command
         }
 
         $limit = (int) ($this->option('limit') ?: config('site_enrichment.batch_limit', 40));
-        $maxAge = (int) config('site_enrichment.max_age_days', 90);
-        $staleBefore = now()->subDays($maxAge);
 
         $query = Site::query()->where('active', 1);
 
@@ -63,13 +61,7 @@ class EnrichSitesCommand extends Command
         }
 
         if ($this->option('stale') || (! $this->option('site') && ! $this->option('failed'))) {
-            $query->where(function ($q) use ($staleBefore) {
-                $q->whereNull('metrics_fetched_at')
-                    ->orWhere('metrics_fetched_at', '<', $staleBefore)
-                    ->orWhereNull('screenshot_path')
-                    ->orWhereNull('screenshot_fetched_at')
-                    ->orWhere('screenshot_fetched_at', '<', $staleBefore);
-            });
+            $query->staleForEnrichment();
         }
 
         $sites = $query->orderByRaw('metrics_fetched_at IS NULL DESC')
