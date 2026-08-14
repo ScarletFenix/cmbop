@@ -99,6 +99,15 @@ class MediaPathFilesystemTest extends TestCase
         $method->invoke($provider);
     }
 
+    public function test_testing_env_file_exists_so_dotenv_does_not_warn(): void
+    {
+        $this->assertFileExists(base_path('.env.testing'));
+        $testing = file_get_contents(base_path('.env.testing'));
+        $this->assertIsString($testing);
+        $this->assertStringContainsString('APP_ENV=testing', $testing);
+        $this->assertStringContainsString('DB_CONNECTION=sqlite', $testing);
+    }
+
     public function test_env_example_documents_media_path(): void
     {
         $example = file_get_contents(base_path('.env.example'));

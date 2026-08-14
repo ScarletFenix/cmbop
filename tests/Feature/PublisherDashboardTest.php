@@ -369,6 +369,16 @@ class PublisherDashboardTest extends TestCase
         $this->actingAs($publisher)
             ->get(route('publisher.dashboard'))
             ->assertOk()
-            ->assertSee('id="openTasks">1', false);
+            ->assertSee('id="openTasks">1', false)
+            ->assertSee('status-scheduled', false)
+            ->assertSee('Scheduled', false);
+
+        $recent = $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.recent'))
+            ->assertOk()
+            ->json('orders');
+        $statuses = collect($recent)->pluck('status')->all();
+        $this->assertContains('pending', $statuses);
+        $this->assertContains('scheduled', $statuses);
     }
 }

@@ -242,6 +242,9 @@ class AdvertiserOrderStatus
         if ($status === 'pending' && ! $paid) {
             $steps[0]['current'] = true;
             $steps[0]['done'] = false;
+        } elseif ($status === 'pending' && $paid && $order->isAwaitingScheduledRelease()) {
+            $steps[1]['label'] = 'Scheduled';
+            $steps[1]['current'] = true;
         } elseif ($status === 'pending' && $paid) {
             $steps[1]['current'] = true;
         } elseif ($status === 'processing' && $modRequested) {

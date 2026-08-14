@@ -126,6 +126,11 @@ class AdvertiserDashboardTest extends TestCase
         $this->assertSame('scheduled', $meta['stage']);
         $this->assertStringContainsString('Scheduled', $meta['label']);
 
+        $steps = AdvertiserOrderStatus::timelineSteps($scheduled);
+        $this->assertSame('Scheduled', $steps[1]['label']);
+        $this->assertTrue($steps[1]['current']);
+        $this->assertFalse($steps[1]['done']);
+
         $this->actingAs($user)
             ->getJson(route('advertiser.orders.statistics'))
             ->assertOk()
@@ -143,6 +148,15 @@ class AdvertiserDashboardTest extends TestCase
             ->assertOk()
             ->json('orders');
         $this->assertCount(0, $awaitingPublisher);
+
+        $all = $this->actingAs($user)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->json('orders');
+        $scheduledRow = collect($all)->firstWhere('publication_mode', 'scheduled');
+        $this->assertNotNull($scheduledRow);
+        $this->assertSame('status-processing', $scheduledRow['status_cls']);
+        $this->assertStringContainsString('Scheduled', $scheduledRow['status_label']);
     }
 
     public function test_needs_action_and_recommended_site_link(): void

@@ -855,12 +855,18 @@ function bootAdvertiserOrdersPage() {
         }
     }
 
+    function isAwaitingScheduledRelease(order) {
+        if (!order || order.schedule_released_at) return false;
+        if (['cancelled', 'completed', 'processing', 'review'].includes(order.status)) return false;
+        return order.status === 'scheduled' || order.publication_mode === 'scheduled';
+    }
+
     function getAdvertiserStatusMeta(order) {
         if (order.status_label && order.next_action) {
             return {
                 label: order.status_label,
                 next: order.next_action,
-                cls: getStatusClass(order.status),
+                cls: order.status_cls || (isAwaitingScheduledRelease(order) ? 'status-processing' : getStatusClass(order.status)),
                 autoHint: order.auto_approve_hint || null,
             };
         }
@@ -896,6 +902,9 @@ function bootAdvertiserOrdersPage() {
             return { label: 'Awaiting payment', next: 'Complete payment so the publisher can start.', cls: 'status-pending', autoHint: null };
         }
         if (status === 'pending' && payment === 'paid') {
+            if (isAwaitingScheduledRelease(order)) {
+                return { label: 'Scheduled', next: 'Publishes on the scheduled date. The publisher is not chased until then.', cls: 'status-processing', autoHint: null };
+            }
             return { label: 'Paid · waiting for publisher', next: 'Publisher will accept the order and start working.', cls: 'status-pending', autoHint: null };
         }
         if (status === 'processing' && contentRevisionRequested) {
@@ -966,6 +975,9 @@ function bootAdvertiserOrdersPage() {
         if (status === 'pending' && !paid) {
             steps[0].current = true;
             steps[0].done = false;
+        } else if (status === 'pending' && paid && isAwaitingScheduledRelease(order)) {
+            steps[1].label = 'Scheduled';
+            steps[1].current = true;
         } else if (status === 'pending' && paid) {
             steps[1].current = true;
         } else if (status === 'processing' && modRequested) {
@@ -1821,6 +1833,7 @@ function bootAdvertiserOrdersPage() {
             'pending': 'status-pending',
             'processing': 'status-processing',
             'review': 'status-review',
+            'scheduled': 'status-processing',
             'completed': 'status-completed',
             'cancelled': 'status-cancelled'
         };
