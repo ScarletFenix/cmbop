@@ -96,11 +96,11 @@ class PanelController extends Controller
         }
 
         if ($request->filled('from')) {
-            $query->whereDate('created_at', '>=', $request->date('from'));
+            $query->where('created_at', '>=', $this->marketerDayBound($request->date('from'), true));
         }
 
         if ($request->filled('to')) {
-            $query->whereDate('created_at', '<=', $request->date('to'));
+            $query->where('created_at', '<=', $this->marketerDayBound($request->date('to'), false));
         }
 
         if ($request->filled('q')) {
@@ -144,12 +144,25 @@ class PanelController extends Controller
      */
     private function marketerTodayBounds(): array
     {
-        $tz = config('app.timezone') ?: 'UTC';
-        $today = now()->timezone($tz);
+        $today = now()->timezone($this->marketerTimezone());
 
         return [
             $today->copy()->startOfDay()->utc(),
             $today->copy()->endOfDay()->utc(),
         ];
+    }
+
+    private function marketerDayBound(Carbon $date, bool $start): Carbon
+    {
+        $local = $date->copy()->timezone($this->marketerTimezone());
+
+        return $start
+            ? $local->startOfDay()->utc()
+            : $local->endOfDay()->utc();
+    }
+
+    private function marketerTimezone(): string
+    {
+        return config('app.timezone') ?: 'UTC';
     }
 }

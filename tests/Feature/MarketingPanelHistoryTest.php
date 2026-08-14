@@ -271,6 +271,12 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertSame('1', $this->dashboardStat($html, 'my-tasks-today'));
         $this->assertSame('2', $this->dashboardStatTotal($html, 'my-tasks-today'));
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['from' => '2026-08-15', 'to' => '2026-08-15']))
+            ->assertOk()
+            ->assertSee('Today in Berlin', false)
+            ->assertDontSee('Yesterday in Berlin', false);
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void
