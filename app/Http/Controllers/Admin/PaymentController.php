@@ -156,6 +156,10 @@ class PaymentController extends Controller
                 }
             }
 
+            if ($request->payment_status === 'failed' && $oldStatus === 'paid' && $order->payment_method === 'wallet') {
+                $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
+            }
+
             $order->save();
 
             Log::info('Payment status updated by admin', [
@@ -194,6 +198,13 @@ class PaymentController extends Controller
 
             if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
                 $notifications->notifyPaymentFailed([$fresh], $request->notes);
+                if ($refundAmount > 0) {
+                    $notifications->notifyRefundCredited(
+                        $fresh,
+                        $refundAmount,
+                        $request->notes ?: 'Admin marked payment failed'
+                    );
+                }
             }
 
             if ($request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
@@ -325,6 +336,63 @@ class PaymentController extends Controller
         if ($wallet && (float) $wallet->bonus_reserved > 0) {
             $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
         }
+    }
+
+    /**
+     * Paid wallet orders keep cash/bonus in reserved_balance until approve/reject.
+     * Admin "failed" used to flip payment_status only, leaving the hold locked
+     * and Approve still able to pay the publisher from that reserved bucket.
+     */
+    private function releaseWalletHoldOnAdminFailed(Order $order): float
+    {
+        if (in_array((string) $order->status, ['completed', 'cancelled'], true)) {
+            return 0.0;
+        }
+
+        $amount = round((float) $order->total_amount, 2);
+        if ($amount <= 0) {
+            if ($order->status !== 'cancelled') {
+                $order->status = 'cancelled';
+            }
+
+            return 0.0;
+        }
+
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if (! $advertiserRoleId) {
+            throw new \RuntimeException('Advertiser role not configured');
+        }
+
+        $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
+        $reservedBefore = round((float) $wallet->reserved_balance, 2);
+        if ($reservedBefore <= 0) {
+            if ($order->status !== 'cancelled') {
+                $order->status = 'cancelled';
+            }
+
+            return 0.0;
+        }
+
+        $bonusReservedBefore = (float) $wallet->bonus_reserved;
+        $wallet->refundReserved($amount);
+        $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
+        $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
+
+        if ($refunded > 0) {
+            app(WalletLedgerService::class)->recordRefund(
+                $wallet,
+                $refunded,
+                $bonusRestored,
+                $order,
+                $order->reference_code ?? $order->order_number
+            );
+        }
+
+        if ($order->status !== 'cancelled') {
+            $order->status = 'cancelled';
+        }
+
+        return $refunded;
     }
 
     /**
