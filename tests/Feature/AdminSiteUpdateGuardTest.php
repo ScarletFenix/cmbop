@@ -241,5 +241,7 @@ class AdminSiteUpdateGuardTest extends TestCase
     {
         $src = (string) file_get_contents(app_path('Http/Controllers/Admin/SiteController.php'));
         $this->assertSame(1, preg_match_all('/function adminUpdatePayload\s*\(/', $src));
+        $this->assertStringNotContainsString('$metricMerge', $src);
+        $this->assertDoesNotMatchRegularExpression('/^<<<<<<<|^=======|^>>>>>>>/m', $src);
     }
 }
