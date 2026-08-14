@@ -14,10 +14,12 @@ use App\Services\ActivityLogger;
 use App\Services\AgencySiteImportService;
 use App\Services\CheckoutSchemaService;
 use App\Services\EmailNotificationService;
+use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
+use App\Support\SiteImageUpload;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -102,8 +104,8 @@ class SiteController extends Controller
     public function store(Request $request)
     {
         // Normalize URLs before validation (publishers often omit https://)
-        $siteUrl = $this->normalizeHttpUrl((string) $request->input('siteUrl', ''));
-        $exampleUrl = $this->normalizeHttpUrl((string) $request->input('exampleUrl', ''));
+        $siteUrl = $this->normalizeHttpUrl($request->input('siteUrl', ''));
+        $exampleUrl = $this->normalizeHttpUrl($request->input('exampleUrl', ''));
         $request->merge([
             'siteUrl' => $siteUrl,
             'exampleUrl' => $exampleUrl,
@@ -159,30 +161,30 @@ class SiteController extends Controller
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:99999999.99',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
             'siteDescription' => 'required|string',
-            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
             'sensitive.trading' => 'nullable|boolean',
             'sensitive.CBD' => 'nullable|boolean',
             'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0',
-            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
-            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
-            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0|max:99999999.99',
+            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0|max:99999999.99',
+            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0|max:99999999.99',
+            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0|max:99999999.99',
             'homepage.1' => 'nullable|boolean',
             'homepage.7' => 'nullable|boolean',
             'homepage.30' => 'nullable|boolean',
-            'price_homepage.1' => 'nullable|numeric|min:0',
-            'price_homepage.7' => 'nullable|numeric|min:0',
-            'price_homepage.30' => 'nullable|numeric|min:0',
+            'price_homepage.1' => 'nullable|numeric|min:0|max:99999999.99',
+            'price_homepage.7' => 'nullable|numeric|min:0|max:99999999.99',
+            'price_homepage.30' => 'nullable|numeric|min:0|max:99999999.99',
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
@@ -458,6 +460,12 @@ class SiteController extends Controller
         $site->save();
 
         try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher accepted site: '.$e->getMessage());
+        }
+
+        try {
             ActivityLogger::log(
                 'site.assignment_accepted',
                 (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
@@ -529,6 +537,12 @@ class SiteController extends Controller
 
         $siteId = $site->id;
         $domain = $site->domain ?: $site->site_name;
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
+        }
+        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
         if ($request->expectsJson() || $request->ajax()) {
@@ -597,7 +611,7 @@ class SiteController extends Controller
 
         if ($request->filled('exampleUrl')) {
             $request->merge([
-                'exampleUrl' => $this->normalizeHttpUrl((string) $request->input('exampleUrl')),
+                'exampleUrl' => $this->normalizeHttpUrl($request->input('exampleUrl')),
             ]);
         }
 
@@ -640,30 +654,30 @@ class SiteController extends Controller
             'exampleUrl' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:99999999.99',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publicationTime' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
             'siteDescription' => 'required|string',
-            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
             'sensitive.trading' => 'nullable|boolean',
             'sensitive.CBD' => 'nullable|boolean',
             'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0',
-            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
-            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
-            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0|max:99999999.99',
+            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0|max:99999999.99',
+            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0|max:99999999.99',
+            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0|max:99999999.99',
             'homepage.1' => 'nullable|boolean',
             'homepage.7' => 'nullable|boolean',
             'homepage.30' => 'nullable|boolean',
-            'price_homepage.1' => 'nullable|numeric|min:0',
-            'price_homepage.7' => 'nullable|numeric|min:0',
-            'price_homepage.30' => 'nullable|numeric|min:0',
+            'price_homepage.1' => 'nullable|numeric|min:0|max:99999999.99',
+            'price_homepage.7' => 'nullable|numeric|min:0|max:99999999.99',
+            'price_homepage.30' => 'nullable|numeric|min:0|max:99999999.99',
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
@@ -816,16 +830,12 @@ class SiteController extends Controller
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
-        $orderCount = $site->orderItemsCount();
-        if ($orderCount > 0) {
-            return redirect()->back()->with(
-                'error',
-                $orderCount === 1
-                    ? 'This site has 1 order and cannot be deleted. Archive it to hide it from the catalog.'
-                    : 'This site has '.$orderCount.' orders and cannot be deleted. Archive it to hide it from the catalog.'
-            );
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
         }
-
+        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
         return redirect()->back()->with('success', 'Site deleted successfully!');

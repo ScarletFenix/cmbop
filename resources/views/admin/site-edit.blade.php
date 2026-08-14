@@ -8,6 +8,9 @@
     $marketingListingLocked = $marketingListingLocked ?? false;
     $categories = $categories ?? collect();
     $rawMarketingNiches = old('categories', $site->categories_array ?? []);
+    if (! is_string($rawMarketingNiches) && ! is_iterable($rawMarketingNiches)) {
+        $rawMarketingNiches = [];
+    }
     if (is_string($rawMarketingNiches)) {
         $rawMarketingNiches = preg_split('/\|/', $rawMarketingNiches) ?: [];
     }
@@ -17,7 +20,9 @@
         $marketingNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $marketingNiches) ?: [])));
     }
     $marketingNiches = collect($marketingNiches)
-        ->filter(fn ($v) => filled($v) && strtolower((string) $v) !== 'pending')
+        ->flatten()
+        ->filter(fn ($v) => is_scalar($v) && filled($v) && strtolower((string) $v) !== 'pending')
+        ->map(fn ($v) => (string) $v)
         ->values()
         ->all();
     // After save, url()->previous() is this edit page — Back would look broken.
@@ -135,15 +140,15 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_url">Site URL <span class="text-danger">*</span></label>
-                            <input type="url" id="site_url" name="site_url" class="form-control @error('site_url') is-invalid @enderror"
+                            <input type="text" id="site_url" name="site_url" class="form-control @error('site_url') is-invalid @enderror" placeholder="https://example.com"
                                    value="{{ old_text('site_url', $site->site_url) }}" required>
                             @error('site_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
-                            <input type="url" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror"
+                            <input type="text" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror" placeholder="https://example.com/sample-post"
                                    value="{{ old_text('example_url', $site->example_url) }}">
-                            <div class="form-text">Optional sample article or placement URL.</div>
+                            <div class="form-text">Optional. If set, must be on the same domain as the site URL.</div>
                             @error('example_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">
@@ -159,7 +164,7 @@
                                 <option value="">Select…</option>
                                 @foreach($countries as $country)
                                     <option value="{{ strtolower($country->code) }}"
-                                        @selected(old('country', strtolower((string) $site->country)) === strtolower($country->code))>
+                                        @selected(old_text('country', strtolower((string) $site->country)) === strtolower($country->code))>
                                         {{ $country->name }}
                                     </option>
                                 @endforeach
@@ -173,7 +178,7 @@
                                 <option value="">Select country first</option>
                                 @foreach($languages as $language)
                                     <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        @selected(old_text('language', strtolower((string) $site->language)) === strtolower($language->code))>
                                         {{ $language->name }}
                                     </option>
                                 @endforeach
@@ -330,7 +335,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_url">Site URL</label>
-                            <input type="url" id="site_url" name="site_url" class="form-control"
+                            <input type="text" id="site_url" name="site_url" class="form-control" placeholder="https://example.com"
                                    value="{{ old_text('site_url', $site->site_url) }}" required>
                         </div>
 
@@ -362,7 +367,7 @@
                                 <option value="">Select…</option>
                                 @foreach($countries as $country)
                                     <option value="{{ strtolower($country->code) }}"
-                                        @selected(old('country', strtolower((string) $site->country)) === strtolower($country->code))>
+                                        @selected(old_text('country', strtolower((string) $site->country)) === strtolower($country->code))>
                                         {{ $country->name }}
                                     </option>
                                 @endforeach
@@ -374,7 +379,7 @@
                                 <option value="">Select country first</option>
                                 @foreach($languages as $language)
                                     <option value="{{ strtolower($language->code) }}"
-                                        @selected(old('language', strtolower((string) $site->language)) === strtolower($language->code))>
+                                        @selected(old_text('language', strtolower((string) $site->language)) === strtolower($language->code))>
                                         {{ $language->name }}
                                     </option>
                                 @endforeach
@@ -388,7 +393,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
-                            <input type="url" id="example_url" name="example_url" class="form-control"
+                            <input type="text" id="example_url" name="example_url" class="form-control" placeholder="https://example.com/sample-post"
                                    value="{{ old_text('example_url', $site->example_url) }}">
                         </div>
 
@@ -507,7 +512,7 @@
     const map = @json($countryLanguageMap ?? new \stdClass());
     const countryEl = document.getElementById('country');
     const langEl = document.getElementById('language');
-    const preferredLang = @json(old('language', strtolower((string) ($site->language ?? ''))));
+    const preferredLang = @json(old_text('language', strtolower((string) ($site->language ?? ''))));
 
     function refreshLanguages() {
         if (!countryEl || !langEl) return;

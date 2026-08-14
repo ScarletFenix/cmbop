@@ -106,6 +106,10 @@ class MediaPathFilesystemTest extends TestCase
         $this->assertIsString($testing);
         $this->assertStringContainsString('APP_ENV=testing', $testing);
         $this->assertStringContainsString('DB_CONNECTION=sqlite', $testing);
+
+        $phpunit = file_get_contents(base_path('phpunit.xml'));
+        $this->assertIsString($phpunit);
+        $this->assertStringContainsString('bootstrap="tests/bootstrap.php"', $phpunit);
     }
 
     public function test_env_example_documents_media_path(): void

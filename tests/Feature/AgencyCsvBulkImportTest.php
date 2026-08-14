@@ -194,6 +194,25 @@ class AgencyCsvBulkImportTest extends TestCase
         $this->assertStringContainsString('already registered', implode(' ', $failure->errors));
     }
 
+    public function test_overflow_price_is_rejected_without_creating_a_site(): void
+    {
+        $row = $this->validRow('overflow-agency.example', 'Overflow Agency');
+        $row[9] = '100000000000';
+
+        $this->uploadCsv([$row])->assertRedirect();
+
+        $this->assertNull(Site::where('domain', 'overflow-agency.example')->first());
+
+        $import = AgencySiteImport::query()->first();
+        $this->assertNotNull($import);
+        $this->assertSame(0, (int) $import->created_count);
+        $this->assertSame(1, (int) $import->failed_count);
+
+        $failure = AgencySiteImportFailure::query()->first();
+        $this->assertNotNull($failure);
+        $this->assertMatchesRegularExpression('/price|99999999/i', implode(' ', $failure->errors));
+    }
+
     public function test_admin_site_list_marks_csv_metrics_for_spot_check(): void
     {
         $adminRole = Role::firstOrCreate(['name' => 'admin']);

@@ -104,6 +104,26 @@ class WalletLedgerService
         ]);
     }
 
+    /**
+     * Write a purchase row once per wallet + checkout reference so card/bonus
+     * checkouts get the same clawback hint as wallet checkout.
+     */
+    public function recordPurchaseOnce(Wallet $wallet, float $amount, float $bonusAmount = 0, $related = null, ?string $reference = null): ?WalletTransaction
+    {
+        if ($reference !== null && $reference !== '') {
+            $exists = WalletTransaction::query()
+                ->where('wallet_id', $wallet->id)
+                ->where('type', WalletTransaction::TYPE_PURCHASE)
+                ->where('reference', $reference)
+                ->exists();
+            if ($exists) {
+                return null;
+            }
+        }
+
+        return $this->recordPurchase($wallet, $amount, $bonusAmount, $related, $reference);
+    }
+
     public function recordRefund(Wallet $wallet, float $amount, float $bonusAmount = 0, $related = null, ?string $reference = null): ?WalletTransaction
     {
         return $this->record($wallet, WalletTransaction::TYPE_REFUND, 'credit', $amount, [

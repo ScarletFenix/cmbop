@@ -685,8 +685,14 @@ class BulkSiteRequestController extends Controller
             $language = strtolower($langRaw);
             $country = strtolower($countryRaw);
 
-            if ($price === null || $price < 0) {
-                $errors[] = 'Invalid price';
+            if ($price === null || $price < 0 || $price > 99999999.99) {
+                $errors[] = 'Invalid price (0–99999999.99)';
+            }
+            if (strlen($siteUrl) > 255) {
+                $errors[] = 'URL is too long';
+            }
+            if (is_string($siteName) && strlen($siteName) > 255) {
+                $errors[] = 'Site name is too long';
             }
             if ($da === null || $da < 0 || $da > 100) {
                 $errors[] = 'Invalid DA';

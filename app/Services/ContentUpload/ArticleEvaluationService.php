@@ -20,6 +20,9 @@ class ArticleEvaluationService
     /** Cap uniqueness shingles so a 10 MB article cannot OOM the request. */
     private const UNIQUENESS_WORD_LIMIT = 15000;
 
+    /** SQL truncate for corpus extracted_text (~15k words). */
+    private const UNIQUENESS_TEXT_CHARS = 100000;
+
     private ArticleLanguageGuard $languageGuard;
 
     public function __construct(
@@ -322,7 +325,11 @@ class ArticleEvaluationService
     public function scoreUniqueness(string $text, ?int $excludeId = null, int $corpusLimit = 200): array
     {
         $shingles = $this->shingles($text, 3);
-        $internal = $this->internalOriginality($text);
+        $internal = $this->internalOriginality(
+            mb_strlen($text) > self::UNIQUENESS_TEXT_CHARS
+                ? mb_substr($text, 0, self::UNIQUENESS_TEXT_CHARS)
+                : $text
+        );
 
         if ($shingles === []) {
             return [
@@ -335,6 +342,8 @@ class ArticleEvaluationService
         }
 
         $query = ContentSubmission::query()
+            ->select(['id'])
+            ->selectRaw('substr(extracted_text, 1, ?) as extracted_text', [self::UNIQUENESS_TEXT_CHARS])
             ->whereNotNull('extracted_text')
             ->where('extracted_text', '!=', '')
             ->whereIn('moderation_status', [
@@ -353,7 +362,7 @@ class ArticleEvaluationService
         $maxSim = 0.0;
         $matchedId = null;
 
-        foreach ($query->get(['id', 'extracted_text']) as $row) {
+        foreach ($query->get() as $row) {
             $other = $this->shingles((string) $row->extracted_text, 3);
             if ($other === []) {
                 continue;

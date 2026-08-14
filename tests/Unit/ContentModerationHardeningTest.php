@@ -158,6 +158,22 @@ class ContentModerationHardeningTest extends TestCase
         $this->assertLessThan(70, $result['max_confidence']);
     }
 
+    public function test_score_still_finds_a_keyword_near_the_start_of_a_long_article(): void
+    {
+        $text = 'This article mentions casino once in passing about entertainment venues. '
+            .str_repeat('Useful editorial content about productivity software for busy teams. ', 8000);
+
+        $result = $this->engine->score(
+            title: 'Entertainment notes',
+            text: $text,
+            links: [],
+            categories: $this->categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertContains('casino', $result['matched_terms']);
+    }
+
     public function test_extract_urls_from_text_finds_www_and_https(): void
     {
         $urls = $this->engine->extractUrlsFromText(

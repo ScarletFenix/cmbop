@@ -226,7 +226,7 @@ class BulkSiteRequestController extends Controller
 
         if ($request->filled('exampleUrl')) {
             $request->merge([
-                'exampleUrl' => $this->normalizeHttpUrl((string) $request->input('exampleUrl')),
+                'exampleUrl' => $this->normalizeHttpUrl($request->input('exampleUrl')),
             ]);
         }
 
@@ -237,7 +237,7 @@ class BulkSiteRequestController extends Controller
             'link_type' => 'required|in:dofollow,nofollow',
             'siteDescription' => 'required|string',
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
-            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
         ]);
 
         $existingCategories = collect($site->categories ?? [])
@@ -472,9 +472,23 @@ class BulkSiteRequestController extends Controller
                 : $submitted.' sites submitted for admin review — they stay in Pending until approved.');
     }
 
-    private function normalizeHttpUrl(string $url): string
+    private function normalizeHttpUrl(mixed $url): string
     {
-        $url = trim($url);
+        if (is_array($url)) {
+            $flat = [];
+            array_walk_recursive($url, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $url = $flat[0] ?? '';
+        }
+
+        if (! is_scalar($url) && $url !== null) {
+            return '';
+        }
+
+        $url = trim((string) $url);
         if ($url === '') {
             return $url;
         }
