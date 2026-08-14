@@ -343,7 +343,7 @@ class ArticleEvaluationService
 
         $query = ContentSubmission::query()
             ->select(['id'])
-            ->selectRaw('LEFT(extracted_text, ?) as extracted_text', [self::UNIQUENESS_TEXT_CHARS])
+            ->selectRaw('substr(extracted_text, 1, ?) as extracted_text', [self::UNIQUENESS_TEXT_CHARS])
             ->whereNotNull('extracted_text')
             ->where('extracted_text', '!=', '')
             ->whereIn('moderation_status', [

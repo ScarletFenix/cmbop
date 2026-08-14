@@ -1423,7 +1423,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $sql = strtolower(implode(' ', array_column(DB::getQueryLog(), 'query')));
         DB::disableQueryLog();
 
-        $this->assertStringContainsString('left(extracted_text', $sql);
+        $this->assertStringContainsString('substr(extracted_text', $sql);
     }
 
     public function test_legacy_drafts_json_omits_article_bodies(): void
