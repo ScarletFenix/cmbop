@@ -96,7 +96,10 @@ class AdvertiserProjectsUxTest extends TestCase
         $pos = strpos($html, $needle);
         $this->assertNotFalse($pos, 'Expected project "'.$projectName.'" in HTML');
 
-        return substr($html, $pos, 2800);
+        $nextCard = strpos($html, 'col-md-4', $pos + 1);
+        $length = $nextCard !== false ? $nextCard - $pos : 12000;
+
+        return substr($html, $pos, max($length, 1));
     }
 
     private function badgeCount(string $cardHtml, string $title): int
@@ -195,6 +198,8 @@ class AdvertiserProjectsUxTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame('Shared Name', $project->fresh()->project_name);
+        $this->assertSame('shared-name-'.$user->id, $project->fresh()->slug);
+        $this->assertNotSame($project->fresh()->slug, Project::where('user_id', $other->id)->value('slug'));
     }
 
     public function test_projects_page_shows_zero_badges_when_no_matching_placements(): void

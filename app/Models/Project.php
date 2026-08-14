@@ -41,19 +41,22 @@ class Project extends Model
         parent::boot();
 
         static::creating(function ($project) {
-            $project->slug = self::generateSlug($project->project_name);
+            $project->slug = self::generateSlug($project->project_name, $project->user_id);
         });
 
         static::updating(function ($project) {
-            if ($project->isDirty('project_name')) {
-                $project->slug = self::generateSlug($project->project_name);
+            if ($project->isDirty('project_name') || $project->isDirty('user_id')) {
+                $project->slug = self::generateSlug($project->project_name, $project->user_id);
             }
         });
     }
 
-    public static function generateSlug($name)
+    public static function generateSlug($name, $userId = null): string
     {
-        return Str::slug($name);
+        $base = Str::slug((string) $name);
+        $suffix = $userId !== null && $userId !== '' ? '-'.$userId : '';
+
+        return $base.$suffix;
     }
 
     public function user()

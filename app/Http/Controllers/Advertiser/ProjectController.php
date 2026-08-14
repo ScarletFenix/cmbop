@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\Project;
 use Illuminate\Http\Request;
-use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class ProjectController extends Controller
@@ -54,13 +53,10 @@ class ProjectController extends Controller
             ],
         ]);
 
-        $slug = Str::slug($validated['project_name']);
-
         Project::create([
             'user_id' => auth()->id(),
             'project_name' => $validated['project_name'],
             'project_url' => $validated['project_url'],
-            'slug' => $slug,
         ]);
 
         return back()->with('success', 'Project created successfully.');
@@ -92,12 +88,9 @@ class ProjectController extends Controller
             ],
         ]);
 
-        $slug = Str::slug($validated['project_name']);
-
         $project->update([
             'project_name' => $validated['project_name'],
             'project_url' => $validated['project_url'],
-            'slug' => $slug,
         ]);
 
         return back()->with('success', 'Project updated successfully.');

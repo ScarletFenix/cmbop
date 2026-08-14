@@ -31,4 +31,10 @@ class ProjectPlacementStagesTest extends TestCase
         $this->assertSame('rejected', Project::stageBucket('payment_failed'));
         $this->assertNull(Project::stageBucket('unknown'));
     }
+
+    public function test_generate_slug_includes_user_id_so_names_can_repeat_across_advertisers(): void
+    {
+        $this->assertSame('acme-client-7', Project::generateSlug('Acme Client', 7));
+        $this->assertSame('acme-client-9', Project::generateSlug('Acme Client', 9));
+    }
 }
