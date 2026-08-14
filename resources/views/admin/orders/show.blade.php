@@ -26,6 +26,13 @@
     $remindableItems = $order->items
         ->filter(fn ($line) => $line->canAdminRemindPublisher($order))
         ->values();
+    $hasPublicationSchedule = $order->hasPublicationSchedule();
+    $scheduledLocal = $hasPublicationSchedule
+        ? $order->scheduledPublishAtInScheduleTimezone()
+        : null;
+    $scheduleTimezone = $hasPublicationSchedule
+        ? $order->scheduleTimezoneOrUtc()
+        : null;
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
@@ -221,6 +228,35 @@
                                 <div class="col-md-3"><span class="text-muted small">Subtotal / Tax / Total</span>
                                     <div>€{{ number_format((float) $order->subtotal, 2) }} · €{{ number_format((float) $order->tax, 2) }} · €{{ number_format((float) $order->total_amount, 2) }}</div>
                                 </div>
+                                @if($hasPublicationSchedule)
+                                    <div class="col-12" id="order-schedule">
+                                        <div class="row g-3">
+                                            <div class="col-md-3">
+                                                <span class="text-muted small">Publication mode</span>
+                                                <div>{{ ($order->publication_mode ?? '') === 'scheduled' ? 'Scheduled' : 'Immediate' }}</div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <span class="text-muted small">Scheduled for</span>
+                                                <div>
+                                                    @if($scheduledLocal)
+                                                        {{ $scheduledLocal->format('M j, Y g:i A') }}
+                                                        <span class="text-muted">{{ $scheduleTimezone }}</span>
+                                                    @else
+                                                        —
+                                                    @endif
+                                                </div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <span class="text-muted small">Released at</span>
+                                                <div>{{ optional($order->schedule_released_at)->format('M j, Y g:i A') ?: 'Not released' }}</div>
+                                            </div>
+                                            <div class="col-md-3">
+                                                <span class="text-muted small">Reminder sent at</span>
+                                                <div>{{ optional($order->schedule_reminder_sent_at)->format('M j, Y g:i A') ?: 'Not sent' }}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                @endif
                             </div>
                         </div>
                     </div>

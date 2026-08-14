@@ -5,6 +5,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 class Order extends Model
 {
@@ -50,6 +51,46 @@ class Order extends Model
     public function isScheduled(): bool
     {
         return $this->status === 'scheduled' || $this->publication_mode === 'scheduled';
+    }
+
+    /**
+     * True when this order has any scheduled-publish data, including after release.
+     */
+    public function hasPublicationSchedule(): bool
+    {
+        return $this->isScheduled()
+            || $this->scheduled_publish_at !== null
+            || $this->schedule_released_at !== null
+            || $this->schedule_reminder_sent_at !== null
+            || filled($this->schedule_timezone);
+    }
+
+    /**
+     * Advertiser timezone for the scheduled slot. Invalid values fall back to UTC.
+     */
+    public function scheduleTimezoneOrUtc(): string
+    {
+        $tz = filled($this->schedule_timezone) ? (string) $this->schedule_timezone : 'UTC';
+
+        try {
+            new \DateTimeZone($tz);
+        } catch (\Throwable) {
+            return 'UTC';
+        }
+
+        return $tz;
+    }
+
+    /**
+     * Scheduled publish instant in the advertiser timezone (UTC if the TZ is missing/invalid).
+     */
+    public function scheduledPublishAtInScheduleTimezone(): ?Carbon
+    {
+        if (! $this->scheduled_publish_at) {
+            return null;
+        }
+
+        return $this->scheduled_publish_at->copy()->timezone($this->scheduleTimezoneOrUtc());
     }
 
     /**

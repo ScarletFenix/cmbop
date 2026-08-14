@@ -11,6 +11,7 @@ use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
@@ -757,5 +758,89 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertOk()
             ->assertDontSee('id="remind-publisher"', false)
             ->assertDontSee('Remind to publish', false);
+    }
+
+    public function test_order_show_hides_schedule_fields_for_immediate_orders(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertDontSee('id="order-schedule"', false)
+            ->assertDontSee('Scheduled for', false)
+            ->assertDontSee('Not released', false)
+            ->assertDontSee('Not sent', false);
+    }
+
+    public function test_order_show_displays_scheduled_publish_fields(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+        $at = Carbon::parse('2026-09-15 14:00:00', 'UTC');
+        $order->update([
+            'status' => 'scheduled',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $at,
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $local = $at->copy()->timezone('Europe/Berlin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('id="order-schedule"', false)
+            ->assertSee('Publication mode', false)
+            ->assertSee('Scheduled for', false)
+            ->assertSee($local->format('M j, Y g:i A'), false)
+            ->assertSee('Europe/Berlin', false)
+            ->assertSee('Not released', false)
+            ->assertSee('Not sent', false);
+    }
+
+    public function test_order_show_displays_released_and_reminder_timestamps(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+        $released = Carbon::parse('2026-09-15 14:05:00', 'UTC');
+        $reminded = Carbon::parse('2026-09-14 08:00:00', 'UTC');
+        $order->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => Carbon::parse('2026-09-15 14:00:00', 'UTC'),
+            'schedule_timezone' => 'Europe/Berlin',
+            'schedule_released_at' => $released,
+            'schedule_reminder_sent_at' => $reminded,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee($released->format('M j, Y g:i A'), false)
+            ->assertSee($reminded->format('M j, Y g:i A'), false)
+            ->assertDontSee('Not released', false)
+            ->assertDontSee('Not sent', false);
+    }
+
+    public function test_order_show_falls_back_to_utc_for_invalid_schedule_timezone(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+        $at = Carbon::parse('2026-09-15 14:00:00', 'UTC');
+        $order->update([
+            'status' => 'scheduled',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $at,
+            'schedule_timezone' => 'Not/AZone',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee($at->copy()->timezone('UTC')->format('M j, Y g:i A'), false)
+            ->assertSee('UTC', false)
+            ->assertDontSee('Not/AZone', false);
     }
 }
