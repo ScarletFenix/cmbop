@@ -146,7 +146,7 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertSee('data-bulk-url-price-chip', false)
             ->assertSee('name="sites[0][url]"', false)
             ->assertSee('name="sites[0][price]"', false)
-            ->assertDontSee('modal-lg modal-dialog-scrollable', false);
+            ->assertSee('id="bulkRequestModal"', false);
 
         $html = $this->actingAs($this->publisher)
             ->get(route('publisher.websites'))
