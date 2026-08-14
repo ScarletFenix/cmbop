@@ -151,6 +151,9 @@ class WelcomeBonusGrantTest extends TestCase
             ->assertDontSee('Spend on your first orders — not withdrawable', false)
             ->assertDontSee('Welcome bonus for first orders', false)
             ->assertDontSee('Start with €20 free credit', false)
+            ->assertDontSee('€20 Welcome Credit', false)
+            ->assertDontSee('New advertisers get €20 welcome credit', false)
+            ->assertSee('Create Account | SEOLinkBuildings', false)
             ->assertSee('Free to start — no card required', false)
             ->assertSee('const welcomeBonusEnabled = false', false)
             ->getContent();
