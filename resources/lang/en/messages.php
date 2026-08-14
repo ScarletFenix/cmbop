@@ -159,7 +159,6 @@ return [
     'about_page_companies_house' => 'View on Companies House',
     'about_page_address_label' => 'Registered address',
     'about_page_email_label' => 'Support email',
-    'about_page_vat_label' => 'VAT',
     'about_page_markets_label' => 'Markets',
     'about_page_markets_body' => 'Europe (EN/DE/FR/NL public site) plus English-speaking and other supported publisher markets in the catalog.',
     'home' => 'Home',

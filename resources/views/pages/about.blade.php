@@ -24,7 +24,6 @@
     $registrationNo = $company['registration_no'] ?? '16607074';
     $legalName = $company['legal_name'] ?? 'SEOLinkBuildings Partners with (Topurlz LTD)';
     $address = implode(', ', $company['address_lines'] ?? ['20 Wenlock Road, London, England, N1 7GU']);
-    $vatNote = $company['vat_note'] ?? null;
 
     $faqEntities = [];
     foreach (range(1, 6) as $i) {
@@ -322,9 +321,6 @@
                 <strong>{{ __('messages.about_page_email_label') }}:</strong>
                 <a href="mailto:{{ $supportEmail }}">{{ $supportEmail }}</a>
             </li>
-            @if($vatNote)
-                <li class="mb-2"><strong>{{ __('messages.about_page_vat_label') }}:</strong> {{ $vatNote }}</li>
-            @endif
             <li><strong>{{ __('messages.about_page_markets_label') }}:</strong> {{ __('messages.about_page_markets_body') }}</li>
         </ul>
     </div>

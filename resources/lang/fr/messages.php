@@ -625,7 +625,6 @@ return [
     'about_page_companies_house' => 'Voir sur Companies House',
     'about_page_address_label' => 'Adresse enregistrée',
     'about_page_email_label' => 'E-mail support',
-    'about_page_vat_label' => 'TVA',
     'about_page_markets_label' => 'Marchés',
     'about_page_markets_body' => 'Europe (site public EN/DE/FR/NL) et autres marchés éditeurs pris en charge dans le catalogue.',
     'home' => 'Accueil',
