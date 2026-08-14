@@ -94,9 +94,34 @@ class AdminSiteReviewQueueTest extends TestCase
 
         $this->assertNotNull($note);
         $this->assertSame('New site to verify', $note->title);
+        $this->assertStringContainsString('/admin/sites', (string) $note->action_url);
         $this->assertStringContainsString('needs_review=1', (string) $note->action_url);
         $this->assertStringContainsString('publisher='.$publisher->id, (string) $note->action_url);
         $this->assertStringContainsString('site='.$ready->id, (string) $note->action_url);
+    }
+
+    public function test_notify_marketer_new_site_uses_review_copy_and_marketing_url(): void
+    {
+        $marketer = $this->userWithRole('marketing');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->makePendingSite($publisher);
+
+        app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'create');
+
+        $note = InAppNotification::query()
+            ->where('user_id', $marketer->id)
+            ->where('audience', InAppNotification::AUDIENCE_ADMIN)
+            ->where('related_type', Site::class)
+            ->where('related_id', $site->id)
+            ->first();
+
+        $this->assertNotNull($note);
+        $this->assertSame('New site to review', $note->title);
+        $this->assertStringContainsString('needs review', (string) $note->message);
+        $this->assertStringContainsString('/marketing/sites', (string) $note->action_url);
+        $this->assertStringNotContainsString('/admin/sites', (string) $note->action_url);
+        $this->assertStringContainsString('needs_review=1', (string) $note->action_url);
+        $this->assertStringContainsString('site='.$site->id, (string) $note->action_url);
     }
 
     public function test_verify_archives_admin_site_review_notifications(): void

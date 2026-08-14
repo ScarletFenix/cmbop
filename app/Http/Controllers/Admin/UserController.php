@@ -194,7 +194,11 @@ class UserController extends Controller
                 if ($grantMarketing) {
                     $user->roles()->syncWithoutDetaching([$marketingRole->id]);
                     // Activate Marketing so they can open the panel immediately.
-                    $user->active_role_id = $marketingRole->id;
+                    // Leave admins on Admin — RedirectMarketingFromAdmin would otherwise
+                    // bounce them off /admin until they find the role switcher.
+                    if (! $user->hasRole('admin')) {
+                        $user->active_role_id = $marketingRole->id;
+                    }
                     if ($hasActivateColumn) {
                         $user->can_activate_sites = $canActivateSites;
                     }

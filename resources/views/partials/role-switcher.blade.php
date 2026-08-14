@@ -68,7 +68,7 @@
                                     data-role-name="{{ $roleLabel($role->name) }}">
                                 {{ $roleLabel($role->name) }}
                                 @if($role->name === 'marketing')
-                                    <small class="text-muted d-block">Admin panel · site review</small>
+                                    <small class="text-muted d-block">Marketing workspace · site review</small>
                                 @elseif($role->name === 'admin')
                                     <small class="text-muted d-block">Full admin panel</small>
                                 @endif

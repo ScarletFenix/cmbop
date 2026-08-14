@@ -55,8 +55,11 @@ class RedirectMarketingFromAdmin
             return true;
         }
         if (str_starts_with($rest, 'sites')) {
-            // Verify stays admin-only. Activate is mirrored under /marketing for permitted marketers.
+            // Verify and the records sheet stay admin-only. Activate is mirrored under /marketing.
             if (preg_match('#^sites/\d+/verify$#', $rest) === 1) {
+                return false;
+            }
+            if (preg_match('#^sites/records(/export)?$#', $rest) === 1) {
                 return false;
             }
 
