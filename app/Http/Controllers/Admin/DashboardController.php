@@ -85,6 +85,20 @@ class DashboardController extends Controller
     }
 
     /**
+     * Liability + this-month margin (same source as the finance hub).
+     */
+    public function getFinanceStrip()
+    {
+        try {
+            return response()->json(['success' => true, 'data' => $this->metrics->financeStrip()]);
+        } catch (\Exception $e) {
+            Log::error('Admin dashboard finance strip error: '.$e->getMessage());
+
+            return response()->json(['success' => false, 'message' => 'Failed to load finance'], 500);
+        }
+    }
+
+    /**
      * Items that need admin attention (AJAX)
      */
     public function getActionQueue()

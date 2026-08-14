@@ -92,6 +92,51 @@
         </div>
     </div>
 
+    <!-- Finance strip (same numbers as /admin/finance) -->
+    <div class="row g-3 mb-4">
+        <div class="col-12 d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <strong class="text-muted text-uppercase small">Finance <span id="financePeriod" class="fw-normal text-capitalize"></span></strong>
+            <a href="{{ route('admin.finance') }}" class="small">Open finance</a>
+        </div>
+        <div class="col-12 d-none" id="financeRetry"></div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Due to pay now</div>
+                    <div class="fs-4 fw-semibold text-danger" id="financeDueNow">—</div>
+                    <div class="small text-muted">Open withdrawal requests</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="text-muted small">In publisher wallets</div>
+                    <div class="fs-4 fw-semibold" id="financeInWallets">—</div>
+                    <div class="small text-muted">Earned, not requested</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Total publisher liability</div>
+                    <div class="fs-4 fw-semibold" id="financeLiability">—</div>
+                    <div class="small text-muted">Due now + wallets</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-xl-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body py-3">
+                    <div class="text-muted small">Margin (this month)</div>
+                    <div class="fs-4 fw-semibold" id="financeMargin">—</div>
+                    <div class="small text-muted">Fees − refunds − bonuses</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Action queues (first viewport priority) -->
     <div class="row g-3 mb-4">
         <div class="col-lg-4">
@@ -147,6 +192,89 @@
                                 <tr><th>Site</th><th>Publisher</th><th>Date</th></tr>
                             </thead>
                             <tbody id="queueSites">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-money-bill me-2 text-info"></i>Unpaid orders</strong>
+                    <a href="{{ route('admin.payments') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Order</th><th>Amount</th><th>Date</th></tr>
+                            </thead>
+                            <tbody id="queueUnpaid">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-gavel me-2 text-danger"></i>Open disputes</strong>
+                    <a href="{{ route('admin.orders.index') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Order</th><th>Reason</th><th>Date</th></tr>
+                            </thead>
+                            <tbody id="queueDisputes">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-comments me-2 text-secondary"></i>Community inbox</strong>
+                    <a href="{{ route('admin.community.index') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Type</th><th>Item</th><th>Date</th></tr>
+                            </thead>
+                            <tbody id="queueCommunity">
+                                <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
+                    <strong><i class="fa fa-chart-line me-2 text-warning"></i>Enrichment failed</strong>
+                    <a href="{{ route('admin.site-enrichment.index') }}" class="small">View all</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <thead class="table-light">
+                                <tr><th>Site</th><th>Error</th><th>Date</th></tr>
+                            </thead>
+                            <tbody id="queueEnrichment">
                                 <tr><td colspan="3" class="text-center text-muted py-3">Loading…</td></tr>
                             </tbody>
                         </table>
@@ -382,6 +510,23 @@ async function loadStatistics() {
     }
 }
 
+async function loadFinanceStrip() {
+    const retryEl = document.getElementById('financeRetry');
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.finance') }}`);
+        const d = json.data;
+        document.getElementById('financePeriod').textContent = d.period_label ? '· ' + d.period_label : '';
+        document.getElementById('financeDueNow').textContent = money(d.due_to_pay_now);
+        document.getElementById('financeInWallets').textContent = money(d.in_publisher_wallets);
+        document.getElementById('financeLiability').textContent = money(d.total_publisher_liability);
+        document.getElementById('financeMargin').textContent = money(d.margin);
+        hideRetry(retryEl);
+    } catch (err) {
+        showRetry(retryEl, 'loadFinanceStrip');
+        throw err;
+    }
+}
+
 async function loadTrends() {
     const retryEls = [
         document.getElementById('trendRetry'),
@@ -518,6 +663,10 @@ async function loadActionQueue() {
     const depBody = document.getElementById('queueDeposits');
     const wBody = document.getElementById('queueWithdrawals');
     const sBody = document.getElementById('queueSites');
+    const unpaidBody = document.getElementById('queueUnpaid');
+    const disputeBody = document.getElementById('queueDisputes');
+    const communityBody = document.getElementById('queueCommunity');
+    const enrichmentBody = document.getElementById('queueEnrichment');
 
     try {
         const json = await dashboardFetch(`{{ route('admin.dashboard.action-queue') }}`);
@@ -563,10 +712,58 @@ async function loadActionQueue() {
                     <td class="small text-muted">${escapeHtml(s.date)}</td>
                 </tr>`).join('');
         }
+
+        if (!json.unpaid.length) {
+            unpaidBody.innerHTML = emptyRow(3, 'No unpaid orders');
+        } else {
+            unpaidBody.innerHTML = json.unpaid.map(o => `
+                <tr>
+                    <td class="fw-semibold">${cellLink(o.url, '#' + o.order_number)}</td>
+                    <td>${money(o.amount)}</td>
+                    <td class="small text-muted">${escapeHtml(o.date)}</td>
+                </tr>`).join('');
+        }
+
+        if (!json.disputes.length) {
+            disputeBody.innerHTML = emptyRow(3, 'No open disputes');
+        } else {
+            disputeBody.innerHTML = json.disputes.map(d => `
+                <tr>
+                    <td class="fw-semibold">${cellLink(d.url, '#' + d.order_number)}</td>
+                    <td class="small text-truncate" style="max-width:120px;">${escapeHtml(d.reason || '')}</td>
+                    <td class="small text-muted">${escapeHtml(d.date)}</td>
+                </tr>`).join('');
+        }
+
+        if (!json.community.length) {
+            communityBody.innerHTML = emptyRow(3, 'Inbox is clear');
+        } else {
+            communityBody.innerHTML = json.community.map(c => `
+                <tr>
+                    <td><span class="badge text-bg-light">${escapeHtml(c.type)}</span></td>
+                    <td>${cellLink(c.url, c.label)}</td>
+                    <td class="small text-muted">${escapeHtml(c.date)}</td>
+                </tr>`).join('');
+        }
+
+        if (!json.enrichment.length) {
+            enrichmentBody.innerHTML = emptyRow(3, 'No failed scans');
+        } else {
+            enrichmentBody.innerHTML = json.enrichment.map(e => `
+                <tr>
+                    <td class="fw-semibold">${cellLink(e.url, e.site_name)}</td>
+                    <td class="small text-truncate" style="max-width:120px;">${escapeHtml(e.error || '')}</td>
+                    <td class="small text-muted">${escapeHtml(e.date)}</td>
+                </tr>`).join('');
+        }
     } catch (err) {
         depBody.innerHTML = retryRow(3, 'loadActionQueue');
         wBody.innerHTML = retryRow(3, 'loadActionQueue');
         sBody.innerHTML = retryRow(3, 'loadActionQueue');
+        unpaidBody.innerHTML = retryRow(3, 'loadActionQueue');
+        disputeBody.innerHTML = retryRow(3, 'loadActionQueue');
+        communityBody.innerHTML = retryRow(3, 'loadActionQueue');
+        enrichmentBody.innerHTML = retryRow(3, 'loadActionQueue');
         throw err;
     }
 }
@@ -654,6 +851,7 @@ document.addEventListener('click', async (e) => {
 
 const dashboardLoaders = {
     loadStatistics,
+    loadFinanceStrip,
     loadTrends,
     loadDistributions,
     loadActionQueue,
@@ -669,7 +867,7 @@ document.addEventListener('click', (e) => {
     }
 });
 
-Promise.all([loadStatistics(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
+Promise.all([loadStatistics(), loadFinanceStrip(), loadTrends(), loadDistributions(), loadActionQueue(), loadStalledOrders()])
     .catch(err => console.error('Dashboard load failed', err));
 </script>
 @endsection

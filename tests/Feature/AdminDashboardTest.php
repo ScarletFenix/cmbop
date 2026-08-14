@@ -4,13 +4,18 @@ namespace Tests\Feature;
 
 use App\Models\DepositRequest;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteEnrichmentRun;
 use App\Models\Suggestion;
 use App\Models\User;
+use App\Models\Wallet;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
+use App\Services\Admin\FinanceOverviewService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -52,7 +57,20 @@ class AdminDashboardTest extends TestCase
             ->assertSee('dashboardFetch')
             ->assertSee('js-dashboard-retry')
             ->assertSee('kpiRetry')
-            ->assertSee('showRetry');
+            ->assertSee('showRetry')
+            ->assertSee('Due to pay now')
+            ->assertSee('In publisher wallets')
+            ->assertSee('Total publisher liability')
+            ->assertSee('Margin (this month)')
+            ->assertSee('Open finance')
+            ->assertSee('Unpaid orders')
+            ->assertSee('Open disputes')
+            ->assertSee('Community inbox')
+            ->assertSee('Enrichment failed')
+            ->assertSee(route('admin.payments'), false)
+            ->assertSee(route('admin.community.index'), false)
+            ->assertSee(route('admin.site-enrichment.index'), false)
+            ->assertSee('loadFinanceStrip');
     }
 
     public function test_admin_queue_counts_endpoint(): void
@@ -116,6 +134,10 @@ class AdminDashboardTest extends TestCase
                 'deposits' => [],
                 'withdrawals' => [],
                 'sites' => [],
+                'unpaid' => [],
+                'disputes' => [],
+                'community' => [],
+                'enrichment' => [],
             ]);
     }
 
@@ -340,5 +362,151 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals'))
             ->assertJsonPath('withdrawals.0.id', $withdrawal->id)
             ->assertJsonPath('sites.0.url', route('admin.sites.edit', $site->id));
+    }
+
+    public function test_finance_strip_matches_overview_service(): void
+    {
+        $admin = $this->makeAdmin();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create([
+            'active_role_id' => $publisherRole->id,
+            'email_verified_at' => now(),
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $publisherRole->id,
+            'balance' => 80,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 40,
+            'fee' => 0,
+            'net_amount' => 40,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'a@b.com'],
+            'status' => 'pending',
+        ]);
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('month')
+        );
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.finance'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.due_to_pay_now', $overview['due_to_pay_now'])
+            ->assertJsonPath('data.in_publisher_wallets', $overview['in_publisher_wallets'])
+            ->assertJsonPath('data.total_publisher_liability', $overview['total_publisher_liability'])
+            ->assertJsonPath('data.margin', $overview['platform']['margin'])
+            ->assertJsonPath('data.period_label', $overview['period']['label'])
+            ->assertJsonPath('data.url', route('admin.finance'));
+    }
+
+    public function test_action_queue_includes_unpaid_disputes_community_and_enrichment(): void
+    {
+        $admin = $this->makeAdmin();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create([
+            'active_role_id' => $publisherRole->id,
+            'email_verified_at' => now(),
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $order = Order::create([
+            'user_id' => $admin->id,
+            'order_number' => 'ORD-UNPAID-1',
+            'reference_code' => 'REF-UNPAID-1',
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'bank',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+
+        $paid = Order::create([
+            'user_id' => $admin->id,
+            'order_number' => 'ORD-DSP-1',
+            'reference_code' => 'REF-DSP-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDay(),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $paid->id,
+            'site_name' => 'Dispute Site',
+            'site_url' => 'https://dispute.example',
+            'price' => 80,
+            'publisher_price' => 68,
+            'content_link' => 'https://example.com/article',
+        ]);
+        OrderItemDispute::ensureTable();
+        OrderItemDispute::create([
+            'order_id' => $paid->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live link was removed after approval.',
+        ]);
+
+        ProblemReport::create([
+            'name' => 'Reporter',
+            'email' => 'ops@example.com',
+            'subject' => 'Broken checkout',
+            'message' => 'Cannot pay',
+            'status' => 'pending',
+        ]);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Failed enrich',
+            'site_url' => 'https://failed-enrich.example',
+            'domain' => 'failed-enrich.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Enrichment failure fixture',
+            'verified' => 1,
+            'active' => 1,
+        ]);
+        SiteEnrichmentRun::create([
+            'site_id' => $site->id,
+            'type' => 'metrics',
+            'provider' => 'manual',
+            'status' => 'failed',
+            'error' => 'Provider timed out',
+            'triggered_by' => 'admin',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJsonPath('unpaid.0.order_number', 'ORD-UNPAID-1')
+            ->assertJsonPath('unpaid.0.url', route('admin.orders.show', $order->id))
+            ->assertJsonPath('disputes.0.order_number', 'ORD-DSP-1')
+            ->assertJsonPath('disputes.0.url', route('admin.orders.show', $paid->id))
+            ->assertJsonPath('community.0.type', 'problem')
+            ->assertJsonPath('community.0.label', 'Broken checkout')
+            ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems']))
+            ->assertJsonPath('enrichment.0.site_name', 'Failed enrich')
+            ->assertJsonPath('enrichment.0.url', route('admin.sites.edit', $site->id));
     }
 }

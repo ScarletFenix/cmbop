@@ -9,6 +9,7 @@ use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
+use App\Models\SiteEnrichmentRun;
 use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\WebsiteSuggestion;
@@ -17,6 +18,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 /**
  * Query layer for the admin dashboard JSON endpoints.
@@ -26,6 +28,8 @@ use Illuminate\Support\Facades\Schema;
  */
 class DashboardMetricsService
 {
+    public function __construct(private FinanceOverviewService $finance) {}
+
     /**
      * Top-level KPI cards + action counts.
      *
@@ -196,9 +200,28 @@ class DashboardMetricsService
     }
 
     /**
+     * Liability + this-month margin from FinanceOverviewService (same numbers as /admin/finance).
+     *
+     * @return array<string, float|string>
+     */
+    public function financeStrip(): array
+    {
+        $overview = $this->finance->overview($this->finance->resolvePeriod('month'));
+
+        return [
+            'period_label' => $overview['period']['label'],
+            'due_to_pay_now' => (float) $overview['due_to_pay_now'],
+            'in_publisher_wallets' => (float) $overview['in_publisher_wallets'],
+            'total_publisher_liability' => (float) $overview['total_publisher_liability'],
+            'margin' => (float) $overview['platform']['margin'],
+            'url' => route('admin.finance'),
+        ];
+    }
+
+    /**
      * Items that need admin attention (top 5 per queue).
      *
-     * @return array{deposits: mixed, withdrawals: mixed, sites: mixed}
+     * @return array{deposits: mixed, withdrawals: mixed, sites: mixed, unpaid: mixed, disputes: mixed, community: mixed, enrichment: mixed}
      */
     public function actionQueue(): array
     {
@@ -253,15 +276,168 @@ class DashboardMetricsService
             'deposits' => $deposits,
             'withdrawals' => $withdrawals,
             'sites' => $sites,
+            'unpaid' => $this->unpaidQueue(),
+            'disputes' => $this->disputeQueue(),
+            'community' => $this->communityQueue(),
+            'enrichment' => $this->enrichmentQueue(),
         ];
     }
 
-    private function unpaidOrdersCount(): int
+    /**
+     * Same unpaid definition as FinanceOverviewService::opsQueues() / pending_payments.
+     */
+    private function unpaidOrdersQuery()
     {
         return Order::where(function ($q) {
             $q->whereNull('payment_status')
                 ->orWhereNotIn('payment_status', ['paid', 'refunded']);
-        })->whereIn('status', ['pending', 'processing', 'review'])->count();
+        })->whereIn('status', ['pending', 'processing', 'review']);
+    }
+
+    private function unpaidOrdersCount(): int
+    {
+        return $this->unpaidOrdersQuery()->count();
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function unpaidQueue(): Collection
+    {
+        return $this->unpaidOrdersQuery()
+            ->with('user:id,name,email')
+            ->latest()
+            ->take(5)
+            ->get()
+            ->map(fn (Order $o) => [
+                'id' => $o->id,
+                'order_number' => $o->order_number,
+                'user' => $o->user?->name ?? 'Unknown',
+                'email' => $o->user?->email,
+                'amount' => (float) $o->total_amount,
+                'date' => optional($o->created_at)->format('d M Y H:i'),
+                'url' => route('admin.orders.show', $o->id),
+            ]);
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function disputeQueue(): Collection
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return collect();
+        }
+
+        return OrderItemDispute::query()
+            ->where('status', OrderItemDispute::STATUS_OPEN)
+            ->with(['order:id,order_number,user_id', 'order.user:id,name', 'orderItem:id,site_name'])
+            ->latest()
+            ->take(5)
+            ->get()
+            ->map(fn (OrderItemDispute $d) => [
+                'id' => $d->id,
+                'order_number' => $d->order?->order_number ?? '',
+                'site_name' => $d->orderItem?->site_name ?: '—',
+                'advertiser' => $d->order?->user?->name ?? 'Unknown',
+                'reason' => Str::limit((string) $d->reason, 80),
+                'date' => optional($d->created_at)->format('d M Y H:i'),
+                'url' => $d->order_id ? route('admin.orders.show', $d->order_id) : route('admin.orders.index'),
+            ]);
+    }
+
+    /**
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function communityQueue(): Collection
+    {
+        $rows = collect();
+
+        if (Schema::hasTable('problem_reports')) {
+            $rows = $rows->concat(
+                ProblemReport::where('status', 'pending')->latest()->take(5)->get()->map(fn (ProblemReport $r) => [
+                    'type' => 'problem',
+                    'label' => $r->subject ?: 'Problem report',
+                    'from' => $r->name ?: ($r->email ?: 'Unknown'),
+                    'date' => optional($r->created_at)->format('d M Y'),
+                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                    'url' => route('admin.community.index', ['tab' => 'problems']),
+                ])
+            );
+        }
+
+        if (Schema::hasTable('suggestions')) {
+            $rows = $rows->concat(
+                Suggestion::where('status', 'pending')->latest()->take(5)->get()->map(fn (Suggestion $r) => [
+                    'type' => 'suggestion',
+                    'label' => Str::limit((string) $r->message, 60) ?: 'Suggestion',
+                    'from' => $r->name ?: ($r->email ?: 'Unknown'),
+                    'date' => optional($r->created_at)->format('d M Y'),
+                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                    'url' => route('admin.community.index', ['tab' => 'suggestions']),
+                ])
+            );
+        }
+
+        if (Schema::hasTable('website_suggestions')) {
+            $rows = $rows->concat(
+                WebsiteSuggestion::where('status', 'pending')->latest()->take(5)->get()->map(fn (WebsiteSuggestion $r) => [
+                    'type' => 'website',
+                    'label' => $r->website_name ?: ($r->website_url ?: 'Website suggestion'),
+                    'from' => $r->website_url ?: 'Unknown',
+                    'date' => optional($r->created_at)->format('d M Y'),
+                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                    'url' => route('admin.community.index', ['tab' => 'websites']),
+                ])
+            );
+        }
+
+        if (Schema::hasTable('site_claims')) {
+            $rows = $rows->concat(
+                SiteClaim::where('status', 'pending')->latest()->take(5)->get()->map(fn (SiteClaim $r) => [
+                    'type' => 'claim',
+                    'label' => $r->website_name ?: ($r->domain ?: 'Site claim'),
+                    'from' => $r->contact_email ?: 'Unknown',
+                    'date' => optional($r->created_at)->format('d M Y'),
+                    'sort_at' => optional($r->created_at)?->timestamp ?? 0,
+                    'url' => route('admin.community.index', ['tab' => 'claims']),
+                ])
+            );
+        }
+
+        return $rows->sortByDesc('sort_at')->take(5)->values()->map(function (array $row) {
+            unset($row['sort_at']);
+
+            return $row;
+        });
+    }
+
+    /**
+     * Failed enrichment runs — same queue as /admin/site-enrichment.
+     *
+     * @return Collection<int, array<string, mixed>>
+     */
+    private function enrichmentQueue(): Collection
+    {
+        if (! Schema::hasTable('site_enrichment_runs')) {
+            return collect();
+        }
+
+        return SiteEnrichmentRun::query()
+            ->with('site:id,site_name,site_url')
+            ->where('status', 'failed')
+            ->latest()
+            ->take(5)
+            ->get()
+            ->map(fn (SiteEnrichmentRun $run) => [
+                'id' => $run->id,
+                'site_name' => $run->site?->site_name ?: 'Unknown site',
+                'error' => Str::limit((string) ($run->error ?: 'Enrichment failed'), 80),
+                'date' => optional($run->created_at)->format('d M Y'),
+                'url' => $run->site_id
+                    ? route('admin.sites.edit', $run->site_id)
+                    : route('admin.site-enrichment.index'),
+            ]);
     }
 
     private function openDisputesCount(): int
