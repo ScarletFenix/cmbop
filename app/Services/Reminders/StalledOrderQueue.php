@@ -111,6 +111,7 @@ class StalledOrderQueue
             'order_item_id' => (int) $item->id,
             'order_id' => (int) ($order->id ?? 0),
             'order_number' => (string) ($order->order_number ?? ''),
+            'order_url' => $order?->id ? route('admin.orders.show', $order->id) : null,
             'track' => $track,
             'stage' => (int) ($track === 'accept' ? $item->accept_nudge_stage : $item->publish_nudge_stage),
             'site_name' => (string) ($site?->site_name ?: $item->site_name ?: 'Unknown site'),

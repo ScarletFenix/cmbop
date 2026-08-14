@@ -29,6 +29,7 @@
 
     <!-- KPI cards -->
     <div class="row g-3 mb-4">
+        <div class="col-12 d-none" id="kpiRetry"></div>
         <div class="col-6 col-xl-3">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
@@ -162,7 +163,7 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-triangle-exclamation me-2 text-danger"></i>Stalled orders <span class="badge text-bg-danger ms-1" id="stalledOrdersCount">0</span></strong>
-                    <span class="text-muted small">Every reminder sent, no response. Chase again or refund the advertiser.</span>
+                    <span class="text-muted small">Remind the publisher, or open the order to refund.</span>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -198,6 +199,7 @@
                 </div>
                 <div class="card-body">
                     <canvas id="trendChart" height="110"></canvas>
+                    <div id="trendRetry" class="d-none text-center text-muted py-2"></div>
                 </div>
             </div>
         </div>
@@ -208,6 +210,7 @@
                 </div>
                 <div class="card-body">
                     <canvas id="signupChart" height="110"></canvas>
+                    <div id="signupRetry" class="d-none text-center text-muted py-2"></div>
                 </div>
             </div>
         </div>
@@ -221,6 +224,7 @@
                 </div>
                 <div class="card-body d-flex justify-content-center">
                     <canvas id="orderStatusChart" style="max-height:260px;"></canvas>
+                    <div id="orderStatusRetry" class="d-none text-center text-muted py-2 align-self-center"></div>
                 </div>
             </div>
         </div>
@@ -231,6 +235,7 @@
                 </div>
                 <div class="card-body d-flex justify-content-center">
                     <canvas id="roleChart" style="max-height:260px;"></canvas>
+                    <div id="roleRetry" class="d-none text-center text-muted py-2 align-self-center"></div>
                 </div>
             </div>
         </div>
@@ -319,11 +324,25 @@ async function dashboardFetch(url) {
     return json;
 }
 
+function retryLink(loaderName) {
+    return `Couldn’t load —
+        <button type="button" class="btn btn-link btn-sm p-0 align-baseline js-dashboard-retry" data-loader="${escapeHtml(loaderName)}">retry</button>`;
+}
+
 function retryRow(cols, loaderName) {
-    return `<tr><td colspan="${cols}" class="text-center text-muted py-3">
-        Couldn’t load —
-        <button type="button" class="btn btn-link btn-sm p-0 align-baseline js-dashboard-retry" data-loader="${escapeHtml(loaderName)}">retry</button>
-    </td></tr>`;
+    return `<tr><td colspan="${cols}" class="text-center text-muted py-3">${retryLink(loaderName)}</td></tr>`;
+}
+
+function showRetry(el, loaderName) {
+    if (!el) return;
+    el.innerHTML = retryLink(loaderName);
+    el.classList.remove('d-none');
+}
+
+function hideRetry(el) {
+    if (!el) return;
+    el.classList.add('d-none');
+    el.innerHTML = '';
 }
 
 function makeChart(existing, canvasId, config) {
@@ -337,115 +356,142 @@ function makeChart(existing, canvasId, config) {
 }
 
 async function loadStatistics() {
-    const json = await dashboardFetch(`{{ route('admin.dashboard.statistics') }}`);
-    const d = json.data;
+    const retryEl = document.getElementById('kpiRetry');
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.statistics') }}`);
+        const d = json.data;
 
-    document.getElementById('kpiUsers').textContent = num(d.total_users);
-    document.getElementById('kpiUsers7d').textContent = '+' + num(d.new_users_7d) + ' / 7d';
-    document.getElementById('kpiAdvertisers').textContent = num(d.advertisers);
-    document.getElementById('kpiPublishers').textContent = num(d.publishers);
-    document.getElementById('kpiRevenue').textContent = money(d.revenue);
-    document.getElementById('kpiRevenue7d').textContent = money(d.revenue_7d) + ' / 7d';
-    document.getElementById('kpiPaidOrders').textContent = num(d.paid_orders);
-    document.getElementById('kpiSites').textContent = num(d.total_sites);
-    document.getElementById('kpiVerified').textContent = num(d.live_sites ?? d.verified_sites);
-    document.getElementById('kpiUnverified').textContent = num(d.unverified_sites) + ' in review';
-    document.getElementById('kpiDeposits').textContent = num(d.pending_deposits);
-    document.getElementById('kpiWithdrawals').textContent = num(d.pending_withdrawals);
-    document.getElementById('kpiPayments').textContent = num(d.pending_payments);
-    document.getElementById('kpiAttention').textContent = num(d.needs_attention);
+        document.getElementById('kpiUsers').textContent = num(d.total_users);
+        document.getElementById('kpiUsers7d').textContent = '+' + num(d.new_users_7d) + ' / 7d';
+        document.getElementById('kpiAdvertisers').textContent = num(d.advertisers);
+        document.getElementById('kpiPublishers').textContent = num(d.publishers);
+        document.getElementById('kpiRevenue').textContent = money(d.revenue);
+        document.getElementById('kpiRevenue7d').textContent = money(d.revenue_7d) + ' / 7d';
+        document.getElementById('kpiPaidOrders').textContent = num(d.paid_orders);
+        document.getElementById('kpiSites').textContent = num(d.total_sites);
+        document.getElementById('kpiVerified').textContent = num(d.live_sites ?? d.verified_sites);
+        document.getElementById('kpiUnverified').textContent = num(d.unverified_sites) + ' in review';
+        document.getElementById('kpiDeposits').textContent = num(d.pending_deposits);
+        document.getElementById('kpiWithdrawals').textContent = num(d.pending_withdrawals);
+        document.getElementById('kpiPayments').textContent = num(d.pending_payments);
+        document.getElementById('kpiAttention').textContent = num(d.needs_attention);
+        hideRetry(retryEl);
+    } catch (err) {
+        showRetry(retryEl, 'loadStatistics');
+        throw err;
+    }
 }
 
 async function loadTrends() {
-    const json = await dashboardFetch(`{{ route('admin.dashboard.trends') }}?days=30`);
+    const retryEls = [
+        document.getElementById('trendRetry'),
+        document.getElementById('signupRetry'),
+    ];
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.trends') }}?days=30`);
 
-    const commonOpts = {
-        responsive: true,
-        maintainAspectRatio: true,
-        plugins: { legend: { display: true, position: 'bottom' } },
-        scales: { y: { beginAtZero: true } }
-    };
+        const commonOpts = {
+            responsive: true,
+            maintainAspectRatio: true,
+            plugins: { legend: { display: true, position: 'bottom' } },
+            scales: { y: { beginAtZero: true } }
+        };
 
-    trendChart = makeChart(trendChart, 'trendChart', {
-        type: 'line',
-        data: {
-            labels: json.labels,
-            datasets: [
-                {
-                    label: 'Revenue (€)',
-                    data: json.revenue,
-                    borderColor: '#1a585e',
-                    backgroundColor: 'rgba(26, 88, 94, 0.12)',
-                    fill: true,
-                    tension: 0.35,
-                    yAxisID: 'y'
-                },
-                {
-                    label: 'Orders',
-                    data: json.orders,
-                    borderColor: '#0ea5e9',
-                    backgroundColor: 'rgba(14, 165, 233, 0.08)',
-                    fill: false,
-                    tension: 0.35,
-                    yAxisID: 'y1'
+        trendChart = makeChart(trendChart, 'trendChart', {
+            type: 'line',
+            data: {
+                labels: json.labels,
+                datasets: [
+                    {
+                        label: 'Revenue (€)',
+                        data: json.revenue,
+                        borderColor: '#1a585e',
+                        backgroundColor: 'rgba(26, 88, 94, 0.12)',
+                        fill: true,
+                        tension: 0.35,
+                        yAxisID: 'y'
+                    },
+                    {
+                        label: 'Orders',
+                        data: json.orders,
+                        borderColor: '#0ea5e9',
+                        backgroundColor: 'rgba(14, 165, 233, 0.08)',
+                        fill: false,
+                        tension: 0.35,
+                        yAxisID: 'y1'
+                    }
+                ]
+            },
+            options: {
+                ...commonOpts,
+                scales: {
+                    y:  { beginAtZero: true, position: 'left', title: { display: true, text: 'Revenue (€)' } },
+                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Orders' } }
                 }
-            ]
-        },
-        options: {
-            ...commonOpts,
-            scales: {
-                y:  { beginAtZero: true, position: 'left', title: { display: true, text: 'Revenue (€)' } },
-                y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Orders' } }
             }
-        }
-    });
+        });
 
-    signupChart = makeChart(signupChart, 'signupChart', {
-        type: 'bar',
-        data: {
-            labels: json.labels,
-            datasets: [{
-                label: 'New users',
-                data: json.signups,
-                backgroundColor: 'rgba(26, 88, 94, 0.75)',
-                borderRadius: 4
-            }]
-        },
-        options: {
-            ...commonOpts,
-            plugins: { legend: { display: false } }
-        }
-    });
+        signupChart = makeChart(signupChart, 'signupChart', {
+            type: 'bar',
+            data: {
+                labels: json.labels,
+                datasets: [{
+                    label: 'New users',
+                    data: json.signups,
+                    backgroundColor: 'rgba(26, 88, 94, 0.75)',
+                    borderRadius: 4
+                }]
+            },
+            options: {
+                ...commonOpts,
+                plugins: { legend: { display: false } }
+            }
+        });
+        retryEls.forEach(hideRetry);
+    } catch (err) {
+        retryEls.forEach((el) => showRetry(el, 'loadTrends'));
+        throw err;
+    }
 }
 
 async function loadDistributions() {
-    const json = await dashboardFetch(`{{ route('admin.dashboard.distributions') }}`);
+    const retryEls = [
+        document.getElementById('orderStatusRetry'),
+        document.getElementById('roleRetry'),
+    ];
+    try {
+        const json = await dashboardFetch(`{{ route('admin.dashboard.distributions') }}`);
 
-    const palette = ['#1a585e', '#0ea5e9', '#3faeb2', '#75787B', '#0f766e', '#b8e4e4', '#94a3b8'];
+        const palette = ['#1a585e', '#0ea5e9', '#3faeb2', '#75787B', '#0f766e', '#b8e4e4', '#94a3b8'];
 
-    orderStatusChart = makeChart(orderStatusChart, 'orderStatusChart', {
-        type: 'doughnut',
-        data: {
-            labels: json.orders.labels,
-            datasets: [{
-                data: json.orders.values,
-                backgroundColor: palette
-            }]
-        },
-        options: { plugins: { legend: { position: 'bottom' } } }
-    });
+        orderStatusChart = makeChart(orderStatusChart, 'orderStatusChart', {
+            type: 'doughnut',
+            data: {
+                labels: json.orders.labels,
+                datasets: [{
+                    data: json.orders.values,
+                    backgroundColor: palette
+                }]
+            },
+            options: { plugins: { legend: { position: 'bottom' } } }
+        });
 
-    roleChart = makeChart(roleChart, 'roleChart', {
-        type: 'doughnut',
-        data: {
-            labels: json.roles.labels,
-            datasets: [{
-                data: json.roles.values,
-                backgroundColor: ['#1a585e', '#0ea5e9', '#75787B']
-            }]
-        },
-        options: { plugins: { legend: { position: 'bottom' } } }
-    });
+        roleChart = makeChart(roleChart, 'roleChart', {
+            type: 'doughnut',
+            data: {
+                labels: json.roles.labels,
+                datasets: [{
+                    data: json.roles.values,
+                    backgroundColor: ['#1a585e', '#0ea5e9', '#75787B']
+                }]
+            },
+            options: { plugins: { legend: { position: 'bottom' } } }
+        });
+        retryEls.forEach(hideRetry);
+    } catch (err) {
+        retryEls.forEach((el) => showRetry(el, 'loadDistributions'));
+        throw err;
+    }
 }
 
 function emptyRow(cols, msg) {
@@ -462,6 +508,12 @@ function escapeHtml(str) {
         .replace(/'/g, '&#39;');
 }
 
+function cellLink(url, label) {
+    const text = escapeHtml(label);
+    if (!url) return text;
+    return `<a href="${escapeHtml(url)}">${text}</a>`;
+}
+
 async function loadActionQueue() {
     const depBody = document.getElementById('queueDeposits');
     const wBody = document.getElementById('queueWithdrawals');
@@ -476,7 +528,7 @@ async function loadActionQueue() {
             depBody.innerHTML = json.deposits.map(d => `
                 <tr>
                     <td>
-                        <div class="fw-semibold">${escapeHtml(d.user)}</div>
+                        <div class="fw-semibold">${cellLink(d.url, d.user)}</div>
                         <div class="small text-muted">${escapeHtml(d.email || '')}</div>
                     </td>
                     <td>${money(d.amount)}</td>
@@ -490,7 +542,7 @@ async function loadActionQueue() {
             wBody.innerHTML = json.withdrawals.map(w => `
                 <tr>
                     <td>
-                        <div class="fw-semibold">${escapeHtml(w.user)}</div>
+                        <div class="fw-semibold">${cellLink(w.url, w.user)}</div>
                         <div class="small text-muted">${escapeHtml(w.email || '')}${w.status && w.status !== 'pending' ? ' · ' + escapeHtml(w.status) : ''}</div>
                     </td>
                     <td>${money(w.amount)}</td>
@@ -504,7 +556,7 @@ async function loadActionQueue() {
             sBody.innerHTML = json.sites.map(s => `
                 <tr>
                     <td>
-                        <div class="fw-semibold">${escapeHtml(s.site_name || '—')}</div>
+                        <div class="fw-semibold">${cellLink(s.url, s.site_name || '—')}</div>
                         <div class="small text-muted text-truncate" style="max-width:140px;">${escapeHtml(s.site_url || '')}</div>
                     </td>
                     <td>${escapeHtml(s.publisher)}</td>
@@ -529,7 +581,7 @@ async function loadStalledOrders() {
 
         document.getElementById('queueStalled').innerHTML = json.items.map(i => `
             <tr>
-                <td class="fw-semibold">#${escapeHtml(i.order_number)}</td>
+                <td class="fw-semibold">${cellLink(i.order_url, '#' + i.order_number)}</td>
                 <td>${escapeHtml(i.site_name)}</td>
                 <td>
                     <div>${escapeHtml(i.publisher)}</div>
@@ -542,9 +594,12 @@ async function loadStalledOrders() {
                     <div class="small text-muted">${i.last_reminded_at ? 'Reminded ' + escapeHtml(i.last_reminded_at) : ''}</div>
                 </td>
                 <td class="text-end">
-                    <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
-                        Remind now
-                    </button>
+                    <div class="d-inline-flex align-items-center gap-2">
+                        <button type="button" class="btn btn-sm btn-outline-primary js-remind-publisher" data-item="${i.order_item_id}">
+                            Remind now
+                        </button>
+                        ${i.order_url ? `<a href="${escapeHtml(i.order_url)}" class="btn btn-sm btn-outline-secondary">Open</a>` : ''}
+                    </div>
                 </td>
             </tr>`).join('');
     } catch (err) {

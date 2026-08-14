@@ -214,6 +214,8 @@ class DashboardMetricsService
                 'amount' => (float) $d->amount,
                 'method' => $d->payment_method,
                 'date' => optional($d->created_at)->format('d M Y H:i'),
+                // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
+                'url' => route('admin.deposits'),
             ]);
 
         $withdrawals = Withdrawal::with('user:id,name,email')
@@ -229,6 +231,8 @@ class DashboardMetricsService
                 'method' => $w->payment_method,
                 'status' => $w->status,
                 'date' => optional($w->created_at)->format('d M Y H:i'),
+                // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
+                'url' => route('admin.withdrawals'),
             ]);
 
         $sites = Site::with('publisher:id,name,email')
@@ -242,6 +246,7 @@ class DashboardMetricsService
                 'site_url' => $s->site_url,
                 'publisher' => $s->publisher?->name ?? 'Unknown',
                 'date' => optional($s->created_at)->format('d M Y'),
+                'url' => route('admin.sites.edit', $s->id),
             ]);
 
         return [

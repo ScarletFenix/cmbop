@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\ProblemReport;
 use App\Models\Role;
@@ -42,7 +43,16 @@ class AdminDashboardTest extends TestCase
             ->assertSee('in review')
             ->assertSee('live in catalog')
             ->assertSee('Margin & wallets')
-            ->assertSee('pending_community');
+            ->assertSee('pending_community')
+            ->assertSee('Remind the publisher, or open the order to refund.')
+            ->assertDontSee('Chase again or refund the advertiser.')
+            ->assertSee(route('admin.deposits'), false)
+            ->assertSee(route('admin.withdrawals'), false)
+            ->assertSee(route('admin.sites.index', ['needs_review' => 1]), false)
+            ->assertSee('dashboardFetch')
+            ->assertSee('js-dashboard-retry')
+            ->assertSee('kpiRetry')
+            ->assertSee('showRetry');
     }
 
     public function test_admin_queue_counts_endpoint(): void
@@ -273,5 +283,62 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('data.verified_sites', 1)
             ->assertJsonPath('data.live_sites', 0)
             ->assertJsonPath('data.total_sites', 1);
+    }
+
+    public function test_action_queue_rows_include_admin_urls(): void
+    {
+        $admin = $this->makeAdmin();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create([
+            'active_role_id' => $publisherRole->id,
+            'email_verified_at' => now(),
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        DepositRequest::create([
+            'user_id' => $admin->id,
+            'reference_code' => '555444',
+            'amount' => 25,
+            'payment_method' => 'wise',
+            'status' => 'pending',
+        ]);
+
+        $withdrawal = Withdrawal::create([
+            'user_id' => $admin->id,
+            'amount' => 15,
+            'fee' => 0,
+            'net_amount' => 15,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'a@b.com'],
+            'status' => 'pending',
+        ]);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Review me',
+            'site_url' => 'https://review-me.example',
+            'domain' => 'review-me.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 50,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Needs admin review',
+            'verified' => 0,
+            'active' => 0,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJsonPath('deposits.0.url', route('admin.deposits'))
+            ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals'))
+            ->assertJsonPath('withdrawals.0.id', $withdrawal->id)
+            ->assertJsonPath('sites.0.url', route('admin.sites.edit', $site->id));
     }
 }
