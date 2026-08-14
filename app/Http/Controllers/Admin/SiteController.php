@@ -1173,10 +1173,28 @@ class SiteController extends Controller
             ]);
         }
 
-        $site->update(['site_image' => $path]);
+        try {
+            $site->update(['site_image' => $path]);
+        } catch (\Throwable $e) {
+            $this->deleteStoredSiteImage($path);
+            Log::error('Staff site image upload failed to persist', [
+                'site_id' => $site->id,
+                'error' => $e->getMessage(),
+            ]);
+            $message = 'Could not save the site image. Please try again.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
 
-        if ($previous && $previous !== $path && $disk->exists($previous)) {
-            $disk->delete($previous);
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
+        if ($previous && $previous !== $path) {
+            $this->deleteStoredSiteImage($previous);
         }
 
         ActivityLogger::log(
@@ -1272,7 +1290,34 @@ class SiteController extends Controller
             $data['verify_token_created_at']
         );
 
-        $site->update($data);
+        $previousImage = is_string($site->site_image) ? $site->site_image : null;
+
+        try {
+            $site->update($data);
+        } catch (\Throwable $e) {
+            if (isset($data['site_image']) && is_string($data['site_image']) && $data['site_image'] !== $previousImage) {
+                $this->deleteStoredSiteImage($data['site_image']);
+            }
+            Log::error('Staff site update failed', [
+                'site_id' => $site->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $hint = 'We could not save this website. Please try again.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $hint,
+                ], 500);
+            }
+
+            return back()->withErrors(['site_url' => $hint])->withInput();
+        }
+
+        $newImage = is_string($site->site_image) ? $site->site_image : null;
+        if ($previousImage && $previousImage !== $newImage) {
+            $this->deleteStoredSiteImage($previousImage);
+        }
 
         $changes = [];
         foreach ($oldData as $key => $oldValue) {
@@ -1302,7 +1347,7 @@ class SiteController extends Controller
                 Mail::to($publisher->email)->send(new SiteStatusNotification($site, 'update', $oldData));
                 $emailSent = true;
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to send update notification: '.$e->getMessage());
         }
 
@@ -1435,9 +1480,13 @@ class SiteController extends Controller
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
             'price' => 'sometimes|required|numeric|min:0|max:999999.99',
             'description' => 'sometimes|nullable|string|max:5000',
+            'category' => 'sometimes|nullable|string|max:255',
             'publication_time' => 'sometimes|nullable|string|max:20',
             // Dedicated editor is free text; modal may send dofollow/nofollow.
             'link_type' => 'sometimes|nullable|string|max:50',
+            'sponsored' => 'sometimes|nullable|boolean',
+            'partner_material' => 'sometimes|nullable|boolean',
+            'as_you_prefer' => 'sometimes|nullable|boolean',
         ];
 
         if ($request->boolean('placement_offers_form')) {
@@ -1517,7 +1566,9 @@ class SiteController extends Controller
         if (isset($data['domain']) && ! is_string($data['domain'])) {
             unset($data['domain']);
         }
-        if (empty($data['domain']) && is_string($domain) && $domain !== '') {
+        // URL host wins. A posted domain field must not bypass the unique check
+        // or collide with another publisher (DB unique is publisher_id + domain).
+        if (is_string($domain) && $domain !== '') {
             $data['domain'] = $domain;
         } elseif (isset($data['domain']) && is_string($data['domain'])) {
             $normalized = $this->normalizeDomain($data['domain']);
@@ -1558,7 +1609,6 @@ class SiteController extends Controller
 
             $disk = Storage::disk('public');
             $disk->makeDirectory('sites');
-            $previous = is_string($site->site_image) ? $site->site_image : null;
 
             $stored = $upload->store('sites', 'public');
             if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
@@ -1573,10 +1623,6 @@ class SiteController extends Controller
                     'path' => $stored,
                     'disk_root' => config('filesystems.disks.public.root'),
                 ]);
-            }
-
-            if ($previous && $previous !== $stored && $disk->exists($previous)) {
-                $disk->delete($previous);
             }
 
             $data['site_image'] = $stored;
@@ -1776,7 +1822,6 @@ class SiteController extends Controller
 
             $disk = Storage::disk('public');
             $disk->makeDirectory('sites');
-            $previous = is_string($site->site_image) ? $site->site_image : null;
 
             $stored = $upload->store('sites', 'public');
             if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
@@ -1798,10 +1843,6 @@ class SiteController extends Controller
                     'path' => $stored,
                     'disk_root' => config('filesystems.disks.public.root'),
                 ]);
-            }
-
-            if ($previous && $previous !== $stored && $disk->exists($previous)) {
-                $disk->delete($previous);
             }
 
             $payload['site_image'] = $stored;
@@ -1829,7 +1870,12 @@ class SiteController extends Controller
      */
     private function findSiteByDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?Site
     {
-        $query = Site::query()->where('domain', $domain);
+        $candidates = $this->domainLookupCandidates($domain);
+        if ($candidates === []) {
+            return null;
+        }
+
+        $query = Site::query()->whereIn('domain', $candidates);
         if ($exceptId !== null) {
             $query->where('id', '!=', $exceptId);
         }
@@ -2089,14 +2135,36 @@ class SiteController extends Controller
     }
 
     /**
-     * Strip www, trailing dots, and case so example.com. matches example.com.
+     * Strip www, trailing dots, ports, and case so example.com:443 matches example.com.
      */
     private function normalizeDomain(string $host): string
     {
         $domain = strtolower(trim($host));
         $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && ! str_starts_with($domain, '[') && str_contains($domain, ':')) {
+            $domain = explode(':', $domain, 2)[0];
+        }
 
         return rtrim($domain, '.');
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function domainLookupCandidates(string $host): array
+    {
+        $normalized = $this->normalizeDomain($host);
+        if ($normalized === '') {
+            return [];
+        }
+
+        return array_values(array_unique([
+            $normalized,
+            'www.'.$normalized,
+            $normalized.'.',
+            'www.'.$normalized.'.',
+        ]));
     }
 
     /**

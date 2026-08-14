@@ -9,6 +9,8 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminSiteUpdateGuardTest extends TestCase
@@ -329,5 +331,116 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertSee('Edit site', false)
             ->assertDontSee('htmlspecialchars', false)
             ->assertSee('value="25"', false);
+    }
+
+    public function test_update_rejects_array_shaped_category(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'category' => ['News', 'Tech'],
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['category']);
+
+        $this->assertSame('News', $site->fresh()->category);
+    }
+
+    public function test_update_rejects_port_duplicate_domain(): void
+    {
+        $this->site();
+        $other = $this->site([
+            'site_name' => 'Other Guard',
+            'site_url' => 'https://other-guard.example',
+            'domain' => 'other-guard.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $other->id), [
+                'site_url' => 'https://www.guard-site.example:443/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->assertSame('other-guard.example', $other->fresh()->domain);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $other->id), [
+                'domain' => 'guard-site.example:443',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->assertSame('other-guard.example', $other->fresh()->domain);
+    }
+
+    public function test_update_persists_url_host_not_posted_domain(): void
+    {
+        $this->site();
+        $other = $this->site([
+            'site_name' => 'Other Guard',
+            'site_url' => 'https://other-guard.example',
+            'domain' => 'other-guard.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $other->id), [
+                'site_url' => 'https://brand-new-guard.example/path',
+                'domain' => 'guard-site.example',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $other->refresh();
+        $this->assertSame('brand-new-guard.example', $other->domain);
+        $this->assertSame('https://brand-new-guard.example/path', $other->site_url);
+        $this->assertSame(1, Site::where('domain', 'guard-site.example')->count());
+    }
+
+    public function test_update_rejects_legacy_www_domain_collision(): void
+    {
+        $this->site([
+            'site_name' => 'Www Guard',
+            'site_url' => 'https://www.legacy-www.example',
+            'domain' => 'www.legacy-www.example',
+        ]);
+        $other = $this->site([
+            'site_name' => 'Other Guard',
+            'site_url' => 'https://other-guard.example',
+            'domain' => 'other-guard.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $other->id), [
+                'site_url' => 'https://legacy-www.example/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->assertSame('other-guard.example', $other->fresh()->domain);
+    }
+
+    public function test_update_replaces_cover_only_after_save(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('sites/old-cover.jpg', 'old');
+        $site = $this->site([
+            'site_image' => 'sites/old-cover.jpg',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.edit', $site->id))
+            ->put(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => UploadedFile::fake()->image('new-cover.jpg', 40, 40),
+            ])
+            ->assertRedirect();
+
+        $site->refresh();
+        $this->assertNotSame('sites/old-cover.jpg', $site->site_image);
+        $this->assertTrue(Storage::disk('public')->exists((string) $site->site_image));
+        $this->assertFalse(Storage::disk('public')->exists('sites/old-cover.jpg'));
     }
 }
