@@ -469,7 +469,9 @@
         for (let i = 0; i < orderItems.length; i++) {
             const item = orderItems[i];
             const orderNumber = item.order ? item.order.order_number : 'N/A';
-            const orderStatus = item.order ? item.order.status : 'pending';
+            const orderStatus = item.order && item.order.is_awaiting_scheduled_release
+                ? 'scheduled'
+                : (item.order ? item.order.status : 'pending');
             const additionalPrice = parseFloat(item.additional_price || 0);
             const basePrice = parseFloat(item.publisher_base_price != null ? item.publisher_base_price : (item.price - additionalPrice));
             const totalPrice = parseFloat(item.price);

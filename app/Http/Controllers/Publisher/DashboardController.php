@@ -339,7 +339,9 @@ class DashboardController extends Controller
             $orders[] = [
                 'order_id' => $item->order->id,
                 'order_number' => $item->order->order_number,
-                'status' => $item->order->status,
+                'status' => $item->order->isAwaitingScheduledRelease()
+                    ? 'scheduled'
+                    : $item->order->status,
                 'payout' => $item->publisherPayoutAmount(),
                 'created_at' => optional($item->created_at)?->toIso8601String(),
                 'created_at_human' => optional($item->created_at)?->diffForHumans(),

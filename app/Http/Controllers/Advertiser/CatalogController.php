@@ -3483,6 +3483,7 @@ class CatalogController extends Controller
                 $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
                 $order->status_label = $meta['label'];
                 $order->next_action = $meta['next'];
+                $order->status_cls = $meta['cls'];
                 $order->auto_approve_hint = $meta['auto_approve_hint'];
                 $item = $order->items->first();
                 if ($item) {
@@ -3542,6 +3543,7 @@ class CatalogController extends Controller
             $meta = AdvertiserOrderStatus::meta($order, $order->items->first());
             $order->status_label = $meta['label'];
             $order->next_action = $meta['next'];
+            $order->status_cls = $meta['cls'];
             $order->auto_approve_hint = $meta['auto_approve_hint'];
             $item = $order->items->first();
             if ($item) {

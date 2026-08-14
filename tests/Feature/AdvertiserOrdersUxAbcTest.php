@@ -157,6 +157,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('scheduleOrdersLiveSearch', $js);
         $this->assertStringContainsString('runOrdersLiveFetch', $js);
         $this->assertStringContainsString('bootAdvertiserOrdersPage', $js);
+        $this->assertStringContainsString('isAwaitingScheduledRelease', $js);
         $this->assertStringContainsString("credentials: 'same-origin'", $js);
         // Live search must not depend on OrderChat succeeding first.
         $earlyFetchAssign = strpos($js, 'window.fetchOrders = fetchOrders');

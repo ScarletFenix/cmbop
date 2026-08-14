@@ -226,7 +226,8 @@ class PublisherReportsTest extends TestCase
             ->getJson(route('publisher.reports.orders', ['status' => 'scheduled']))
             ->assertOk()
             ->assertJsonCount(1, 'data')
-            ->assertJsonPath('data.0.id', $scheduled->id);
+            ->assertJsonPath('data.0.id', $scheduled->id)
+            ->assertJsonPath('data.0.order.is_awaiting_scheduled_release', true);
 
         $pending = $this->actingAs($publisher)
             ->getJson(route('publisher.reports.orders', ['status' => 'pending']))

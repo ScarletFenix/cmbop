@@ -159,6 +159,7 @@ class PublisherReportsController extends Controller
                         'order_number' => $item->order->order_number,
                         'reference_code' => $item->order->reference_code,
                         'status' => $item->order->status,
+                        'is_awaiting_scheduled_release' => $item->order->isAwaitingScheduledRelease(),
                         'payment_status' => $item->order->payment_status,
                         'payment_method' => $item->order->payment_method,
                         'created_at' => $item->order->created_at,
