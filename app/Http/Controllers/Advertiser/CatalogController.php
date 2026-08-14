@@ -2180,10 +2180,9 @@ class CatalogController extends Controller
                     if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
                         continue;
                     }
-                    $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                     $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                         'user_id' => $userId,
-                        'order_number' => $orderNumber,
+                        'order_number' => Order::nextOrderNumber(),
                         'reference_code' => $referenceCode,
                         'subtotal' => $orderItem['price'],
                         'tax' => 0,
@@ -2470,11 +2469,9 @@ class CatalogController extends Controller
                 if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
                     continue;
                 }
-                $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
-
                 $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                     'user_id' => $userId,
-                    'order_number' => $orderNumber,
+                    'order_number' => Order::nextOrderNumber(),
                     'reference_code' => $referenceCode,
                     'subtotal' => $orderItem['price'],
                     'tax' => 0,
@@ -2621,11 +2618,9 @@ class CatalogController extends Controller
                 if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
                     continue;
                 }
-                $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
-
                 $order = Order::create(array_merge([
                     'user_id' => $userId,
-                    'order_number' => $orderNumber,
+                    'order_number' => Order::nextOrderNumber(),
                     'reference_code' => $referenceCode,
                     'subtotal' => $orderItem['price'],
                     'tax' => 0,

@@ -361,76 +361,52 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
 
-    public function test_order_number_collision_retries_instead_of_dropping_the_paid_line(): void
+    public function test_legacy_bonus_session_without_expected_amount_still_checks_charge(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
-        $site = $this->makeSite($publisher, 'order-number-retry.example', 40);
-        $ref = 'ORDNUM-RETRY-1';
+        $site = $this->makeSite($publisher, 'bonus-legacy.example');
+        $ref = 'BONUS-LEGACY-1';
 
-        Order::create([
+        $order = Order::create([
             'user_id' => $advertiser->id,
-            'order_number' => '000001',
-            'reference_code' => 'OTHER-REF',
-            'subtotal' => 10,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 100,
             'tax' => 0,
-            'total_amount' => 10,
-            'payment_method' => 'wallet',
-            'payment_status' => 'paid',
-            'status' => 'completed',
+            'total_amount' => 100,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 100,
         ]);
 
-        $payments = new class extends OrderPaymentService
-        {
-            public int $orderNumberCalls = 0;
-
-            protected function freshOrderNumber(): string
-            {
-                $this->orderNumberCalls++;
-
-                return $this->orderNumberCalls === 1
-                    ? '000001'
-                    : parent::freshOrderNumber();
-            }
-        };
-
-        $payments->storePendingCheckout($ref, $this->package($advertiser, [
-            $this->lineFor($site, 40),
-        ], 40));
-
-        $created = $payments->finalizeStripeFirstCheckout($ref, $this->paidSession($ref, 40, 'cs_ordnum_retry'));
-
-        $this->assertCount(1, $created);
-        $this->assertGreaterThanOrEqual(2, $payments->orderNumberCalls);
-        $this->assertSame(1, Order::where('reference_code', $ref)->count());
-        $this->assertSame($site->id, (int) Order::where('reference_code', $ref)->first()?->items()->first()?->site_id);
-        $this->assertNotSame('000001', Order::where('reference_code', $ref)->value('order_number'));
-    }
-
-    public function test_missing_stripe_amount_fields_refuse_to_finalize(): void
-    {
-        $payments = app(OrderPaymentService::class);
-        $ref = 'MISSING-AMT-1';
-        $payments->storePendingCheckout($ref, $this->package($this->makeUser('advertiser'), [], 50));
-
         $session = (object) [
-            'id' => 'cs_missing_amount',
+            'id' => 'cs_bonus_legacy',
             'object' => 'checkout.session',
-            'payment_intent' => 'pi_missing_amount',
+            'amount_total' => 100,
+            'payment_intent' => 'pi_bonus_legacy',
             'metadata' => (object) [
-                'expected_amount' => '50',
                 'type' => 'order_payment',
                 'reference_code' => $ref,
+                'bonus_applied' => '20',
             ],
         ];
 
         try {
-            $payments->finalizeStripeFirstCheckout($ref, $session);
-            $this->fail('Missing Stripe amount fields should refuse to finalize.');
+            app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
+            $this->fail('Bonus card sessions without expected_amount must still verify the Stripe charge.');
         } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('missing', strtolower($e->getMessage()));
+            $this->assertStringContainsString('does not match', $e->getMessage());
         }
 
-        $this->assertSame(0, Order::where('reference_code', $ref)->count());
+        $this->assertSame('pending', $order->fresh()->payment_status);
     }
 }

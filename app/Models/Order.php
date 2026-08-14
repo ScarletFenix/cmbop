@@ -241,4 +241,19 @@ class Order extends Model
     {
         return ! is_null($this->sensitive_type) && $this->additional_price > 0;
     }
+
+    /**
+     * 6-digit order number that is not already stored.
+     */
+    public static function nextOrderNumber(): string
+    {
+        for ($attempt = 0; $attempt < 12; $attempt++) {
+            $candidate = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            if (! static::query()->where('order_number', $candidate)->exists()) {
+                return $candidate;
+            }
+        }
+
+        return substr(preg_replace('/\D/', '', uniqid('', true)) ?: (string) random_int(100000, 999999), -8);
+    }
 }
