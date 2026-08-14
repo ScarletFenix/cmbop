@@ -105,4 +105,51 @@ class ContentLibraryLiveSearchTest extends TestCase
             ->assertDontSee('Growth Playbook')
             ->assertDontSee('Growth Guide');
     }
+
+    public function test_single_page_still_shows_catalog_pager_count(): void
+    {
+        $advertiser = $this->advertiser();
+        for ($i = 1; $i <= 5; $i++) {
+            $article = $this->createApprovedSubmission($advertiser, null, $i);
+            $article->update(['title' => 'Pager Five '.$i]);
+        }
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.results'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('catalog-pagination__meta', $html);
+        $this->assertStringContainsString('Showing', $html);
+        $this->assertStringContainsString('1–5', $html);
+        $this->assertStringContainsString('of <strong>5</strong>', $html);
+        $this->assertStringContainsString('articles', $html);
+        $this->assertStringContainsString('Page 1 of 1', $html);
+        $this->assertStringContainsString('catalog-pagination__links', $html);
+        $this->assertStringContainsString('aria-label="Library pages"', $html);
+    }
+
+    public function test_page_two_keeps_search_query_on_pager_links(): void
+    {
+        $advertiser = $this->advertiser();
+        for ($i = 1; $i <= 21; $i++) {
+            $article = $this->createApprovedSubmission($advertiser, null, $i);
+            $article->update(['title' => 'PagerUnique '.$i]);
+        }
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.results', [
+                'q' => 'PagerUnique',
+                'page' => 2,
+            ]))
+            ->assertOk()
+            ->assertSee('PagerUnique 1')
+            ->getContent();
+
+        $this->assertStringContainsString('21–21', $html);
+        $this->assertStringContainsString('of <strong>21</strong>', $html);
+        $this->assertStringContainsString('Page 2 of 2', $html);
+        $this->assertMatchesRegularExpression('/[?&]q=PagerUnique/', $html);
+        $this->assertMatchesRegularExpression('/[?&]page=1/', $html);
+    }
 }

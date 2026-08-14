@@ -50,6 +50,9 @@ class SitewideLiveSearchFlowTest extends TestCase
             $this->assertContains('slb-live-search', $matches[1], $layout);
             $this->assertSame('hover-system', end($matches[1]), $layout.' must keep hover-system last among assets/css');
         }
+
+        $advertiserLayout = (string) file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
+        $this->assertStringContainsString('assets/css/slb-pagination.css', $advertiserLayout);
     }
 
     public function test_catalog_and_orders_delegate_to_shared_helper(): void

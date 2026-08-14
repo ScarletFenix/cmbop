@@ -520,4 +520,8 @@
         </div>
     </div>
 
-    <div class="mt-3">{{ $submissions->links() }}</div>
+    @include('partials.slb-pagination', [
+        'paginator' => $submissions,
+        'noun' => 'article',
+        'ariaLabel' => 'Library pages',
+    ])
