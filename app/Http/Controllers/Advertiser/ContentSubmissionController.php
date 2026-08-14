@@ -464,6 +464,7 @@ class ContentSubmissionController extends Controller
     {
         $cartKey = $request->query('cart_key');
         $query = ContentSubmission::query()
+            ->forLibraryList()
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->latest('id');

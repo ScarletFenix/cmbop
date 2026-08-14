@@ -751,6 +751,7 @@ class CatalogController extends Controller
         }
 
         $submission = ContentSubmission::query()
+            ->forArticlePicker()
             ->where('id', $id)
             ->where('user_id', auth()->id())
             ->orderable()
@@ -1069,6 +1070,7 @@ class CatalogController extends Controller
         $cartChanged = $removedInactive !== [] || $removedOwned !== [] || $cart !== array_values(session()->get('cart', []));
 
         $approved = ContentSubmission::query()
+            ->forArticlePicker()
             ->where('user_id', auth()->id())
             ->orderable()
             ->latest('id')
@@ -1093,6 +1095,7 @@ class CatalogController extends Controller
                 $submission = $approvedById->get($submissionId);
                 if (! $submission) {
                     $submission = ContentSubmission::query()
+                        ->forArticlePicker()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
                         ->orderable()
@@ -1452,6 +1455,7 @@ class CatalogController extends Controller
         }
 
         $submission = ContentSubmission::query()
+            ->forArticlePicker()
             ->where('id', $submissionId)
             ->where('user_id', auth()->id())
             ->orderable()
@@ -1566,6 +1570,7 @@ class CatalogController extends Controller
 
             if (session('ordering_from_library') && session('checkout_content_submission_id')) {
                 $librarySubmission = ContentSubmission::query()
+                    ->forArticlePicker()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
                     ->orderable()

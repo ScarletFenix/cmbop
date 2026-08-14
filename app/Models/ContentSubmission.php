@@ -227,6 +227,32 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Cart / wizard / catalog pickers only need identity + orderability fields.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeForArticlePicker($query)
+    {
+        $table = $query->getModel()->getTable();
+
+        return $query->select([
+            $table.'.id',
+            $table.'.user_id',
+            $table.'.title',
+            $table.'.original_filename',
+            $table.'.language',
+            $table.'.country',
+            $table.'.word_count',
+            $table.'.moderation_status',
+            $table.'.path',
+            $table.'.order_id',
+            $table.'.archived_at',
+            $table.'.expires_at',
+        ]);
+    }
+
+    /**
      * List pages only need a preview flag — not the article body (10 MB HTML/text).
      *
      * @param  Builder<static>  $query
