@@ -581,6 +581,23 @@ class ContentUploadService
     }
 
     /**
+     * PHP discarded the multipart body (post_max_size) or the file (upload_max_filesize).
+     * A 5 MB .docx then looks like "no file" unless we check Content-Length.
+     */
+    public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null): ?string
+    {
+        if ($file instanceof UploadedFile) {
+            return $this->invalidUploadMessage($file, $cfg);
+        }
+
+        if ($contentLengthBytes !== null && $contentLengthBytes > ($this->phpUploadMaxKilobytes() * 1024)) {
+            return $this->phpSizeRejectedMessage($cfg);
+        }
+
+        return null;
+    }
+
+    /**
      * PHP rejected the multipart file (size, tmp dir, partial, etc.) before we can parse it.
      * Laravel's default copy is "The file failed to upload."
      */

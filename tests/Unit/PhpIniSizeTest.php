@@ -40,4 +40,21 @@ class PhpIniSizeTest extends TestCase
             $this->assertStringContainsString('That file is over the 10 MB limit', $message);
         }
     }
+
+    public function test_rejected_upload_uses_content_length_when_php_stripped_the_file(): void
+    {
+        $service = app(ContentUploadService::class);
+        $cfg = ['max_kilobytes' => 10240];
+        $phpKb = $service->phpUploadMaxKilobytes();
+        if ($phpKb >= 10240) {
+            $this->assertNull($service->rejectedUploadMessage(null, $cfg, 6 * 1024 * 1024));
+
+            return;
+        }
+
+        $message = $service->rejectedUploadMessage(null, $cfg, 6 * 1024 * 1024);
+        $this->assertIsString($message);
+        $this->assertStringContainsString('under the 10 MB article limit', $message);
+        $this->assertNull($service->rejectedUploadMessage(null, $cfg, 1024));
+    }
 }

@@ -1172,11 +1172,13 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Max 2 MB', $html);
         $this->assertStringNotContainsString('Max 5 MB', $html);
         $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
+        $this->assertMatchesRegularExpression('/phpMaxKilobytes:\s*\d+/', $html);
 
         $this->actingAs($advertiser)
             ->getJson(route('advertiser.content-submissions.config'))
             ->assertOk()
-            ->assertJsonPath('config.max_kilobytes', 10240);
+            ->assertJsonPath('config.max_kilobytes', 10240)
+            ->assertJsonStructure(['config' => ['php_max_kilobytes']]);
 
         ContentModerationSetting::setValue('upload_config', [
             'max_kilobytes' => 5120,
@@ -1201,6 +1203,43 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('post_max_size = 64M', $userIni);
         $rootIni = (string) file_get_contents(base_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 16M', $rootIni);
+
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
+        $this->assertStringContainsString('boot.phpMaxKilobytes', $js);
+
+        $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
+        $this->assertStringContainsString('PostTooLargeException', $bootstrap);
+        $this->assertStringContainsString('phpSizeRejectedMessage', $bootstrap);
+    }
+
+    public function test_missing_file_with_oversize_content_length_explains_php_limit(): void
+    {
+        $advertiser = $this->advertiser();
+        $service = app(ContentUploadService::class);
+        $phpKb = $service->phpUploadMaxKilobytes();
+        if ($phpKb >= 10240) {
+            $this->markTestSkipped('PHP already accepts the 10 MB article cap.');
+        }
+
+        $response = $this->actingAs($advertiser)->call(
+            'POST',
+            route('advertiser.content-library.upload'),
+            ['country' => 'us', 'language' => 'en'],
+            [],
+            [],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+                'CONTENT_LENGTH' => (string) (6 * 1024 * 1024),
+            ]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('under the 10 MB article limit', $message);
+        $this->assertStringContainsString('PHP upload limit', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
