@@ -191,7 +191,8 @@ class CatalogController extends Controller
             $siteCategories = $predefinedCategories;
         }
 
-        // Get cart from SESSION
+        // Drop hidden/owned lines before the banner, wizard chrome, and header badge render.
+        $cartRemovedInactive = $this->syncPrunedSessionCart();
         $cart = session()->get('cart', []);
 
         // Bulk discount marketplace section — follows Catalog country= (Option 1).
@@ -246,6 +247,7 @@ class CatalogController extends Controller
             'favorites',
             'blacklist',
             'cart',
+            'cartRemovedInactive',
             'showBlacklistedOnly',
             'bulkDeals',
             'featurePrice',
@@ -1818,9 +1820,9 @@ class CatalogController extends Controller
                 }
             }
 
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart(array_values($cart));
 
-            return response()->json(['success' => true]);
+            return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
             Log::error('Error removing from cart: '.$e->getMessage());
 

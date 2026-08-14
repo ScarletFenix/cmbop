@@ -109,9 +109,22 @@
     @endif
 
     @php
-        $catalogCart = session('cart', []);
+        $catalogCart = is_array($cart ?? null) ? $cart : session('cart', []);
         $catalogCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), is_array($catalogCart) ? $catalogCart : []));
+        $cartRemovedInactive = is_array($cartRemovedInactive ?? null) ? $cartRemovedInactive : [];
     @endphp
+    @if($cartRemovedInactive !== [])
+        <div class="alert alert-warning border-0 shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3" role="status">
+            <div class="small mb-0">
+                @if(count($cartRemovedInactive) === 1)
+                    <strong>{{ $cartRemovedInactive[0] }}</strong> is no longer available and was removed from your cart.
+                @else
+                    {{ count($cartRemovedInactive) }} websites are no longer available and were removed from your cart:
+                    <strong>{{ implode(', ', array_slice($cartRemovedInactive, 0, 3)) }}</strong>@if(count($cartRemovedInactive) > 3) and {{ count($cartRemovedInactive) - 3 }} more@endif.
+                @endif
+            </div>
+        </div>
+    @endif
     @if($catalogCartCount > 0)
         <div class="alert alert-light border shadow-sm d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
             <div class="small mb-0">
