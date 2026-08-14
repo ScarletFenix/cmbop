@@ -59,6 +59,9 @@ class AdminUsersManageActionsTest extends TestCase
             ->assertSee('action-view', false)
             ->assertSee('action-roles', false)
             ->assertSee('admin-components.css', false)
+            ->assertSee('function escapeHtml', false)
+            ->assertSee('escapeHtml(name)', false)
+            ->assertSee('admins stay in Admin', false)
             ->getContent();
 
         // Table chrome lives in admin-components.css (Tier 3). Keep Manage menus
@@ -105,5 +108,27 @@ class AdminUsersManageActionsTest extends TestCase
             ->assertDontSee('Someone Else')
             ->assertSee('All users', false)
             ->assertSee(route('admin.users.index'), false);
+    }
+
+    public function test_users_page_escapes_html_in_display_names(): void
+    {
+        $advertiser = Role::where('name', 'advertiser')->firstOrFail();
+        $member = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiser->id,
+            'name' => 'Alice <img src=x onerror=alert(1)>',
+            'email' => 'alice.xss@example.com',
+        ]);
+        $member->roles()->attach($advertiser->id);
+
+        $html = $this->actingAs($this->adminUser())
+            ->get(route('admin.users.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('<img src=x onerror=alert(1)>', $html);
+        $this->assertStringContainsString('Alice &lt;img src=x onerror=alert(1)&gt;', $html);
+        $this->assertStringContainsString('function escapeHtml(str)', $html);
+        $this->assertStringContainsString('escapeHtml(name)', $html);
     }
 }

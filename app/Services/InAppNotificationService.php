@@ -1735,35 +1735,46 @@ class InAppNotificationService
         $isUpdate = $action === 'update';
         $name = $site->site_name ?: ($site->site_url ?: 'A website');
         $publisherId = (int) ($site->publisher_id ?? 0);
-
-        $actionUrl = route('admin.sites.index', array_filter([
+        $query = array_filter([
             'needs_review' => 1,
             'publisher' => $publisherId > 0 ? $publisherId : null,
             'site' => $site->id,
-        ]), false);
+        ]);
+        $adminUrl = route('admin.sites.index', $query, false);
+        $marketingUrl = route('marketing.sites.index', $query, false);
 
-        $this->notifyAdmins(
-            self::TYPE_SYSTEM,
-            $isUpdate ? 'Site updated — needs review' : 'New site to verify',
-            $isUpdate
-                ? "{$name} was updated and needs review again."
-                : "{$name} was submitted and needs verification.",
-            [
-                'category' => self::CATEGORY_SYSTEM,
-                'icon' => 'bell',
-                'priority' => InAppNotification::PRIORITY_HIGH,
-                'related' => $site,
-                'action_label' => 'Review site',
-                'action_url' => $actionUrl,
-                'meta' => [
-                    'site_id' => $site->id,
-                    'publisher_id' => $publisherId > 0 ? $publisherId : null,
-                    'action' => $isUpdate ? 'update' : 'create',
-                    'bulk_site_request_id' => $site->bulk_site_request_id,
-                    'open_task' => true,
-                ],
-            ]
-        );
+        $options = [
+            'audience' => InAppNotification::AUDIENCE_ADMIN,
+            'category' => self::CATEGORY_SYSTEM,
+            'icon' => 'bell',
+            'priority' => InAppNotification::PRIORITY_HIGH,
+            'related' => $site,
+            'action_label' => 'Review site',
+            'meta' => [
+                'site_id' => $site->id,
+                'publisher_id' => $publisherId > 0 ? $publisherId : null,
+                'action' => $isUpdate ? 'update' : 'create',
+                'bulk_site_request_id' => $site->bulk_site_request_id,
+                'open_task' => true,
+            ],
+        ];
+
+        foreach ($this->usersWithRoles(['admin', 'marketing']) as $staff) {
+            $canVerify = $staff->hasRole('admin');
+            $this->notify(
+                $staff,
+                self::TYPE_SYSTEM,
+                $isUpdate
+                    ? 'Site updated — needs review'
+                    : ($canVerify ? 'New site to verify' : 'New site to review'),
+                $isUpdate
+                    ? "{$name} was updated and needs review again."
+                    : ($canVerify
+                        ? "{$name} was submitted and needs verification."
+                        : "{$name} was submitted and needs review."),
+                $options + ['action_url' => $canVerify ? $adminUrl : $marketingUrl]
+            );
+        }
     }
 
     /**

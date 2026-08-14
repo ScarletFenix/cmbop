@@ -147,4 +147,52 @@ class MarketingRoleAccessTest extends TestCase
 
         $this->assertSame('marketing', $marketer->fresh()->activeRole());
     }
+
+    public function test_granting_marketing_to_admin_keeps_admin_workspace(): void
+    {
+        $actor = $this->userWithRoles(['admin'], 'admin');
+        $admin = $this->userWithRoles(['admin'], 'admin');
+
+        $this->actingAs($actor)
+            ->postJson(route('admin.users.updateRoles', $admin->id), [
+                'marketing' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('marketing', true)
+            ->assertJsonPath('active_role', 'admin');
+
+        $admin->refresh();
+        $this->assertTrue($admin->hasRole('marketing'));
+        $this->assertTrue($admin->hasRole('admin'));
+        $this->assertSame('admin', $admin->activeRole());
+
+        $this->actingAs($admin)
+            ->get(route('admin.dashboard'))
+            ->assertOk();
+
+        $marketingId = Role::where('name', 'marketing')->value('id');
+        $this->actingAs($admin)
+            ->post(route('switch.role'), ['active_role_id' => $marketingId])
+            ->assertRedirect(route('marketing.dashboard'));
+
+        $this->assertSame('marketing', $admin->fresh()->activeRole());
+    }
+
+    public function test_revoking_marketing_from_admin_falls_back_to_admin(): void
+    {
+        $actor = $this->userWithRoles(['admin'], 'admin');
+        $admin = $this->userWithRoles(['admin', 'marketing'], 'marketing');
+
+        $this->actingAs($actor)
+            ->postJson(route('admin.users.updateRoles', $admin->id), [
+                'marketing' => false,
+            ])
+            ->assertOk()
+            ->assertJsonPath('marketing', false);
+
+        $admin->refresh();
+        $this->assertFalse($admin->hasRole('marketing'));
+        $this->assertSame('admin', $admin->activeRole());
+    }
 }

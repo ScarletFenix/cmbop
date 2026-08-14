@@ -55,6 +55,8 @@ class RoleSwitchUiTest extends TestCase
         $this->assertStringContainsString(route('switch.role', absolute: false), $html);
         $this->assertStringContainsString((string) Role::where('name', 'marketing')->value('id'), $html);
         $this->assertStringContainsString((string) Role::where('name', 'publisher')->value('id'), $html);
+        $this->assertStringContainsString('Marketing workspace · site review', $html);
+        $this->assertStringNotContainsString('Admin panel · site review', $html);
     }
 
     public function test_switching_from_marketing_to_advertiser_lands_on_advertiser_dashboard(): void

@@ -439,7 +439,7 @@ class MarketingPanelHistoryTest extends TestCase
             ->get(route('marketing.history', ['q' => 'Seed']))
             ->assertOk()
             ->assertSee('Northwind Drafts', false)
-            ->assertSee('Seeded / added sites (1)', false)
+            ->assertSee('Seed (1)', false)
             ->assertDontSee('Niche Change Listing', false);
 
         $this->actingAs($this->marketer)

@@ -303,6 +303,28 @@ class ContentLibraryPhases36Test extends TestCase
         $this->assertStringContainsString('library-reason-list--advisory', $html);
     }
 
+    public function test_needs_fix_with_null_evaluation_report_does_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Scan Error Piece',
+            'moderation_status' => ContentSubmission::STATUS_ERROR,
+            'evaluation_status' => 'error',
+            'evaluation_report' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('Scan Error Piece')
+            ->assertSee('Fix issues and resubmit.')
+            ->assertDontSee('Trying to access array offset', false);
+    }
+
     public function test_low_score_approved_row_shows_advisory_orderable_note(): void
     {
         $advertiser = $this->advertiser();

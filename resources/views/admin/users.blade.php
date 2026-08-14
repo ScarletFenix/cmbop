@@ -287,6 +287,15 @@ const ROLE_UPDATE_URL = @json(route('admin.users.updateRoles', ['id' => '__ID__'
 function roleUpdateUrl(id) {
     return ROLE_UPDATE_URL.replace('__ID__', encodeURIComponent(String(id)));
 }
+function escapeHtml(str) {
+    if (str == null || str === '') return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
 let marketingSeatsUsed = {{ (int) ($marketingCount ?? 0) }};
 const MARKETING_SEATS_MAX = {{ (int) ($maxMarketing ?? 5) }};
 
@@ -317,9 +326,9 @@ document.addEventListener('click', function(e){
             title: 'Marketing Access',
             html: `
                 <p class="text-muted mb-3" style="font-size:14px;">
-                    Grant or revoke <strong>Marketing</strong> for <strong>${name}</strong>
+                    Grant or revoke <strong>Marketing</strong> for <strong>${escapeHtml(name)}</strong>
                     (${marketingSeatsUsed}/${MARKETING_SEATS_MAX} seats used).
-                    <br><small>Advertiser &amp; Publisher stay on the account. Granting Marketing switches their active workspace to Marketing.</small>
+                    <br><small>Advertiser &amp; Publisher stay on the account. Granting Marketing switches their active workspace to Marketing (admins stay in Admin).</small>
                 </p>
                 ${seatsFull ? `<div class="alert alert-warning py-2 px-3 text-start mb-3" style="font-size:13px;">
                     All ${MARKETING_SEATS_MAX} Marketing seats are taken. Revoke someone else first before granting access.
@@ -591,7 +600,7 @@ function updateRoleBadges(id, roles, activeRole){
         const cls = isActive ? 'bg-primary' : 'bg-secondary';
         const check = isActive ? ' <i class="fa fa-circle-check ms-1"></i>' : '';
         const title = isActive ? 'Active role' : 'Assigned role';
-        return `<span class="badge ${cls} text-capitalize" title="${title}">${name}${check}</span>`;
+        return `<span class="badge ${cls} text-capitalize" title="${title}">${escapeHtml(name)}${check}</span>`;
     }).join(' ');
 }
 

@@ -2726,6 +2726,7 @@ class SiteController extends Controller
             $approving = $this->requestFlag($request, 'verified');
             $reason = $this->validatedStatusReason($request, ! $approving);
 
+        try {
             $site = Site::findOrFail($id);
 
             if ($approving && $site->isPendingPublisherAcceptance()) {
