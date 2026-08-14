@@ -11,6 +11,7 @@ use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\Project;
 use App\Models\User;
+use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
 use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
@@ -220,6 +221,29 @@ class AppServiceProvider extends ServiceProvider
             $view->with([
                 'mktReadySiteCount' => $ready,
                 'mktBulkWaitingCount' => $bulk,
+            ]);
+        });
+
+        View::composer('advertiser.layouts.app', function ($view) {
+            $pruned = [
+                'cart' => array_values(session('cart', []) ?: []),
+                'removed_inactive' => [],
+                'removed_owned' => [],
+            ];
+
+            try {
+                if (auth()->check()) {
+                    $pruned = app(CartPricingService::class)
+                        ->syncAdvertiserSessionCart(auth()->user());
+                }
+            } catch (\Throwable $e) {
+                Log::warning('Advertiser cart prune composer failed', ['error' => $e->getMessage()]);
+            }
+
+            $view->with([
+                'headerCart' => $pruned['cart'],
+                'ssrCartRemovedInactive' => $pruned['removed_inactive'],
+                'ssrCartRemovedOwned' => $pruned['removed_owned'],
             ]);
         });
     }
