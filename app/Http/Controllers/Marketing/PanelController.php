@@ -139,8 +139,7 @@ class PanelController extends Controller
             $matchedActions = marketing_task_actions_matching($raw);
             $query->where(function ($q) use ($term, $matchedActions) {
                 $q->where('description', 'like', $term)
-                    ->orWhere('subject_label', 'like', $term)
-                    ->orWhere('action', 'like', $term);
+                    ->orWhere('subject_label', 'like', $term);
                 if ($matchedActions !== []) {
                     $q->orWhereIn('action', $matchedActions);
                 }
@@ -199,15 +198,28 @@ class PanelController extends Controller
 
     private function parseMarketerDay(mixed $value, bool $start): ?Carbon
     {
+        if (! is_string($value)) {
+            return null;
+        }
+
+        $value = trim($value);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
+            return null;
+        }
+
         try {
-            $local = Carbon::parse($value, $this->marketerTimezone());
+            $local = Carbon::createFromFormat('Y-m-d', $value, $this->marketerTimezone());
         } catch (\Throwable) {
             return null;
         }
 
+        if (! $local || $local->format('Y-m-d') !== $value) {
+            return null;
+        }
+
         return $start
-            ? $local->startOfDay()->utc()
-            : $local->endOfDay()->utc();
+            ? $local->copy()->startOfDay()->utc()
+            : $local->copy()->endOfDay()->utc();
     }
 
     private function marketerTimezone(): string

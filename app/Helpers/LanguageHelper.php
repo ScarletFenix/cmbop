@@ -529,9 +529,16 @@ if (! function_exists('marketing_task_actions_matching')) {
             return [];
         }
 
+        $pattern = '/\b'.preg_quote($needle, '/').'\b/u';
         $matched = [];
         foreach (marketing_task_labels() as $code => $label) {
-            if (str_contains(strtolower($label), $needle) || str_contains(strtolower((string) $code), $needle)) {
+            $codeRaw = strtolower((string) $code);
+            $codeWords = str_replace(['.', '_'], ' ', $codeRaw);
+            if (
+                preg_match($pattern, strtolower($label))
+                || preg_match($pattern, $codeRaw)
+                || preg_match($pattern, $codeWords)
+            ) {
                 $matched[] = $code;
             }
         }
