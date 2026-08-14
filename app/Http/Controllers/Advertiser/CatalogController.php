@@ -1914,6 +1914,7 @@ class CatalogController extends Controller
         $checkoutWallet = auth()->user()->activeWallet();
         if ($checkoutWallet) {
             $checkoutWallet->repairOrphanedWelcomeBonus();
+            $checkoutWallet->reconcileInflatedBonusBalance();
             $checkoutWallet->refresh();
         }
         $checkoutBonusBalance = $checkoutWallet ? $checkoutWallet->lockedBonusBalance() : 0.0;
@@ -2124,6 +2125,7 @@ class CatalogController extends Controller
                 if ($advertiserRoleId) {
                     $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
                     $wallet->repairOrphanedWelcomeBonus();
+                    $wallet->reconcileInflatedBonusBalance();
                     $wallet->refresh();
                     $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
                     $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
@@ -2376,6 +2378,7 @@ class CatalogController extends Controller
             // Lock wallet row inside the transaction to prevent concurrent overspend
             $advertiserWallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
             $advertiserWallet->repairOrphanedWelcomeBonus();
+            $advertiserWallet->reconcileInflatedBonusBalance();
             $advertiserWallet->refresh();
 
             $spendable = round((float) $advertiserWallet->balance, 2);
@@ -2567,6 +2570,7 @@ class CatalogController extends Controller
                 if ($advertiserRoleId) {
                     $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
                     $wallet->repairOrphanedWelcomeBonus();
+                    $wallet->reconcileInflatedBonusBalance();
                     $wallet->refresh();
                     $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
                     $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
