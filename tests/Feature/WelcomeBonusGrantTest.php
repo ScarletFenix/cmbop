@@ -9,6 +9,7 @@ use App\Models\WelcomeBonusClaim;
 use App\Services\Wallet\WelcomeBonusService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
@@ -127,6 +128,9 @@ class WelcomeBonusGrantTest extends TestCase
         $first = User::where('email', 'google-first@example.com')->first();
         $this->assertAdvertiserBonus($first, 20.0);
 
+        Auth::logout();
+        $this->flushSession();
+
         $this->mockGoogleCallback('google-second', 'google-second@example.com');
         $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
             ->get(route('auth.google.callback'))
@@ -144,7 +148,9 @@ class WelcomeBonusGrantTest extends TestCase
 
         $this->get(route('register'))
             ->assertOk()
-            ->assertDontSee('€20 welcome credit', false)
+            ->assertDontSee('Spend on your first orders — not withdrawable', false)
+            ->assertDontSee('Welcome bonus for first orders', false)
+            ->assertDontSee('Start with €20 free credit', false)
             ->assertSee('Free to start — no card required', false);
     }
 
@@ -192,8 +198,8 @@ class WelcomeBonusGrantTest extends TestCase
         $provider = Mockery::mock(Provider::class);
         $provider->shouldReceive('scopes')->andReturnSelf();
         $provider->shouldReceive('redirectUrl')->andReturnSelf();
-        $provider->shouldReceive('user')->andReturn($socialUser);
+        $provider->shouldReceive('user')->once()->andReturn($socialUser);
 
-        Socialite::shouldReceive('driver')->with('google')->andReturn($provider);
+        Socialite::shouldReceive('driver')->with('google')->once()->andReturn($provider);
     }
 }
