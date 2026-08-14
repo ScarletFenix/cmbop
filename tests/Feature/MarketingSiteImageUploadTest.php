@@ -112,6 +112,7 @@ class MarketingSiteImageUploadTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Quality editorial site for guest posts. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
             'site_image' => $file,
         ];
     }
