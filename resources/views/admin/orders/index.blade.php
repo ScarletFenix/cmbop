@@ -19,7 +19,7 @@
                         <input type="search"
                                id="searchInput"
                                class="form-control form-control-sm"
-                               placeholder="Order #, reference, user…"
+                               placeholder="Order #, reference, user, site, publisher…"
                                title="Results update as you type"
                                autocomplete="off"
                                enterkeyhint="search"

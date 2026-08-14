@@ -31,6 +31,14 @@ class OrderController extends Controller
                     ->orWhereHas('user', function ($sub) use ($search) {
                         $sub->where('name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('items', function ($sub) use ($search) {
+                        $sub->where('site_name', 'like', "%{$search}%")
+                            ->orWhere('site_url', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('items.site.publisher', function ($sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
                     });
             });
         }

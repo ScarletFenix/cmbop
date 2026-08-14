@@ -248,4 +248,47 @@ class AdminOrdersConsoleTest extends TestCase
                 'payment_status' => 'unpaid',
             ])), false);
     }
+
+    public function test_orders_data_search_matches_site_and_publisher(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $advertiser->update(['name' => 'Buyer Alice', 'email' => 'buyer-alice@example.test']);
+
+        $publisher = $this->userWithRole('publisher');
+        $publisher->update(['name' => 'Nordic Publisher Co', 'email' => 'ops@nordic-pub.example']);
+
+        $site = $this->siteFor($publisher);
+        $site->update([
+            'site_name' => 'Fjell Magazine',
+            'site_url' => 'https://fjell-magazine.example',
+            'domain' => 'fjell-magazine.example',
+        ]);
+
+        $order = $this->orderFor($advertiser, $site->fresh());
+        $other = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.index'))
+            ->assertOk()
+            ->assertSee('Order #, reference, user, site, publisher…', false);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['search' => 'Nordic Publisher']))
+            ->assertOk()
+            ->assertJsonFragment(['order_number' => $order->order_number])
+            ->assertJsonMissing(['order_number' => $other->order_number]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['search' => 'fjell-magazine.example']))
+            ->assertOk()
+            ->assertJsonFragment(['order_number' => $order->order_number])
+            ->assertJsonMissing(['order_number' => $other->order_number]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['search' => 'ops@nordic-pub.example']))
+            ->assertOk()
+            ->assertJsonFragment(['order_number' => $order->order_number])
+            ->assertJsonMissing(['order_number' => $other->order_number]);
+    }
 }
