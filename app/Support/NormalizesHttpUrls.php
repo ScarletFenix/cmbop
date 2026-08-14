@@ -7,9 +7,23 @@ trait NormalizesHttpUrls
     /**
      * Ensure URLs validate even when publishers omit the scheme.
      */
-    protected function normalizeHttpUrl(string $url): string
+    protected function normalizeHttpUrl(mixed $url): string
     {
-        $url = trim($url);
+        if (is_array($url)) {
+            $flat = [];
+            array_walk_recursive($url, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $url = $flat[0] ?? '';
+        }
+
+        if (! is_scalar($url) && $url !== null) {
+            return '';
+        }
+
+        $url = trim((string) $url);
         if ($url === '') {
             return $url;
         }

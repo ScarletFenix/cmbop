@@ -62,7 +62,7 @@
                             @foreach($publishers as $publisher)
                                 <option value="{{ $publisher->id }}"
                                     data-verified="{{ filled($publisher->email_verified_at) ? '1' : '0' }}"
-                                    @selected((int) old('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
+                                    @selected((int) old_text('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
                                     {{ $publisher->name }} · {{ $publisher->email }}
                                     @if((int) ($publisher->sites_count ?? 0) > 0)
                                         ({{ (int) $publisher->sites_count }} {{ \Illuminate\Support\Str::plural('site', (int) $publisher->sites_count) }})

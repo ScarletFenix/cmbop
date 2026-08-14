@@ -435,13 +435,13 @@ class AgencySiteImportService
             'example_url' => 'required|url|max:255',
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
-            'traffic' => 'required|integer|min:0',
+            'traffic' => 'required|integer|min:0|max:4294967295',
             'countries' => 'required|array|size:1',
             'countries.*' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'languages' => 'required|array|size:1',
             'languages.*' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:99999999.99',
             'turnaround_time' => 'required|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
@@ -458,8 +458,8 @@ class AgencySiteImportService
         foreach (['crypto' => 'price_crypto', 'trading' => 'price_trading', 'CBD' => 'price_CBD', 'forex' => 'price_forex'] as $topic => $col) {
             $val = $data[$col] ?? '';
             if ($val !== '' && $val !== null) {
-                if (! is_numeric($val) || $val < 0) {
-                    $errors[] = "{$col} must be a number ≥ 0.";
+                if (! is_numeric($val) || $val < 0 || (float) $val > 99999999.99) {
+                    $errors[] = "{$col} must be a number between 0 and 99999999.99.";
                 } else {
                     $sensitivePrices[$topic] = (float) $val;
                 }

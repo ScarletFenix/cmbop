@@ -157,6 +157,27 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertStringContainsString('Done — add sites', $html);
     }
 
+    public function test_marketer_seed_rejects_price_that_would_overflow_decimal(): void
+    {
+        [$country, $language] = $this->marketplaceCodes();
+        $bulk = $this->makeBulkRequest();
+
+        $rows = "https://overflow-seed.example,100000000000,40,45,12000,{$language},{$country},Overflow Seed";
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), ['rows' => $rows])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('error', 'All rows failed validation.')
+            ->assertSessionHas('seed_failures');
+
+        $failures = session('seed_failures');
+        $this->assertIsArray($failures);
+        $this->assertNotEmpty($failures);
+        $this->assertStringContainsString('price', strtolower(implode(' ', $failures[0]['errors'] ?? [])));
+        $this->assertNull(Site::where('domain', 'overflow-seed.example')->first());
+    }
+
     public function test_marketer_done_rejects_da_or_dr_above_100(): void
     {
         [$country, $language] = $this->marketplaceCodes();
