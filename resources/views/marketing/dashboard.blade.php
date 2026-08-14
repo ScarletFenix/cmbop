@@ -45,18 +45,16 @@
             </a>
         </div>
         <div class="col-6 col-md-3">
-            <a href="{{ route('marketing.bulk-site-requests.index', ['status' => 'awaiting_publisher']) }}" class="text-decoration-none text-reset" data-stat="waiting-on-publisher">
-                <div class="card border-0 shadow-sm h-100">
-                    <div class="card-body">
-                        <div class="text-muted small">Waiting on publisher</div>
-                        <h3 class="mb-1" data-stat-sites="{{ $stats['sites_waiting_on_publisher'] }}">{{ $stats['sites_waiting_on_publisher'] }}</h3>
-                        <div class="small text-muted" data-stat-bulk="{{ $stats['bulk_waiting_on_publisher'] }}">
-                            {{ $stats['bulk_waiting_on_publisher'] }}
-                            bulk request{{ $stats['bulk_waiting_on_publisher'] === 1 ? '' : 's' }}
-                        </div>
-                    </div>
+            <div class="card border-0 shadow-sm h-100" data-stat="waiting-on-publisher">
+                <div class="card-body">
+                    <div class="text-muted small">Waiting on publisher</div>
+                    <h3 class="mb-1" data-stat-sites="{{ $stats['sites_waiting_on_publisher'] }}">{{ $stats['sites_waiting_on_publisher'] }}</h3>
+                    <a href="{{ route('marketing.bulk-site-requests.index', ['status' => 'awaiting_publisher']) }}" class="small text-muted" data-stat-bulk="{{ $stats['bulk_waiting_on_publisher'] }}">
+                        {{ $stats['bulk_waiting_on_publisher'] }}
+                        bulk request{{ (int) $stats['bulk_waiting_on_publisher'] === 1 ? '' : 's' }}
+                    </a>
                 </div>
-            </a>
+            </div>
         </div>
         <div class="col-6 col-md-3">
             <a href="{{ route('marketing.history') }}" class="text-decoration-none text-reset" data-stat="my-tasks-today">
@@ -120,7 +118,7 @@
         <div class="col-lg-5">
             <div class="card border-0 shadow-sm h-100" data-queue="open-bulk">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
-                    <strong><i class="fa fa-layer-group me-2 text-primary"></i>Open bulk requests</strong>
+                    <strong><i class="fa fa-layer-group me-2 text-primary"></i>Waiting on you</strong>
                     <a href="{{ route('marketing.bulk-site-requests.index') }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
@@ -152,7 +150,7 @@
                                     </tr>
                                 @empty
                                     <tr>
-                                        <td colspan="4" class="text-center text-muted py-4">No open bulk requests.</td>
+                                        <td colspan="4" class="text-center text-muted py-4">No bulk requests waiting on you.</td>
                                     </tr>
                                 @endforelse
                             </tbody>

@@ -21,7 +21,7 @@ class MarketingOpsQueues
      */
     public static function sitesReadyForStaff(): Builder
     {
-        return Site::query()->needsAdminReview();
+        return Site::query()->needsAdminReview()->notArchived();
     }
 
     /**
@@ -32,6 +32,7 @@ class MarketingOpsQueues
     public static function sitesWaitingOnPublisher(): Builder
     {
         return Site::query()
+            ->notArchived()
             ->where(function ($q) {
                 $q->where('verified', 0)->orWhereNull('verified');
             })

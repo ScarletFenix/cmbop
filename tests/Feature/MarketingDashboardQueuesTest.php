@@ -66,6 +66,13 @@ class MarketingDashboardQueuesTest extends TestCase
             'assigned_by_user_id' => $this->marketer->id,
             'publisher_accepted_at' => null,
         ]);
+        $this->makeSite([
+            'site_name' => 'Archived Ready Site',
+            'site_url' => 'https://archived-ready.example',
+            'domain' => 'archived-ready.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'archived_at' => now(),
+        ]);
 
         $this->assertTrue($ready->needsAdminReview());
         $this->assertFalse($awaiting->needsAdminReview());
@@ -94,12 +101,14 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringContainsString('Ready for review', $readyTable);
         $this->assertStringNotContainsString('Awaiting Details Draft', $readyTable);
         $this->assertStringNotContainsString('Unaccepted Invite Site', $readyTable);
+        $this->assertStringNotContainsString('Archived Ready Site', $readyTable);
 
         $this->assertStringContainsString('Awaiting Details Draft', $waitingTable);
         $this->assertStringContainsString('Filling details', $waitingTable);
         $this->assertStringContainsString('Unaccepted Invite Site', $waitingTable);
         $this->assertStringContainsString('Waiting on accept', $waitingTable);
         $this->assertStringNotContainsString('Ready Activate Target', $waitingTable);
+        $this->assertStringNotContainsString('Archived Ready Site', $waitingTable);
 
         $this->assertStringContainsString(route('marketing.sites.index', ['needs_review' => 1], false), $html);
     }
@@ -173,10 +182,17 @@ class MarketingDashboardQueuesTest extends TestCase
 
         $bulkTable = $this->nodeText($html, 'data-queue', 'open-bulk');
         $this->assertStringContainsString('#'.$requested->id, $bulkTable);
-        $this->assertStringContainsString('#'.$awaitingPublisher->id, $bulkTable);
+        $this->assertStringNotContainsString('#'.$awaitingPublisher->id, $bulkTable);
         $this->assertStringContainsString('#'.$leftover->id, $bulkTable);
         $this->assertStringContainsString('Queue Marketer', $bulkTable);
         $this->assertStringNotContainsString('#'.$trulyDone->id, $bulkTable);
+
+        $waitingCard = $this->nodeHtml($html, 'data-stat', 'waiting-on-publisher');
+        $this->assertSame('div', strtolower($this->node($html, 'data-stat', 'waiting-on-publisher')->nodeName));
+        $this->assertStringContainsString(
+            route('marketing.bulk-site-requests.index', ['status' => 'awaiting_publisher'], false),
+            $waitingCard
+        );
     }
 
     /**
@@ -215,11 +231,23 @@ class MarketingDashboardQueuesTest extends TestCase
 
     private function nodeText(string $html, string $attr, string $value): string
     {
+        return (string) $this->node($html, $attr, $value)->textContent;
+    }
+
+    private function nodeHtml(string $html, string $attr, string $value): string
+    {
+        $node = $this->node($html, $attr, $value);
+
+        return (string) $node->ownerDocument?->saveHTML($node);
+    }
+
+    private function node(string $html, string $attr, string $value): \DOMNode
+    {
         $xpath = $this->xpath($html);
         $nodes = $xpath->query(sprintf('//*[@%s="%s"]', $attr, $value));
         $this->assertGreaterThan(0, $nodes->length, "Missing {$attr}={$value}");
 
-        return (string) $nodes->item(0)->textContent;
+        return $nodes->item(0);
     }
 
     private function xpath(string $html): DOMXPath

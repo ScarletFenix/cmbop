@@ -52,7 +52,7 @@ class PanelController extends Controller
             ->take(5)
             ->get();
 
-        $openBulk = MarketingOpsQueues::openBulkForMarketer()
+        $openBulk = MarketingOpsQueues::bulkWaitingOnMarketer()
             ->with([
                 'publisher:id,name,email',
                 'handler:id,name',
