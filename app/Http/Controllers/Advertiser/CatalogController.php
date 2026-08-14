@@ -3403,18 +3403,19 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
+            $search = trim((string) $request->input('search', ''));
+            $statusFilter = strtolower(trim((string) $request->input('status', '')));
+
             // Search filter — word-AND across order #, reference, site name/URL, live URL
-            if ($request->filled('search')) {
-                $search = trim((string) $request->search);
+            if ($search !== '') {
                 $orderSearch = app(AdvertiserOrderSearchQuery::class);
                 $hostNeedle = $this->catalogSearchHostNeedle($search);
                 $orderSearch->apply($query, $search, $hostNeedle);
-                $orderSearch->applyRelevanceOrder($query, $search);
             }
 
             // Status filter — awaiting_* / in_progress composites; other values match column.
-            if ($request->filled('status')) {
-                $status = (string) $request->status;
+            if ($statusFilter !== '') {
+                $status = $statusFilter;
                 if ($status === 'awaiting_payment') {
                     $query->where('status', 'pending')
                         ->where(function ($q) {
@@ -3461,7 +3462,11 @@ class CatalogController extends Controller
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
 
-            $orders = $query->orderBy('created_at', 'desc')->paginate(20);
+            AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
+            if ($search !== '') {
+                app(AdvertiserOrderSearchQuery::class)->applyRelevanceOrder($query, $search);
+            }
+            $orders = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->paginate(20);
 
             $orderIds = collect($orders->items())->pluck('id');
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
