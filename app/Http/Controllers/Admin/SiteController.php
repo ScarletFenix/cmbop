@@ -1134,18 +1134,12 @@ class SiteController extends Controller
             'verified' => $site->verified,
         ];
 
-        if ($isMarketingEditor) {
-            $data = $this->marketingUpdatePayload($request, $site);
+        $data = $isMarketingEditor
+            ? $this->marketingUpdatePayload($request, $site)
+            : $this->adminUpdatePayload($request, $site);
 
-            if ($data instanceof JsonResponse) {
-                return $data;
-            }
-
-            if ($data instanceof RedirectResponse) {
-                return $data;
-            }
-        } else {
-            $data = $this->adminUpdatePayload($request, $site);
+        if ($data instanceof JsonResponse || $data instanceof RedirectResponse) {
+            return $data;
         }
 
         unset(
@@ -1462,11 +1456,17 @@ class SiteController extends Controller
             }
         }
 
-        $hasCategories = $request->exists('categories') || $request->exists('category');
+        $hasCategoryPicker = $request->exists('categories');
+        $hasCategoryText = $request->exists('category');
         $resolved = ['resolved' => [], 'unknown' => []];
-        if ($hasCategories) {
-            $resolved = Category::resolveNicheNames($request->input('categories', $request->input('category', [])));
+        if ($hasCategoryPicker) {
+            $resolved = Category::resolveNicheNames($request->input('categories', []));
             $request->merge(['categories' => $resolved['resolved']]);
+        } elseif ($hasCategoryText) {
+            $resolved = [
+                'resolved' => $this->parseCategoryList($request->input('category')),
+                'unknown' => [],
+            ];
         }
 
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
@@ -1497,7 +1497,7 @@ class SiteController extends Controller
 
         $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
 
-        $validator->after(function ($validator) use ($request, $site, $allowedCountries, $allowedLanguages, $hasCategories, $resolved) {
+        $validator->after(function ($validator) use ($request, $site, $allowedCountries, $allowedLanguages, $hasCategoryPicker, $resolved) {
             $language = $request->exists('language')
                 ? strtolower(trim((string) $request->input('language', '')))
                 : strtolower(trim((string) $site->language));
@@ -1521,7 +1521,7 @@ class SiteController extends Controller
                 );
             }
 
-            if ($hasCategories) {
+            if ($hasCategoryPicker) {
                 foreach ($resolved['unknown'] as $cat) {
                     $validator->errors()->add('categories', 'Unknown niche: '.$cat);
                 }
@@ -1601,7 +1601,7 @@ class SiteController extends Controller
             $payload['countries'] = [$country];
         }
 
-        if ($hasCategories) {
+        if ($hasCategoryPicker || $hasCategoryText) {
             $categories = $resolved['resolved'];
             $payload['category'] = Site::fitCategoryColumn(implode('|', $categories), $categories);
             $payload['categories'] = $categories;
