@@ -12,6 +12,7 @@ use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -422,19 +423,32 @@ class ContentLibraryController extends Controller
             }
         }
 
-        $result = $this->uploads->uploadAndProcess(
-            file: $request->file('file'),
-            user: auth()->user(),
-            siteId: null,
-            copyIndex: 0,
-            cartKey: null,
-            replace: $replace,
-            title: $data['title'] ?? null,
-            country: $data['country'],
-            language: $data['language'],
-            imageRights: $data['image_rights'] ?? null,
-            imageRightsSource: $data['image_rights_source'] ?? null,
-        );
+        try {
+            $result = $this->uploads->uploadAndProcess(
+                file: $request->file('file'),
+                user: auth()->user(),
+                siteId: null,
+                copyIndex: 0,
+                cartKey: null,
+                replace: $replace,
+                title: $data['title'] ?? null,
+                country: $data['country'],
+                language: $data['language'],
+                imageRights: $data['image_rights'] ?? null,
+                imageRightsSource: $data['image_rights_source'] ?? null,
+            );
+        } catch (\Throwable $e) {
+            Log::error('Content library upload failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'title' => 'Upload failed',
+                'message' => 'The article could not be uploaded. Please try again.',
+            ], 500);
+        }
 
         if (! $result['ok']) {
             return response()->json([

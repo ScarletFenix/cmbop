@@ -22,6 +22,9 @@ class ContentUploadService
     /** Hard article .docx cap (10 MB). Admin cannot raise this. */
     public const MAX_KILOBYTES = 10240;
 
+    /** Editor / draft HTML cap. Quill inflates markup; 500k rejected real 10 MB articles. */
+    public const PREVIEW_HTML_MAX_CHARS = 8000000;
+
     public function __construct(
         private DocumentTextExtractor $extractor,
         private ArticleEvaluationService $evaluation,

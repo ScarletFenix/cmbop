@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -1254,9 +1255,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Too many upload attempts', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);
         $this->assertStringContainsString('The article editor failed to load', $js);
+        $this->assertStringContainsString('editor_notice', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
         $this->assertStringContainsString('status === 413 || status === 0', $js);
         $this->assertStringNotContainsString('status === 500', $js);
+        $this->assertStringNotContainsString('file.size <= 10240 * 1024', $js);
+        $this->assertSame(8000000, ContentUploadService::PREVIEW_HTML_MAX_CHARS);
         $this->assertStringNotContainsString('hosting PHP settings', $js);
         $this->assertStringNotContainsString('server PHP upload limit', $js);
         $this->assertStringNotContainsString('upload_max_filesize to 64M', $js);
@@ -1326,6 +1330,62 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('The article could not be uploaded', $message);
         $this->assertStringNotContainsString('Drop a .docx', $message);
         $this->assertStringNotContainsString('country', strtolower($message));
+    }
+
+    public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        $this->mock(ContentModerationService::class, function ($mock) {
+            $mock->shouldReceive('linksFromSubmission')->andReturn([]);
+            $mock->shouldReceive('scanExtractedContent')->andThrow(new \RuntimeException('scan failed'));
+        });
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/eval-crash-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 60));
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title' => 'Eval crash article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+
+        @unlink($path);
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertFalse((bool) $response->json('approved'));
+        $this->assertStringContainsString('Automatic review could not finish', (string) $response->json('message'));
+        $this->assertDatabaseHas('content_submissions', [
+            'user_id' => $advertiser->id,
+            'title' => 'Eval crash article',
+            'moderation_status' => ContentSubmission::STATUS_ERROR,
+        ]);
+    }
+
+    public function test_editor_save_accepts_html_over_five_hundred_thousand_chars(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $html = '<p>'.str_repeat('Useful editorial content about productivity software. ', 12000).'</p>';
+        $this->assertGreaterThan(500000, strlen($html));
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => $submission->title,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string

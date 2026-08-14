@@ -1232,6 +1232,10 @@ function ensureArticleQuill() {
                     body: fd,
                 });
                 const data = await parseLibraryJson(res);
+                if (res.status === 419) {
+                    setFeedbackHtml(feedback, false, 'Your session expired. Refresh the page and try again.');
+                    return;
+                }
                 if (!data || !res.ok || !data.success || !data.url) {
                     const fallback = (res.status === 413 || res.status === 422)
                         ? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
@@ -1275,6 +1279,13 @@ function openArticleEditor(submission) {
             (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
         document.getElementById('articleEditorFeedback').textContent = '';
         loadArticleHtml(submission.preview_html || '<p><br></p>');
+        if (submission.editor_notice) {
+            setFeedbackHtml(
+                document.getElementById('articleEditorFeedback'),
+                !!submission.editor_notice_ok,
+                submission.editor_notice
+            );
+        }
         const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
         syncEditorImageRights(needsRights);
         showArticleEditorAfterUploadModal();
@@ -1399,6 +1410,11 @@ async function saveArticleEditor() {
             )),
         });
         const data = await parseLibraryJson(res);
+        if (res.status === 419) {
+            setFeedbackHtml(feedback, false, 'Your session expired. Refresh the page and try again.');
+            btn.disabled = false;
+            return;
+        }
         if (!data) {
             setFeedbackHtml(feedback, false, 'Could not save article.');
             btn.disabled = false;
@@ -1757,6 +1773,8 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             );
             openArticleEditor(Object.assign({}, data.submission, {
                 can_order: !!(data.submission.can_order || data.approved),
+                editor_notice: data.approved ? '' : (data.message || ''),
+                editor_notice_ok: !!data.approved,
             }));
         } else {
             goToLibraryResult({}, data.message || 'Article uploaded.', !!data.approved);
@@ -1766,9 +1784,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             resetLibraryUploadUi();
             return;
         }
-        setFeedbackHtml(feedback, false, file && file.size <= 10240 * 1024
-            ? 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.'
-            : 'Network error while uploading.');
+        setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
     } finally {
         if (!openedEditor && btn) btn.disabled = false;
         progress?.classList.add('d-none');
