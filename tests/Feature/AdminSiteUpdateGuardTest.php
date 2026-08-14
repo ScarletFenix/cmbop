@@ -261,6 +261,48 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame(['Business & Finance'], $site->categories);
     }
 
+    public function test_update_keeps_secondary_niches_when_primary_category_is_resent(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News', 'Business & Finance'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => 'News',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('News', $site->category);
+        $this->assertSame(['News', 'Business & Finance'], $site->categories);
+    }
+
+    public function test_update_replaces_primary_niche_without_dropping_others(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News', 'Technology & Gadgets'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => 'Business & Finance',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('Business & Finance', $site->category);
+        $this->assertSame(['Business & Finance', 'Technology & Gadgets'], $site->categories);
+    }
+
     public function test_update_keeps_categories_when_category_is_omitted(): void
     {
         $site = $this->site([

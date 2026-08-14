@@ -1485,17 +1485,16 @@ class SiteController extends Controller
         }
 
         if ($request->has('categories') || $request->has('category')) {
-            $resolved = Category::resolveNicheNames(
-                $request->input('categories', $request->input('category'))
-            );
-            $categories = $resolved['resolved'];
-            foreach ($resolved['unknown'] as $unknown) {
-                $categories[] = $unknown;
-            }
-            $categories = array_values(array_unique($categories));
+            $raw = $request->has('categories')
+                ? $request->input('categories')
+                : $request->input('category');
+            $resolved = Category::resolveNicheNames($raw);
+            $incoming = array_values(array_unique(array_merge($resolved['resolved'], $resolved['unknown'])));
+            $replaceAll = $request->has('categories') || count($incoming) > 1;
+            $categories = $this->mergeAdminCategoryUpdate($site, $incoming, $replaceAll);
             $data['categories'] = $categories;
             $data['category'] = Site::fitCategoryColumn(
-                $categories !== [] ? implode('|', $categories) : '',
+                $categories !== [] ? (string) $categories[0] : '',
                 $categories !== [] ? $categories : null
             );
         }
@@ -1933,6 +1932,39 @@ class SiteController extends Controller
         }
 
         return $url;
+    }
+
+    /**
+     * Dedicated admin edit posts a single category field. Keep extra JSON niches
+     * unless the request sent an explicit list (categories[] or pipe-separated).
+     *
+     * @param  list<string>  $incoming
+     * @return list<string>
+     */
+    private function mergeAdminCategoryUpdate(Site $site, array $incoming, bool $replaceAll): array
+    {
+        if ($replaceAll) {
+            return $incoming;
+        }
+
+        $primary = $incoming[0] ?? '';
+        $oldPrimary = trim((string) ($site->category ?? ''));
+        $kept = [];
+        foreach ($site->categories_array ?? [] as $name) {
+            $name = trim((string) $name);
+            if ($name === '') {
+                continue;
+            }
+            if ($oldPrimary !== '' && strcasecmp($name, $oldPrimary) === 0) {
+                continue;
+            }
+            if ($primary !== '' && strcasecmp($name, $primary) === 0) {
+                continue;
+            }
+            $kept[] = $name;
+        }
+
+        return $primary !== '' ? array_merge([$primary], $kept) : $kept;
     }
 
     /**
