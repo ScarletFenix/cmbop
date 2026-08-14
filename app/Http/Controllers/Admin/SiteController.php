@@ -1395,7 +1395,7 @@ class SiteController extends Controller
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
             'price' => 'sometimes|required|numeric|min:0',
-            'description' => 'sometimes|nullable|string|min:50',
+            'description' => 'sometimes|nullable|string|min:50|max:5000',
             'publication_time' => 'sometimes|nullable|string|max:20',
             'link_type' => 'sometimes|nullable|string|max:64',
             'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
@@ -1424,6 +1424,12 @@ class SiteController extends Controller
                         'language',
                         'That language is not allowed for the selected country. Pick country first, then a paired language.'
                     );
+                }
+            }
+
+            if ($request->filled('description')) {
+                foreach (SiteDescriptionRules::errors((string) $request->input('description', '')) as $message) {
+                    $validator->errors()->add('description', $message);
                 }
             }
         });
@@ -1472,6 +1478,22 @@ class SiteController extends Controller
         if (isset($data['language']) && $data['language'] !== null && $data['language'] !== '') {
             $data['language'] = strtolower(trim((string) $data['language']));
             $data['languages'] = [$data['language']];
+        }
+
+        if ($request->has('categories') || $request->has('category')) {
+            $resolved = Category::resolveNicheNames(
+                $request->input('categories', $request->input('category'))
+            );
+            $categories = $resolved['resolved'];
+            foreach ($resolved['unknown'] as $unknown) {
+                $categories[] = $unknown;
+            }
+            $categories = array_values(array_unique($categories));
+            $data['categories'] = $categories;
+            $data['category'] = Site::fitCategoryColumn(
+                $categories !== [] ? implode('|', $categories) : '',
+                $categories !== [] ? $categories : null
+            );
         }
 
         if ($request->hasFile('site_image')) {
