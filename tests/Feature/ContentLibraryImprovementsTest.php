@@ -1171,6 +1171,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Max 10 MB', $html);
         $this->assertStringNotContainsString('Max 2 MB', $html);
         $this->assertStringNotContainsString('Max 5 MB', $html);
+        $this->assertStringNotContainsString('server PHP still allows only', $html);
+        $this->assertStringNotContainsString('libraryPhpUploadLimitWarn', $html);
         $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
         $this->assertMatchesRegularExpression('/phpMaxKilobytes:\s*\d+/', $html);
 
@@ -1204,6 +1206,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('post_max_size = 64M', $userIni);
         $rootIni = (string) file_get_contents(base_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $rootIni);
+        $publicPhpIni = (string) file_get_contents(public_path('php.ini'));
+        $this->assertStringContainsString('upload_max_filesize = 64M', $publicPhpIni);
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
