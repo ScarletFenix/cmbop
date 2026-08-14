@@ -300,10 +300,7 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertSame('1', $this->dashboardStat($html, 'my-tasks-today'));
         $this->assertSame('2', $this->dashboardStatTotal($html, 'my-tasks-today'));
-        $this->assertStringContainsString(
-            route('marketing.history', ['from' => '2026-08-15', 'to' => '2026-08-15'], false),
-            $html
-        );
+        $this->assertStringContainsString('/marketing/history?from=2026-08-15&amp;to=2026-08-15', $html);
 
         $this->actingAs($this->marketer)
             ->get(route('marketing.history', ['from' => '2026-08-15', 'to' => '2026-08-15']))
