@@ -660,4 +660,76 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertOk()
             ->assertSee('id="order-disputes"', false);
     }
+
+    public function test_order_show_offers_accept_reminder_while_the_publisher_has_not_accepted(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($publisher));
+        $item = $order->items->first();
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('id="remind-publisher"', false)
+            ->assertSee('Remind to accept', false)
+            ->assertSee(route('admin.orders.remind-publisher', $item), false)
+            ->assertSee('Does not use up the automated reminder ladder', false)
+            ->assertDontSee('Remind to publish', false);
+    }
+
+    public function test_order_show_offers_publish_reminder_after_accept_without_a_live_url(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+        $item = $order->items->first();
+        $item->update(['accepted_at' => now()->subDay()]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('Remind to publish', false)
+            ->assertSee(route('admin.orders.remind-publisher', $item), false)
+            ->assertDontSee('Remind to accept', false);
+    }
+
+    public function test_order_show_hides_remind_when_the_publisher_cannot_be_chased(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->siteFor($this->userWithRole('publisher'));
+
+        $completed = $this->orderFor($advertiser, $site);
+        $completed->update(['status' => 'completed', 'completed_at' => now()]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $completed->id))
+            ->assertOk()
+            ->assertDontSee('id="remind-publisher"', false)
+            ->assertDontSee('Remind to accept', false);
+
+        $unpaid = $this->orderFor($advertiser, $site);
+        $unpaid->update([
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $unpaid->id))
+            ->assertOk()
+            ->assertDontSee('id="remind-publisher"', false);
+
+        $live = $this->orderFor($advertiser, $site);
+        $live->items->first()->update([
+            'accepted_at' => now()->subDay(),
+            'live_url' => 'https://admin-orders.example/published',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $live->id))
+            ->assertOk()
+            ->assertDontSee('id="remind-publisher"', false)
+            ->assertDontSee('Remind to publish', false);
+    }
 }

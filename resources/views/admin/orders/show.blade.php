@@ -23,6 +23,9 @@
         'search' => $order->order_number,
         'payment_status' => $order->isUnpaidOps() ? 'unpaid' : null,
     ]));
+    $remindableItems = $order->items
+        ->filter(fn ($line) => $line->canAdminRemindPublisher($order))
+        ->values();
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
@@ -81,6 +84,22 @@
                                 <div class="small text-muted">Publisher</div>
                                 <div class="fw-semibold">{{ $publisher->name ?? '—' }}</div>
                                 <div class="small text-muted">{{ $publisher->email ?? '' }}</div>
+                                @if($remindableItems->isNotEmpty())
+                                    <div class="mt-3 d-flex flex-wrap gap-2 align-items-center" id="remind-publisher">
+                                        @foreach($remindableItems as $remindItem)
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-primary js-remind-publisher"
+                                                    data-remind-url="{{ route('admin.orders.remind-publisher', $remindItem) }}">
+                                                <i class="fa fa-bell me-1"></i>
+                                                {{ $remindItem->adminRemindTrack() === 'accept' ? 'Remind to accept' : 'Remind to publish' }}
+                                                @if($remindableItems->count() > 1)
+                                                    · {{ $remindItem->site_name ?: ($remindItem->site?->site_name ?: 'placement') }}
+                                                @endif
+                                            </button>
+                                        @endforeach
+                                    </div>
+                                    <div class="small text-muted mt-1">Sends now. Does not use up the automated reminder ladder.</div>
+                                @endif
                             </div>
                         </div>
                     </div>
@@ -472,6 +491,28 @@
         } catch (e) {
             Swal.fire('Error', e.message || 'Failed', 'error');
         }
+    });
+
+    document.querySelectorAll('.js-remind-publisher').forEach((btn) => {
+        btn.addEventListener('click', async () => {
+            btn.disabled = true;
+            try {
+                const data = await postJson(btn.dataset.remindUrl, {});
+                btn.outerHTML = '<span class="text-success small fw-semibold">'
+                    + '<i class="fa-solid fa-circle-check me-1" aria-hidden="true"></i>Reminder sent</span>';
+                if (window.showAppToast) {
+                    window.showAppToast(data.message || 'Reminder sent', 'success');
+                }
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Retry';
+                if (window.showAppToast) {
+                    window.showAppToast(e.message || 'Could not send the reminder', 'error');
+                } else {
+                    Swal.fire('Error', e.message || 'Could not send the reminder', 'error');
+                }
+            }
+        });
     });
 
     window.resolveDispute = async function (disputeId, action) {
