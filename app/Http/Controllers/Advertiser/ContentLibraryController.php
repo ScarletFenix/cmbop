@@ -525,7 +525,7 @@ class ContentLibraryController extends Controller
     public function orderInCatalog(Request $request, ?ContentSubmission $submission = null)
     {
         if (! $submission) {
-            $id = (int) $request->input('content_submission_id', 0);
+            $id = (int) scalar_text($request->input('content_submission_id', 0));
             $submission = ContentSubmission::query()
                 ->where('id', $id)
                 ->where('user_id', auth()->id())
@@ -566,7 +566,7 @@ class ContentLibraryController extends Controller
         }
 
         return ContentSubmission::query()
-            ->forArticlePicker()
+            ->forLibraryList()
             ->where('id', $id)
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
