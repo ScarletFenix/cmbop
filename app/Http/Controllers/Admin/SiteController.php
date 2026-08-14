@@ -691,8 +691,22 @@ class SiteController extends Controller
                 ->withInput();
         }
 
-        $siteUrl = $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', '')));
-        $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+        $rawSiteUrl = $request->input('site_url', $request->input('siteUrl', ''));
+        $rawExampleUrl = $request->input('example_url', $request->input('exampleUrl', ''));
+        if (! is_string($rawSiteUrl) || ! is_string($rawExampleUrl)) {
+            $urlErrors = [];
+            if (! is_string($rawSiteUrl)) {
+                $urlErrors['site_url'] = 'Invalid URL';
+            }
+            if (! is_string($rawExampleUrl)) {
+                $urlErrors['example_url'] = 'Invalid URL';
+            }
+
+            return back()->withErrors($urlErrors)->withInput();
+        }
+
+        $siteUrl = $this->normalizeHttpUrl($rawSiteUrl);
+        $exampleUrl = $this->normalizeHttpUrl($rawExampleUrl);
 
         // Coerce metric fields before validation (locale number inputs / "45.0" strings).
         $da = $this->normalizeMetricInt($request->input('da'));
@@ -714,7 +728,11 @@ class SiteController extends Controller
 
         $domain = preg_replace('/^www\./', '', strtolower($host));
 
-        $resolvedNiches = Category::resolveNicheNames($request->input('categories', $request->input('category')));
+        $rawCategories = $request->input('categories', $request->input('category'));
+        if (! is_string($rawCategories) && ! is_iterable($rawCategories)) {
+            $rawCategories = [];
+        }
+        $resolvedNiches = Category::resolveNicheNames($rawCategories);
         $categories = $resolvedNiches['resolved'];
         $unknownNiches = $resolvedNiches['unknown'];
         $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
@@ -1904,7 +1922,7 @@ class SiteController extends Controller
      */
     private function normalizeMetricInt(mixed $value): ?int
     {
-        if ($value === null || $value === '') {
+        if ($value === null || $value === '' || is_array($value) || is_object($value)) {
             return null;
         }
 

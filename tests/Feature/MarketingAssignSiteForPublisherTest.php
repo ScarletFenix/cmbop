@@ -720,4 +720,68 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         );
         $this->assertSame('pending-collision.example', $pending->fresh()->domain);
     }
+
+    public function test_array_shaped_site_url_does_not_save_array_domain(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => ['https://poison-url.example'],
+                'example_url' => ['https://poison-url.example/sample'],
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors(['site_url', 'example_url']);
+
+        $this->assertNull(Site::where('domain', 'array')->first());
+        $this->assertNull(Site::where('domain', 'poison-url.example')->first());
+    }
+
+    public function test_non_string_categories_old_input_does_not_crash_create_page(): void
+    {
+        $this->actingAs($this->marketer)
+            ->withSession([
+                '_old_input' => [
+                    'categories' => 1,
+                    'country' => ['de'],
+                    'language' => ['de'],
+                    'site_url' => ['https://poison-niches.example'],
+                ],
+            ])
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->assertSee('Add site for publisher', false)
+            ->assertDontSee('htmlspecialchars', false);
+
+        $html = $this->actingAs($this->marketer)
+            ->withSession([
+                '_old_input' => [
+                    'categories' => [['News']],
+                    'country' => ['de'],
+                    'language' => ['de'],
+                ],
+            ])
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option[^>]+value="de"[^>]+selected/',
+            $html
+        );
+    }
+
+    public function test_integer_categories_payload_does_not_500_store(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://int-niches.example',
+                'example_url' => 'https://int-niches.example/sample',
+                'categories' => 1,
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('categories');
+
+        $this->assertNull(Site::where('domain', 'int-niches.example')->first());
+    }
 }

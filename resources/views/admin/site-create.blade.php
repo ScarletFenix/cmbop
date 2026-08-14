@@ -11,6 +11,9 @@
     $selectedPublisherUnverified = $selectedPublisherUnverified ?? false;
     $sitesBackUrl = $sitesBackUrl ?? staff_route('sites.index');
     $rawNiches = old('categories', []);
+    if (! is_string($rawNiches) && ! is_iterable($rawNiches)) {
+        $rawNiches = [];
+    }
     if (is_string($rawNiches)) {
         $rawNiches = preg_split('/\|/', $rawNiches) ?: [];
     }
@@ -18,7 +21,12 @@
     if (is_string($prefillNiches)) {
         $prefillNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $prefillNiches) ?: [])));
     }
-    $prefillNiches = collect($prefillNiches)->filter(fn ($v) => filled($v))->values()->all();
+    $prefillNiches = collect($prefillNiches)
+        ->flatten()
+        ->filter(fn ($v) => is_scalar($v) && filled($v))
+        ->map(fn ($v) => (string) $v)
+        ->values()
+        ->all();
 @endphp
 <div class="container-fluid py-3">
 
@@ -148,7 +156,7 @@
                             <option value="">Select…</option>
                             @foreach($countries as $country)
                                 <option value="{{ strtolower($country->code) }}"
-                                    @selected(old('country') === strtolower($country->code))>
+                                    @selected(old_text('country') === strtolower($country->code))>
                                     {{ $country->name }}
                                 </option>
                             @endforeach
@@ -160,10 +168,10 @@
                         <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
                         <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language') }}">
                         <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
-                            <option value="">{{ old('country') ? 'Select…' : 'Select country first' }}</option>
+                            <option value="">{{ old_text('country') !== '' ? 'Select…' : 'Select country first' }}</option>
                             @foreach($languages as $language)
                                 <option value="{{ strtolower($language->code) }}"
-                                    @selected(old('language') === strtolower($language->code))>
+                                    @selected(old_text('language') === strtolower($language->code))>
                                     {{ $language->name }}
                                 </option>
                             @endforeach
