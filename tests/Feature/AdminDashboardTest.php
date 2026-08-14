@@ -398,16 +398,18 @@ class AdminDashboardTest extends TestCase
             app(FinanceOverviewService::class)->resolvePeriod('month')
         );
 
-        $this->actingAs($admin)
+        $json = $this->actingAs($admin)
             ->getJson(route('admin.dashboard.finance'))
             ->assertOk()
             ->assertJsonPath('success', true)
-            ->assertJsonPath('data.due_to_pay_now', $overview['due_to_pay_now'])
-            ->assertJsonPath('data.in_publisher_wallets', $overview['in_publisher_wallets'])
-            ->assertJsonPath('data.total_publisher_liability', $overview['total_publisher_liability'])
-            ->assertJsonPath('data.margin', $overview['platform']['margin'])
             ->assertJsonPath('data.period_label', $overview['period']['label'])
-            ->assertJsonPath('data.url', route('admin.finance'));
+            ->assertJsonPath('data.url', route('admin.finance'))
+            ->json('data');
+
+        $this->assertEquals($overview['due_to_pay_now'], $json['due_to_pay_now']);
+        $this->assertEquals($overview['in_publisher_wallets'], $json['in_publisher_wallets']);
+        $this->assertEquals($overview['total_publisher_liability'], $json['total_publisher_liability']);
+        $this->assertEquals($overview['platform']['margin'], $json['margin']);
     }
 
     public function test_action_queue_includes_unpaid_disputes_community_and_enrichment(): void
@@ -432,6 +434,24 @@ class AdminDashboardTest extends TestCase
             'status' => 'pending',
         ]);
 
+        $disputeSite = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Dispute Site',
+            'site_url' => 'https://dispute.example',
+            'domain' => 'dispute.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Dispute fixture site',
+            'verified' => 1,
+            'active' => 1,
+        ]);
         $paid = Order::create([
             'user_id' => $admin->id,
             'order_number' => 'ORD-DSP-1',
@@ -446,8 +466,9 @@ class AdminDashboardTest extends TestCase
         ]);
         $item = OrderItem::create([
             'order_id' => $paid->id,
-            'site_name' => 'Dispute Site',
-            'site_url' => 'https://dispute.example',
+            'site_id' => $disputeSite->id,
+            'site_name' => $disputeSite->site_name,
+            'site_url' => $disputeSite->site_url,
             'price' => 80,
             'publisher_price' => 68,
             'content_link' => 'https://example.com/article',
