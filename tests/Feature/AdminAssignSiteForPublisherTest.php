@@ -344,6 +344,187 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertFalse(Storage::disk('public')->exists('sites/accepted-cover.jpg'));
     }
 
+    public function test_publisher_cannot_edit_pending_invite(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Invite No Edit',
+            'site_url' => 'https://invite-no-edit.example',
+            'domain' => 'invite-no-edit.example',
+            'example_url' => 'https://invite-no-edit.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Invite must be accepted before edit. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->getJson(route('publisher.sites.edit-data', $site->id))
+            ->assertStatus(422);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites', ['status' => 'invites']))
+            ->put(route('publisher.sites.update', $site->id), [
+                'price' => 1,
+            ])
+            ->assertRedirect(route('publisher.websites', ['status' => 'invites']));
+
+        $this->assertSame(40.0, (float) $site->fresh()->price);
+        $this->assertTrue($site->fresh()->isPendingPublisherAcceptance());
+    }
+
+    public function test_reject_after_accept_does_not_delete_listing(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Accept Then Decline',
+            'site_url' => 'https://accept-then-decline.example',
+            'domain' => 'accept-then-decline.example',
+            'example_url' => 'https://accept-then-decline.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Accept then decline must keep the row. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.accept-assignment', $site->id))
+            ->assertOk();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.reject-assignment', $site->id))
+            ->assertStatus(422);
+
+        $this->assertDatabaseHas('sites', ['id' => $site->id]);
+        $this->assertNotNull($site->fresh()->publisher_accepted_at);
+    }
+
+    public function test_decline_does_not_archive_sibling_site_id_prefix_bell(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Prefix Invite',
+            'site_url' => 'https://prefix-invite.example',
+            'domain' => 'prefix-invite.example',
+            'example_url' => 'https://prefix-invite.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Prefix invite site description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+
+        $siblingId = (int) ($site->id.'0');
+        $sibling = InAppNotification::create([
+            'user_id' => $this->publisher->id,
+            'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+            'type' => InAppNotificationService::TYPE_SITE_STATUS,
+            'category' => 'account',
+            'title' => 'Please accept a website we added for you',
+            'message' => 'Sibling prefix bell',
+            'status' => InAppNotification::STATUS_UNREAD,
+            'related_type' => Site::class,
+            'related_id' => $siblingId,
+            'meta' => ['site_id' => $siblingId],
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.reject-assignment', $site->id))
+            ->assertOk();
+
+        $inviteBell = InAppNotification::query()
+            ->where('related_id', $site->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
+        $this->assertFalse($sibling->fresh()->isArchived());
+    }
+
+    public function test_decline_deletes_site_screenshot_not_shared_placeholder(): void
+    {
+        Storage::fake('public');
+
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Screenshot Invite',
+            'site_url' => 'https://screenshot-invite.example',
+            'domain' => 'screenshot-invite.example',
+            'example_url' => 'https://screenshot-invite.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Screenshot invite site description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $shot = 'site-screenshots/site-'.$site->id.'-20260101120000.webp';
+        $thumb = 'site-screenshots/site-'.$site->id.'-20260101120000-thumb.webp';
+        $shared = 'site-screenshots/home-placeholder.webp';
+        $other = 'site-screenshots/site-999999-20260101120000.webp';
+        Storage::disk('public')->put($shot, 'shot');
+        Storage::disk('public')->put($thumb, 'thumb');
+        Storage::disk('public')->put($shared, 'shared');
+        Storage::disk('public')->put($other, 'other');
+        $site->forceFill([
+            'screenshot_path' => $shot,
+            'screenshot_thumb_path' => $thumb,
+        ])->save();
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.reject-assignment', $site->id))
+            ->assertOk();
+
+        $this->assertFalse(Storage::disk('public')->exists($shot));
+        $this->assertFalse(Storage::disk('public')->exists($thumb));
+        $this->assertTrue(Storage::disk('public')->exists($shared));
+        $this->assertTrue(Storage::disk('public')->exists($other));
+    }
+
     public function test_publisher_reject_does_not_delete_invite_with_order_items(): void
     {
         $site = Site::create([

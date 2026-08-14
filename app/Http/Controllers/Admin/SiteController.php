@@ -1450,6 +1450,13 @@ class SiteController extends Controller
 
                 continue;
             }
+            if (in_array($key, ['country', 'language'], true)) {
+                if (strtolower(trim((string) $oldValue)) !== strtolower(trim((string) $newValue))) {
+                    return true;
+                }
+
+                continue;
+            }
             if ((string) $oldValue !== (string) $newValue) {
                 return true;
             }
@@ -2943,9 +2950,14 @@ class SiteController extends Controller
             $notifySnapshot->status_reason = $rejectionReason;
         }
 
-        $this->deleteStoredSiteImage(is_string($site->site_image) ? $site->site_image : null);
+        $cover = is_string($site->site_image) ? $site->site_image : null;
+        $screenshot = is_string($site->screenshot_path) ? $site->screenshot_path : null;
+        $thumb = is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null;
+        $mediaSiteId = (int) $site->id;
 
         $site->delete();
+
+        SiteImageUpload::deleteListingPublicMedia($cover, $screenshot, $thumb, $mediaSiteId);
 
         $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
 

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\SiteStatusNotification;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -10,6 +11,7 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -670,5 +672,37 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertJsonValidationErrors(['example_url']);
 
         $this->assertSame('https://guard-site.example/sample', $site->fresh()->example_url);
+    }
+
+    public function test_update_does_not_email_for_country_language_case_only_change(): void
+    {
+        Mail::fake();
+
+        $site = $this->site([
+            'country' => 'DE',
+            'language' => 'DE',
+            'countries' => ['DE'],
+            'languages' => ['DE'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => 'Guard Site',
+                'site_url' => 'https://guard-site.example',
+                'da' => 40,
+                'dr' => 42,
+                'traffic' => 15000,
+                'price' => 80,
+                'country' => 'de',
+                'language' => 'de',
+            ])
+            ->assertOk()
+            ->assertJsonPath('email_sent', false);
+
+        Mail::assertNotQueued(SiteStatusNotification::class);
+        Mail::assertNothingOutgoing();
+        $site->refresh();
+        $this->assertSame('de', $site->country);
+        $this->assertSame('de', $site->language);
     }
 }

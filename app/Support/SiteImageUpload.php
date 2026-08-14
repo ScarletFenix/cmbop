@@ -51,7 +51,52 @@ final class SiteImageUpload
 
     public static function deletePublicCover(?string $path): void
     {
-        $safe = self::publicCoverPath($path);
+        self::deletePublicDiskPath(self::publicCoverPath($path), 'Failed to remove site cover');
+    }
+
+    /**
+     * Staff-assign screenshots are site-screenshots/site-{id}-*.webp.
+     * Shared catalog placeholders (home-placeholder.webp) are never matched.
+     */
+    public static function publicScreenshotPath(mixed $raw, ?int $siteId = null): ?string
+    {
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+        if (str_contains($raw, '..') || str_contains($raw, ':') || str_contains($raw, "\0")) {
+            return null;
+        }
+
+        $path = ltrim(str_replace('\\', '/', $raw), '/');
+        $idPattern = $siteId !== null && $siteId > 0 ? (string) (int) $siteId : '[0-9]+';
+        if (preg_match('#^site-screenshots/site-'.$idPattern.'-[A-Za-z0-9._-]+\.webp$#i', $path) !== 1) {
+            return null;
+        }
+
+        return $path;
+    }
+
+    public static function deletePublicScreenshot(?string $path, ?int $siteId = null): void
+    {
+        self::deletePublicDiskPath(
+            self::publicScreenshotPath($path, $siteId),
+            'Failed to remove site screenshot'
+        );
+    }
+
+    public static function deleteListingPublicMedia(
+        ?string $cover,
+        ?string $screenshot = null,
+        ?string $thumb = null,
+        ?int $siteId = null,
+    ): void {
+        self::deletePublicCover($cover);
+        self::deletePublicScreenshot($screenshot, $siteId);
+        self::deletePublicScreenshot($thumb, $siteId);
+    }
+
+    private static function deletePublicDiskPath(?string $safe, string $warning): void
+    {
         if ($safe === null) {
             return;
         }
@@ -62,7 +107,7 @@ final class SiteImageUpload
                 $disk->delete($safe);
             }
         } catch (Throwable $e) {
-            Log::warning('Failed to remove site cover', [
+            Log::warning($warning, [
                 'path' => $safe,
                 'error' => $e->getMessage(),
             ]);
