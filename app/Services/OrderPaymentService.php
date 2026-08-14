@@ -58,17 +58,7 @@ class OrderPaymentService
             $newlyPaid = collect();
 
             foreach ($orders as $order) {
-                if ($order->payment_status === 'paid') {
-                    continue;
-                }
-
-                // Allow pending (first attempt) and failed (Pay again / recovered session).
-                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
-                    Log::warning('Skipping order with unexpected payment status', [
-                        'order_id' => $order->id,
-                        'payment_status' => $order->payment_status,
-                    ]);
-
+                if (! $this->canMarkCardOrderPaid($order)) {
                     continue;
                 }
 
@@ -130,10 +120,7 @@ class OrderPaymentService
 
             $newlyPaid = collect();
             foreach ($orders as $order) {
-                if ($order->payment_status === 'paid') {
-                    continue;
-                }
-                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+                if (! $this->canMarkCardOrderPaid($order)) {
                     continue;
                 }
 
@@ -516,6 +503,38 @@ class OrderPaymentService
         $this->evaluateSpendBudgetAfterPaidOrders($created);
 
         return $created;
+    }
+
+    /**
+     * Pending/failed card rows can be marked paid. Cancelled or completed
+     * orders must not be resurrected by a late Stripe webhook or success URL.
+     */
+    private function canMarkCardOrderPaid(Order $order): bool
+    {
+        if ($order->payment_status === 'paid') {
+            return false;
+        }
+
+        if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+            Log::warning('Skipping order with unexpected payment status', [
+                'order_id' => $order->id,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        if (in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+            Log::warning('Skipping Stripe mark-paid for cancelled or completed order', [
+                'order_id' => $order->id,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
