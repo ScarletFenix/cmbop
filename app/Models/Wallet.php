@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class Wallet extends Model
@@ -436,15 +437,43 @@ class Wallet extends Model
 
     /**
      * Order completed: drop reserved funds (bonus portion is permanently spent).
+     * Never drive reserved_balance / bonus_reserved negative — clamp and log.
      */
     public function consumeReserved(float $amount): void
     {
         $amount = round($amount, 2);
-        $this->reserved_balance = round((float) $this->reserved_balance - $amount, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $available = max(0, round((float) $this->reserved_balance, 2));
+        if ($available <= 0) {
+            Log::warning('Wallet consumeReserved skipped: reserved_balance is empty', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+            ]);
+
+            return;
+        }
+
+        $consume = min($amount, $available);
+        if ($consume < $amount) {
+            Log::warning('Wallet consumeReserved clamped to reserved_balance', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+                'consumed' => $consume,
+                'reserved_balance' => $available,
+            ]);
+        }
+
+        $this->reserved_balance = round($available - $consume, 2);
 
         if (Schema::hasColumn('wallets', 'bonus_reserved')) {
-            $fromBonus = min($amount, (float) $this->bonus_reserved);
-            $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+            $bonusReserved = max(0, round((float) ($this->bonus_reserved ?? 0), 2));
+            $fromBonus = min($consume, $bonusReserved);
+            $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         }
 
         $this->save();
@@ -452,15 +481,43 @@ class Wallet extends Model
 
     /**
      * Order rejected / cancelled: return reserved funds; restore any promo portion as spend-only.
+     * Only moves money that is actually reserved — never invents withdrawable cash.
      */
     public function refundReserved(float $amount): void
     {
         $amount = round($amount, 2);
-        $fromBonus = min($amount, (float) $this->bonus_reserved);
+        if ($amount <= 0) {
+            return;
+        }
 
-        $this->reserved_balance = round((float) $this->reserved_balance - $amount, 2);
-        $this->balance = round((float) $this->balance + $amount, 2);
-        $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+        $available = max(0, round((float) $this->reserved_balance, 2));
+        if ($available <= 0) {
+            Log::warning('Wallet refundReserved skipped: reserved_balance is empty', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+            ]);
+
+            return;
+        }
+
+        $refund = min($amount, $available);
+        if ($refund < $amount) {
+            Log::warning('Wallet refundReserved clamped to reserved_balance', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+                'refunded' => $refund,
+                'reserved_balance' => $available,
+            ]);
+        }
+
+        $bonusReserved = max(0, round((float) ($this->bonus_reserved ?? 0), 2));
+        $fromBonus = min($refund, $bonusReserved);
+
+        $this->reserved_balance = round($available - $refund, 2);
+        $this->balance = round((float) $this->balance + $refund, 2);
+        $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         $this->bonus_balance = round((float) $this->bonus_balance + $fromBonus, 2);
         $this->save();
     }
