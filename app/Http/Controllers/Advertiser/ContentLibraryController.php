@@ -402,6 +402,26 @@ class ContentLibraryController extends Controller
             $request->files->set('file', $uploadedFile);
         }
 
+        $displayName = $this->uploads->safeDocxFilename(scalar_text($request->input('original_filename')));
+        if (
+            $uploadedFile instanceof UploadedFile
+            && $uploadedFile->isValid()
+            && $displayName !== ''
+            && $displayName !== 'article.docx'
+        ) {
+            $realPath = $uploadedFile->getRealPath();
+            if (is_string($realPath) && $realPath !== '') {
+                $uploadedFile = new UploadedFile(
+                    $realPath,
+                    $displayName,
+                    $uploadedFile->getMimeType() ?: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    $uploadedFile->getError(),
+                    true
+                );
+                $request->files->set('file', $uploadedFile);
+            }
+        }
+
         $title = mb_substr(trim(scalar_text($request->input('title'))), 0, 200);
         $request->merge([
             'title' => $title !== '' ? $title : null,

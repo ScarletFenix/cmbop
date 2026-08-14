@@ -306,6 +306,6 @@ window.ContentLibraryBoot = {
     phpMaxKilobytes: @json((int) ($uploadCfg['php_max_kilobytes'] ?? 0)),
 };
 </script>
-<script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}" defer></script>
+<script src="{{ asset('assets/js/content-library.js') }}?v={{ @filemtime(public_path('assets/js/content-library.js')) ?: '1' }}-c512" defer></script>
 
 @endsection

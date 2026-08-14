@@ -23,11 +23,17 @@ class ContentUploadService
     public const MAX_KILOBYTES = 10240;
 
     /**
-     * Slice size for library uploads. Hostinger LiteSpeed often still drops a
-     * 5 MB body at the default 2M pipe even when .user.ini already says 64M.
-     * Stay at 1 MB so multipart overhead cannot push a slice over 2M.
+     * Slice size the browser should send. Hostinger LiteSpeed often still
+     * drops a 5 MB body at the default 2M pipe even when .user.ini says 64M.
+     * 512 KB leaves room for multipart headers without approaching 2M.
      */
-    public const CHUNK_KILOBYTES = 1024;
+    public const CHUNK_KILOBYTES = 512;
+
+    /** Accept older clients that still slice at 1.5 MB. */
+    public const MAX_RECEIVE_CHUNK_KILOBYTES = 1536;
+
+    /** 10 MB / 512 KB = 20 slices; keep headroom for retries and smaller slices. */
+    public const MAX_CHUNKS = 32;
 
     /** Editor / draft HTML cap. Quill inflates markup; 500k rejected real 10 MB articles. */
     public const PREVIEW_HTML_MAX_CHARS = 8000000;
@@ -686,6 +692,7 @@ class ContentUploadService
             $this->maxPositiveInt([
                 $request->header('X-Upload-Bytes'),
                 $request->query('client_bytes'),
+                $request->input('client_bytes'),
             ]),
         ];
     }
@@ -814,7 +821,7 @@ class ContentUploadService
         $uploadId = strtolower(trim(scalar_text($request->input('upload_id'))));
         $file = $request->file('file');
 
-        if ($total < 2 || $total > 16 || $index < 0 || $index >= $total) {
+        if ($total < 2 || $total > self::MAX_CHUNKS || $index < 0 || $index >= $total) {
             return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
         }
 
@@ -830,7 +837,7 @@ class ContentUploadService
             ];
         }
 
-        if ($file->getSize() > self::CHUNK_KILOBYTES * 1024) {
+        if ($file->getSize() > self::MAX_RECEIVE_CHUNK_KILOBYTES * 1024) {
             return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
         }
 

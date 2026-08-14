@@ -109,6 +109,15 @@ class PhpIniSizeTest extends TestCase
         ]);
         [, $fromMax] = $service->uploadByteHints($both);
         $this->assertSame(5400000, $fromMax);
+
+        $fromBody = Request::create('/advertiser/content-library/upload', 'POST', [
+            'client_bytes' => '5400000',
+        ], [], [], [
+            'HTTP_X_UPLOAD_BYTES' => '0',
+            'CONTENT_LENGTH' => '0',
+        ]);
+        [, $fromForm] = $service->uploadByteHints($fromBody);
+        $this->assertSame(5400000, $fromForm);
     }
 
     public function test_unknown_php_upload_error_is_not_labeled_as_size(): void
