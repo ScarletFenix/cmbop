@@ -22,15 +22,16 @@ class PhpIniSizeTest extends TestCase
     public function test_php_size_rejected_message_does_not_blame_article_cap_when_php_is_lower(): void
     {
         $service = app(ContentUploadService::class);
+        $cfg = ['max_kilobytes' => 10240];
         $phpKb = $service->phpUploadMaxKilobytes();
-        $appKb = $service->effectiveMaxKilobytes();
-        $message = $service->phpSizeRejectedMessage();
+        $appKb = $service->effectiveMaxKilobytes($cfg);
+        $message = $service->phpSizeRejectedMessage($cfg);
 
-        $this->assertGreaterThanOrEqual(10240, $appKb);
+        $this->assertSame(10240, $appKb);
         $this->assertStringContainsString('MB', $message);
 
         if ($phpKb < $appKb) {
-            $this->assertTrue($service->phpLimitBlocksArticleCap());
+            $this->assertTrue($service->phpLimitBlocksArticleCap($cfg));
             $this->assertStringContainsString('under the 10 MB article limit', $message);
             $this->assertStringContainsString('PHP upload limit', $message);
             $this->assertStringContainsString('upload_max_filesize', $message);
