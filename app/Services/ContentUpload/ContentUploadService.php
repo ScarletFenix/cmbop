@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Support\PhpIniSize;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -562,18 +563,23 @@ class ContentUploadService
 
     /**
      * PHP rejected the file before Laravel saw the bytes (UPLOAD_ERR_INI_SIZE /
-     * FORM_SIZE). Do not blame the 10 MB article cap when PHP is still 2 MB.
+     * FORM_SIZE / empty body after post_max_size).
+     *
+     * Never blame the 10 MB article cap here. ini_get() can already read 64M
+     * from .user.ini while LiteSpeed still enforces 2M, and a 5 MB .docx then
+     * looks "over the 10 MB limit". The cap message is only for a measured
+     * file that is actually larger than 10 MB (JS + file.max + validateUpload).
      */
     public function phpSizeRejectedMessage(?array $cfg = null): string
     {
         $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
-        if ($this->phpLimitBlocksArticleCap($cfg)) {
-            $phpMb = PhpIniSize::megabytesLabel($this->phpUploadMaxKilobytes());
 
-            return 'This file is under the '.$appMb.' MB article limit, but the server PHP upload limit is '.$phpMb.' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
-        }
+        return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
+    }
 
-        return 'That file is over the '.$appMb.' MB limit. Save as a smaller .docx and try again.';
+    public function phpImageRejectedMessage(): string
+    {
+        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
     }
 
     /**
@@ -596,18 +602,91 @@ class ContentUploadService
     /**
      * PHP discarded the multipart body (post_max_size) or the file (upload_max_filesize).
      * A 5 MB .docx then looks like "no file" unless we check Content-Length.
+     *
+     * Do not require Content-Length to exceed ini_get(). Hostinger can already
+     * report 64M while LiteSpeed still drops a 5 MB body; comparing to the
+     * reported cap then falls through to "country required" / "drop a .docx".
      */
-    public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null): ?string
+    public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
     {
         if ($file instanceof UploadedFile) {
             return $this->invalidUploadMessage($file, $cfg);
         }
 
-        if ($contentLengthBytes !== null && $contentLengthBytes > ($this->phpUploadMaxKilobytes() * 1024)) {
+        if ($clientFileBytes !== null && $clientFileBytes > self::MAX_KILOBYTES * 1024) {
+            $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
+
+            return 'That file is over the '.$appMb.' MB limit.';
+        }
+
+        $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
+        if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
             return $this->phpSizeRejectedMessage($cfg);
         }
 
         return null;
+    }
+
+    public function rejectedImageUploadMessage(?UploadedFile $file, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
+    {
+        if ($file instanceof UploadedFile && ! $file->isValid()) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        if ($file instanceof UploadedFile) {
+            return null;
+        }
+
+        if ($clientFileBytes !== null && $clientFileBytes > 5120 * 1024) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
+        if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * Content-Length can be 0 after LiteSpeed drops the body. The browser still
+     * knows the file size — JS sends it as X-Upload-Bytes and ?client_bytes=.
+     *
+     * @return array{0:?int, 1:?int} content-length, client file bytes
+     */
+    public function uploadByteHints(Request $request): array
+    {
+        return [$this->headerByteValue($request, 'Content-Length', 'CONTENT_LENGTH'), $this->headerByteValue($request, 'X-Upload-Bytes', null, 'client_bytes')];
+    }
+
+    private function headerByteValue(Request $request, string $header, ?string $serverKey = null, ?string $queryKey = null): ?int
+    {
+        $value = $request->header($header);
+        if (($value === null || $value === '') && $serverKey) {
+            $value = $request->server($serverKey);
+        }
+        if (($value === null || $value === '') && $queryKey) {
+            $value = $request->query($queryKey);
+        }
+        if (is_array($value)) {
+            $value = $value[0] ?? null;
+        }
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $bytes = (int) $value;
+
+        return $bytes > 0 ? $bytes : null;
+    }
+
+    /**
+     * Larger than CSRF + country/language fields. A real missing-file submit
+     * is a few KB; a discarded 5 MB .docx still sends Content-Length ≈ 5 MB.
+     */
+    public function contentLengthLooksLikeStrippedUpload(?int $contentLengthBytes): bool
+    {
+        return $contentLengthBytes !== null && $contentLengthBytes > 64 * 1024;
     }
 
     /**

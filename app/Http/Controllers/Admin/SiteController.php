@@ -20,6 +20,7 @@ use App\Services\SiteDescriptionSanitizer;
 use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
+use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -835,21 +836,21 @@ class SiteController extends Controller
         $site = null;
         $publisherId = (int) $request->input('publisher_id');
 
-        try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
-                $site = new Site;
+        $imagePath = null;
+        if ($request->hasFile('site_image')) {
+            $stored = $this->storeStaffSiteImage($request->file('site_image'));
+            if ($stored === null) {
+                throw ValidationException::withMessages([
+                    'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                ]);
+            }
+            PublicStorageLink::ensure();
+            $imagePath = $stored;
+        }
 
-                $imagePath = null;
-                if ($request->hasFile('site_image')) {
-                    $stored = $this->storeStaffSiteImage($request->file('site_image'));
-                    if ($stored === null) {
-                        throw ValidationException::withMessages([
-                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
-                        ]);
-                    }
-                    PublicStorageLink::ensure();
-                    $imagePath = $stored;
-                }
+        try {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
+                $site = new Site;
 
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
@@ -919,6 +920,8 @@ class SiteController extends Controller
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
                 }
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Staff site-for-publisher store failed', [
                 'publisher_id' => $publisherId,
@@ -1332,8 +1335,8 @@ class SiteController extends Controller
                 'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
             ]);
         }
+        $metrics = [];
         if ($request->hasAny(['da', 'dr', 'traffic'])) {
-            $metrics = [];
             foreach (['da', 'dr', 'traffic'] as $metric) {
                 if ($request->has($metric)) {
                     $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
@@ -1455,7 +1458,7 @@ class SiteController extends Controller
             $data['domain'] = $domain;
         }
 
-        if ($metricMerge !== []) {
+        if ($metrics !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();

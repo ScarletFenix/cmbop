@@ -792,6 +792,16 @@ class SiteController extends Controller
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            return redirect()->back()->with(
+                'error',
+                $orderCount === 1
+                    ? 'This site has 1 order and cannot be deleted. Archive it to hide it from the catalog.'
+                    : 'This site has '.$orderCount.' orders and cannot be deleted. Archive it to hide it from the catalog.'
+            );
+        }
+
         $site->delete();
 
         return redirect()->back()->with('success', 'Site deleted successfully!');

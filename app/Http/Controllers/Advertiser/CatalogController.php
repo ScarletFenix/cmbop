@@ -41,6 +41,7 @@ use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
@@ -1953,6 +1954,12 @@ class CatalogController extends Controller
 
         $scheduleContext = $this->checkoutScheduleContext();
 
+        $checkoutReferenceCode = session('checkout_reference_code');
+        if (! is_string($checkoutReferenceCode) || ! preg_match('/^\d{6}$/', $checkoutReferenceCode)) {
+            $checkoutReferenceCode = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            session(['checkout_reference_code' => $checkoutReferenceCode]);
+        }
+
         return view('advertiser.checkout', array_merge(compact(
             'cartItems',
             'deferredItems',
@@ -1969,6 +1976,7 @@ class CatalogController extends Controller
             'checkoutArticles',
             'savedCards',
             'stripeConfigured',
+            'checkoutReferenceCode',
         ), $scheduleContext));
     }
 
@@ -2950,8 +2958,13 @@ class CatalogController extends Controller
                 'status' => 'processing',
             ]);
 
-            // Mark order items as modification requested AND RESET TIMER; persist reason for publisher UI
+            // Mark unpaid lines as modification requested AND RESET TIMER.
+            // Do not rewind a line that already paid the publisher.
             foreach ($order->items as $item) {
+                if ($item->isPayoutComplete()) {
+                    continue;
+                }
+
                 $payload = [
                     'modification_requested' => 'yes',
                     'modification_requested_at' => now(),
@@ -3597,6 +3610,13 @@ class CatalogController extends Controller
                 ], 422);
             }
 
+            if ($order->items->contains(fn ($line) => ! $line->isPayoutComplete() && ! $line->isReadyForAdvertiserApprove())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved until every placement has a live URL and no open revision.',
+                ], 422);
+            }
+
             if (! $order->items->contains(fn ($line) => filled($line->live_url))) {
                 return response()->json([
                     'success' => false,
@@ -3628,6 +3648,24 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
+            }
+
+            if ($order->items->contains(fn ($line) => ! $line->isPayoutComplete() && ! $line->isReadyForAdvertiserApprove())) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved until every placement has a live URL and no open revision.',
+                ], 422);
+            }
+
             // Update order status to completed (skip missing columns on older DBs)
             $order->update($schema->filterExistingColumns('orders', [
                 'status' => 'completed',
@@ -3637,10 +3675,9 @@ class CatalogController extends Controller
             $publisherRoleId = Wallet::publisherRoleId();
             $advertiserRoleId = Wallet::advertiserRoleId();
 
-            $advertiserWallet = null;
-            if ($order->payment_method === 'wallet' && $advertiserRoleId) {
-                $advertiserWallet = Wallet::lockOrCreateForRole((int) $order->user_id, (int) $advertiserRoleId);
-            }
+            $advertiserWallet = $advertiserRoleId
+                ? Wallet::lockOrCreateForRole((int) $order->user_id, (int) $advertiserRoleId)
+                : null;
 
             $transferPublishers = [];
             $totalTransferred = 0;
@@ -3650,6 +3687,7 @@ class CatalogController extends Controller
             foreach ($order->items as $orderItem) {
                 // Get the site to find the publisher
                 $site = Site::find($orderItem->site_id);
+                $alreadyPaid = $orderItem->isPayoutComplete();
 
                 // Mark the line completed even when the site/publisher row is gone —
                 // otherwise the advertiser UI can keep offering Approve after a
@@ -3661,6 +3699,10 @@ class CatalogController extends Controller
                 ]);
                 if ($itemCompletion !== []) {
                     $orderItem->forceFill($itemCompletion)->save();
+                }
+
+                if ($alreadyPaid) {
+                    continue;
                 }
 
                 if ($site) {
@@ -3751,15 +3793,16 @@ class CatalogController extends Controller
                 }
             }
 
-            // If payment method was wallet, consume reserved funds (bonus portion stays non-withdrawable / spent)
-            if ($order->payment_method === 'wallet' && $advertiserWallet) {
-                $totalOrderAmount = $order->total_amount;
-                $advertiserWallet->consumeReserved($totalOrderAmount);
+            // Wallet: consume the reserved line. Card / manual: consume leftover
+            // checkout bonus so a later reject cannot mint it as cash.
+            if ($advertiserWallet) {
+                app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
 
                 Log::info('Reserved funds released from advertiser wallet', [
                     'user_id' => auth()->id(),
                     'order_id' => $order->id,
-                    'order_total' => $totalOrderAmount,
+                    'order_total' => $order->total_amount,
+                    'payment_method' => $order->payment_method,
                     'remaining_reserved_balance' => $advertiserWallet->reserved_balance,
                     'bonus_reserved' => $advertiserWallet->bonus_reserved,
                 ]);

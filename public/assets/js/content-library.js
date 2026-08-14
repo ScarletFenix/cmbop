@@ -188,17 +188,31 @@ function showDropzoneFile(file) {
 
 function libraryFileTooLargeMessage(file) {
     if (!file) return '';
-    const appMaxKb = 10240;
-    const phpMaxKb = Number(boot.phpMaxKilobytes || 0);
-    const appMb = 10;
-    if (phpMaxKb > 0 && phpMaxKb < appMaxKb && file.size > phpMaxKb * 1024) {
-        const phpMb = Math.max(1, Math.round(phpMaxKb / 1024));
-        return 'This file is under the ' + appMb + ' MB article limit, but the server PHP upload limit is ' + phpMb + ' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
-    }
-    if (file.size > appMaxKb * 1024) {
-        return 'That file is over the ' + appMb + ' MB limit.';
+    if (file.size > 10240 * 1024) {
+        return 'That file is over the 10 MB limit.';
     }
     return '';
+}
+
+function libraryUploadTransportMessage(status) {
+    if (status === 413 || status === 422 || status === 0) {
+        return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
+    }
+    return 'Upload failed. Please try again.';
+}
+
+function libraryClientByteHeaders(bytes) {
+    return {
+        'X-CSRF-TOKEN': libraryCsrf,
+        'Accept': 'application/json',
+        'X-Upload-Bytes': String(bytes),
+    };
+}
+
+function libraryUrlWithClientBytes(url, bytes) {
+    if (!url) return url;
+    const join = url.indexOf('?') === -1 ? '?' : '&';
+    return url + join + 'client_bytes=' + encodeURIComponent(String(bytes));
 }
 
 function assignLibraryFile(file, feedback) {
@@ -1203,14 +1217,17 @@ function ensureArticleQuill() {
             const fd = new FormData();
             fd.append('image', file);
             try {
-                const res = await fetch(libraryImageUploadUrl, {
+                const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+                    headers: libraryClientByteHeaders(file.size),
                     body: fd,
                 });
                 const data = await parseLibraryJson(res);
                 if (!data || !res.ok || !data.success || !data.url) {
-                    setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Image upload failed'));
+                    const fallback = (res.status === 413 || res.status === 422)
+                        ? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
+                        : 'Image upload failed';
+                    setFeedbackHtml(feedback, false, firstErrorMessage(data, fallback));
                     return;
                 }
                 const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
@@ -1691,9 +1708,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             setFeedbackHtml(feedback, false, 'Upload URL is missing');
             return;
         }
-        const res = await fetch(libraryUploadUrl, {
+        const res = await fetch(libraryUrlWithClientBytes(libraryUploadUrl, file.size), {
             method: 'POST',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+            headers: libraryClientByteHeaders(file.size),
             body: fd,
             signal: libraryUploadAbort ? libraryUploadAbort.signal : undefined,
         });
@@ -1702,7 +1719,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         try {
             data = await res.json();
         } catch (parseErr) {
-            setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
+            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
             return;
         }
         if (!data.success) {
@@ -1731,7 +1748,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             resetLibraryUploadUi();
             return;
         }
-        setFeedbackHtml(feedback, false, 'Network error while uploading.');
+        setFeedbackHtml(feedback, false, file && file.size <= 10240 * 1024
+            ? 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.'
+            : 'Network error while uploading.');
     } finally {
         if (!openedEditor && btn) btn.disabled = false;
         progress?.classList.add('d-none');
