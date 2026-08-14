@@ -96,10 +96,10 @@
             'Order completion tracking',
             'Verified publishers',
         ],
-        'sameAs' => [
-            'https://www.linkedin.com/company/seolinkbuildings',
-            $companiesHouseUrl,
-        ],
+        'sameAs' => array_values(array_filter(array_merge(
+            array_column(config('social.profiles', []), 'url'),
+            [$companiesHouseUrl]
+        ))),
     ],
 ], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
 </script>

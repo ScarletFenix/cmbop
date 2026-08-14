@@ -13,9 +13,7 @@
     'legalName' => config('billing.company.legal_name'),
     'url' => url('/'),
     'logo' => asset('assets/img/logo1.png'),
-    'sameAs' => [
-        'https://www.linkedin.com/company/seolinkbuildings',
-    ],
+    'sameAs' => array_values(array_filter(array_column(config('social.profiles', []), 'url'))),
     'address' => [
         '@type' => 'PostalAddress',
         'streetAddress' => '20 Wenlock Road',

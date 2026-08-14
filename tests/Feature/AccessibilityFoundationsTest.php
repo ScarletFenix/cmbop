@@ -30,7 +30,11 @@ class AccessibilityFoundationsTest extends TestCase
             ->assertSee('href="#main-content"', false)
             ->assertSee('Skip to main content', false)
             ->assertSee('<main id="main-content"', false)
-            ->assertSee('aria-label="SEOLinkBuildings on LinkedIn"', false);
+            ->assertSee('aria-label="SEOLinkBuildings on LinkedIn"', false)
+            ->assertSee('aria-label="SEOLinkBuildings on Facebook"', false)
+            ->assertSee('aria-label="SEOLinkBuildings on Instagram"', false)
+            ->assertSee('aria-label="SEOLinkBuildings on X"', false)
+            ->assertSee('aria-label="SEOLinkBuildings on YouTube"', false);
     }
 
     public function test_advertiser_shell_has_landmarks_and_cart_dialog(): void
