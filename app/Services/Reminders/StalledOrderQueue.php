@@ -113,7 +113,7 @@ class StalledOrderQueue
             'order_number' => (string) ($order->order_number ?? ''),
             'track' => $track,
             'stage' => (int) ($track === 'accept' ? $item->accept_nudge_stage : $item->publish_nudge_stage),
-            'site_name' => (string) ($site->site_name ?: $item->site_name ?: 'Unknown site'),
+            'site_name' => (string) ($site?->site_name ?: $item->site_name ?: 'Unknown site'),
             'publisher' => $site?->publisher?->name ?: 'Unknown',
             'publisher_email' => $site?->publisher?->email,
             'advertiser' => $order?->user?->name ?: 'Unknown',

@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Models\Order;
 use App\Models\ProblemReport;
 use App\Models\Role;
+use App\Models\Site;
+use App\Models\Suggestion;
 use App\Models\User;
+use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -34,7 +37,12 @@ class AdminDashboardTest extends TestCase
             ->get(route('admin.dashboard'))
             ->assertOk()
             ->assertSee('Admin Dashboard')
-            ->assertSee('Needs Attention');
+            ->assertSee('Needs Attention')
+            ->assertSee('GMV (paid orders)')
+            ->assertSee('in review')
+            ->assertSee('live in catalog')
+            ->assertSee('Margin & wallets')
+            ->assertSee('pending_community');
     }
 
     public function test_admin_queue_counts_endpoint(): void
@@ -165,21 +173,35 @@ class AdminDashboardTest extends TestCase
             'message' => 'Cannot pay',
             'status' => 'pending',
         ]);
+        Suggestion::create([
+            'name' => 'Suggester',
+            'email' => 'idea@example.com',
+            'message' => 'Add more filters',
+            'status' => 'pending',
+        ]);
+        WebsiteSuggestion::create([
+            'website_name' => 'Example Mag',
+            'website_url' => 'https://example-mag.test',
+            'status' => 'pending',
+        ]);
 
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.queue-counts'))
             ->assertOk()
             ->assertJsonPath('pending_payments', 1)
             ->assertJsonPath('pending_claims', 0)
-            ->assertJsonPath('pending_community', 1)
-            ->assertJsonPath('needs_attention', 2);
+            ->assertJsonPath('pending_problems', 1)
+            ->assertJsonPath('pending_suggestions', 1)
+            ->assertJsonPath('pending_websites', 1)
+            ->assertJsonPath('pending_community', 3)
+            ->assertJsonPath('needs_attention', 4);
 
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.statistics'))
             ->assertOk()
-            ->assertJsonPath('data.needs_attention', 2)
+            ->assertJsonPath('data.needs_attention', 4)
             ->assertJsonPath('data.pending_payments', 1)
-            ->assertJsonPath('data.pending_community', 1);
+            ->assertJsonPath('data.pending_community', 3);
     }
 
     public function test_seven_day_gmv_uses_paid_at_not_created_at(): void
@@ -205,5 +227,51 @@ class AdminDashboardTest extends TestCase
             ->getJson(route('admin.dashboard.statistics'))
             ->assertOk()
             ->assertJsonPath('data.revenue_7d', 80);
+
+        $trends = $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends'))
+            ->assertOk()
+            ->json();
+
+        // 30-day window: index 0 is 29 days ago, 19 is created_at (10d ago), 28 is paid_at (yesterday).
+        $this->assertSame(0.0, (float) $trends['revenue'][19]);
+        $this->assertSame(80.0, (float) $trends['revenue'][28]);
+    }
+
+    public function test_sites_card_separates_live_catalog_from_verified_only(): void
+    {
+        $admin = $this->makeAdmin();
+        $publisherRole = Role::create(['name' => 'publisher']);
+        $publisher = User::factory()->create([
+            'active_role_id' => $publisherRole->id,
+            'email_verified_at' => now(),
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Verified but dark',
+            'site_url' => 'https://verified-dark.example',
+            'domain' => 'verified-dark.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 50,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Verified but not active in the catalog',
+            'verified' => 1,
+            'active' => 0,
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.verified_sites', 1)
+            ->assertJsonPath('data.live_sites', 0)
+            ->assertJsonPath('data.total_sites', 1);
     }
 }
