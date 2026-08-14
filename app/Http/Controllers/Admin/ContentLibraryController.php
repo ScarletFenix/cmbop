@@ -60,7 +60,11 @@ class ContentLibraryController extends Controller
             });
         }
 
-        $submissions = $query->paginate(30)->withQueryString();
+        $page = (int) scalar_text($request->query('page', 1));
+        if ($page < 1) {
+            $page = 1;
+        }
+        $submissions = $query->paginate(30, ['*'], 'page', $page)->withQueryString();
 
         $statusCounts = ContentSubmission::query()
             ->whereNull('archived_at')

@@ -37,6 +37,40 @@ if (! function_exists('scalar_text')) {
     }
 }
 
+if (! function_exists('scalar_list')) {
+    /**
+     * Flatten nested arrays into unique non-empty strings.
+     *
+     * Blade implode() and (string) casts 500 when a stored JSON list holds
+     * objects or nested arrays (evaluation_report.matched_terms, etc.).
+     *
+     * @return list<string>
+     */
+    function scalar_list(mixed $value): array
+    {
+        if (! is_array($value)) {
+            $text = trim(scalar_text($value));
+
+            return $text !== '' ? [$text] : [];
+        }
+
+        $flat = [];
+        array_walk_recursive($value, function ($item) use (&$flat) {
+            if (is_bool($item)) {
+                return;
+            }
+            if (is_scalar($item) || $item instanceof Stringable) {
+                $text = trim((string) $item);
+                if ($text !== '') {
+                    $flat[] = $text;
+                }
+            }
+        });
+
+        return array_values(array_unique($flat));
+    }
+}
+
 if (! function_exists('old_text')) {
     /**
      * Old input for a field that must render as a single value.

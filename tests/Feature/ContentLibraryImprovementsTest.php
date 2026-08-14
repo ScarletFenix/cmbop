@@ -1617,6 +1617,37 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Website ·', $details);
     }
 
+    public function test_library_upload_array_country_does_not_500(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/array-country-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 40));
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($path, 'article.docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', null, true),
+                'country' => ['ch'],
+                'language' => ['de'],
+                'title' => [str_repeat('A very long title that should be trimmed after the upload fields are flattened. ', 8)],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        @unlink($path);
+        $this->assertDatabaseHas('content_submissions', [
+            'user_id' => $advertiser->id,
+            'country' => 'ch',
+            'language' => 'de',
+        ]);
+        $stored = ContentSubmission::query()->where('user_id', $advertiser->id)->latest('id')->first();
+        $this->assertNotNull($stored);
+        $this->assertLessThanOrEqual(200, mb_strlen((string) $stored->title));
+    }
+
     public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void
     {
         Storage::fake('local');
