@@ -646,7 +646,7 @@ async function loadDistributions() {
                 labels: json.roles.labels,
                 datasets: [{
                     data: json.roles.values,
-                    backgroundColor: ['#1a585e', '#0ea5e9', '#75787B']
+                    backgroundColor: palette
                 }]
             },
             options: { plugins: { legend: { position: 'bottom' } } }

@@ -89,7 +89,9 @@ class AdminDashboardTest extends TestCase
             ->assertSee(route('admin.finance'), false)
             ->assertSee('js/chart.umd.min.js')
             ->assertDontSee('cdn.jsdelivr.net/npm/chart.js', false)
-            ->assertSee('scrollIntoView');
+            ->assertSee('scrollIntoView')
+            ->assertSee('backgroundColor: palette')
+            ->assertDontSee("backgroundColor: ['#1a585e', '#0ea5e9', '#75787B']", false);
     }
 
     public function test_admin_queue_counts_endpoint(): void
