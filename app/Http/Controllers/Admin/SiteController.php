@@ -633,9 +633,9 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
-        $selectedPublisherId = (int) (old_text('publisher_id') !== ''
-            ? old_text('publisher_id')
-            : $request->query('publisher', 0));
+        $selectedPublisherId = old_text('publisher_id') !== ''
+            ? (int) old_text('publisher_id')
+            : $this->firstPositiveInt($request->query('publisher', 0));
 
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
@@ -1949,6 +1949,29 @@ class SiteController extends Controller
         }
 
         return $url;
+    }
+
+    /**
+     * First usable positive int from a query/form value.
+     * PHP casts any non-empty array to 1, which would select user 1.
+     */
+    private function firstPositiveInt(mixed $value): int
+    {
+        if (is_array($value)) {
+            $flat = [];
+            array_walk_recursive($value, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $value = $flat[0] ?? 0;
+        }
+
+        if (! is_scalar($value)) {
+            return 0;
+        }
+
+        return max(0, (int) $value);
     }
 
     /**

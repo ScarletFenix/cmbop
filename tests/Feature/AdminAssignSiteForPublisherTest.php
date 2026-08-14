@@ -372,6 +372,30 @@ class AdminAssignSiteForPublisherTest extends TestCase
         );
     }
 
+    public function test_create_page_array_publisher_query_does_not_select_user_one(): void
+    {
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.create', ['publisher' => ['not-an-id']]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/<option value="\d+"[^>]*\bselected\b/', $html);
+
+        $selected = $this->actingAs($this->admin)
+            ->get(route('admin.sites.create', ['publisher' => [(string) $this->publisher->id]]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option value="'.$this->publisher->id.'"[^>]*\bselected\b/',
+            $selected
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/<option value="'.$this->admin->id.'"[^>]*\bselected\b/',
+            $selected
+        );
+    }
+
     public function test_admin_store_flattens_array_site_url_instead_of_https_array(): void
     {
         Mail::fake();
