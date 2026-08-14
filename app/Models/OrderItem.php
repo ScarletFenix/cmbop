@@ -64,6 +64,12 @@ class OrderItem extends Model
         'auto_approve_triggered',
         'auto_approve_at',
         'auto_approve_reminder_sent_at',
+        'accept_nudge_stage',
+        'accept_nudge_sent_at',
+        'publish_nudge_stage',
+        'publish_nudge_sent_at',
+        'review_nudge_sent_at',
+        'stalled_notice_sent_at',
     ];
 
     protected $casts = [
@@ -89,7 +95,9 @@ class OrderItem extends Model
         'auto_approve_reminder_sent_at' => 'datetime',
         'auto_approve_triggered' => 'boolean',
         'auto_approve_reminder_sent_at' => 'datetime',
+        'accept_nudge_stage' => 'integer',
         'accept_nudge_sent_at' => 'datetime',
+        'publish_nudge_stage' => 'integer',
         'publish_nudge_sent_at' => 'datetime',
         'review_nudge_sent_at' => 'datetime',
         'stalled_notice_sent_at' => 'datetime',

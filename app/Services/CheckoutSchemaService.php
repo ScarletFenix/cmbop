@@ -115,6 +115,12 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'content_revision_resolved_at', 'timestamp NULL');
         $this->addColumn('order_items', 'auto_approve_triggered', 'tinyint(1) NOT NULL DEFAULT 0');
         $this->addColumn('order_items', 'auto_approve_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'accept_nudge_stage', 'tinyint unsigned NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'accept_nudge_sent_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'publish_nudge_stage', 'tinyint unsigned NOT NULL DEFAULT 0');
+        $this->addColumn('order_items', 'publish_nudge_sent_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'review_nudge_sent_at', 'timestamp NULL');
+        $this->addColumn('order_items', 'stalled_notice_sent_at', 'timestamp NULL');
     }
 
     /**
