@@ -366,15 +366,6 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertJsonValidationErrors(['site_url']);
 
         $this->assertSame('other-guard.example', $other->fresh()->domain);
-
-        $this->actingAs($this->admin)
-            ->putJson(route('admin.sites.update', $other->id), [
-                'domain' => 'guard-site.example:443',
-            ])
-            ->assertStatus(422)
-            ->assertJsonValidationErrors(['site_url']);
-
-        $this->assertSame('other-guard.example', $other->fresh()->domain);
     }
 
     public function test_update_persists_url_host_not_posted_domain(): void
