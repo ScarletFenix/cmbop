@@ -16,7 +16,6 @@ use App\Services\Billing\BillingDocumentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
-use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -168,11 +167,12 @@ class PaymentController extends Controller
 
             // Send email notification to user when payment is marked as paid
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
-                $this->consumeReservedCheckoutBonus($order);
                 $this->sendPaymentConfirmationEmail($order);
             }
 
-            if (in_array($request->payment_status, ['failed', 'refunded'], true) && $oldStatus !== $request->payment_status) {
+            // Unpaid failure: release leftover checkout bonus. Paid refunds go
+            // through creditAdvertiserRefund so promo is not minted as cash.
+            if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
                 $this->refundReservedCheckoutBonus($order);
             }
 
@@ -289,25 +289,6 @@ class PaymentController extends Controller
         }
     }
 
-    private function consumeReservedCheckoutBonus(Order $order): void
-    {
-        $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $bonus = round((float) Cache::pull($key, 0), 2);
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
-    }
-
     private function refundReservedCheckoutBonus(Order $order): void
     {
         $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
@@ -343,34 +324,7 @@ class PaymentController extends Controller
             return 0.0;
         }
 
-        $advertiserRoleId = Wallet::advertiserRoleId();
-        if (! $advertiserRoleId) {
-            throw new \RuntimeException('Advertiser role not configured');
-        }
-
-        $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
-
-        if ($order->payment_method === 'wallet') {
-            $bonusReservedBefore = (float) $wallet->bonus_reserved;
-            $wallet->refundReserved($amount);
-            $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
-            app(WalletLedgerService::class)->recordRefund(
-                $wallet,
-                $amount,
-                $bonusRestored,
-                $order,
-                $order->reference_code ?? $order->order_number
-            );
-        } else {
-            $wallet->credit($amount);
-            app(WalletLedgerService::class)->recordRefund(
-                $wallet,
-                $amount,
-                0,
-                $order,
-                $order->reference_code ?? $order->order_number
-            );
-        }
+        app(OrderRefundService::class)->refundToAdvertiser($order, $amount, 'Admin refund');
 
         return $amount;
     }
