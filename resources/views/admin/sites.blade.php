@@ -868,27 +868,32 @@ document.addEventListener('click', function(e){
 
     /* DELETE / ARCHIVE */
     if(e.target.closest('.delete-site')){
-        let id = e.target.closest('button').dataset.id;
+        const btn = e.target.closest('.delete-site');
+        let id = btn.dataset.id;
         let site = allSites.find(s => s.id == id);
-        const needsReason = IS_MARKETING_EDITOR;
+        const isArchive = canArchiveSiteRow(site) || btn.dataset.archive === '1';
+        const name = site?.site_name || 'this site';
+        const title = isArchive
+            ? 'Archive this site?'
+            : (IS_MARKETING_EDITOR ? 'Reject this site?' : 'Delete this site?');
+        const text = isArchive
+            ? `"${name}" will be hidden from the catalog. Explain why — the publisher will see this reason. The listing is kept so order history stays intact.`
+            : (IS_MARKETING_EDITOR
+                ? `Explain why "${name}" is being rejected. The publisher will see this reason.`
+                : `Are you sure you want to delete "${name}"? Explain why — the publisher will see this reason.`);
 
         Swal.fire({
-            title: needsReason ? 'Reject this site?' : 'Delete this site?',
-            text: needsReason
-                ? `Explain why "${site?.site_name}" is being rejected. The publisher will see this reason.`
-                : `Are you sure you want to delete "${site?.site_name}"?`,
-            input: needsReason ? 'textarea' : undefined,
-            inputPlaceholder: needsReason ? 'Rejection reason (at least 10 characters)' : undefined,
-            inputAttributes: needsReason ? { 'aria-label': 'Rejection reason', maxlength: '1000' } : undefined,
+            title,
+            text,
             icon:'warning',
             input: 'textarea',
             inputLabel: 'Reason for the publisher',
             inputPlaceholder: 'Reason (min. 10 characters)',
             inputAttributes: { 'aria-label': isArchive ? 'Archive reason' : 'Rejection reason', maxlength: '1000' },
             showCancelButton:true,
-            confirmButtonText: needsReason ? 'Reject' : 'Delete',
+            confirmButtonText: isArchive ? 'Archive' : (IS_MARKETING_EDITOR ? 'Reject' : 'Delete'),
             customClass: { confirmButton: 'slb-swal-danger' },
-            preConfirm: needsReason ? (value) => {
+            preConfirm: (value) => {
                 const reason = String(value || '').trim();
                 if (reason.length < 10) {
                     Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
@@ -899,26 +904,22 @@ document.addEventListener('click', function(e){
                     return false;
                 }
                 return reason;
-            } : undefined,
+            },
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            const headers = {
-                'X-CSRF-TOKEN': CSRF_TOKEN,
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest',
-            };
-            const opts = {
+            const reason = String(result.value || '').trim();
+            fetch(`${STAFF_BASE}/sites/${id}`, {
                 method:'DELETE',
-                headers,
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
                 credentials: 'same-origin',
-            };
-            if (needsReason) {
-                headers['Content-Type'] = 'application/json';
-                opts.body = JSON.stringify({ reason: String(result.value || '').trim() });
-            }
-
-            fetch(`${STAFF_BASE}/sites/${id}`, opts)
+                body: JSON.stringify({ reason }),
+            })
             .then(async (res) => {
                 let data = {};
                 try {
@@ -927,18 +928,18 @@ document.addEventListener('click', function(e){
                     throw new Error(`Failed to delete site (${res.status})`);
                 }
 
-                if(!res.ok || !data.success) {
+                if (!res.ok || !data.success) {
                     const reasonErr = data.errors && data.errors.reason
                         ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
                         : null;
-                    throw new Error(reasonErr || data.message || 'Failed to delete site');
+                    throw new Error(reasonErr || data.message || (isArchive ? 'Could not archive site' : 'Failed to delete site'));
                 }
 
-                toast(data.message || 'Deleted successfully');
+                toast(data.message || (data.archived ? 'Site archived' : 'Deleted successfully'));
                 afterSiteDecision();
             })
             .catch((error) => {
-                toast(error.message || 'Failed to delete site', 'error');
+                toast(error.message || (isArchive ? 'Could not archive site' : 'Failed to delete site'), 'error');
             });
         });
     }
@@ -1504,20 +1505,19 @@ function renderSites(data){
                         ? `<li><button type="button" class="dropdown-item disabled" disabled title="This listing has orders. Deactivate it to hide it from the catalog."><i class="fa fa-ban me-2"></i>Has orders — deactivate instead</button></li>`
                         : ''));
 
-            // Always offer Deactivate after Activate. Marketing cannot activate
-            // unfinished, missing-market, or below-quality listings (server also 422s).
+            // Always offer Deactivate after Activate. Hide Activate when the
+            // listing cannot go live (server also 422s the same rules).
             const marketingActivateBlocked = IS_MARKETING_EDITOR && (
-                !!site.pending_publisher_acceptance
-                || !!site.awaits_publisher_details
-                || !!site.details_complete
-                || !!site.missing_market
+                !!site.details_complete
                 || !!site.below_quality_bar
             );
+            const activateBlocked = site.can_activate === false || marketingActivateBlocked;
+            const activateBlockReason = site.activate_block_reason || 'Cannot activate this listing yet.';
             const activeItem = CAN_TOGGLE_ACTIVE
                 ? (isActive
                     ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
-                    : (marketingActivateBlocked
-                        ? ''
+                    : (activateBlocked
+                        ? `<li><button type="button" class="dropdown-item disabled" disabled title="${escapeHtml(activateBlockReason)}"><i class="fa fa-ban me-2"></i>Cannot activate</button></li>`
                         : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`))
                 : '';
 

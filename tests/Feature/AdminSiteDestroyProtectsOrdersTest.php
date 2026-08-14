@@ -242,7 +242,7 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.users.sites', $publisher->id))
             ->assertOk()
-            ->assertJsonPath('sites.0.archived', true);
+            ->assertJsonPath('sites', []);
     }
 
     public function test_sites_management_ui_offers_archive_not_blind_delete(): void
