@@ -2294,6 +2294,8 @@ class CatalogController extends Controller
                         'reference_code' => $referenceCode,
                         'user_id' => (string) $userId,
                         'bonus_applied' => (string) $bonusApplied,
+                        'expected_amount' => (string) $amountDue,
+                        'order_total' => (string) $totalAmount,
                     ],
                 ],
             ];
@@ -3259,6 +3261,9 @@ class CatalogController extends Controller
                         'type' => 'order_payment',
                         'reference_code' => $referenceCode,
                         'user_id' => (string) auth()->id(),
+                        'expected_amount' => (string) $packageTotal,
+                        'order_total' => (string) $packageTotal,
+                        'bonus_applied' => '0',
                     ],
                 ],
             ];

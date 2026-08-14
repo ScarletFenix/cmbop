@@ -65,6 +65,7 @@ class CheckoutSchemaService
         }
 
         $this->addColumn('orders', 'stripe_session_id', 'varchar(255) NULL');
+        $this->addColumn('orders', 'checkout_line_key', 'varchar(96) NULL');
         $this->addColumn('orders', 'stripe_payment_intent_id', 'varchar(255) NULL');
         $this->addColumn('orders', 'publication_mode', "varchar(20) NOT NULL DEFAULT 'immediate'");
         $this->addColumn('orders', 'scheduled_publish_at', 'timestamp NULL');
