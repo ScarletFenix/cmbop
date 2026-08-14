@@ -1219,6 +1219,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('lsapi_module', $htaccess);
         $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
         $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
+        $this->assertDoesNotMatchRegularExpression(
+            '/^php_value /m',
+            $htaccess,
+            'Bare php_value outside IfModule 500s Hostinger when PHP is not an Apache module.'
+        );
+        $this->assertStringContainsString('RewriteCond %{REQUEST_METHOD} GET', $htaccess);
         $this->assertStringNotContainsString('Content-Security-Policy', $htaccess);
 
         $userIni = (string) file_get_contents(public_path('.user.ini'));

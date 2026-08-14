@@ -8,12 +8,10 @@
 
 # Marketer bulk Done posts many fields (up to 200 sites). Article .docx
 # uploads are fixed at 10 MB; PHP must allow at least that (64M headroom).
-# Bare php_value: some Hostinger LiteSpeed builds skip the IfModule names below.
+# php_value only inside IfModule — a bare php_value 500s the site when PHP
+# is CGI/FPM and the directive is unknown. .user.ini / php.ini still apply.
 # LimitRequestBody: LiteSpeed/Apache can 413 a 5 MB body before PHP runs.
 LimitRequestBody 67108864
-php_value max_input_vars 10000
-php_value post_max_size 64M
-php_value upload_max_filesize 64M
 <IfModule lsapi_module>
     php_value max_input_vars 10000
     php_value post_max_size 64M
@@ -48,6 +46,8 @@ php_value upload_max_filesize 64M
     RewriteCond %{HTTP:x-xsrf-token} .
     RewriteRule .* - [E=HTTP_X_XSRF_TOKEN:%{HTTP:X-XSRF-Token}]
 
+    # Do not 301 POST/PUT/PATCH — browsers drop the body (a 5 MB .docx vanishes).
+    RewriteCond %{REQUEST_METHOD} GET
     RewriteCond %{REQUEST_FILENAME} !-d
     RewriteCond %{REQUEST_URI} (.+)/$
     RewriteRule ^ %1 [L,R=301]
