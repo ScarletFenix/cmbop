@@ -1064,6 +1064,15 @@ class CatalogController extends Controller
         return $pruned['removed_inactive'];
     }
 
+    /**
+     * @param  array<int, array<string, mixed>>  $cart
+     */
+    private function putCatalogVisibleCart(array $cart): void
+    {
+        $pruned = $this->pruneInactiveCartLines($cart);
+        session()->put('cart', array_values($pruned['cart']));
+    }
+
     private function cartPayloadForClient(): array
     {
         $cart = array_values(session()->get('cart', []));
@@ -4356,9 +4365,7 @@ class CatalogController extends Controller
 
             $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
             if (! $site) {
-                // Inactive / missing sites are not payable.
-                $deferred[] = $item;
-
+                // Hidden / missing listings are dropped, not kept as "pay later".
                 continue;
             }
             if ($site->isOwnedBy(auth()->user())) {
@@ -4410,7 +4417,7 @@ class CatalogController extends Controller
             if (count($resolvedIds) > 1) {
                 $readyItem['content_submission_ids'] = $resolvedIds;
             }
-            // Only charge active listings that still need payment (price can be 0 after discounts).
+            // Only charge catalog-visible listings that still need payment (price can be 0 after discounts).
             $payable[] = $readyItem;
         }
 
@@ -4436,7 +4443,7 @@ class CatalogController extends Controller
         ]);
 
         if (is_array($deferred) && $deferred !== []) {
-            session()->put('cart', array_values($deferred));
+            $this->putCatalogVisibleCart($deferred);
 
             return;
         }
@@ -4467,7 +4474,7 @@ class CatalogController extends Controller
 
         $deferred = session('checkout_deferred_cart');
         if (is_array($deferred) && $deferred !== []) {
-            session()->put('cart', array_values($deferred));
+            $this->putCatalogVisibleCart($deferred);
             session()->forget('checkout_deferred_cart');
 
             return;
