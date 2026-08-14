@@ -61,6 +61,9 @@ class SiteEnrichmentController extends Controller
     public function refreshMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
+        if ($denied = $this->denyMarketingLockedListing($request, $site)) {
+            return $denied;
+        }
         $sync = $request->boolean('sync', false);
 
         if ($sync) {
@@ -89,6 +92,9 @@ class SiteEnrichmentController extends Controller
     public function refreshScreenshot(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
+        if ($denied = $this->denyMarketingLockedListing($request, $site)) {
+            return $denied;
+        }
         // Default async — Sites Management must not block on remote capture.
         $sync = $request->boolean('sync', false);
 
@@ -136,6 +142,9 @@ class SiteEnrichmentController extends Controller
     public function enrich(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
+        if ($denied = $this->denyMarketingLockedListing($request, $site)) {
+            return $denied;
+        }
         // Default async — Manage → Enrich should return immediately.
         $sync = $request->boolean('sync', false);
 
@@ -155,6 +164,9 @@ class SiteEnrichmentController extends Controller
     public function manualMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
         $site = Site::findOrFail($id);
+        if ($denied = $this->denyMarketingLockedListing($request, $site)) {
+            return $denied;
+        }
 
         $data = $request->validate([
             'dr' => 'nullable|integer|min:0|max:100',
@@ -272,5 +284,18 @@ class SiteEnrichmentController extends Controller
                 }
             })
             ->count();
+    }
+
+    private function denyMarketingLockedListing(Request $request, Site $site)
+    {
+        $user = $request->user();
+        if ($user?->isMarketing() && ! $user?->isAdmin() && $site->isLockedForMarketingEdits()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Marketing can only edit pending sites that are not live.',
+            ], 403);
+        }
+
+        return null;
     }
 }

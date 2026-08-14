@@ -347,7 +347,7 @@ class MarketingOpsScopeTest extends TestCase
             ->get(route('marketing.sites.edit', $site->id))
             ->assertOk()
             ->assertSee('View site', false)
-            ->assertSee('This listing is live or verified. Marketing cannot change it.', false)
+            ->assertSee('This listing is live, verified, or archived. Marketing cannot change it.', false)
             ->assertSee('https://live-locked.example', false)
             ->assertDontSee('name="site_url"', false)
             ->assertDontSee('name="price"', false)
@@ -417,6 +417,45 @@ class MarketingOpsScopeTest extends TestCase
             $this->assertSame($originalUrl, $site->site_url);
             $this->assertSame($originalDa, (int) $site->da);
         }
+    }
+
+    public function test_marketer_cannot_update_archived_site(): void
+    {
+        $category = Category::query()->where('name', 'Business & Finance')->first()
+            ?? Category::query()->firstOrFail();
+
+        $site = $this->makeSite([
+            'site_name' => 'Archived Pending',
+            'site_url' => 'https://archived-pending.example',
+            'domain' => 'archived-pending.example',
+            'da' => 40,
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('This listing is live, verified, or archived. Marketing cannot change it.', false)
+            ->assertDontSee('name="site_url"', false);
+
+        $this->actingAs($this->marketer)
+            ->putJson(route('marketing.sites.update', $site->id), [
+                'site_name' => 'Should Not Stick',
+                'site_url' => 'https://should-not-stick.example',
+                'price' => 1,
+                'da' => 11,
+                'dr' => 12,
+                'traffic' => 100,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => $category->name,
+            ])
+            ->assertForbidden();
+
+        $this->assertSame('https://archived-pending.example', $site->fresh()->site_url);
+        $this->assertSame(40, (int) $site->fresh()->da);
     }
 
     public function test_site_edit_falls_back_to_sites_ui_when_blade_missing(): void

@@ -1306,9 +1306,18 @@ function renderSites(data){
                 </div>
             `;
 
+            const listingLocked = IS_MARKETING_EDITOR && (
+                isVerified
+                || isActive
+                || !!site.listing_locked
+            );
             const editItem = IS_MARKETING_EDITOR
-                ? `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-edit me-2"></i>Edit</a></li>`
+                ? `<li><a class="dropdown-item" href="${STAFF_BASE}/sites/${site.id}/edit"><i class="fa fa-${listingLocked ? 'eye' : 'edit'} me-2"></i>${listingLocked ? 'View' : 'Edit'}</a></li>`
                 : `<li><button type="button" class="dropdown-item edit-site" data-id="${site.id}"><i class="fa fa-edit me-2"></i>Edit</button></li>`;
+            const enrichItems = (IS_MARKETING_EDITOR && listingLocked)
+                ? ''
+                : `<li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
+                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>`;
 
             const deleteItem = canDeleteSiteRow(site)
                 ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
@@ -1361,9 +1370,7 @@ function renderSites(data){
                         ${(activeItem || verifyItem) ? '<li><hr class="dropdown-divider"></li>' : ''}
                         ${activeItem}
                         ${verifyItem}
-                        <li><hr class="dropdown-divider"></li>
-                        <li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
-                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>
+                        ${enrichItems ? '<li><hr class="dropdown-divider"></li>' + enrichItems : ''}
                         <li><hr class="dropdown-divider"></li>
                         <li><button type="button" class="dropdown-item toggle-site-details" data-id="${site.id}"><i class="fa fa-chevron-down me-2"></i>Details</button></li>
                     </ul>

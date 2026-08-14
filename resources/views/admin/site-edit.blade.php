@@ -60,7 +60,7 @@
             @if($isMarketingEditor)
                 @if($marketingListingLocked)
                     <div class="alert alert-warning border-0 mb-4">
-                        This listing is live or verified. Marketing cannot change it. Ask an admin.
+                        This listing is live, verified, or archived. Marketing cannot change it. Ask an admin.
                     </div>
                 @else
                     <div class="alert alert-info border-0 mb-4">

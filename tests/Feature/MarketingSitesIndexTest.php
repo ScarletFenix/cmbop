@@ -210,6 +210,8 @@ class MarketingSitesIndexTest extends TestCase
         $ids = collect($payload['sites'] ?? [])->pluck('id')->all();
         $this->assertContains($live->id, $ids);
         $this->assertNotContains($archived->id, $ids);
+        $liveRow = collect($payload['sites'] ?? [])->firstWhere('id', $live->id);
+        $this->assertFalse((bool) ($liveRow['listing_locked'] ?? true));
 
         $this->actingAs($this->admin)
             ->get(route('admin.sites.index', ['needs_review' => 1]))
@@ -231,6 +233,8 @@ class MarketingSitesIndexTest extends TestCase
         $this->assertStringContainsString("title: needsReason ? 'Reject this site?' : 'Delete this site?'", $html);
         $this->assertStringContainsString("input: needsReason ? 'textarea' : undefined", $html);
         $this->assertStringContainsString('JSON.stringify({ reason:', $html);
+        $this->assertStringContainsString("listingLocked ? 'View' : 'Edit'", $html);
+        $this->assertStringContainsString('IS_MARKETING_EDITOR && listingLocked', $html);
         $this->assertStringNotContainsString("}).then(() => {\n                toast('Deleted successfully');", $html);
     }
 }

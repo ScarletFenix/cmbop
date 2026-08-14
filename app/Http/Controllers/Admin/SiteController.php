@@ -441,6 +441,7 @@ class SiteController extends Controller
             'needs_review' => $site->needsAdminReview(),
             'missing_market' => ! $site->hasMarketplaceCountry(),
             'below_quality_bar' => ! $site->hasGoodMetrics(),
+            'listing_locked' => $site->isLockedForMarketingEdits(),
             'awaits_publisher_details' => $site->awaitsPublisherDetails(),
             'details_complete' => $site->hasDetailsComplete(),
             'pending_publisher_acceptance' => $site->isPendingPublisherAcceptance(),
@@ -1278,7 +1279,7 @@ class SiteController extends Controller
 
     private function marketingListingIsLocked(Site $site): bool
     {
-        return (bool) $site->verified || (bool) $site->active;
+        return $site->isLockedForMarketingEdits();
     }
 
     /**

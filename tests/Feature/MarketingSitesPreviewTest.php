@@ -166,6 +166,34 @@ class MarketingSitesPreviewTest extends TestCase
         Bus::assertDispatched(CaptureSiteScreenshotJob::class);
     }
 
+    public function test_marketer_cannot_enrich_or_reshoot_live_site(): void
+    {
+        Bus::fake();
+
+        $site = $this->makeSite([
+            'site_name' => 'Live Enrich Block',
+            'site_url' => 'https://live-enrich-block.example',
+            'domain' => 'live-enrich-block.example',
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.enrich', $site->id))
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.refresh-screenshot', $site->id))
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.refresh-metrics', $site->id))
+            ->assertForbidden();
+
+        Bus::assertNothingDispatched();
+    }
+
     public function test_sites_index_does_not_embed_site_rows_for_publishers(): void
     {
         $this->makeSite();

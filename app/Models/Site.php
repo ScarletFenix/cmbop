@@ -725,6 +725,14 @@ class Site extends Model
     }
 
     /**
+     * Live, verified, or archived listings are read-only for marketing.
+     */
+    public function isLockedForMarketingEdits(): bool
+    {
+        return (bool) $this->verified || (bool) $this->active || $this->isArchived();
+    }
+
+    /**
      * Promote stale bulk drafts to ready_for_review when details are already filled.
      */
     public function promoteFromAwaitingDetailsIfComplete(): bool
