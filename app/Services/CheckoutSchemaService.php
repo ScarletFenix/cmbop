@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -116,7 +117,6 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'auto_approve_at', 'timestamp NULL');
     }
 
-
     /**
      * Site counters touched during Approve / auto-approve payouts.
      */
@@ -128,6 +128,49 @@ class CheckoutSchemaService
 
         // Missing column previously aborted advertiser Approve mid-transaction.
         $this->addColumn('sites', 'completed_orders_count', 'int unsigned NOT NULL DEFAULT 0');
+        // Catalog GET and Site::countWithHomepagePlacement() query these JSON columns.
+        $this->addNullableJsonColumn('sites', 'homepage_placement_prices');
+        $this->addNullableJsonColumn('sites', 'social_promotion');
+    }
+
+    /**
+     * Schema builder first so SQLite tests (and Hostinger skip-migration) can repair.
+     * Raw MySQL ALTER is the fallback when the builder is denied.
+     */
+    private function addNullableJsonColumn(string $table, string $column): void
+    {
+        try {
+            if (Schema::hasColumn($table, $column)) {
+                return;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Checkout schema hasColumn failed', [
+                'table' => $table,
+                'column' => $column,
+                'error' => $e->getMessage(),
+            ]);
+
+            return;
+        }
+
+        try {
+            Schema::table($table, function (Blueprint $blueprint) use ($column) {
+                $blueprint->json($column)->nullable();
+            });
+            Log::info("Added missing {$table}.{$column} for checkout");
+
+            return;
+        } catch (\Throwable $e) {
+            try {
+                if (Schema::hasColumn($table, $column)) {
+                    return;
+                }
+            } catch (\Throwable) {
+                // ignore
+            }
+        }
+
+        $this->addColumn($table, $column, 'json NULL');
     }
 
     private function tableExists(string $table): bool
