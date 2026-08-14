@@ -237,7 +237,7 @@ class BulkSiteRequestController extends Controller
             'link_type' => 'required|in:dofollow,nofollow',
             'siteDescription' => 'required|string',
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
-            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
         ]);
 
         $existingCategories = collect($site->categories ?? [])
