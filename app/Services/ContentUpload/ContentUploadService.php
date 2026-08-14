@@ -833,10 +833,16 @@ class ContentUploadService
             return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
         }
 
+        $realPath = $file->getRealPath();
+        $contents = is_string($realPath) && $realPath !== '' ? file_get_contents($realPath) : false;
+        if ($contents === false) {
+            return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+        }
+
         $this->purgeStaleArticleChunks();
 
         $dir = $this->articleChunkDirectory((int) $user->id, $uploadId);
-        Storage::disk('local')->put($dir.'/'.$index.'.part', (string) file_get_contents($file->getRealPath()));
+        Storage::disk('local')->put($dir.'/'.$index.'.part', $contents);
 
         $received = 0;
         for ($i = 0; $i < $total; $i++) {
@@ -846,6 +852,14 @@ class ContentUploadService
         }
 
         if ($received < $total) {
+            // Sequential clients send the last index only after the others.
+            // A pending response here looks like a finished upload in the UI.
+            if ($index === $total - 1) {
+                Storage::disk('local')->deleteDirectory($dir);
+
+                return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
+            }
+
             return ['ok' => true, 'complete' => false, 'received' => $received, 'total' => $total];
         }
 

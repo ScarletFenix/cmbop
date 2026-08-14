@@ -1258,6 +1258,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function librarySafeDocxFilename', $js);
         $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
         $this->assertStringContainsString('1536 * 1024', $js);
+        $this->assertStringContainsString('.slice(0, 200)', $js);
+        $this->assertStringContainsString('last.data.chunk_received || !last.data.submission', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
         $this->assertStringContainsString('X-Upload-Bytes', $js);
         $this->assertStringContainsString('X-Requested-With', $js);
@@ -1563,6 +1565,34 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertSame('letemps.ch How AUTODOC is solving Europes long-tail delivery.docx', $stored->original_filename);
 
         @unlink($partOne);
+        @unlink($partTwo);
+    }
+
+    public function test_library_upload_last_chunk_without_the_rest_fails(): void
+    {
+        Storage::fake('local');
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/chunk-only-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path);
+        $bytes = (string) file_get_contents($path);
+        @unlink($path);
+        $mid = (int) intdiv(strlen($bytes), 2);
+        $partTwo = sys_get_temp_dir().'/chunk-only-b-'.uniqid('', true).'.docx';
+        file_put_contents($partTwo, substr($bytes, $mid));
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($partTwo, 'article.docx', 'application/octet-stream', null, true),
+                'country' => 'us',
+                'language' => 'en',
+                'chunk_index' => 1,
+                'chunk_total' => 2,
+                'upload_id' => '11111111-1111-4111-8111-111111111111',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'The article could not be uploaded. Please try again.');
+
         @unlink($partTwo);
     }
 

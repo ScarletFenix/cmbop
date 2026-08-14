@@ -169,7 +169,8 @@ function titleFromFilename(name) {
         .replace(/\.docx$/i, '')
         .replace(/[_-]+/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim()
+        .slice(0, 200);
 }
 
 function showDropzoneFile(file) {
@@ -278,8 +279,20 @@ async function postLibraryUpload(form, file, signal, onProgress) {
         if (!last.data || !last.data.success) {
             return last;
         }
-        if (i < total - 1 && !last.data.chunk_received) {
-            return last;
+        if (i < total - 1) {
+            if (!last.data.chunk_received) {
+                return last;
+            }
+            continue;
+        }
+        if (last.data.chunk_received || !last.data.submission) {
+            return {
+                res: last.res,
+                data: {
+                    success: false,
+                    message: 'The article could not be uploaded. Please try again.',
+                },
+            };
         }
     }
     return last;
