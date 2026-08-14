@@ -9,9 +9,12 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\Support\CreatesContentSubmissions;
@@ -877,6 +880,26 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringStartsWith('/storage/content-articles/', $url);
     }
 
+    public function test_editor_image_php_reject_does_not_blame_article_docx_cap(): void
+    {
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/editor-img-'.uniqid('', true).'.png';
+        file_put_contents($path, 'fake-png');
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-submissions.editor-image'), [
+            'image' => new UploadedFile($path, 'figure.png', 'image/png', UPLOAD_ERR_INI_SIZE, true),
+        ]);
+
+        @unlink($path);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('image could not be uploaded', $message);
+        $this->assertStringNotContainsString('.docx', $message);
+        $this->assertStringNotContainsString('over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+    }
+
     public function test_content_library_preview_modal_exposes_external_link_rows(): void
     {
         $advertiser = $this->advertiser();
@@ -1090,14 +1113,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('The file failed to upload', $message);
         $this->assertStringContainsString('MB', $message);
-        $phpKb = app(ContentUploadService::class)->phpUploadMaxKilobytes();
-        if ($phpKb < 10240) {
-            $this->assertStringContainsString('under the 10 MB article limit', $message);
-            $this->assertStringContainsString('PHP upload limit', $message);
-            $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
-        } else {
-            $this->assertStringContainsString('That file is over the 10 MB limit', $message);
-        }
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
     public function test_library_upload_accepts_docx_sniffed_as_zip(): void
@@ -1173,6 +1192,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Max 5 MB', $html);
         $this->assertStringNotContainsString('server PHP still allows only', $html);
         $this->assertStringNotContainsString('libraryPhpUploadLimitWarn', $html);
+        $this->assertStringNotContainsString('hosting PHP settings', $html);
+        $this->assertStringNotContainsString('article cap is 10 MB', $html);
         $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
         $this->assertMatchesRegularExpression('/phpMaxKilobytes:\s*\d+/', $html);
 
@@ -1200,10 +1221,27 @@ class ContentLibraryImprovementsTest extends TestCase
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
         $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
+        $this->assertStringContainsString('php_value max_input_time 120', $htaccess);
+        $this->assertStringNotContainsString('memory_limit', $htaccess);
+        $this->assertStringNotContainsString('max_execution_time', $htaccess);
+        $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
+        $this->assertDoesNotMatchRegularExpression(
+            '/^php_value /m',
+            $htaccess,
+            'Bare php_value outside IfModule 500s Hostinger when PHP is not an Apache module.'
+        );
+        $this->assertStringNotContainsString('<IfModule LiteSpeed>', $htaccess);
+        $this->assertStringContainsString('RewriteCond %{REQUEST_METHOD} GET', $htaccess);
+        $this->assertStringContainsString('RewriteRule ^ index.php [L,QSA]', $htaccess);
+        $this->assertStringNotContainsString('Content-Security-Policy', $htaccess);
 
         $userIni = (string) file_get_contents(public_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
         $this->assertStringContainsString('post_max_size = 64M', $userIni);
+        $this->assertStringContainsString('max_input_time = 120', $userIni);
+        $this->assertStringContainsString('pcre.backtrack_limit = 10000000', $userIni);
+        $this->assertStringNotContainsString('memory_limit =', $userIni);
+        $this->assertStringNotContainsString('max_execution_time =', $userIni);
         $rootIni = (string) file_get_contents(base_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $rootIni);
         $publicPhpIni = (string) file_get_contents(public_path('php.ini'));
@@ -1211,8 +1249,24 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
-        $this->assertStringContainsString('const appMaxKb = 10240;', $js);
-        $this->assertStringContainsString('boot.phpMaxKilobytes', $js);
+        $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
+        $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
+        $this->assertStringContainsString('X-Upload-Bytes', $js);
+        $this->assertStringContainsString('X-Requested-With', $js);
+        $this->assertStringContainsString('Your session expired', $js);
+        $this->assertStringContainsString('Too many upload attempts', $js);
+        $this->assertStringContainsString('The image could not be uploaded', $js);
+        $this->assertStringContainsString('The article editor failed to load', $js);
+        $this->assertStringContainsString('editor_notice', $js);
+        $this->assertStringContainsString('function submissionForEditor', $js);
+        $this->assertStringContainsString('10240 * 1024', $js);
+        $this->assertStringContainsString('status === 413 || status === 0', $js);
+        $this->assertStringNotContainsString('status === 500', $js);
+        $this->assertStringNotContainsString('file.size <= 10240 * 1024', $js);
+        $this->assertSame(8000000, ContentUploadService::PREVIEW_HTML_MAX_CHARS);
+        $this->assertStringNotContainsString('hosting PHP settings', $js);
+        $this->assertStringNotContainsString('server PHP upload limit', $js);
+        $this->assertStringNotContainsString('upload_max_filesize to 64M', $js);
 
         $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
         $this->assertStringContainsString('PostTooLargeException', $bootstrap);
@@ -1222,11 +1276,6 @@ class ContentLibraryImprovementsTest extends TestCase
     public function test_missing_file_with_oversize_content_length_explains_php_limit(): void
     {
         $advertiser = $this->advertiser();
-        $service = app(ContentUploadService::class);
-        $phpKb = $service->phpUploadMaxKilobytes();
-        if ($phpKb >= 10240) {
-            $this->markTestSkipped('PHP already accepts the 10 MB article cap.');
-        }
 
         $response = $this->actingAs($advertiser)->call(
             'POST',
@@ -1243,9 +1292,207 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $response->assertStatus(422)->assertJsonPath('success', false);
         $message = (string) $response->json('message');
-        $this->assertStringContainsString('under the 10 MB article limit', $message);
-        $this->assertStringContainsString('PHP upload limit', $message);
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
         $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+    }
+
+    public function test_missing_file_with_client_bytes_and_no_content_length_is_not_a_missing_file(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->postJson(
+            route('advertiser.content-library.upload', ['client_bytes' => 5 * 1024 * 1024]),
+            ['country' => 'us', 'language' => 'en'],
+            ['X-Upload-Bytes' => (string) (5 * 1024 * 1024)]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+    }
+
+    public function test_missing_file_uses_query_bytes_when_upload_header_is_zero(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->postJson(
+            route('advertiser.content-library.upload', ['client_bytes' => 5 * 1024 * 1024]),
+            ['country' => 'us', 'language' => 'en'],
+            ['X-Upload-Bytes' => '0']
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+    }
+
+    public function test_library_list_does_not_select_article_body_columns(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $row = ContentSubmission::query()
+            ->forLibraryList()
+            ->where('id', $submission->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertArrayNotHasKey('extracted_text', $row->getAttributes());
+        $this->assertArrayNotHasKey('preview_html', $row->getAttributes());
+        $this->assertTrue($row->hasPreviewHtml());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('js-open-preview', false);
+    }
+
+    public function test_library_upload_json_omits_preview_html(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/omit-html-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 60));
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title' => 'Omit html article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+
+        @unlink($path);
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertArrayNotHasKey('preview_html', $response->json('submission') ?? []);
+        $this->assertNotEmpty($response->json('submission.id'));
+    }
+
+    public function test_article_picker_scope_omits_article_bodies(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $row = ContentSubmission::query()
+            ->forArticlePicker()
+            ->where('id', $submission->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertArrayNotHasKey('extracted_text', $row->getAttributes());
+        $this->assertArrayNotHasKey('preview_html', $row->getAttributes());
+        $this->assertTrue($row->canBeOrdered());
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->assertJsonPath('approved_articles.0.id', $submission->id)
+            ->assertJsonPath('approved_articles.0.language', 'en');
+    }
+
+    public function test_uniqueness_corpus_selects_truncated_extracted_text(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        DB::flushQueryLog();
+        DB::enableQueryLog();
+
+        app(ArticleEvaluationService::class)->scoreUniqueness(
+            str_repeat('Useful editorial content about productivity software for busy teams. ', 40)
+        );
+
+        $sql = strtolower(implode(' ', array_column(DB::getQueryLog(), 'query')));
+        DB::disableQueryLog();
+
+        $this->assertStringContainsString('substr(extracted_text', $sql);
+    }
+
+    public function test_legacy_drafts_json_omits_article_bodies(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.drafts'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('drafts.0.preview_html')
+            ->assertJsonMissingPath('drafts.0.extracted_text');
+    }
+
+    public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void
+    {
+        Storage::fake('local');
+        Mail::fake();
+        $this->mock(ContentModerationService::class, function ($mock) {
+            $mock->shouldReceive('linksFromSubmission')->andReturn([]);
+            $mock->shouldReceive('scanExtractedContent')->andThrow(new \RuntimeException('scan failed'));
+        });
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/eval-crash-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 60));
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title' => 'Eval crash article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+
+        @unlink($path);
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertFalse((bool) $response->json('approved'));
+        $this->assertStringContainsString('Automatic review could not finish', (string) $response->json('message'));
+        $this->assertDatabaseHas('content_submissions', [
+            'user_id' => $advertiser->id,
+            'title' => 'Eval crash article',
+            'moderation_status' => ContentSubmission::STATUS_ERROR,
+        ]);
+    }
+
+    public function test_editor_save_accepts_html_over_five_hundred_thousand_chars(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $html = '<p>'.str_repeat('Useful editorial content about productivity software. ', 12000).'</p>';
+        $this->assertGreaterThan(500000, strlen($html));
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => $submission->title,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string

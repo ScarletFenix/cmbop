@@ -54,4 +54,23 @@ class ArticleEvaluationServiceTest extends TestCase
 
         $this->assertLessThan(0.2, $jaccard->invoke($service, $a, $b));
     }
+
+    public function test_shingles_cap_ignores_words_past_the_uniqueness_limit(): void
+    {
+        $service = new ArticleEvaluationService(
+            Mockery::mock(ContentModerationService::class),
+            new ContentQualityAnalyzer,
+        );
+
+        $ref = new \ReflectionClass($service);
+        $shingles = $ref->getMethod('shingles');
+        $shingles->setAccessible(true);
+
+        $head = implode(' ', array_fill(0, 15000, 'word'));
+        $a = $shingles->invoke($service, $head.' alpha', 3);
+        $b = $shingles->invoke($service, $head.' beta', 3);
+
+        $this->assertSame($a, $b);
+        $this->assertNotEmpty($a);
+    }
 }

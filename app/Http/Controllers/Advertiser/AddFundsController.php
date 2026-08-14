@@ -382,16 +382,19 @@ class AddFundsController extends Controller
             );
 
             if ($payResult['status'] === 'succeeded') {
+                $chargedEuros = ! empty($payResult['amount_received'])
+                    ? StripePaymentService::fromCents((int) $payResult['amount_received'])
+                    : $amountEuros;
                 app(WalletStripeDepositService::class)->creditFromPaymentIntent(
                     $user->id,
                     $payResult['payment_intent_id'],
-                    $amountEuros,
+                    $chargedEuros,
                     $referenceCode
                 );
 
                 return response()->json([
                     'success' => true,
-                    'message' => '€'.number_format($amountEuros, 2).' added to your wallet with your saved card.',
+                    'message' => '€'.number_format($chargedEuros, 2).' added to your wallet with your saved card.',
                     'redirect_url' => route('advertiser.add-funds'),
                 ]);
             }

@@ -49,6 +49,39 @@ class AdvertiserOrderStatus
     }
 
     /**
+     * Advertiser Orders queue: Needs review / needs action, then other active,
+     * then Completed + Cancelled. Newest first inside each bucket.
+     *
+     * Skip the sink when the list is already filtered to a terminal status.
+     *
+     * @param  Builder<Order>  $query
+     */
+    public static function applyQueueOrder(Builder $query, string $statusFilter = ''): void
+    {
+        $statusFilter = strtolower(trim($statusFilter));
+        if (in_array($statusFilter, ['completed', 'cancelled'], true)) {
+            return;
+        }
+
+        $revisionClause = '';
+        if (Schema::hasColumn('order_items', 'content_revision_requested')) {
+            $revisionClause = " OR (orders.status IN ('processing', 'review') AND EXISTS (
+                SELECT 1 FROM order_items
+                WHERE order_items.order_id = orders.id
+                  AND order_items.content_revision_requested = 'yes'
+            ))";
+        }
+
+        $query->orderByRaw(
+            "CASE
+                WHEN orders.status IN ('completed', 'cancelled') THEN 2
+                WHEN (orders.status = 'review'{$revisionClause}) THEN 0
+                ELSE 1
+            END"
+        );
+    }
+
+    /**
      * @return array{label: string, next: string, cls: string, stage: string, auto_approve_hint: ?string}
      */
     public static function meta(Order $order, ?OrderItem $item = null): array

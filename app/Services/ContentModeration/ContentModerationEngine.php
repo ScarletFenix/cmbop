@@ -11,6 +11,9 @@ namespace App\Services\ContentModeration;
  */
 class ContentModerationEngine
 {
+    /** Cap policy haystack so a 10 MB article cannot timeout the upload request. */
+    private const SCORE_TEXT_CHARS = 200000;
+
     /**
      * @param  array<string, mixed>  $categories
      * @param  array<int, string|array{url?:string,anchor?:string}>  $links
@@ -33,6 +36,10 @@ class ContentModerationEngine
         array $extraKeywords = [],
         array $exceptions = [],
     ): array {
+        if (mb_strlen($text) > self::SCORE_TEXT_CHARS) {
+            $text = mb_substr($text, 0, self::SCORE_TEXT_CHARS);
+        }
+
         $rawHaystack = mb_strtolower($title."\n".$text);
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
         $urlStrings = $this->normalizeLinkList($links);

@@ -62,7 +62,7 @@
                             @foreach($publishers as $publisher)
                                 <option value="{{ $publisher->id }}"
                                     data-verified="{{ filled($publisher->email_verified_at) ? '1' : '0' }}"
-                                    @selected((int) old('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
+                                    @selected((int) old_text('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
                                     {{ $publisher->name }} · {{ $publisher->email }}
                                     @if((int) ($publisher->sites_count ?? 0) > 0)
                                         ({{ (int) $publisher->sites_count }} {{ \Illuminate\Support\Str::plural('site', (int) $publisher->sites_count) }})
@@ -158,7 +158,7 @@
                     </div>
                     <div class="col-md-6">
                         <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
-                        <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language') }}">
+                        <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language') }}">
                         <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
                             <option value="">{{ old('country') ? 'Select…' : 'Select country first' }}</option>
                             @foreach($languages as $language)
@@ -277,7 +277,7 @@
                                         </div>
                                         <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
                                                placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
-                                               value="{{ old("price_homepage.$days") }}">
+                                               value="{{ old_text("price_homepage.$days") }}">
                                     </div>
                                 @endforeach
                             </div>
@@ -315,7 +315,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01">
                                         </div>
                                         @endforeach
                                     </div>
@@ -358,7 +358,7 @@
     const countryEl = document.getElementById('country');
     const langEl = document.getElementById('language');
     const langHidden = document.getElementById('selectedLanguage');
-    const preferredLang = @json(old('language', ''));
+    const preferredLang = @json(old_text('language'));
     const imageInput = document.getElementById('site_image');
     const qualityBar = document.getElementById('qualityBarStatic');
     const qualityWarn = document.getElementById('qualityBarWarn');

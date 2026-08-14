@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Advertiser\SpendBudgetService;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -27,6 +28,7 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromStripeSession(string $referenceCode, object $session): Collection
     {
+        $sessionMeta = $this->sessionMetadataArray($session);
         $newlyPaid = DB::transaction(function () use ($referenceCode, $session) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
@@ -44,31 +46,16 @@ class OrderPaymentService
             }
 
             $meta = $this->sessionMetadataArray($session);
-            if (isset($meta['expected_amount'])) {
-                $this->assertStripeAmountMatchesExpected(
-                    $session,
-                    round((float) $meta['expected_amount'], 2),
-                    $referenceCode
-                );
-            } elseif (! isset($meta['bonus_applied']) || (float) ($meta['bonus_applied'] ?? 0) <= 0) {
-                $expected = round((float) $orders->sum(fn (Order $o) => (float) $o->total_amount), 2);
-                $this->assertStripeAmountMatchesExpected($session, $expected, $referenceCode);
-            }
+            $this->assertStripeAmountMatchesExpected(
+                $session,
+                $this->expectedStripeEurosForOrders($orders, $meta),
+                $referenceCode
+            );
 
             $newlyPaid = collect();
 
             foreach ($orders as $order) {
-                if ($order->payment_status === 'paid') {
-                    continue;
-                }
-
-                // Allow pending (first attempt) and failed (Pay again / recovered session).
-                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
-                    Log::warning('Skipping order with unexpected payment status', [
-                        'order_id' => $order->id,
-                        'payment_status' => $order->payment_status,
-                    ]);
-
+                if (! $this->canMarkCardOrderPaid($order)) {
                     continue;
                 }
 
@@ -87,13 +74,18 @@ class OrderPaymentService
                 $newlyPaid->push($order->fresh('items'));
             }
 
-            if ($newlyPaid->isNotEmpty()) {
-                $this->consumeBonusAppliedFromStripeSession($newlyPaid->first(), $session);
-            }
+            // Keep leftover checkout bonus reserved until approve/reject.
+            // Consuming here made card+bonus rejects credit the promo slice as cash.
 
             return $newlyPaid;
         });
 
+        $this->recordAdvertiserPurchaseForPaidCheckout(
+            $referenceCode,
+            $newlyPaid,
+            (float) ($sessionMeta['bonus_applied'] ?? 0),
+            (float) ($sessionMeta['order_total'] ?? 0)
+        );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
 
         return $newlyPaid;
@@ -106,7 +98,14 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromPaymentIntent(string $referenceCode, object $intent): Collection
     {
-        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent) {
+        $meta = [];
+        if (isset($intent->metadata)) {
+            $meta = is_array($intent->metadata)
+                ? $intent->metadata
+                : (method_exists($intent->metadata, 'toArray') ? $intent->metadata->toArray() : (array) $intent->metadata);
+        }
+
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent, $meta) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -117,12 +116,6 @@ class OrderPaymentService
                 return collect();
             }
 
-            $meta = [];
-            if (isset($intent->metadata)) {
-                $meta = is_array($intent->metadata)
-                    ? $intent->metadata
-                    : (method_exists($intent->metadata, 'toArray') ? $intent->metadata->toArray() : (array) $intent->metadata);
-            }
             $this->assertStripeAmountMatchesExpected(
                 $intent,
                 $this->expectedStripeEurosForOrders($orders, $meta),
@@ -131,10 +124,7 @@ class OrderPaymentService
 
             $newlyPaid = collect();
             foreach ($orders as $order) {
-                if ($order->payment_status === 'paid') {
-                    continue;
-                }
-                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+                if (! $this->canMarkCardOrderPaid($order)) {
                     continue;
                 }
 
@@ -150,22 +140,68 @@ class OrderPaymentService
                 $newlyPaid->push($order->fresh('items'));
             }
 
-            if ($newlyPaid->isNotEmpty()) {
-                $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
-                if ($bonus <= 0) {
-                    $bonus = round((float) Cache::get('checkout_bonus:'.$newlyPaid->first()->user_id.':'.$referenceCode, 0), 2);
-                }
-                if ($bonus > 0) {
-                    $this->consumeBonusAmount($newlyPaid->first(), $bonus);
-                }
-            }
+            // Keep leftover checkout bonus reserved until approve/reject.
 
             return $newlyPaid;
         });
 
+        $this->recordAdvertiserPurchaseForPaidCheckout(
+            $referenceCode,
+            $newlyPaid,
+            (float) ($meta['bonus_applied'] ?? 0),
+            (float) ($meta['order_total'] ?? 0)
+        );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
 
         return $newlyPaid;
+    }
+
+    /**
+     * Card / bonus-only checkouts reserved promo without a purchase ledger row.
+     * Clawback then treated the refund as cash. Write the same purchase hint
+     * wallet checkout already writes, once per reference.
+     *
+     * @param  Collection<int, Order>  $orders
+     */
+    protected function recordAdvertiserPurchaseForPaidCheckout(
+        string $referenceCode,
+        Collection $orders,
+        float $bonusApplied,
+        float $orderTotal = 0.0
+    ): void {
+        $bonusApplied = round($bonusApplied, 2);
+        if ($bonusApplied <= 0 || $orders->isEmpty()) {
+            return;
+        }
+
+        $userId = (int) ($orders->first()->user_id ?? 0);
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if ($userId <= 0 || ! $advertiserRoleId) {
+            return;
+        }
+
+        $wallet = Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $advertiserRoleId)
+            ->first();
+        if (! $wallet) {
+            return;
+        }
+
+        $total = round($orderTotal, 2);
+        if ($total <= 0) {
+            $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
+        }
+        if ($total <= 0) {
+            $total = $bonusApplied;
+        }
+
+        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
+        if ($wallet && (float) $wallet->bonus_reserved > 0) {
+            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
+        }
+        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
+        Cache::forget($cacheKey);
     }
 
     /**
@@ -196,56 +232,6 @@ class OrderPaymentService
                 'user_id' => $userId,
                 'error' => $e->getMessage(),
             ]);
-        }
-    }
-
-    protected function consumeBonusAmount(Order $order, float $bonus): void
-    {
-        $cacheKey = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            Cache::forget($cacheKey);
-
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
-        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
-        Cache::forget($cacheKey);
-    }
-
-    /**
-     * When a card checkout applied promotional credit, permanently consume the reserved bonus.
-     */
-    protected function consumeBonusAppliedFromStripeSession(Order $order, object $session): void
-    {
-        $meta = [];
-        if (isset($session->metadata)) {
-            $meta = is_array($session->metadata)
-                ? $session->metadata
-                : (method_exists($session->metadata, 'toArray') ? $session->metadata->toArray() : (array) $session->metadata);
-        }
-
-        $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
-        $cacheKey = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        if ($bonus <= 0) {
-            $bonus = round((float) Cache::get($cacheKey, 0), 2);
-        }
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
         }
         app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
         Cache::forget($cacheKey);
@@ -470,37 +456,30 @@ class OrderPaymentService
                 }
 
                 $lineKey = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
-                $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+                $order = $this->createPaidCardOrderRow($schema, [
+                    'user_id' => $userId,
+                    'reference_code' => $referenceCode,
+                    'checkout_line_key' => $lineKey,
+                    'subtotal' => $line['price'] ?? 0,
+                    'tax' => 0,
+                    'total_amount' => $line['price'] ?? 0,
+                    'payment_method' => 'card',
+                    'payment_status' => 'paid',
+                    'status' => 'pending',
+                    'sensitive_type' => $line['sensitive_type'] ?? null,
+                    'additional_price' => $line['additional_price'] ?? 0,
+                    'publication_mode' => $schedule['mode'] ?? 'immediate',
+                    'scheduled_publish_at' => $schedule['at'] ?? null,
+                    'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
+                    'stripe_session_id' => $stripeSessionId,
+                    'stripe_payment_intent_id' => $stripePaymentIntentId,
+                    'stripe_response' => method_exists($session, 'toArray')
+                        ? json_encode($session->toArray())
+                        : json_encode($session),
+                    'paid_at' => now(),
+                ]);
 
-                try {
-                    $order = Order::create($schema->filterExistingColumns('orders', [
-                        'user_id' => $userId,
-                        'order_number' => $orderNumber,
-                        'reference_code' => $referenceCode,
-                        'checkout_line_key' => $lineKey,
-                        'subtotal' => $line['price'] ?? 0,
-                        'tax' => 0,
-                        'total_amount' => $line['price'] ?? 0,
-                        'payment_method' => 'card',
-                        'payment_status' => 'paid',
-                        'status' => 'pending',
-                        'sensitive_type' => $line['sensitive_type'] ?? null,
-                        'additional_price' => $line['additional_price'] ?? 0,
-                        'publication_mode' => $schedule['mode'] ?? 'immediate',
-                        'scheduled_publish_at' => $schedule['at'] ?? null,
-                        'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
-                        'stripe_session_id' => $stripeSessionId,
-                        'stripe_payment_intent_id' => $stripePaymentIntentId,
-                        'stripe_response' => method_exists($session, 'toArray')
-                            ? json_encode($session->toArray())
-                            : json_encode($session),
-                        'paid_at' => now(),
-                    ]));
-                } catch (QueryException $e) {
-                    if (! $this->isUniqueConstraintFailure($e)) {
-                        throw $e;
-                    }
-
+                if ($order === null) {
                     continue;
                 }
 
@@ -561,11 +540,6 @@ class OrderPaymentService
                 }
             }
 
-            $bonus = round((float) ($package['bonus_applied'] ?? 0), 2);
-            if ($bonus > 0 && $orders->isNotEmpty()) {
-                $this->consumeBonusAmount($orders->first(), $bonus);
-            }
-
             return $orders;
         });
 
@@ -587,9 +561,47 @@ class OrderPaymentService
             'session_id' => $session->id ?? null,
         ]);
 
+        $this->recordAdvertiserPurchaseForPaidCheckout(
+            $referenceCode,
+            $created,
+            (float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0),
+            (float) ($package['order_total'] ?? $meta['order_total'] ?? 0)
+        );
         $this->evaluateSpendBudgetAfterPaidOrders($created);
 
         return $created;
+    }
+
+    /**
+     * Pending/failed card rows can be marked paid. Cancelled or completed
+     * orders must not be resurrected by a late Stripe webhook or success URL.
+     */
+    private function canMarkCardOrderPaid(Order $order): bool
+    {
+        if ($order->payment_status === 'paid') {
+            return false;
+        }
+
+        if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+            Log::warning('Skipping order with unexpected payment status', [
+                'order_id' => $order->id,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        if (in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+            Log::warning('Skipping Stripe mark-paid for cancelled or completed order', [
+                'order_id' => $order->id,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
@@ -624,6 +636,42 @@ class OrderPaymentService
             ->all();
 
         return array_fill_keys($ids, true);
+    }
+
+    /**
+     * Insert a paid card order, retrying order_number collisions.
+     * Returns null only when this checkout line was already inserted (line-key race).
+     *
+     * @param  array<string, mixed>  $attrs
+     */
+    private function createPaidCardOrderRow(CheckoutSchemaService $schema, array $attrs): ?Order
+    {
+        $lineKey = (string) ($attrs['checkout_line_key'] ?? '');
+
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            $attrs['order_number'] = $this->freshOrderNumber();
+
+            try {
+                return Order::create($schema->filterExistingColumns('orders', $attrs));
+            } catch (QueryException $e) {
+                if (! $this->isUniqueConstraintFailure($e)) {
+                    throw $e;
+                }
+
+                if ($lineKey !== '' && Order::query()->where('checkout_line_key', $lineKey)->exists()) {
+                    return null;
+                }
+            }
+        }
+
+        throw new \RuntimeException(
+            'Unable to allocate a unique order number for checkout line '.$lineKey
+        );
+    }
+
+    protected function freshOrderNumber(): string
+    {
+        return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
     }
 
     private function checkoutLineKey(string $referenceCode, int $siteId, int $index): string
@@ -672,12 +720,14 @@ class OrderPaymentService
         }
 
         if ($stripeCents === null) {
-            Log::warning('Stripe session missing amount fields; skipping amount check', [
+            Log::error('Stripe session missing amount fields; refusing to finalize', [
                 'reference_code' => $referenceCode,
                 'session_id' => $session->id ?? null,
             ]);
 
-            return;
+            throw new \RuntimeException(
+                'Stripe charged amount is missing for ref '.$referenceCode
+            );
         }
 
         $stripeEuros = StripePaymentService::fromCents($stripeCents);

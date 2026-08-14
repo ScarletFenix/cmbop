@@ -319,7 +319,10 @@ class StripeWebhookController extends Controller
             throw new \RuntimeException('site_feature publisher mismatch');
         }
 
-        $result = app(SitePromotionService::class)->featureFromStripePayment($site, $user, $sessionId);
+        $promotions = app(SitePromotionService::class);
+        $promotions->assertStripeChargeMatchesFeaturePrice($session);
+
+        $result = $promotions->featureFromStripePayment($site, $user, $sessionId);
         if (! ($result['success'] ?? false)) {
             throw new \RuntimeException($result['message'] ?? 'Failed to apply site feature from webhook');
         }

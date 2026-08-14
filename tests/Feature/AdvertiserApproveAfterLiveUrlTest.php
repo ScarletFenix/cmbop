@@ -197,6 +197,69 @@ class AdvertiserApproveAfterLiveUrlTest extends TestCase
         }
     }
 
+    public function test_approve_is_blocked_when_payment_is_not_paid(): void
+    {
+        [$advertiser, $publisher, , $order, $item] = $this->paidProcessingOrder();
+
+        $order->update([
+            'status' => 'review',
+            'payment_status' => 'failed',
+            'paid_at' => null,
+        ]);
+        $item->update([
+            'live_url' => 'https://approve-after-live.example/unpaid-review',
+            'live_url_submitted_at' => now(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $order->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonFragment([
+                'message' => 'This order cannot be approved because payment is not complete.',
+            ]);
+
+        $this->assertSame('review', $order->fresh()->status);
+        $this->assertEqualsWithDelta(
+            0.0,
+            (float) Wallet::where('user_id', $publisher->id)->value('balance'),
+            0.01
+        );
+    }
+
+    public function test_auto_approve_skips_orders_that_are_not_paid(): void
+    {
+        [$advertiser, $publisher, , $order, $item] = $this->paidProcessingOrder();
+
+        $order->update([
+            'status' => 'review',
+            'payment_status' => 'failed',
+            'paid_at' => null,
+        ]);
+        $item->update([
+            'live_url' => 'https://approve-after-live.example/unpaid-auto',
+            'live_url_submitted_at' => now()->subHours(OrderItem::autoApproveHours() + 2),
+            'modification_requested' => 'no',
+            'auto_approve_triggered' => false,
+        ]);
+
+        $this->artisan('orders:auto-approve')->assertSuccessful();
+
+        $this->assertSame('review', $order->fresh()->status);
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertFalse((bool) $item->fresh()->auto_approve_triggered);
+        $this->assertEqualsWithDelta(
+            0.0,
+            (float) Wallet::where('user_id', $publisher->id)->value('balance'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            115.0,
+            (float) Wallet::where('user_id', $advertiser->id)->value('reserved_balance'),
+            0.01
+        );
+    }
+
     public function test_approve_explains_when_order_is_still_processing(): void
     {
         [$advertiser, , , $order] = $this->paidProcessingOrder();

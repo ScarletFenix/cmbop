@@ -43,23 +43,28 @@ return Application::configure(basePath: dirname(__DIR__))
         });
 
         // ValidatePostSize runs before routing. A 5 MB .docx with PHP still at
-        // 2M/8M becomes a 413 with no file, and the Library fetch then shows
-        // "Upload failed" instead of the article-cap vs PHP-cap message.
+        // 2M/8M becomes a 413 with no file. Return JSON so the Library fetch
+        // does not show a generic "Upload failed" / "over the 10 MB limit".
         $exceptions->render(function (PostTooLargeException $e, $request) {
             if (! $request->expectsJson()) {
                 return null;
             }
-            if (! $request->is(
-                'advertiser/content-library/upload',
-                'advertiser/content-submissions/upload',
-                'advertiser/content-submissions/editor-image',
-            )) {
+            $uploads = app(ContentUploadService::class);
+            $path = $request->path();
+            if (str_contains($path, 'content-submissions/editor-image')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $uploads->phpImageRejectedMessage(),
+                ], 422);
+            }
+            if (! str_contains($path, 'content-library/upload')
+                && ! str_contains($path, 'content-submissions/upload')) {
                 return null;
             }
 
             return response()->json([
                 'success' => false,
-                'message' => app(ContentUploadService::class)->phpSizeRejectedMessage(),
+                'message' => $uploads->phpSizeRejectedMessage(),
             ], 422);
         });
     })

@@ -188,17 +188,40 @@ function showDropzoneFile(file) {
 
 function libraryFileTooLargeMessage(file) {
     if (!file) return '';
-    const appMaxKb = 10240;
-    const phpMaxKb = Number(boot.phpMaxKilobytes || 0);
-    const appMb = 10;
-    if (phpMaxKb > 0 && phpMaxKb < appMaxKb && file.size > phpMaxKb * 1024) {
-        const phpMb = Math.max(1, Math.round(phpMaxKb / 1024));
-        return 'This file is under the ' + appMb + ' MB article limit, but the server PHP upload limit is ' + phpMb + ' MB. In hosting PHP settings set upload_max_filesize to 64M and post_max_size to 64M, wait a minute, then try again.';
-    }
-    if (file.size > appMaxKb * 1024) {
-        return 'That file is over the ' + appMb + ' MB limit.';
+    if (file.size > 10240 * 1024) {
+        return 'That file is over the 10 MB limit.';
     }
     return '';
+}
+
+function libraryUploadTransportMessage(status) {
+    if (status === 419) {
+        return 'Your session expired. Refresh the page and try again.';
+    }
+    if (status === 429) {
+        return 'Too many upload attempts. Wait a minute and try again.';
+    }
+    // 413 / dropped connection: the file never reached Laravel (LiteSpeed / PHP pipe).
+    // 500 / 502 / 504 / 408 are processing or gateway failures — do not mislabel those as size.
+    if (status === 413 || status === 0) {
+        return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
+    }
+    return 'Upload failed. Please try again.';
+}
+
+function libraryClientByteHeaders(bytes) {
+    return {
+        'X-CSRF-TOKEN': libraryCsrf,
+        'Accept': 'application/json',
+        'X-Requested-With': 'XMLHttpRequest',
+        'X-Upload-Bytes': String(bytes),
+    };
+}
+
+function libraryUrlWithClientBytes(url, bytes) {
+    if (!url) return url;
+    const join = url.indexOf('?') === -1 ? '?' : '&';
+    return url + join + 'client_bytes=' + encodeURIComponent(String(bytes));
 }
 
 function assignLibraryFile(file, feedback) {
@@ -465,6 +488,24 @@ async function parseLibraryJson(res) {
         return await res.json();
     } catch (e) {
         return null;
+    }
+}
+
+async function submissionForEditor(submission) {
+    if (!submission || !submission.id) {
+        return submission;
+    }
+    if (submission.preview_html) {
+        return submission;
+    }
+    try {
+        const payload = await fetchSubmissionPayload(submission.id);
+        return Object.assign({}, submission, payload, {
+            preview_html: payload.preview_html || payload.html || '',
+            detected_links: payload.detected_links || payload.links || submission.detected_links || [],
+        });
+    } catch (e) {
+        return submission;
     }
 }
 
@@ -1203,14 +1244,21 @@ function ensureArticleQuill() {
             const fd = new FormData();
             fd.append('image', file);
             try {
-                const res = await fetch(libraryImageUploadUrl, {
+                const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+                    headers: libraryClientByteHeaders(file.size),
                     body: fd,
                 });
                 const data = await parseLibraryJson(res);
+                if (res.status === 419) {
+                    setFeedbackHtml(feedback, false, 'Your session expired. Refresh the page and try again.');
+                    return;
+                }
                 if (!data || !res.ok || !data.success || !data.url) {
-                    setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Image upload failed'));
+                    const fallback = (res.status === 413 || res.status === 422)
+                        ? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
+                        : 'Image upload failed';
+                    setFeedbackHtml(feedback, false, firstErrorMessage(data, fallback));
                     return;
                 }
                 const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
@@ -1235,6 +1283,9 @@ function openArticleEditor(submission) {
         return;
     }
     try {
+        if (typeof Quill === 'undefined') {
+            throw new Error('quill-missing');
+        }
         articleEditorSubmissionId = submission.id;
         articleEditorDetectedLinks = Array.isArray(submission.detected_links) ? submission.detected_links : [];
         ensureArticleQuill();
@@ -1246,6 +1297,13 @@ function openArticleEditor(submission) {
             (submission.word_count ? ' · ' + submission.word_count + ' words' : '');
         document.getElementById('articleEditorFeedback').textContent = '';
         loadArticleHtml(submission.preview_html || '<p><br></p>');
+        if (submission.editor_notice) {
+            setFeedbackHtml(
+                document.getElementById('articleEditorFeedback'),
+                !!submission.editor_notice_ok,
+                submission.editor_notice
+            );
+        }
         const needsRights = !!(submission.needs_image_rights || (submission.has_images && !submission.image_rights_covers));
         syncEditorImageRights(needsRights);
         showArticleEditorAfterUploadModal();
@@ -1254,7 +1312,9 @@ function openArticleEditor(submission) {
         libraryUploadClosingForEditor = false;
         resetLibraryUploadUi();
         const uploadEl = document.getElementById('uploadContentModal');
-        const message = 'Could not open the editor. Try again.';
+        const message = (typeof Quill === 'undefined')
+            ? 'The article editor failed to load. Refresh the page and try again.'
+            : 'Could not open the editor. Try again.';
         if (uploadEl && uploadEl.classList.contains('show')) {
             setFeedbackHtml(document.getElementById('libraryUploadFeedback'), false, message);
         } else {
@@ -1368,6 +1428,11 @@ async function saveArticleEditor() {
             )),
         });
         const data = await parseLibraryJson(res);
+        if (res.status === 419) {
+            setFeedbackHtml(feedback, false, 'Your session expired. Refresh the page and try again.');
+            btn.disabled = false;
+            return;
+        }
         if (!data) {
             setFeedbackHtml(feedback, false, 'Could not save article.');
             btn.disabled = false;
@@ -1691,9 +1756,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             setFeedbackHtml(feedback, false, 'Upload URL is missing');
             return;
         }
-        const res = await fetch(libraryUploadUrl, {
+        const res = await fetch(libraryUrlWithClientBytes(libraryUploadUrl, file.size), {
             method: 'POST',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+            headers: libraryClientByteHeaders(file.size),
             body: fd,
             signal: libraryUploadAbort ? libraryUploadAbort.signal : undefined,
         });
@@ -1702,11 +1767,15 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         try {
             data = await res.json();
         } catch (parseErr) {
-            setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
+            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
             return;
         }
         if (!data.success) {
             libraryUploadAbort = null;
+            if (res.status === 419 || res.status === 429) {
+                setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
+                return;
+            }
             setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Upload failed. Use a Word .docx and try again.'));
             return;
         }
@@ -1720,9 +1789,12 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
                 data.message,
                 !!(data.approved || data.submission.can_order)
             );
-            openArticleEditor(Object.assign({}, data.submission, {
+            const submission = await submissionForEditor(Object.assign({}, data.submission, {
                 can_order: !!(data.submission.can_order || data.approved),
+                editor_notice: data.approved ? '' : (data.message || ''),
+                editor_notice_ok: !!data.approved,
             }));
+            openArticleEditor(submission);
         } else {
             goToLibraryResult({}, data.message || 'Article uploaded.', !!data.approved);
         }
@@ -1731,7 +1803,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             resetLibraryUploadUi();
             return;
         }
-        setFeedbackHtml(feedback, false, 'Network error while uploading.');
+        setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
     } finally {
         if (!openedEditor && btn) btn.disabled = false;
         progress?.classList.add('d-none');

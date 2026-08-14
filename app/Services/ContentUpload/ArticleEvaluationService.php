@@ -17,6 +17,12 @@ use Illuminate\Support\Facades\Log;
  */
 class ArticleEvaluationService
 {
+    /** Cap uniqueness shingles so a 10 MB article cannot OOM the request. */
+    private const UNIQUENESS_WORD_LIMIT = 15000;
+
+    /** SQL truncate for corpus extracted_text (~15k words). */
+    private const UNIQUENESS_TEXT_CHARS = 100000;
+
     private ArticleLanguageGuard $languageGuard;
 
     public function __construct(
@@ -56,6 +62,51 @@ class ArticleEvaluationService
      * }
      */
     public function evaluate(ContentSubmission $submission, ?User $user = null): array
+    {
+        try {
+            return $this->evaluateUnchecked($submission, $user);
+        } catch (\Throwable $e) {
+            Log::error('Content evaluation failed', [
+                'submission_id' => $submission->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return [
+                'approved' => false,
+                'moderation_status' => ContentSubmission::STATUS_ERROR,
+                'evaluation_status' => 'error',
+                'uniqueness_score' => 0,
+                'quality_score' => 0,
+                'report' => [
+                    'summary' => 'Automatic review could not finish. Please try saving again.',
+                    'error' => $e->getMessage(),
+                ],
+                'title' => 'Review failed',
+                'message' => 'Automatic review could not finish. Please try saving again.',
+                'log' => null,
+                'highlighted_html' => null,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+    }
+
+    /**
+     * @return array{
+     *   approved:bool,
+     *   moderation_status:string,
+     *   evaluation_status:string,
+     *   uniqueness_score:int,
+     *   quality_score:int,
+     *   report:array,
+     *   title:string,
+     *   message:string,
+     *   log:?ContentModerationLog,
+     *   highlighted_html?:?string,
+     *   matched_terms?:array<int,string>
+     * }
+     */
+    private function evaluateUnchecked(ContentSubmission $submission, ?User $user = null): array
     {
         $cfg = $this->uploadConfig();
         $evalCfg = $cfg['evaluation'] ?? [];
@@ -274,7 +325,11 @@ class ArticleEvaluationService
     public function scoreUniqueness(string $text, ?int $excludeId = null, int $corpusLimit = 200): array
     {
         $shingles = $this->shingles($text, 3);
-        $internal = $this->internalOriginality($text);
+        $internal = $this->internalOriginality(
+            mb_strlen($text) > self::UNIQUENESS_TEXT_CHARS
+                ? mb_substr($text, 0, self::UNIQUENESS_TEXT_CHARS)
+                : $text
+        );
 
         if ($shingles === []) {
             return [
@@ -287,6 +342,8 @@ class ArticleEvaluationService
         }
 
         $query = ContentSubmission::query()
+            ->select(['id'])
+            ->selectRaw('substr(extracted_text, 1, ?) as extracted_text', [self::UNIQUENESS_TEXT_CHARS])
             ->whereNotNull('extracted_text')
             ->where('extracted_text', '!=', '')
             ->whereIn('moderation_status', [
@@ -305,7 +362,7 @@ class ArticleEvaluationService
         $maxSim = 0.0;
         $matchedId = null;
 
-        foreach ($query->get(['id', 'extracted_text']) as $row) {
+        foreach ($query->get() as $row) {
             $other = $this->shingles((string) $row->extracted_text, 3);
             if ($other === []) {
                 continue;
@@ -357,6 +414,9 @@ class ArticleEvaluationService
         $text = mb_strtolower($text);
         $text = preg_replace('/[^a-z0-9\s]+/u', ' ', $text) ?? '';
         $words = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        if (count($words) > self::UNIQUENESS_WORD_LIMIT) {
+            $words = array_slice($words, 0, self::UNIQUENESS_WORD_LIMIT);
+        }
         if (count($words) < $n) {
             return $words === [] ? [] : [implode(' ', $words)];
         }

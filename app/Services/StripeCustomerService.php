@@ -363,7 +363,7 @@ class StripeCustomerService
     /**
      * Charge a saved card (on-session). May return a redirect URL for 3DS.
      *
-     * @return array{status: string, payment_intent_id: string, client_secret?: string, redirect_url?: string}
+     * @return array{status: string, payment_intent_id: string, client_secret?: string, redirect_url?: string, amount_received?: int}
      */
     public function payWithSavedCard(
         User $user,
@@ -396,6 +396,7 @@ class StripeCustomerService
             'status' => (string) $intent->status,
             'payment_intent_id' => (string) $intent->id,
             'client_secret' => (string) $intent->client_secret,
+            'amount_received' => (int) ($intent->amount_received ?: $intent->amount ?: 0),
         ];
 
         if ($intent->status === 'requires_action' && ! empty($intent->next_action->redirect_to_url->url ?? null)) {
