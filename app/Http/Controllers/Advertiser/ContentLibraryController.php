@@ -7,11 +7,11 @@ use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
-use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
 
@@ -89,6 +89,7 @@ class ContentLibraryController extends Controller
         }
 
         $query = ContentSubmission::query()
+            ->forLibraryList()
             ->with(['orderItem.site', 'orderItems.site'])
             ->where('user_id', auth()->id())
             ->latest('id');
@@ -422,19 +423,32 @@ class ContentLibraryController extends Controller
             }
         }
 
-        $result = $this->uploads->uploadAndProcess(
-            file: $request->file('file'),
-            user: auth()->user(),
-            siteId: null,
-            copyIndex: 0,
-            cartKey: null,
-            replace: $replace,
-            title: $data['title'] ?? null,
-            country: $data['country'],
-            language: $data['language'],
-            imageRights: $data['image_rights'] ?? null,
-            imageRightsSource: $data['image_rights_source'] ?? null,
-        );
+        try {
+            $result = $this->uploads->uploadAndProcess(
+                file: $request->file('file'),
+                user: auth()->user(),
+                siteId: null,
+                copyIndex: 0,
+                cartKey: null,
+                replace: $replace,
+                title: $data['title'] ?? null,
+                country: $data['country'],
+                language: $data['language'],
+                imageRights: $data['image_rights'] ?? null,
+                imageRightsSource: $data['image_rights_source'] ?? null,
+            );
+        } catch (\Throwable $e) {
+            Log::error('Content library upload failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'title' => 'Upload failed',
+                'message' => 'The article could not be uploaded. Please try again.',
+            ], 500);
+        }
 
         if (! $result['ok']) {
             return response()->json([
@@ -442,6 +456,22 @@ class ContentLibraryController extends Controller
                 'title' => $result['title'] ?? 'Upload failed',
                 'message' => $result['message'] ?? 'Unable to upload document.',
             ], 422);
+        }
+
+        try {
+            $submission = $this->serialize($result['submission']);
+        } catch (\Throwable $e) {
+            Log::error('Content library upload serialize failed', [
+                'submission_id' => $result['submission']->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            $submission = [
+                'id' => $result['submission']->id ?? null,
+                'title' => $result['submission']->title ?? $result['title'],
+                'moderation_status' => $result['submission']->moderation_status ?? null,
+                'can_order' => false,
+                'editable' => true,
+            ];
         }
 
         return response()->json([
@@ -453,7 +483,7 @@ class ContentLibraryController extends Controller
             'report' => $result['report'] ?? null,
             'has_link' => (bool) ($result['has_link'] ?? false),
             'links' => $result['links'] ?? [],
-            'submission' => $this->serialize($result['submission']),
+            'submission' => $submission,
         ]);
     }
 
@@ -504,6 +534,7 @@ class ContentLibraryController extends Controller
         }
 
         return ContentSubmission::query()
+            ->forArticlePicker()
             ->where('id', (int) $id)
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
@@ -533,7 +564,6 @@ class ContentLibraryController extends Controller
             'title' => $s->title,
             'country' => $s->country,
             'language' => $s->language,
-            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'word_count' => $s->word_count,
             'moderation_status' => $s->moderation_status,
             'can_order' => $s->canBeOrdered(),
@@ -564,7 +594,6 @@ class ContentLibraryController extends Controller
             'moderation_status' => $s->moderation_status,
             'evaluation_status' => $s->evaluation_status,
             'evaluation_report' => $s->evaluation_report,
-            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
             'detected_links' => $s->detectedLinks(),

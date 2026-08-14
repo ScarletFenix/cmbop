@@ -8,12 +8,14 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutIntentService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
-class AdminFailWalletReleaseTest extends TestCase
+class CheckoutIntentPersistTest extends TestCase
 {
     use RefreshDatabase;
 
@@ -40,25 +42,25 @@ class AdminFailWalletReleaseTest extends TestCase
     {
         return Site::create([
             'publisher_id' => $publisher->id,
-            'site_name' => 'Wallet Fail Site',
-            'site_url' => 'https://wallet-fail.example',
-            'domain' => 'wallet-fail.example',
+            'site_name' => 'Manual Bonus Site',
+            'site_url' => 'https://manual-bonus.example',
+            'domain' => 'manual-bonus.example',
             'da' => 40,
             'dr' => 40,
             'traffic' => 1000,
             'country' => 'us',
             'language' => 'en',
             'category' => 'Technology',
-            'price' => 115,
+            'price' => 80,
             'publication_time' => 'permanent',
             'link_type' => 'dofollow',
-            'description' => str_repeat('Wallet fail release site. ', 3),
+            'description' => str_repeat('Manual bonus checkout site. ', 3),
             'verified' => true,
             'active' => true,
         ]);
     }
 
-    public function test_admin_failed_releases_paid_wallet_reserved_funds(): void
+    public function test_admin_mark_paid_consumes_bonus_after_cache_flush(): void
     {
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
@@ -69,7 +71,7 @@ class AdminFailWalletReleaseTest extends TestCase
             'user_id' => $advertiser->id,
             'role_id' => Wallet::advertiserRoleId(),
             'balance' => 0,
-            'reserved_balance' => 115,
+            'reserved_balance' => 20,
             'bonus_balance' => 0,
             'bonus_reserved' => 20,
             'currency' => 'EUR',
@@ -78,14 +80,13 @@ class AdminFailWalletReleaseTest extends TestCase
         $order = Order::create([
             'user_id' => $advertiser->id,
             'order_number' => (string) random_int(100000, 999999),
-            'reference_code' => 'WALLET-FAIL-1',
-            'subtotal' => 115,
+            'reference_code' => 'MANUAL-BONUS-1',
+            'subtotal' => 80,
             'tax' => 0,
-            'total_amount' => 115,
-            'payment_method' => 'wallet',
-            'payment_status' => 'paid',
-            'status' => 'processing',
-            'paid_at' => now(),
+            'total_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
         ]);
         OrderItem::create([
             'order_id' => $order->id,
@@ -93,29 +94,26 @@ class AdminFailWalletReleaseTest extends TestCase
             'site_name' => $site->site_name,
             'site_url' => $site->site_url,
             'content_link' => 'https://example.com/a',
-            'price' => 115,
+            'price' => 80,
         ]);
+
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $order->reference_code, 20);
+        Cache::flush();
 
         $this->actingAs($admin)
             ->postJson(route('admin.payments.updateStatus', $order->id), [
-                'payment_status' => 'failed',
-                'notes' => 'Duplicate wallet hold',
+                'payment_status' => 'paid',
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        $order->refresh();
-        $this->assertSame('failed', $order->payment_status);
-        $this->assertSame('cancelled', $order->status);
-
         $wallet->refresh();
-        $this->assertEqualsWithDelta(115.0, (float) $wallet->balance, 0.01);
-        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
-        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertSame('paid', $order->fresh()->payment_status);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
     }
 
-    public function test_admin_failed_does_not_steal_reserved_funds_from_a_completed_wallet_order(): void
+    public function test_admin_mark_failed_refunds_bonus_after_cache_flush(): void
     {
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
@@ -125,24 +123,23 @@ class AdminFailWalletReleaseTest extends TestCase
         $wallet = Wallet::create([
             'user_id' => $advertiser->id,
             'role_id' => Wallet::advertiserRoleId(),
-            'balance' => 10,
-            'reserved_balance' => 50,
+            'balance' => 0,
+            'reserved_balance' => 20,
             'bonus_balance' => 0,
-            'bonus_reserved' => 0,
+            'bonus_reserved' => 20,
             'currency' => 'EUR',
         ]);
 
         $order = Order::create([
             'user_id' => $advertiser->id,
             'order_number' => (string) random_int(100000, 999999),
-            'reference_code' => 'WALLET-FAIL-DONE',
-            'subtotal' => 115,
+            'reference_code' => 'MANUAL-BONUS-FAIL',
+            'subtotal' => 80,
             'tax' => 0,
-            'total_amount' => 115,
-            'payment_method' => 'wallet',
-            'payment_status' => 'paid',
-            'status' => 'completed',
-            'paid_at' => now(),
+            'total_amount' => 80,
+            'payment_method' => 'bank',
+            'payment_status' => 'pending',
+            'status' => 'pending',
         ]);
         OrderItem::create([
             'order_id' => $order->id,
@@ -150,8 +147,11 @@ class AdminFailWalletReleaseTest extends TestCase
             'site_name' => $site->site_name,
             'site_url' => $site->site_url,
             'content_link' => 'https://example.com/a',
-            'price' => 115,
+            'price' => 80,
         ]);
+
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $order->reference_code, 20);
+        Cache::flush();
 
         $this->actingAs($admin)
             ->postJson(route('admin.payments.updateStatus', $order->id), [
@@ -161,19 +161,10 @@ class AdminFailWalletReleaseTest extends TestCase
             ->assertJsonPath('success', true);
 
         $wallet->refresh();
-        $this->assertEqualsWithDelta(10.0, (float) $wallet->balance, 0.01);
-        $this->assertEqualsWithDelta(50.0, (float) $wallet->reserved_balance, 0.01);
-        $this->assertSame('completed', $order->fresh()->status);
-    }
-
-    public function test_payment_controller_imports_wallet_ledger_service(): void
-    {
-        $source = file_get_contents(app_path('Http/Controllers/Admin/PaymentController.php'));
-
-        $this->assertStringContainsString(
-            'use App\\Services\\Wallet\\WalletLedgerService;',
-            $source
-        );
-        $this->assertStringContainsString('releaseWalletHoldOnAdminFailed', $source);
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
 }

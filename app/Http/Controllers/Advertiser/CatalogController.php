@@ -29,6 +29,7 @@ use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
+use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
@@ -53,7 +54,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -751,6 +751,7 @@ class CatalogController extends Controller
         }
 
         $submission = ContentSubmission::query()
+            ->forArticlePicker()
             ->where('id', $id)
             ->where('user_id', auth()->id())
             ->orderable()
@@ -1069,6 +1070,7 @@ class CatalogController extends Controller
         $cartChanged = $removedInactive !== [] || $removedOwned !== [] || $cart !== array_values(session()->get('cart', []));
 
         $approved = ContentSubmission::query()
+            ->forArticlePicker()
             ->where('user_id', auth()->id())
             ->orderable()
             ->latest('id')
@@ -1093,6 +1095,7 @@ class CatalogController extends Controller
                 $submission = $approvedById->get($submissionId);
                 if (! $submission) {
                     $submission = ContentSubmission::query()
+                        ->forArticlePicker()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
                         ->orderable()
@@ -1452,6 +1455,7 @@ class CatalogController extends Controller
         }
 
         $submission = ContentSubmission::query()
+            ->forArticlePicker()
             ->where('id', $submissionId)
             ->where('user_id', auth()->id())
             ->orderable()
@@ -1566,6 +1570,7 @@ class CatalogController extends Controller
 
             if (session('ordering_from_library') && session('checkout_content_submission_id')) {
                 $librarySubmission = ContentSubmission::query()
+                    ->forArticlePicker()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
                     ->orderable()
@@ -1914,6 +1919,7 @@ class CatalogController extends Controller
         $checkoutWallet = auth()->user()->activeWallet();
         if ($checkoutWallet) {
             $checkoutWallet->repairOrphanedWelcomeBonus();
+            $checkoutWallet->reconcileInflatedBonusBalance();
             $checkoutWallet->refresh();
         }
         $checkoutBonusBalance = $checkoutWallet ? $checkoutWallet->lockedBonusBalance() : 0.0;
@@ -1941,6 +1947,7 @@ class CatalogController extends Controller
             $articleIds = $articleIds->push((int) $librarySubmission->id)->unique()->values();
         }
         $checkoutArticles = ContentSubmission::query()
+            ->forCheckoutSummary()
             ->with(['orderItems.site', 'orderItems.order'])
             ->where('user_id', auth()->id())
             ->whereIn('id', $articleIds->all() ?: [0])
@@ -1991,11 +1998,17 @@ class CatalogController extends Controller
         }
 
         try {
-            $this->syncPrunedSessionCart();
-            // Get cart from session
+            $prunedCart = $this->cartPricing()->syncAdvertiserSessionCart(auth()->user());
             $cart = session()->get('cart', []);
 
             if (empty($cart)) {
+                if (($prunedCart['removed_owned'] ?? []) !== []) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You cannot order placements on your own websites.',
+                    ], 422);
+                }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Your cart is empty.',
@@ -2042,6 +2055,14 @@ class CatalogController extends Controller
             );
             if ($checkoutContent instanceof JsonResponse) {
                 return $checkoutContent;
+            }
+
+            $checkoutContent = $this->excludeSelfOwnedCheckoutLines($checkoutContent, (int) $userId);
+            if ($checkoutContent['lines'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot order placements on your own websites.',
+                ], 422);
             }
 
             $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
@@ -2124,6 +2145,7 @@ class CatalogController extends Controller
                 if ($advertiserRoleId) {
                     $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
                     $wallet->repairOrphanedWelcomeBonus();
+                    $wallet->reconcileInflatedBonusBalance();
                     $wallet->refresh();
                     $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
                     $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
@@ -2159,10 +2181,9 @@ class CatalogController extends Controller
                     if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
                         continue;
                     }
-                    $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
                     $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                         'user_id' => $userId,
-                        'order_number' => $orderNumber,
+                        'order_number' => Order::nextOrderNumber(),
                         'reference_code' => $referenceCode,
                         'subtotal' => $orderItem['price'],
                         'tax' => 0,
@@ -2184,6 +2205,22 @@ class CatalogController extends Controller
                 DB::commit();
                 $this->forgetCheckoutBonus((int) $userId, (string) $referenceCode);
                 $this->restoreDeferredCartAfterPayment();
+                $advertiserRoleId = Wallet::advertiserRoleId();
+                if ($advertiserRoleId) {
+                    $purchaseWallet = Wallet::query()
+                        ->where('user_id', $userId)
+                        ->where('role_id', $advertiserRoleId)
+                        ->first();
+                    if ($purchaseWallet) {
+                        app(WalletLedgerService::class)->recordPurchaseOnce(
+                            $purchaseWallet,
+                            $totalAmount,
+                            $bonusApplied,
+                            $created->first(),
+                            (string) $referenceCode
+                        );
+                    }
+                }
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
                 try {
@@ -2376,6 +2413,7 @@ class CatalogController extends Controller
             // Lock wallet row inside the transaction to prevent concurrent overspend
             $advertiserWallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
             $advertiserWallet->repairOrphanedWelcomeBonus();
+            $advertiserWallet->reconcileInflatedBonusBalance();
             $advertiserWallet->refresh();
 
             $spendable = round((float) $advertiserWallet->balance, 2);
@@ -2432,11 +2470,9 @@ class CatalogController extends Controller
                 if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
                     continue;
                 }
-                $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
-
                 $order = Order::create($schema->filterExistingColumns('orders', array_merge([
                     'user_id' => $userId,
-                    'order_number' => $orderNumber,
+                    'order_number' => Order::nextOrderNumber(),
                     'reference_code' => $referenceCode,
                     'subtotal' => $orderItem['price'],
                     'tax' => 0,
@@ -2567,6 +2603,7 @@ class CatalogController extends Controller
                 if ($advertiserRoleId) {
                     $wallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
                     $wallet->repairOrphanedWelcomeBonus();
+                    $wallet->reconcileInflatedBonusBalance();
                     $wallet->refresh();
                     $bonusApplied = $wallet->reserveBonusOnly(min($wallet->lockedBonusBalance(), $totalAmount));
                     $amountDue = round(max(0, $totalAmount - $bonusApplied), 2);
@@ -2582,11 +2619,9 @@ class CatalogController extends Controller
                 if ($site instanceof Site && (int) $site->publisher_id === (int) $userId) {
                     continue;
                 }
-                $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
-
                 $order = Order::create(array_merge([
                     'user_id' => $userId,
-                    'order_number' => $orderNumber,
+                    'order_number' => Order::nextOrderNumber(),
                     'reference_code' => $referenceCode,
                     'subtotal' => $orderItem['price'],
                     'tax' => 0,
@@ -3245,6 +3280,14 @@ class CatalogController extends Controller
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
 
+            // Pay again charges the full package on the card. Release any leftover
+            // checkout bonus for this reference first so promo is not left reserved
+            // while the advertiser pays the original total again.
+            app(OrderPaymentService::class)->refundBonusReservedForReference(
+                (int) auth()->id(),
+                $referenceCode
+            );
+
             Stripe::setApiKey(config('services.stripe.secret'));
 
             $retryPayload = [
@@ -3394,18 +3437,19 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
+            $search = trim((string) $request->input('search', ''));
+            $statusFilter = strtolower(trim((string) $request->input('status', '')));
+
             // Search filter — word-AND across order #, reference, site name/URL, live URL
-            if ($request->filled('search')) {
-                $search = trim((string) $request->search);
+            if ($search !== '') {
                 $orderSearch = app(AdvertiserOrderSearchQuery::class);
                 $hostNeedle = $this->catalogSearchHostNeedle($search);
                 $orderSearch->apply($query, $search, $hostNeedle);
-                $orderSearch->applyRelevanceOrder($query, $search);
             }
 
             // Status filter — awaiting_* / in_progress composites; other values match column.
-            if ($request->filled('status')) {
-                $status = (string) $request->status;
+            if ($statusFilter !== '') {
+                $status = $statusFilter;
                 if ($status === 'awaiting_payment') {
                     $query->where('status', 'pending')
                         ->where(function ($q) {
@@ -3454,7 +3498,11 @@ class CatalogController extends Controller
                 $query->whereDate('created_at', '<=', $request->date_to);
             }
 
-            $orders = $query->orderBy('created_at', 'desc')->paginate(20);
+            AdvertiserOrderStatus::applyQueueOrder($query, $statusFilter);
+            if ($search !== '') {
+                app(AdvertiserOrderSearchQuery::class)->applyRelevanceOrder($query, $search);
+            }
+            $orders = $query->orderBy('created_at', 'desc')->orderBy('id', 'desc')->paginate(20);
 
             $orderIds = collect($orders->items())->pluck('id');
             $unreadByOrder = OrderChatMessage::whereIn('order_id', $orderIds)
@@ -3629,6 +3677,13 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved because payment is not complete.',
+                ], 422);
+            }
+
             DB::beginTransaction();
 
             // Lock order to prevent double-approve races
@@ -3651,6 +3706,15 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Order must be under review to approve (current status: '.$order->status.').',
                 ], 400);
+            }
+
+            if ($order->payment_status !== 'paid') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved because payment is not complete.',
+                ], 422);
             }
 
             if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
@@ -3897,10 +3961,13 @@ class CatalogController extends Controller
         try {
             $data = $request->validate([
                 'reason' => 'required|string|min:10|max:1000',
+                'order_item_id' => 'nullable|integer',
             ]);
 
             $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-            $item = $order->items->first();
+            $item = ! empty($data['order_item_id'])
+                ? $order->items->firstWhere('id', (int) $data['order_item_id'])
+                : $order->items->first();
             if (! $item) {
                 return response()->json([
                     'success' => false,
@@ -3954,7 +4021,10 @@ class CatalogController extends Controller
         try {
             $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.')]);
+            $message = UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.');
+            $status = str_contains($e->getMessage(), 'own websites') ? 422 : 200;
+
+            return response()->json(['success' => false, 'message' => $message], $status);
         }
 
         if ($expandedOrders === []) {
@@ -4149,6 +4219,28 @@ class CatalogController extends Controller
     }
 
     /**
+     * Defense in depth: drop the advertiser's own publisher sites if they
+     * still appear after cart prune / expandCart. Own-only carts 422 earlier.
+     *
+     * @param  array{lines: array<int, mixed>, schedule: array}  $checkoutContent
+     * @return array{lines: array<int, mixed>, schedule: array}
+     */
+    private function excludeSelfOwnedCheckoutLines(array $checkoutContent, int $userId): array
+    {
+        $buyer = User::query()->find($userId);
+        $checkoutContent['lines'] = array_values(array_filter(
+            $checkoutContent['lines'] ?? [],
+            function ($line) use ($buyer) {
+                $site = is_array($line) ? ($line['orderItem']['site'] ?? null) : null;
+
+                return ! ($site instanceof Site && $site->isOwnedBy($buyer));
+            }
+        ));
+
+        return $checkoutContent;
+    }
+
+    /**
      * @param  array{mode?: string, at?: mixed, timezone?: string}  $schedule
      */
     private function persistCheckoutScheduleSession(array $schedule): void
@@ -4296,6 +4388,7 @@ class CatalogController extends Controller
         }
 
         return ContentSubmission::query()
+            ->forCheckoutSummary()
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
             ->orderable()
@@ -4304,29 +4397,30 @@ class CatalogController extends Controller
 
     private function checkoutBonusCacheKey(int $userId, string $referenceCode): string
     {
-        return 'checkout_bonus:'.$userId.':'.$referenceCode;
+        return CheckoutIntentService::bonusCacheKey($userId, $referenceCode);
     }
 
     private function rememberCheckoutBonus(int $userId, string $referenceCode, float $amount): void
     {
-        Cache::put($this->checkoutBonusCacheKey($userId, $referenceCode), round($amount, 2), now()->addHours(12));
+        app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $amount);
     }
 
     private function forgetCheckoutBonus(int $userId, string $referenceCode): void
     {
-        Cache::forget($this->checkoutBonusCacheKey($userId, $referenceCode));
+        app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
     }
 
     private function consumeCheckoutBonus(int $userId, string $referenceCode, ?float $amount = null): void
     {
-        $key = $this->checkoutBonusCacheKey($userId, $referenceCode);
-        $bonus = $amount ?? (float) Cache::pull($key, 0);
+        $bonus = $amount ?? app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode);
         if ($bonus <= 0) {
             return;
         }
 
         $roleId = Wallet::advertiserRoleId();
         if (! $roleId) {
+            app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
+
             return;
         }
 
@@ -4334,13 +4428,12 @@ class CatalogController extends Controller
         if ($wallet && (float) $wallet->bonus_reserved > 0) {
             $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
         }
-        Cache::forget($key);
+        app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
     }
 
     private function refundCheckoutBonus(int $userId, string $referenceCode): void
     {
-        $key = $this->checkoutBonusCacheKey($userId, $referenceCode);
-        $bonus = (float) Cache::pull($key, 0);
+        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode);
         if ($bonus <= 0) {
             return;
         }
@@ -4642,9 +4735,22 @@ class CatalogController extends Controller
             return;
         }
 
-        foreach (Order::with('items')->whereIn('id', $orderIds)->get() as $order) {
+        $orders = Order::with('items')->whereIn('id', $orderIds)->get();
+        $paymentService = app(OrderPaymentService::class);
+        foreach ($orders->pluck('reference_code')->unique()->filter() as $referenceCode) {
+            $paymentService->markOrdersFailedFromReference(
+                (string) $referenceCode,
+                'Replaced by a new checkout',
+                $userId
+            );
+        }
+
+        foreach ($orders as $order) {
             $this->releaseContentSubmissionsForOrder($order);
-            $order->update(['status' => 'cancelled']);
+            $fresh = $order->fresh();
+            if ($fresh && $fresh->status !== 'cancelled') {
+                $fresh->update(['status' => 'cancelled']);
+            }
         }
     }
 

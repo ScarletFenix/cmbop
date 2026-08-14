@@ -68,20 +68,21 @@ class SitePromotionService
         try {
             return DB::transaction(function () use ($site, $publisher, $price, $days, $roleId) {
                 $wallet = Wallet::lockOrCreateForRole($publisher->id, $roleId);
+                $withdrawable = $wallet->withdrawableBalance();
 
-                if (round((float) $wallet->balance, 2) < $price) {
+                if ($withdrawable < $price) {
                     return [
                         'success' => false,
                         'needs_top_up' => true,
-                        'balance' => (float) $wallet->balance,
+                        'balance' => $withdrawable,
                         'price' => $price,
                         'message' => 'Insufficient publisher balance. Top up €'
-                            .number_format($price - (float) $wallet->balance, 2)
+                            .number_format($price - $withdrawable, 2)
                             .' or more, then try again.',
                     ];
                 }
 
-                $wallet->debit($price);
+                $wallet->deductWithdrawable($price);
 
                 $site = $this->applyFeaturePeriod($site, $publisher, $price, $days, 'wallet');
 

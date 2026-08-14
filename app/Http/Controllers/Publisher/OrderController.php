@@ -97,7 +97,7 @@ class OrderController extends Controller
             }
 
             // Only paid orders — bank/Wise/crypto fund the wallet first; unpaid card checkouts stay hidden.
-            $query = OrderItem::with(['order.user', 'site', 'contentSubmission'])
+            $query = OrderItem::with(['order.user', 'site'])
                 ->whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
                     $q->where('payment_status', 'paid');
@@ -216,7 +216,9 @@ class OrderController extends Controller
                     'target_url' => $item->target_url,
                     'feature_image_url' => $item->feature_image_url,
                     'moderation_status' => $item->moderation_status,
-                    ...$this->articlePreviewFields($item),
+                    'article_title' => $item->content_original_name ?: null,
+                    'preview_html' => null,
+                    'detected_links' => [],
                     'live_url' => $item->live_url,
                     'live_url_submitted_at' => $item->live_url_submitted_at ?? null,
                     'auto_approve_triggered' => (bool) ($item->auto_approve_triggered ?? false),
@@ -609,19 +611,24 @@ class OrderController extends Controller
             $suppressedOrderId = (int) $order->id;
             $suppressor->suppress($suppressedOrderId, ['advertiser']);
 
+            $wasPaid = $order->payment_status === 'paid';
             $order->update([
                 'status' => 'cancelled',
-                'payment_status' => 'refunded',
+                'payment_status' => $wasPaid ? 'refunded' : $order->payment_status,
             ]);
 
             $reason = $request->reason;
-            // rejectOrder cancels the whole order — always refund the full order total,
-            // not just the clicked line (multi-item carts must not strand reserved funds).
-            $orderAmount = app(OrderRefundService::class)
-                ->resolveOrderCancelRefundAmount($order);
-
-            // Process refund for ALL payment types (throws on failure so TX rolls back)
-            $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
+            $orderAmount = 0.0;
+            $refundProcessed = false;
+            // Only refund money that was actually collected. Unpaid pending/failed
+            // rows used to mint withdrawable cash via refundToAdvertiser().
+            if ($wasPaid) {
+                // rejectOrder cancels the whole order — refund the full order total,
+                // not just the clicked line (multi-item carts must not strand reserved funds).
+                $orderAmount = app(OrderRefundService::class)
+                    ->resolveOrderCancelRefundAmount($order);
+                $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
+            }
 
             DB::commit();
 

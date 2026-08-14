@@ -1817,6 +1817,62 @@ class InAppNotificationService
         return $completed;
     }
 
+    /**
+     * Archive the publisher “please accept” invite bell for this site.
+     * Accept, decline, and staff delete all leave that high-priority item stale.
+     */
+    public function completePublisherSiteAssignmentNotifications(Site $site): int
+    {
+        $siteId = (int) $site->id;
+        $publisherId = (int) ($site->publisher_id ?? 0);
+        if ($siteId < 1 || $publisherId < 1) {
+            return 0;
+        }
+
+        $completed = 0;
+
+        try {
+            InAppNotification::ensureTable();
+            if (! InAppNotification::tableAvailable()) {
+                return 0;
+            }
+
+            $notes = InAppNotification::query()
+                ->where('user_id', $publisherId)
+                ->where('audience', InAppNotification::AUDIENCE_PUBLISHER)
+                ->where('title', 'Please accept a website we added for you')
+                ->whereNull('archived_at')
+                ->where(function ($q) {
+                    $q->whereNull('status')
+                        ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
+                })
+                ->where(function ($q) use ($siteId) {
+                    $q->where(function ($inner) use ($siteId) {
+                        $inner->where('related_type', Site::class)
+                            ->where('related_id', $siteId);
+                    })->orWhere(function ($inner) use ($siteId) {
+                        $inner->where(function ($meta) use ($siteId) {
+                            $meta->where('meta', 'like', '%"site_id":'.$siteId.'%')
+                                ->orWhere('meta', 'like', '%"site_id": '.$siteId.'%');
+                        });
+                    });
+                })
+                ->get();
+
+            foreach ($notes as $note) {
+                $note->archive();
+                $completed++;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to complete publisher site assignment notifications: '.$e->getMessage(), [
+                'site_id' => $siteId,
+                'publisher_id' => $publisherId,
+            ]);
+        }
+
+        return $completed;
+    }
+
     public function notifyAdminsNewUser(User $user): void
     {
         $who = $user->name ?: $user->email;

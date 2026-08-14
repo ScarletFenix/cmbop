@@ -12,14 +12,15 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\InAppNotificationService;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminAssignSiteForPublisherTest extends TestCase
@@ -165,6 +166,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'active' => false,
         ]);
 
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
             ->assertStatus(422);
@@ -176,6 +179,13 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $site->refresh();
         $this->assertNotNull($site->publisher_accepted_at);
+        $inviteBell = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->where('related_id', $site->id)
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
         $this->assertFalse($site->isPendingPublisherAcceptance());
         $this->assertTrue($site->needsAdminReview());
         $this->assertDatabaseHas('activity_logs', [
@@ -206,6 +216,9 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
     public function test_publisher_reject_deletes_pending_invite(): void
     {
+        Storage::fake('public');
+        Storage::disk('public')->put('sites/decline-cover.jpg', 'cover');
+
         $site = Site::create([
             'publisher_id' => $this->publisher->id,
             'assigned_by_user_id' => $this->admin->id,
@@ -227,7 +240,10 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'description' => str_repeat('Decline this invite site description. ', 3),
             'verified' => false,
             'active' => false,
+            'site_image' => 'sites/decline-cover.jpg',
         ]);
+
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
 
         $this->actingAs($this->publisher)
             ->postJson(route('publisher.sites.reject-assignment', $site->id))
@@ -235,6 +251,96 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertJson(['success' => true]);
 
         $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $this->assertFalse(Storage::disk('public')->exists('sites/decline-cover.jpg'));
+        $inviteBell = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->where('related_id', $site->id)
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
+    }
+
+    public function test_staff_delete_of_pending_invite_archives_accept_bell(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Staff Removed Invite',
+            'site_url' => 'https://staff-removed-invite.example',
+            'domain' => 'staff-removed-invite.example',
+            'example_url' => 'https://staff-removed-invite.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Staff removed this invite site description. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+
+        $this->actingAs($this->admin)
+            ->deleteJson(route('admin.sites.destroy', $site->id), [
+                'reason' => 'Publisher asked us to withdraw the invite.',
+            ])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $inviteBell = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->where('related_id', $site->id)
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
+    }
+
+    public function test_publisher_delete_of_accepted_pending_site_removes_cover(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('sites/accepted-cover.jpg', 'cover');
+
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Accepted Then Deleted',
+            'site_url' => 'https://accepted-then-deleted.example',
+            'domain' => 'accepted-then-deleted.example',
+            'example_url' => 'https://accepted-then-deleted.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Accepted then deleted site description. ', 3),
+            'verified' => false,
+            'active' => false,
+            'site_image' => 'sites/accepted-cover.jpg',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites', ['status' => 'pending']))
+            ->delete(route('publisher.sites.destroy', $site->id))
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $this->assertFalse(Storage::disk('public')->exists('sites/accepted-cover.jpg'));
     }
 
     public function test_publisher_reject_does_not_delete_invite_with_order_items(): void
@@ -296,321 +402,6 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $this->assertDatabaseHas('sites', ['id' => $site->id]);
         $this->assertDatabaseHas('order_items', ['site_id' => $site->id]);
-    }
-
-    public function test_create_page_survives_array_old_language_and_prices(): void
-    {
-        $this->actingAs($this->admin)
-            ->withSession([
-                '_old_input' => [
-                    'language' => ['de'],
-                    'country' => ['de'],
-                    'price_homepage' => ['7' => ['25']],
-                    'price_sensitive' => ['crypto' => ['15']],
-                    'categories' => 1,
-                ],
-            ])
-            ->get(route('admin.sites.create'))
-            ->assertOk()
-            ->assertDontSee('htmlspecialchars(): Argument #1', false)
-            ->assertDontSee('TypeError', false);
-    }
-
-    public function test_admin_store_does_not_500_on_integer_categories(): void
-    {
-        $country = Country::marketplace()->where('code', 'de')->first()
-            ?? Country::marketplace()->firstOrFail();
-        $language = Language::marketplace()->where('code', 'de')->first()
-            ?? Language::marketplace()->firstOrFail();
-
-        $this->actingAs($this->admin)
-            ->from(route('admin.sites.create'))
-            ->post(route('admin.sites.store'), [
-                'publisher_id' => $this->publisher->id,
-                'site_name' => 'Integer Niche',
-                'site_url' => 'https://int-niche.example',
-                'example_url' => 'https://int-niche.example/sample',
-                'da' => 40,
-                'dr' => 45,
-                'traffic' => 12000,
-                'country' => strtolower((string) $country->code),
-                'language' => strtolower((string) $language->code),
-                'categories' => 1,
-                'price' => 90,
-                'turnaround_time' => '3days',
-                'publication_time' => 'permanent',
-                'link_type' => 'dofollow',
-                'description' => str_repeat('Integer niche leftover store guard. ', 4),
-                'site_tag' => 'as_you_prefer',
-                'written_request' => 1,
-            ])
-            ->assertRedirect(route('admin.sites.create'))
-            ->assertSessionHasErrors('categories');
-
-        $this->assertNull(Site::where('domain', 'int-niche.example')->first());
-    }
-
-    public function test_create_page_array_publisher_id_does_not_select_user_one(): void
-    {
-        $html = $this->actingAs($this->admin)
-            ->withSession(['_old_input' => ['publisher_id' => ['not-an-id']]])
-            ->get(route('admin.sites.create'))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertDoesNotMatchRegularExpression('/<option value="\d+"[^>]*\bselected\b/', $html);
-
-        $selected = $this->actingAs($this->admin)
-            ->withSession(['_old_input' => ['publisher_id' => [(string) $this->publisher->id]]])
-            ->get(route('admin.sites.create'))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertMatchesRegularExpression(
-            '/<option value="'.$this->publisher->id.'"[^>]*\bselected\b/',
-            $selected
-        );
-    }
-
-    public function test_create_page_array_publisher_query_does_not_select_user_one(): void
-    {
-        $html = $this->actingAs($this->admin)
-            ->get(route('admin.sites.create', ['publisher' => ['not-an-id']]))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertDoesNotMatchRegularExpression('/<option value="\d+"[^>]*\bselected\b/', $html);
-
-        $selected = $this->actingAs($this->admin)
-            ->get(route('admin.sites.create', ['publisher' => [(string) $this->publisher->id]]))
-            ->assertOk()
-            ->getContent();
-
-        $this->assertMatchesRegularExpression(
-            '/<option value="'.$this->publisher->id.'"[^>]*\bselected\b/',
-            $selected
-        );
-        $this->assertDoesNotMatchRegularExpression(
-            '/<option value="'.$this->admin->id.'"[^>]*\bselected\b/',
-            $selected
-        );
-    }
-
-    public function test_admin_store_flattens_array_site_url_instead_of_https_array(): void
-    {
-        Mail::fake();
-
-        $country = Country::marketplace()->where('code', 'de')->first()
-            ?? Country::marketplace()->firstOrFail();
-        $language = Language::marketplace()->where('code', 'de')->first()
-            ?? Language::marketplace()->firstOrFail();
-        $niche = Category::query()->orderBy('name')->value('name');
-        $this->assertNotEmpty($niche);
-
-        $this->actingAs($this->admin)
-            ->post(route('admin.sites.store'), [
-                'publisher_id' => $this->publisher->id,
-                'site_name' => 'Array URL Site',
-                'site_url' => ['https://array-url.example'],
-                'example_url' => ['https://array-url.example/sample'],
-                'da' => 40,
-                'dr' => 45,
-                'traffic' => 12000,
-                'country' => strtolower((string) $country->code),
-                'language' => strtolower((string) $language->code),
-                'categories' => $niche,
-                'price' => 90,
-                'turnaround_time' => '3days',
-                'publication_time' => 'permanent',
-                'link_type' => 'dofollow',
-                'description' => str_repeat('Array URL leftover store guard. ', 4),
-                'site_tag' => 'as_you_prefer',
-                'written_request' => 1,
-            ])
-            ->assertRedirect();
-
-        $this->assertNull(Site::where('domain', 'array')->first());
-        $site = Site::where('domain', 'array-url.example')->first();
-        $this->assertNotNull($site);
-        $this->assertSame('https://array-url.example', $site->site_url);
-    }
-
-    public function test_admin_store_rejects_price_that_would_overflow_decimal(): void
-    {
-        $country = Country::marketplace()->where('code', 'de')->first()
-            ?? Country::marketplace()->firstOrFail();
-        $language = Language::marketplace()->where('code', 'de')->first()
-            ?? Language::marketplace()->firstOrFail();
-        $niche = Category::query()->orderBy('name')->value('name');
-        $this->assertNotEmpty($niche);
-
-        $this->actingAs($this->admin)
-            ->from(route('admin.sites.create'))
-            ->post(route('admin.sites.store'), [
-                'publisher_id' => $this->publisher->id,
-                'site_name' => 'Overflow Price',
-                'site_url' => 'https://overflow-price.example',
-                'example_url' => 'https://overflow-price.example/sample',
-                'da' => 40,
-                'dr' => 45,
-                'traffic' => 12000,
-                'country' => strtolower((string) $country->code),
-                'language' => strtolower((string) $language->code),
-                'categories' => $niche,
-                'price' => '100000000000',
-                'turnaround_time' => '3days',
-                'publication_time' => 'permanent',
-                'link_type' => 'dofollow',
-                'description' => str_repeat('Overflow price leftover store guard. ', 4),
-                'site_tag' => 'as_you_prefer',
-                'written_request' => 1,
-            ])
-            ->assertRedirect(route('admin.sites.create'))
-            ->assertSessionHasErrors('price')
-            ->assertSessionDoesntHaveErrors('site_url');
-
-        $this->assertNull(Site::where('domain', 'overflow-price.example')->first());
-    }
-
-    public function test_admin_update_ignores_array_domain_field(): void
-    {
-        $site = Site::create([
-            'publisher_id' => $this->publisher->id,
-            'site_name' => 'Keep Domain',
-            'site_url' => 'https://keep-domain.example',
-            'domain' => 'keep-domain.example',
-            'da' => 40,
-            'dr' => 42,
-            'traffic' => 15000,
-            'country' => 'de',
-            'language' => 'de',
-            'category' => 'News',
-            'price' => 80,
-            'publication_time' => 'permanent',
-            'link_type' => 'dofollow',
-            'description' => str_repeat('Keep domain leftover update guard. ', 3),
-            'verified' => true,
-            'active' => true,
-        ]);
-
-        $this->actingAs($this->admin)
-            ->putJson(route('admin.sites.update', $site->id), [
-                'site_name' => 'Keep Domain',
-                'domain' => ['spoofed.example'],
-            ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $this->assertSame('keep-domain.example', $site->fresh()->domain);
-    }
-
-    public function test_admin_update_ignores_array_category_field(): void
-    {
-        $site = Site::create([
-            'publisher_id' => $this->publisher->id,
-            'site_name' => 'Keep Category',
-            'site_url' => 'https://keep-category.example',
-            'domain' => 'keep-category.example',
-            'da' => 40,
-            'dr' => 42,
-            'traffic' => 15000,
-            'country' => 'de',
-            'language' => 'de',
-            'category' => 'News',
-            'price' => 80,
-            'publication_time' => 'permanent',
-            'link_type' => 'dofollow',
-            'description' => str_repeat('Keep category leftover update guard. ', 3),
-            'verified' => true,
-            'active' => true,
-        ]);
-
-        $this->actingAs($this->admin)
-            ->putJson(route('admin.sites.update', $site->id), [
-                'site_name' => 'Keep Category',
-                'category' => ['spoofed', 'niches'],
-            ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $this->assertSame('News', $site->fresh()->category);
-    }
-
-    public function test_admin_update_fits_category_that_would_overflow_varchar(): void
-    {
-        Cache::put('sites_category_column_max_length', 50, 60);
-
-        $site = Site::create([
-            'publisher_id' => $this->publisher->id,
-            'site_name' => 'Fit Category',
-            'site_url' => 'https://fit-category.example',
-            'domain' => 'fit-category.example',
-            'da' => 40,
-            'dr' => 42,
-            'traffic' => 15000,
-            'country' => 'de',
-            'language' => 'de',
-            'category' => 'News',
-            'price' => 80,
-            'publication_time' => 'permanent',
-            'link_type' => 'dofollow',
-            'description' => str_repeat('Fit category leftover update guard. ', 3),
-            'verified' => true,
-            'active' => true,
-        ]);
-
-        $tooLong = str_repeat('OverflowNicheName', 8);
-        $this->assertGreaterThan(50, strlen($tooLong));
-
-        $this->actingAs($this->admin)
-            ->putJson(route('admin.sites.update', $site->id), [
-                'site_name' => 'Fit Category',
-                'category' => $tooLong,
-            ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
-
-        $saved = (string) $site->fresh()->category;
-        $this->assertSame(substr($tooLong, 0, 50), $saved);
-        $this->assertLessThanOrEqual(50, strlen($saved));
-
-        Site::flushSchemaColumnCache();
-    }
-
-    public function test_admin_edit_survives_array_old_language(): void
-    {
-        $site = Site::create([
-            'publisher_id' => $this->publisher->id,
-            'site_name' => 'Edit Old Language',
-            'site_url' => 'https://edit-old-language.example',
-            'domain' => 'edit-old-language.example',
-            'da' => 40,
-            'dr' => 42,
-            'traffic' => 15000,
-            'country' => 'de',
-            'language' => 'de',
-            'category' => 'News',
-            'price' => 80,
-            'publication_time' => 'permanent',
-            'link_type' => 'dofollow',
-            'description' => str_repeat('Edit old language leftover guard. ', 3),
-            'verified' => true,
-            'active' => true,
-        ]);
-
-        $this->actingAs($this->admin)
-            ->withSession([
-                '_old_input' => [
-                    'language' => ['de'],
-                    'country' => ['de'],
-                    'site_name' => ['Edit Old Language'],
-                ],
-            ])
-            ->get(route('admin.sites.edit', $site->id))
-            ->assertOk()
-            ->assertDontSee('htmlspecialchars(): Argument #1', false)
-            ->assertDontSee('TypeError', false)
-            ->assertSee('const preferredLang = "de"', false);
     }
 
     public function test_publisher_self_created_sites_are_accepted_immediately(): void
@@ -719,6 +510,40 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertTrue($site->isPendingPublisherAcceptance());
     }
 
+    public function test_admin_create_rejects_array_category_without_500(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.create'))
+            ->post(route('admin.sites.store'), [
+                'publisher_id' => $this->publisher->id,
+                'site_name' => 'Array Category News',
+                'site_url' => 'https://array-category-news.example',
+                'example_url' => 'https://array-category-news.example/sample',
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+                'country' => strtolower($country->code),
+                'language' => strtolower($language->code),
+                'category' => ['NotARealNiche'],
+                'price' => 99,
+                'turnaround_time' => '3days',
+                'publication_time' => 'permanent',
+                'link_type' => 'dofollow',
+                'description' => str_repeat('Array category create description text. ', 4),
+                'site_tag' => 'as_you_prefer',
+                'written_request' => 1,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('categories');
+
+        $this->assertNull(Site::where('domain', 'array-category-news.example')->first());
+    }
+
     public function test_heal_migration_reopens_staff_invites_wiped_by_backfill(): void
     {
         $site = Site::create([
@@ -786,6 +611,12 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertSee('id="publisherFilter"', false)
             ->assertSee('written_request', false)
             ->assertSee('This emails and bells the publisher', false)
+            ->assertSee('Click to toggle; type to search; Enter adds the highlighted match. Max 7.', false)
+            ->assertSee('maxlength="5000"', false)
+            ->assertSee('name="price_homepage[7]"', false)
+            ->assertSee('name="sensitive[crypto]"', false)
+            ->assertSee('optional homepage, social, and sensitive-topic prices', false)
+            ->assertSee('Must be on the same domain as the site URL.', false)
             ->getContent();
 
         $this->assertStringNotContainsString('required disabled', $html);

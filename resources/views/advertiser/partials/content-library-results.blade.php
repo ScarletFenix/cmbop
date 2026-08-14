@@ -356,7 +356,7 @@
                                         More
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end library-more-menu">
-                                        @if($submission->preview_html)
+                                        @if($submission->hasPreviewHtml())
                                             <li>
                                                 <button type="button" class="dropdown-item js-open-preview"
                                                         data-submission-id="{{ $submission->id }}">
@@ -397,7 +397,7 @@
                                         More
                                     </button>
                                     <ul class="dropdown-menu dropdown-menu-end library-more-menu">
-                                        @if($submission->preview_html)
+                                        @if($submission->hasPreviewHtml())
                                             <li>
                                                 <button type="button" class="dropdown-item js-open-preview"
                                                         data-submission-id="{{ $submission->id }}">

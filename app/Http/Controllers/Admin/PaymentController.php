@@ -13,12 +13,13 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -149,6 +150,15 @@ class PaymentController extends Controller
 
             $refundAmount = 0.0;
             if ($request->payment_status === 'refunded' && $oldStatus === 'paid') {
+                if ($order->status === 'completed') {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Completed orders cannot be refunded here. Use a dispute clawback so the publisher payout is reversed first.',
+                    ], 422);
+                }
+
                 $refundAmount = $this->creditAdvertiserRefund($order);
                 if ($order->status !== 'cancelled') {
                     $order->status = 'cancelled';
@@ -300,10 +310,27 @@ class PaymentController extends Controller
         }
     }
 
+    private function consumeReservedCheckoutBonus(Order $order): void
+    {
+        $bonus = app(CheckoutIntentService::class)->takeBonus((int) $order->user_id, (string) $order->reference_code);
+        if ($bonus <= 0) {
+            return;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId) {
+            return;
+        }
+
+        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
+        if ($wallet && (float) $wallet->bonus_reserved > 0) {
+            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
+        }
+    }
+
     private function refundReservedCheckoutBonus(Order $order): void
     {
-        $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $bonus = round((float) Cache::pull($key, 0), 2);
+        $bonus = app(CheckoutIntentService::class)->takeBonus((int) $order->user_id, (string) $order->reference_code);
         if ($bonus <= 0) {
             return;
         }

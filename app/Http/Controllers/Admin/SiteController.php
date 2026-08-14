@@ -23,6 +23,7 @@ use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -633,9 +634,11 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
-        $selectedPublisherId = old_text('publisher_id') !== ''
-            ? (int) old_text('publisher_id')
-            : $this->firstPositiveInt($request->query('publisher', 0));
+        $rawSelectedPublisher = old('publisher_id', $request->query('publisher', 0));
+        if (is_array($rawSelectedPublisher)) {
+            $rawSelectedPublisher = reset($rawSelectedPublisher);
+        }
+        $selectedPublisherId = (int) $rawSelectedPublisher;
 
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
@@ -691,8 +694,18 @@ class SiteController extends Controller
                 ->withInput();
         }
 
-        $siteUrl = $this->normalizeHttpUrl($request->input('site_url', $request->input('siteUrl', '')));
-        $exampleUrl = $this->normalizeHttpUrl($request->input('example_url', $request->input('exampleUrl', '')));
+        $rawSiteUrl = $request->input('site_url', $request->input('siteUrl', ''));
+        $rawExampleUrl = $request->input('example_url', $request->input('exampleUrl', ''));
+        $urlErrors = $this->nonStringUrlErrors([
+            'site_url' => $rawSiteUrl,
+            'example_url' => $rawExampleUrl,
+        ]);
+        if ($urlErrors !== []) {
+            return back()->withErrors($urlErrors)->withInput();
+        }
+
+        $siteUrl = $this->normalizeHttpUrl(is_string($rawSiteUrl) ? $rawSiteUrl : '');
+        $exampleUrl = $this->normalizeHttpUrl(is_string($rawExampleUrl) ? $rawExampleUrl : '');
 
         // Coerce metric fields before validation (locale number inputs / "45.0" strings).
         $da = $this->normalizeMetricInt($request->input('da'));
@@ -705,16 +718,25 @@ class SiteController extends Controller
             'da' => $da,
             'dr' => $dr,
             'traffic' => $traffic,
+            'site_name' => is_string($request->input('site_name'))
+                ? $this->normalizeSiteName($request->input('site_name'))
+                : $request->input('site_name'),
         ]);
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
-        if (! $host) {
+        $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
+        if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
             return back()->withErrors(['site_url' => 'Invalid URL'])->withInput();
         }
+        $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
+        $exampleDomain = is_string($exampleHost) && $exampleHost !== '' ? $this->normalizeDomain($exampleHost) : '';
+        if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
+            return back()->withErrors(['example_url' => 'Invalid URL'])->withInput();
+        }
 
-        $domain = preg_replace('/^www\./', '', strtolower($host));
-
-        $resolvedNiches = Category::resolveNicheNames($request->input('categories', $request->input('category')));
+        $resolvedNiches = Category::resolveNicheNames(
+            $this->nicheNamesInput($request->input('categories', $request->input('category')))
+        );
         $categories = $resolvedNiches['resolved'];
         $unknownNiches = $resolvedNiches['unknown'];
         $primaryCategory = ! empty($categories) ? implode('|', $categories) : scalar_text($request->input('category', ''));
@@ -759,37 +781,22 @@ class SiteController extends Controller
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
-            'price' => 'required|numeric|min:0|max:99999999.99',
+            'price' => 'required|numeric|min:0|max:999999.99',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
-            'description' => 'required|string|min:50|max:5000',
+            'description' => 'nullable|string|max:5000',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
-            'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
-            'sensitive.crypto' => 'nullable|boolean',
-            'sensitive.trading' => 'nullable|boolean',
-            'sensitive.CBD' => 'nullable|boolean',
-            'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0|max:99999999.99',
-            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0|max:99999999.99',
-            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0|max:99999999.99',
-            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0|max:99999999.99',
-            'homepage.1' => 'nullable|boolean',
-            'homepage.7' => 'nullable|boolean',
-            'homepage.30' => 'nullable|boolean',
-            'price_homepage.1' => 'nullable|numeric|min:0|max:99999999.99',
-            'price_homepage.7' => 'nullable|numeric|min:0|max:99999999.99',
-            'price_homepage.30' => 'nullable|numeric|min:0|max:99999999.99',
-            'social.facebook' => 'nullable|boolean',
-            'social.instagram' => 'nullable|boolean',
-            'social.x' => 'nullable|boolean',
-        ], array_merge($this->siteImageValidationMessages(), [
+        ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
-        ]));
+            'description.max' => 'Description must be at most 5000 characters.',
+            'price.max' => 'Price must be at most €999,999.99.',
+        ]), $this->placementOfferValidationAttributes());
 
-        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches) {
+        $cleanDescription = '';
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches, &$cleanDescription) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -800,14 +807,13 @@ class SiteController extends Controller
                 $validator->errors()->add('publisher_id', 'Choose a valid publisher account.');
             }
 
-            $existing = Site::where('domain', $domain)->first();
+            $existing = $this->findSiteByDomain($domain);
             if ($existing) {
-                $validator->errors()->add(
-                    'site_url',
-                    $existing->isArchived()
-                        ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
-                        : 'This website domain is already registered.'
-                );
+                $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
+            }
+
+            if ($this->exampleUrlHostDiffers($request->input('site_url'), $request->input('example_url'))) {
+                $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
             }
 
             $country = $countryCodes[0] ?? null;
@@ -836,11 +842,18 @@ class SiteController extends Controller
             ->sanitize(scalar_text($request->input('description')));
 
         $site = null;
+        $storedImagePath = null;
         $publisherId = (int) $request->input('publisher_id');
 
         $imagePath = null;
         if ($request->hasFile('site_image')) {
-            $stored = $this->storeStaffSiteImage($request->file('site_image'));
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                throw ValidationException::withMessages([
+                    'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                ]);
+            }
+            $stored = $this->storeStaffSiteImage($upload);
             if ($stored === null) {
                 throw ValidationException::withMessages([
                     'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
@@ -848,10 +861,18 @@ class SiteController extends Controller
             }
             PublicStorageLink::ensure();
             $imagePath = $stored;
+            $storedImagePath = $stored;
         }
 
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
+                $existing = $this->findSiteByDomain($domain, lock: true);
+                if ($existing) {
+                    throw ValidationException::withMessages([
+                        'site_url' => [$this->domainAlreadyRegisteredMessage($existing)],
+                    ]);
+                }
+
                 $site = new Site;
 
                 $da = (int) $request->input('da');
@@ -897,12 +918,16 @@ class SiteController extends Controller
                 ]);
 
                 // Hard-set invite + metrics so a missing column skip cannot silently drop them.
+                $price = $request->input('price');
                 $site->forceFill([
                     'assigned_by_user_id' => auth()->id(),
                     'publisher_accepted_at' => null,
+                    'verified' => false,
+                    'active' => false,
                     'da' => $da,
                     'dr' => $dr,
                     'traffic' => $traffic,
+                    'price' => $price,
                     'metrics_manual' => true,
                     'metrics_provider' => 'manual',
                     'metrics_fetched_at' => now(),
@@ -915,27 +940,40 @@ class SiteController extends Controller
 
                 $site->save();
 
-                if ((int) $site->da !== $da || (int) $site->dr !== $dr) {
-                    throw new \RuntimeException('DA/DR did not persist after save.');
+                if ((int) $site->da !== $da || (int) $site->dr !== $dr || (int) $site->traffic !== $traffic) {
+                    throw new \RuntimeException('DA/DR/traffic did not persist after save.');
+                }
+                if (is_numeric($price) && round((float) $site->price, 2) !== round((float) $price, 2)) {
+                    throw new \RuntimeException('Staff site price did not persist after save.');
                 }
                 if (filled($site->publisher_accepted_at) || blank($site->assigned_by_user_id)) {
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
                 }
+                if ((bool) $site->verified || (bool) $site->active) {
+                    throw new \RuntimeException('Staff site invite flags did not persist after save.');
+                }
             });
         } catch (ValidationException $e) {
+            $this->deleteStoredSiteImage($storedImagePath);
             throw $e;
         } catch (\Throwable $e) {
+            $this->deleteStoredSiteImage($storedImagePath);
             Log::error('Staff site-for-publisher store failed', [
                 'publisher_id' => $publisherId,
                 'domain' => $domain,
                 'error' => $e->getMessage(),
             ]);
 
+            if ($this->isDomainUniqueConstraintFailure($e)) {
+                return redirect()->back()
+                    ->withErrors(['site_url' => 'This website domain is already registered.'])
+                    ->withInput();
+            }
+
             $hint = 'We could not save this website. Please try again.';
             if (str_contains($e->getMessage(), 'Unknown column')
-                || str_contains($e->getMessage(), 'publisher invite state')
-                || str_contains($e->getMessage(), 'DA/DR did not persist')) {
-                $hint = 'We could not save invite state or DA/DR. Run the latest migrations on the server, clear caches, and try again.';
+                || str_contains($e->getMessage(), 'did not persist after save.')) {
+                $hint = 'We could not save invite state, DA/DR, monthly traffic, or price. Run the latest migrations on the server, clear caches, and try again.';
             }
 
             return redirect()->back()
@@ -954,7 +992,13 @@ class SiteController extends Controller
             }
         }
 
-        if ($site) {
+        if (! $site) {
+            return redirect()->back()
+                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withInput();
+        }
+
+        try {
             ActivityLogger::log(
                 'site.assigned_for_acceptance',
                 (auth()->user()->name ?? 'Staff').' added site "'.$site->site_name.'" for publisher acceptance',
@@ -966,30 +1010,35 @@ class SiteController extends Controller
                 ],
                 $site->site_name
             );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log staff-assigned site: '.$e->getMessage());
+        }
 
-            $publisher = $site->publisher;
-            try {
-                if ($publisher?->email) {
-                    Mail::to($publisher->email)->send(new AdminAssignedSiteNotification($site, $publisher));
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Failed to email publisher about staff-assigned site: '.$e->getMessage());
+        $emailed = false;
+        $belled = false;
+        $publisher = $site->publisher;
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(new AdminAssignedSiteNotification($site, $publisher));
+                $emailed = true;
             }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to email publisher about staff-assigned site: '.$e->getMessage());
+        }
 
-            try {
+        try {
+            if ((int) ($site->publisher_id ?? 0) > 0) {
                 app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to bell-notify publisher about staff-assigned site: '.$e->getMessage());
+                $belled = true;
             }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to bell-notify publisher about staff-assigned site: '.$e->getMessage());
         }
 
-        if (! $site) {
-            return redirect()->back()
-                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
-                ->withInput();
-        }
-
-        $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.';
+        $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.').';
+        $success .= ($emailed || $belled)
+            ? ' Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.'
+            : ' The listing was saved, but we could not notify the publisher. Ask them to open My Sites → Invites and Accept.';
         if (! $site->hasGoodMetrics()) {
             $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
         }
@@ -1148,10 +1197,28 @@ class SiteController extends Controller
             ]);
         }
 
-        $site->update(['site_image' => $path]);
+        try {
+            $site->update(['site_image' => $path]);
+        } catch (\Throwable $e) {
+            $this->deleteStoredSiteImage($path);
+            Log::error('Staff site image upload failed to persist', [
+                'site_id' => $site->id,
+                'error' => $e->getMessage(),
+            ]);
+            $message = 'Could not save the site image. Please try again.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                    'errors' => ['site_image' => [$message]],
+                ], 500);
+            }
 
-        if ($previous && $previous !== $path && $disk->exists($previous)) {
-            $disk->delete($previous);
+            throw ValidationException::withMessages(['site_image' => $message]);
+        }
+
+        if ($previous && $previous !== $path) {
+            $this->deleteStoredSiteImage($previous);
         }
 
         ActivityLogger::log(
@@ -1241,7 +1308,53 @@ class SiteController extends Controller
             $data['verify_token_created_at']
         );
 
-        $site->update($data);
+        if (array_key_exists('link_type', $data)) {
+            Site::ensureLinkTypeColumn();
+        }
+
+        $previousImage = is_string($site->site_image) ? $site->site_image : null;
+
+        try {
+            $site->update($data);
+        } catch (\Throwable $e) {
+            $storedThisRequest = $request->attributes->get('staff_stored_site_image');
+            if (is_string($storedThisRequest) && $storedThisRequest !== '') {
+                $this->deleteStoredSiteImage($storedThisRequest);
+            }
+
+            $message = $e->getMessage();
+            if ($e instanceof QueryException
+                && array_key_exists('link_type', $data)
+                && (str_contains($message, 'link_type')
+                    || str_contains($message, 'Data truncated')
+                    || str_contains($message, '1265'))) {
+                throw ValidationException::withMessages([
+                    'link_type' => 'This link type could not be saved. Run the latest database update and try again.',
+                ]);
+            }
+
+            Log::error('Staff site update failed', [
+                'site_id' => $site->id,
+                'error' => $message,
+            ]);
+
+            $hint = $this->isDomainUniqueConstraintFailure($e)
+                ? 'This website domain is already registered.'
+                : 'We could not save this website. Please try again.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $hint,
+                ], $this->isDomainUniqueConstraintFailure($e) ? 422 : 500);
+            }
+
+            return back()->withErrors(['site_url' => $hint])->withInput();
+        }
+
+        $newImage = is_string($site->site_image) ? $site->site_image : null;
+        if ($previousImage && $previousImage !== $newImage) {
+            $this->deleteStoredSiteImage($previousImage);
+        }
 
         $changes = [];
         foreach ($oldData as $key => $oldValue) {
@@ -1251,13 +1364,17 @@ class SiteController extends Controller
             }
         }
 
-        ActivityLogger::log(
-            'site.updated',
-            auth()->user()->name.' modified site "'.$site->site_name.'"',
-            $site,
-            ['changes' => $changes],
-            $site->site_name
-        );
+        try {
+            ActivityLogger::log(
+                'site.updated',
+                (auth()->user()->name ?? 'Staff').' modified site "'.$site->site_name.'"',
+                $site,
+                ['changes' => $changes],
+                $site->site_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log staff site update: '.$e->getMessage());
+        }
 
         $emailSent = false;
 
@@ -1267,7 +1384,7 @@ class SiteController extends Controller
                 Mail::to($publisher->email)->send(new SiteStatusNotification($site, 'update', $oldData));
                 $emailSent = true;
             }
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Failed to send update notification: '.$e->getMessage());
         }
 
@@ -1308,7 +1425,34 @@ class SiteController extends Controller
             : ['site_name', 'site_url', 'da', 'dr', 'traffic', 'price', 'language', 'country', 'active', 'verified'];
 
         foreach ($keys as $key) {
-            if ((string) ($oldData[$key] ?? '') !== (string) ($site->{$key} ?? '')) {
+            $oldValue = $oldData[$key] ?? null;
+            $newValue = $site->{$key} ?? null;
+            if ($key === 'price') {
+                if (round((float) $oldValue, 2) !== round((float) $newValue, 2)) {
+                    return true;
+                }
+
+                continue;
+            }
+            if ($key === 'site_url') {
+                $oldUrl = is_string($oldValue) ? $this->normalizeHttpUrl($oldValue) : '';
+                $newUrl = is_string($newValue) ? $this->normalizeHttpUrl((string) $newValue) : '';
+                if ($oldUrl !== $newUrl) {
+                    return true;
+                }
+
+                continue;
+            }
+            if ($key === 'site_name') {
+                $oldName = is_string($oldValue) ? $this->normalizeSiteName($oldValue) : '';
+                $newName = is_string($newValue) ? $this->normalizeSiteName((string) $newValue) : '';
+                if ($oldName !== $newName) {
+                    return true;
+                }
+
+                continue;
+            }
+            if ((string) $oldValue !== (string) $newValue) {
                 return true;
             }
         }
@@ -1333,24 +1477,16 @@ class SiteController extends Controller
      */
     private function adminUpdatePayload(Request $request, Site $site): array
     {
-        if ($request->filled('site_url')) {
-            $request->merge([
-                'site_url' => $this->normalizeHttpUrl($request->input('site_url')),
-            ]);
-        }
-        if ($request->filled('example_url')) {
-            $request->merge([
-                'example_url' => $this->normalizeHttpUrl($request->input('example_url')),
-            ]);
-        }
-        $metrics = [];
-        foreach (['da', 'dr', 'traffic'] as $metric) {
-            if ($request->exists($metric)) {
-                $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
+        $this->mergeNormalizedUrlOrFail($request, 'site_url');
+        $this->mergeNormalizedUrlOrFail($request, 'example_url', nullable: true);
+        $metricMerge = [];
+        foreach (['da', 'dr', 'traffic'] as $field) {
+            if ($request->exists($field)) {
+                $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
             }
         }
-        if ($metrics !== []) {
-            $request->merge($metrics);
+        if ($metricMerge !== []) {
+            $request->merge($metricMerge);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1376,18 +1512,17 @@ class SiteController extends Controller
         if ($request->has('link_type') && trim(scalar_text($request->input('link_type'))) === '') {
             $request->merge(['link_type' => null]);
         }
+        if ($request->exists('site_name') && is_string($request->input('site_name'))) {
+            $request->merge(['site_name' => $this->normalizeSiteName($request->input('site_name'))]);
+        }
 
         $domain = null;
         $siteUrl = trim(scalar_text($request->input('site_url', '')));
         if ($siteUrl !== '') {
             $host = parse_url($siteUrl, PHP_URL_HOST);
             if (is_string($host) && $host !== '') {
-                $domain = preg_replace('/^www\./i', '', strtolower($host));
-            }
-        } elseif ($request->filled('domain')) {
-            $postedDomain = $request->input('domain');
-            if (is_string($postedDomain) && trim($postedDomain) !== '') {
-                $domain = preg_replace('/^www\./i', '', strtolower(trim($postedDomain)));
+                $normalized = $this->normalizeDomain($host);
+                $domain = $normalized !== '' ? $normalized : null;
             }
         }
 
@@ -1403,36 +1538,85 @@ class SiteController extends Controller
             'traffic' => 'sometimes|required|integer|min:0|max:4294967295',
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
-            'price' => 'sometimes|required|numeric|min:0|max:99999999.99',
-            'description' => 'sometimes|nullable|string|min:50',
+            'price' => 'sometimes|required|numeric|min:0|max:999999.99',
+            'description' => 'sometimes|nullable|string|min:50|max:5000',
+            'category' => 'sometimes|nullable|string|max:255',
             'publication_time' => 'sometimes|nullable|string|max:20',
-            'link_type' => 'sometimes|nullable|string|max:64',
-            'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
+            // Dedicated editor is free text; modal may send dofollow/nofollow.
+            'link_type' => 'sometimes|nullable|string|max:50',
+            'sponsored' => 'sometimes|nullable|boolean',
+            'partner_material' => 'sometimes|nullable|boolean',
+            'as_you_prefer' => 'sometimes|nullable|boolean',
         ];
+
+        if ($request->boolean('placement_offers_form')) {
+            $rules = array_merge($rules, $this->placementOfferValidationRules());
+        }
 
         // site_image is often a stored path string after upload-image; only
         // validate as a file when a real upload is present (handled below).
 
-        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+        $validator = Validator::make(
+            $request->all(),
+            $rules,
+            array_merge($this->siteImageValidationMessages(), [
+                'description.max' => 'Description must be at most 5000 characters.',
+                'price.max' => 'Price must be at most €999,999.99.',
+            ]),
+            $this->placementOfferValidationAttributes()
+        );
 
         $validator->after(function ($validator) use ($request, $site, $domain) {
-            if (is_string($domain) && $domain !== ''
-                && Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
-                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            if (is_string($domain) && $domain !== '') {
+                if (! $this->isMarketplaceHost($domain)) {
+                    $validator->errors()->add('site_url', 'Invalid URL');
+                } else {
+                    $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
+                    if ($existing) {
+                        $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
+                    }
+                }
             }
 
             if ($request->filled('site_url') && ($domain === null || $domain === '')) {
                 $validator->errors()->add('site_url', 'Invalid URL');
             }
 
+            $exampleUrl = $request->input('example_url');
+            if (is_string($exampleUrl) && $exampleUrl !== '') {
+                $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
+                $exampleDomain = is_string($exampleHost) && $exampleHost !== ''
+                    ? $this->normalizeDomain($exampleHost)
+                    : '';
+                if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
+                    $validator->errors()->add('example_url', 'Invalid URL');
+                }
+            }
+
             if ($request->has('country') || $request->has('language')) {
-                $country = strtolower(trim((string) ($request->input('country', $site->country) ?? '')));
-                $language = strtolower(trim((string) ($request->input('language', $site->language) ?? '')));
+                $country = strtolower($this->scalarString($request->input('country', $site->country)));
+                $language = strtolower($this->scalarString($request->input('language', $site->language)));
                 if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
                     $validator->errors()->add(
                         'language',
                         'That language is not allowed for the selected country. Pick country first, then a paired language.'
                     );
+                }
+            }
+
+            $rawDescription = $request->input('description');
+            if (is_string($rawDescription) && trim($rawDescription) !== '' && mb_strlen($rawDescription) <= 5000) {
+                $clean = app(SiteDescriptionSanitizer::class)->sanitize($rawDescription);
+                foreach (SiteDescriptionRules::errors($clean) as $message) {
+                    $validator->errors()->add('description', $message);
+                }
+            }
+
+            if ($request->filled('site_url') || $request->exists('example_url')) {
+                $siteUrl = $request->filled('site_url') ? $request->input('site_url') : $site->site_url;
+                $exampleUrl = $request->exists('example_url') ? $request->input('example_url') : $site->example_url;
+                if ($this->exampleUrlHostDiffers($siteUrl, $exampleUrl)) {
+                    $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
                 }
             }
         });
@@ -1458,16 +1642,14 @@ class SiteController extends Controller
             'sponsored',
             'partner_material',
             'as_you_prefer',
-            'sensitive_prices',
             'description',
             'site_image',
         ]);
 
-        if (! isset($data['domain']) || ! is_string($data['domain']) || trim($data['domain']) === '') {
-            unset($data['domain']);
-        }
-
-        if (empty($data['domain']) && is_string($domain) && $domain !== '') {
+        // Domain comes only from the listing URL host. A posted domain field
+        // must not retarget uniqueness (DB unique is publisher_id + domain).
+        unset($data['domain']);
+        if (is_string($domain) && $domain !== '') {
             $data['domain'] = $domain;
         }
 
@@ -1486,7 +1668,7 @@ class SiteController extends Controller
             }
         }
 
-        if ($metrics !== []) {
+        if ($metricMerge !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();
@@ -1502,6 +1684,24 @@ class SiteController extends Controller
             $data['languages'] = [$data['language']];
         }
 
+        if ($request->has('categories') || $request->filled('category')) {
+            $raw = $request->has('categories')
+                ? $request->input('categories')
+                : $request->input('category');
+            $resolved = Category::resolveNicheNames($raw);
+            $incoming = array_values(array_unique(array_merge($resolved['resolved'], $resolved['unknown'])));
+            $replaceAll = $request->has('categories') || count($incoming) > 1;
+            $categories = $this->mergeAdminCategoryUpdate($site, $incoming, $replaceAll);
+            $data['categories'] = $categories;
+            $data['category'] = Site::fitCategoryColumn(
+                $categories !== [] ? (string) $categories[0] : '',
+                $categories !== [] ? $categories : null
+            );
+        } elseif ($request->has('category')) {
+            // Dedicated edit always posts category; blank must not wipe niches.
+            unset($data['category']);
+        }
+
         if ($request->hasFile('site_image')) {
             $upload = $request->file('site_image');
             if ($upload && ! $upload->isValid()) {
@@ -1515,7 +1715,7 @@ class SiteController extends Controller
             ], $this->siteImageValidationMessages());
 
             $disk = Storage::disk('public');
-            $previous = is_string($site->site_image) ? $site->site_image : null;
+            $disk->makeDirectory('sites');
 
             $stored = $this->storeStaffSiteImage($upload);
             if ($stored === null) {
@@ -1532,15 +1732,13 @@ class SiteController extends Controller
                 ]);
             }
 
-            if ($previous && $previous !== $stored && $disk->exists($previous)) {
-                $disk->delete($previous);
-            }
-
             $data['site_image'] = $stored;
-        } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
-            $storedPath = SiteImageUpload::normalizeStoredPath($request->site_image);
-            if ($storedPath !== null) {
-                $data['site_image'] = $storedPath;
+            $request->attributes->set('staff_stored_site_image', $stored);
+        } elseif ($request->has('site_image') && ! $request->hasFile('site_image')) {
+            $path = $this->postedSiteImagePath($request->input('site_image'));
+            $current = is_string($site->site_image) ? $this->postedSiteImagePath($site->site_image) : null;
+            if ($path !== null && $current !== null && $path === $current) {
+                $data['site_image'] = $path;
             } else {
                 unset($data['site_image']);
             }
@@ -1557,9 +1755,32 @@ class SiteController extends Controller
             ];
         }
 
-        $data = array_filter($data, function ($value) {
+        $data = array_filter($data, function ($value, $key) {
+            // Optional example URL must be clearable; other nulls mean "leave unchanged".
+            if ($key === 'example_url') {
+                return true;
+            }
+
             return $value !== null;
-        });
+        }, ARRAY_FILTER_USE_BOTH);
+
+        // Empty optional fields are merged to null above, then stripped by
+        // array_filter. Re-apply explicit clears so dedicated edit can blank
+        // geo / description / example URL (NOT NULL columns get '').
+        if ($request->has('country') && $countryCodes === []) {
+            $data['country'] = '';
+            $data['countries'] = null;
+        }
+        if ($request->has('language') && $languageCodes === []) {
+            $data['language'] = '';
+            $data['languages'] = null;
+        }
+        if ($request->has('example_url') && $this->isBlankStringInput($request->input('example_url'))) {
+            $data['example_url'] = null;
+        }
+        if ($request->has('description') && $this->isBlankStringInput($request->input('description'))) {
+            $data['description'] = '';
+        }
 
         if ($placementPatch !== null) {
             $data = array_merge($data, $placementPatch);
@@ -1595,22 +1816,13 @@ class SiteController extends Controller
         }
 
         if ($canFixListing) {
-            if ($request->exists('site_url') || $request->exists('siteUrl')) {
-                $request->merge([
-                    'site_url' => $this->normalizeHttpUrl($request->input('site_url', $request->input('siteUrl', ''))),
-                ]);
-            }
-            if ($request->exists('example_url') || $request->exists('exampleUrl')) {
-                $exampleUrl = $this->normalizeHttpUrl($request->input('example_url', $request->input('exampleUrl', '')));
-                $request->merge([
-                    'example_url' => $exampleUrl !== '' ? $exampleUrl : null,
-                ]);
-            }
+            $this->mergeNormalizedUrlOrFail($request, 'site_url', 'siteUrl');
+            $this->mergeNormalizedUrlOrFail($request, 'example_url', 'exampleUrl', nullable: true);
         }
 
         // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
         // Also recovers from urlencoded truncation of "Technology & Gadgets" → "Technology".
-        $resolved = Category::resolveNicheNames($request->input('categories', []));
+        $resolved = Category::resolveNicheNames($this->nicheNamesInput($request->input('categories', [])));
         $categories = $resolved['resolved'];
         $unknownNiches = $resolved['unknown'];
         $request->merge(['categories' => $categories]);
@@ -1628,10 +1840,16 @@ class SiteController extends Controller
             $rules['site_name'] = 'sometimes|required|string|max:255';
             $rules['site_url'] = 'sometimes|required|url|max:255';
             $rules['example_url'] = 'nullable|url|max:255';
-            $rules['price'] = 'sometimes|required|numeric|min:0|max:99999999.99';
+            $rules['price'] = 'sometimes|required|numeric|min:0|max:999999.99';
         }
 
-        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+        if ($request->exists('site_name') && is_string($request->input('site_name'))) {
+            $request->merge(['site_name' => $this->normalizeSiteName($request->input('site_name'))]);
+        }
+
+        $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
+            'price.max' => 'Price must be at most €999,999.99.',
+        ]));
 
         // site_image is often a stored path string after upload-image; only
         // validate as a file when a real upload is present.
@@ -1665,13 +1883,33 @@ class SiteController extends Controller
             if ($canFixListing && $request->filled('site_url')) {
                 $siteUrl = scalar_text($request->input('site_url', ''));
                 $host = parse_url($siteUrl, PHP_URL_HOST);
-                if (! $host) {
+                $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
+                if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
-                    $domain = preg_replace('/^www\./', '', strtolower((string) $host));
-                    if (Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
-                        $validator->errors()->add('site_url', 'This website domain is already registered.');
+                    $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
+                    if ($existing) {
+                        $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
                     }
+                }
+            }
+
+            if ($canFixListing && $request->filled('example_url')) {
+                $exampleUrl = (string) $request->input('example_url', '');
+                $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
+                $exampleDomain = is_string($exampleHost) && $exampleHost !== ''
+                    ? $this->normalizeDomain($exampleHost)
+                    : '';
+                if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
+                    $validator->errors()->add('example_url', 'Invalid URL');
+                }
+            }
+
+            if ($canFixListing && ($request->filled('site_url') || $request->exists('example_url'))) {
+                $siteUrl = $request->filled('site_url') ? $request->input('site_url') : $site->site_url;
+                $exampleUrl = $request->exists('example_url') ? $request->input('example_url') : $site->example_url;
+                if ($this->exampleUrlHostDiffers($siteUrl, $exampleUrl)) {
+                    $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
                 }
             }
         });
@@ -1715,7 +1953,9 @@ class SiteController extends Controller
                 $siteUrl = scalar_text($request->input('site_url'));
                 $host = parse_url($siteUrl, PHP_URL_HOST) ?: '';
                 $payload['site_url'] = $siteUrl;
-                $payload['domain'] = preg_replace('/^www\./', '', strtolower((string) $host));
+                if ($domain !== '') {
+                    $payload['domain'] = $domain;
+                }
             }
             if ($request->exists('example_url')) {
                 $payload['example_url'] = $request->input('example_url');
@@ -1742,7 +1982,7 @@ class SiteController extends Controller
             }
 
             $disk = Storage::disk('public');
-            $previous = is_string($site->site_image) ? $site->site_image : null;
+            $disk->makeDirectory('sites');
 
             $stored = $this->storeStaffSiteImage($upload);
             if ($stored === null) {
@@ -1766,20 +2006,149 @@ class SiteController extends Controller
                 ]);
             }
 
-            if ($previous && $previous !== $stored && $disk->exists($previous)) {
-                $disk->delete($previous);
-            }
-
             $payload['site_image'] = $stored;
+            $request->attributes->set('staff_stored_site_image', $stored);
         } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             // JSON/AJAX path: image already persisted via upload-image.
-            $storedPath = SiteImageUpload::normalizeStoredPath($request->input('site_image'));
-            if ($storedPath !== null) {
-                $payload['site_image'] = $storedPath;
+            $path = $this->postedSiteImagePath($request->input('site_image'));
+            $current = is_string($site->site_image) ? $this->postedSiteImagePath($site->site_image) : null;
+            if ($path !== null && $current !== null && $path === $current) {
+                $payload['site_image'] = $path;
             }
         }
 
         return $payload;
+    }
+
+    private function domainAlreadyRegisteredMessage(Site $existing): string
+    {
+        return $existing->isArchived()
+            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+            : 'This website domain is already registered.';
+    }
+
+    /**
+     * Prefer a live listing when legacy duplicates exist so the restore copy
+     * is not shown while a non-archived row already occupies the domain.
+     */
+    private function findSiteByDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?Site
+    {
+        $candidates = $this->domainLookupCandidates($domain);
+        if ($candidates === []) {
+            return null;
+        }
+
+        $normalized = $this->normalizeDomain($domain);
+        $query = Site::query()->where(function ($q) use ($candidates, $normalized) {
+            $q->whereIn('domain', $candidates);
+            if ($normalized !== '') {
+                $escaped = addcslashes($normalized, '%_\\');
+                $q->orWhere('domain', 'like', $escaped.':%')
+                    ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+            }
+        });
+        if ($exceptId !== null) {
+            $query->where('id', '!=', $exceptId);
+        }
+        if (Site::hasSitesColumn('archived_at')) {
+            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
+        }
+        $query->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    private function isDomainUniqueConstraintFailure(\Throwable $e): bool
+    {
+        $message = $e->getMessage();
+
+        $isUnique = str_contains($message, 'UNIQUE constraint failed')
+            || str_contains($message, 'Duplicate entry')
+            || str_contains($message, '1062');
+
+        return $isUnique && (str_contains($message, 'domain') || str_contains($message, 'publisher_id_domain'));
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function placementOfferValidationRules(): array
+    {
+        return [
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:999999.99',
+            'sensitive.crypto' => 'nullable|boolean',
+            'sensitive.trading' => 'nullable|boolean',
+            'sensitive.CBD' => 'nullable|boolean',
+            'sensitive.forex' => 'nullable|boolean',
+            'price_sensitive.crypto' => 'nullable|numeric|min:0|max:999999.99',
+            'price_sensitive.trading' => 'nullable|numeric|min:0|max:999999.99',
+            'price_sensitive.CBD' => 'nullable|numeric|min:0|max:999999.99',
+            'price_sensitive.forex' => 'nullable|numeric|min:0|max:999999.99',
+            'homepage.1' => 'nullable|boolean',
+            'homepage.7' => 'nullable|boolean',
+            'homepage.30' => 'nullable|boolean',
+            'price_homepage.1' => 'nullable|numeric|min:0|max:999999.99',
+            'price_homepage.7' => 'nullable|numeric|min:0|max:999999.99',
+            'price_homepage.30' => 'nullable|numeric|min:0|max:999999.99',
+            'social.facebook' => 'nullable|boolean',
+            'social.instagram' => 'nullable|boolean',
+            'social.x' => 'nullable|boolean',
+        ];
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function placementOfferValidationAttributes(): array
+    {
+        return [
+            'price_sensitive.crypto' => 'crypto extra price',
+            'price_sensitive.trading' => 'trading extra price',
+            'price_sensitive.CBD' => 'CBD extra price',
+            'price_sensitive.forex' => 'forex extra price',
+            'price_homepage.1' => '1-day homepage fee',
+            'price_homepage.7' => '7-day homepage fee',
+            'price_homepage.30' => '30-day homepage fee',
+        ];
+    }
+
+    /**
+     * Keep only a relative public-disk cover under sites/. Arrays become "Array" if cast.
+     */
+    private function postedSiteImagePath(mixed $raw): ?string
+    {
+        return SiteImageUpload::publicCoverPath($raw);
+    }
+
+    private function deleteStoredSiteImage(?string $path): void
+    {
+        SiteImageUpload::deletePublicCover($path);
+    }
+
+    /**
+     * Blank/null → €0. Arrays/objects/non-numeric → null (skip; never cast to 1.0).
+     */
+    private function optionalNonNegativeMoney(mixed $raw): ?float
+    {
+        if ($raw === null || $raw === '') {
+            return 0.0;
+        }
+        if (! is_scalar($raw) || is_bool($raw)) {
+            return null;
+        }
+        if (! is_numeric($raw)) {
+            return null;
+        }
+
+        $amount = round((float) $raw, 2);
+        if (! is_finite($amount) || $amount < 0 || $amount > 999999.99) {
+            return null;
+        }
+
+        return $amount;
     }
 
     /**
@@ -1793,12 +2162,11 @@ class SiteController extends Controller
                 continue;
             }
 
-            $price = $request->input("price_sensitive.$topic");
-            if ($price === null || $price === '') {
+            $amount = $this->optionalNonNegativeMoney($request->input("price_sensitive.$topic"));
+            if ($amount === null) {
                 continue;
             }
-
-            $sensitivePrices[$topic] = (float) $price;
+            $sensitivePrices[$topic] = $amount;
         }
 
         return $sensitivePrices;
@@ -1815,13 +2183,12 @@ class SiteController extends Controller
                 continue;
             }
 
-            $raw = $request->input("price_homepage.$days");
-            $price = ($raw === null || $raw === '') ? 0.0 : (float) $raw;
-            if ($price < 0) {
+            $price = $this->optionalNonNegativeMoney($request->input("price_homepage.$days"));
+            if ($price === null) {
                 continue;
             }
 
-            $out[(string) $days] = round($price, 2);
+            $out[(string) $days] = $price;
         }
 
         return $out;
@@ -1878,17 +2245,25 @@ class SiteController extends Controller
      */
     private function storeStaffSiteImage(UploadedFile $file): ?string
     {
-        $disk = Storage::disk('public');
-        $disk->makeDirectory('sites');
+        try {
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
 
-        $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
-            ?? $file->store('sites', 'public');
+            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
+                ?? $file->store('sites', 'public');
 
-        if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                return null;
+            }
+
+            return $stored;
+        } catch (\Throwable $e) {
+            Log::error('Staff site image store failed', [
+                'error' => $e->getMessage(),
+            ]);
+
             return null;
         }
-
-        return $stored;
     }
 
     /**
@@ -1906,6 +2281,7 @@ class SiteController extends Controller
      */
     private function parseCodeList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
             $parts = $value;
         } else {
@@ -1923,32 +2299,265 @@ class SiteController extends Controller
         return array_values(array_unique($codes));
     }
 
-    private function normalizeHttpUrl(mixed $url): string
+    /**
+     * Form/JSON text. Arrays/objects must not reach (string) — PHP 8 TypeError.
+     */
+    private function scalarString(mixed $value): string
     {
-        if (is_array($url)) {
-            $flat = [];
-            array_walk_recursive($url, function ($item) use (&$flat) {
-                if (is_scalar($item)) {
-                    $flat[] = $item;
-                }
-            });
-            $url = $flat[0] ?? '';
-        }
-
-        if (! is_scalar($url) && $url !== null) {
+        if (! is_scalar($value) || is_bool($value)) {
             return '';
         }
 
-        $url = trim((string) $url);
-        if ($url === '') {
-            return $url;
+        return trim((string) $value);
+    }
+
+    /**
+     * Empty optional text, including ConvertEmptyStringsToNull → null.
+     * Arrays are not blank — those must 422, not wipe the stored value.
+     */
+    private function isBlankStringInput(mixed $value): bool
+    {
+        return $value === null || (is_string($value) && trim($value) === '');
+    }
+
+    /**
+     * @param  array<string, mixed>  $values
+     * @return array<string, string>
+     */
+    private function nonStringUrlErrors(array $values): array
+    {
+        $errors = [];
+        foreach ($values as $field => $value) {
+            if (! is_string($value)) {
+                $errors[$field] = 'Invalid URL';
+            }
         }
 
-        if (! preg_match('~^(?:f|ht)tps?://~i', $url)) {
+        return $errors;
+    }
+
+    /**
+     * Strip www, trailing dots, ports, and case so example.com:443 matches example.com.
+     */
+    private function normalizeDomain(string $host): string
+    {
+        $domain = strtolower(trim($host));
+        $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && ! str_starts_with($domain, '[') && str_contains($domain, ':')) {
+            $domain = explode(':', $domain, 2)[0];
+        }
+
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && function_exists('idn_to_ascii') && ! filter_var($domain, FILTER_VALIDATE_IP) && ! str_starts_with($domain, '[')) {
+            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $domain = strtolower($ascii);
+            }
+        }
+
+        return $domain;
+    }
+
+    private function isMarketplaceHost(string $host): bool
+    {
+        $host = strtolower(trim($host));
+        if ($host === '' || str_starts_with($host, '[')) {
+            return false;
+        }
+        if (str_contains($host, ':') && preg_match('/^(.+):(\d+)$/', $host, $m) === 1) {
+            $host = $m[1];
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+        if ($host === 'localhost' || ! str_contains($host, '.')) {
+            return false;
+        }
+
+        $labels = explode('.', $host);
+        $tld = (string) end($labels);
+        if (in_array($tld, ['localhost', 'local', 'internal', 'invalid'], true)) {
+            return false;
+        }
+        $allNumeric = true;
+        foreach ($labels as $label) {
+            if ($label === '') {
+                return false;
+            }
+            if (! ctype_digit($label)) {
+                $allNumeric = false;
+            }
+        }
+
+        return ! $allNumeric;
+    }
+
+    private function normalizeSiteName(string $raw): string
+    {
+        $name = preg_replace('/[\p{Cc}\p{Cf}]+/u', '', $raw) ?? $raw;
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
+
+        return trim($name);
+    }
+
+    private function urlHost(mixed $url): string
+    {
+        if (! is_string($url) || $url === '') {
+            return '';
+        }
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
+    }
+
+    private function exampleUrlHostDiffers(mixed $siteUrl, mixed $exampleUrl): bool
+    {
+        $siteHost = $this->urlHost($siteUrl);
+        $exampleHost = $this->urlHost($exampleUrl);
+
+        return $siteHost !== '' && $exampleHost !== '' && $siteHost !== $exampleHost;
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function domainLookupCandidates(string $host): array
+    {
+        $normalized = $this->normalizeDomain($host);
+        if ($normalized === '') {
+            return [];
+        }
+
+        $candidates = [
+            $normalized,
+            'www.'.$normalized,
+            $normalized.'.',
+            'www.'.$normalized.'.',
+            $normalized.':80',
+            $normalized.':443',
+            'www.'.$normalized.':80',
+            'www.'.$normalized.':443',
+        ];
+        if (function_exists('idn_to_utf8')) {
+            $utf8 = idn_to_utf8($normalized, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($utf8) && $utf8 !== '' && strtolower($utf8) !== $normalized) {
+                $utf8 = strtolower($utf8);
+                $candidates[] = $utf8;
+                $candidates[] = 'www.'.$utf8;
+            }
+        }
+
+        return array_values(array_unique($candidates));
+    }
+
+    /**
+     * @return string|iterable<int|string, mixed>|null
+     */
+    private function nicheNamesInput(mixed $raw): string|iterable|null
+    {
+        if (is_string($raw) || is_iterable($raw) || $raw === null) {
+            return $raw;
+        }
+
+        return [];
+    }
+
+    private function mergeNormalizedUrlOrFail(
+        Request $request,
+        string $field,
+        ?string $alt = null,
+        bool $nullable = false
+    ): void {
+        if (! $request->exists($field) && ($alt === null || ! $request->exists($alt))) {
+            return;
+        }
+
+        $raw = $request->input($field, $alt !== null ? $request->input($alt) : null);
+        if ($raw === null || $raw === '') {
+            if ($nullable) {
+                $request->merge([$field => null]);
+            }
+
+            return;
+        }
+
+        if (! is_string($raw)) {
+            throw ValidationException::withMessages([$field => ['Invalid URL']]);
+        }
+
+        $normalized = $this->normalizeHttpUrl($raw);
+        if ($normalized === '') {
+            throw ValidationException::withMessages([$field => ['Invalid URL']]);
+        }
+        $request->merge([$field => $normalized]);
+    }
+
+    private function normalizeHttpUrl(string $url): string
+    {
+        $url = trim($url);
+        if ($url === '' || str_contains($url, "\0") || preg_match('/\s/u', $url) === 1) {
+            return '';
+        }
+
+        // Protocol-relative //host → https://host (do not prefix as https:////host).
+        if (str_starts_with($url, '//')) {
+            $url = 'https:'.$url;
+        } elseif (preg_match('~^(?:https?|ftps?)://~i', $url) !== 1) {
+            // Reject javascript:/data:/mailto: and ftp://. Keep host:port (example.com:8080).
+            if (preg_match('~^([a-z][a-z0-9+.-]*):~i', $url, $schemeMatch) === 1) {
+                $scheme = strtolower($schemeMatch[1]);
+                $hasAuthority = preg_match('~^'.preg_quote($schemeMatch[1], '~').'://~i', $url) === 1;
+                if ($hasAuthority || in_array($scheme, ['javascript', 'data', 'mailto', 'vbscript', 'file', 'about', 'blob'], true)) {
+                    return '';
+                }
+                if (! str_contains($scheme, '.')) {
+                    return '';
+                }
+            }
             $url = 'https://'.$url;
         }
 
-        return $url;
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return '';
+        }
+
+        $scheme = strtolower((string) ($parts['scheme'] ?? ''));
+        if (! in_array($scheme, ['http', 'https'], true)) {
+            return '';
+        }
+
+        $host = rtrim($parts['host'], '.');
+        if ($host === '') {
+            return '';
+        }
+        if (function_exists('idn_to_ascii') && ! filter_var($host, FILTER_VALIDATE_IP) && ! str_starts_with($host, '[')) {
+            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $host = $ascii;
+            }
+            $host = strtolower($host);
+        }
+        if (str_contains($host, ':') && ! str_starts_with($host, '[')) {
+            $host = '['.$host.']';
+        }
+
+        $authority = $host;
+        $port = $parts['port'] ?? null;
+        if (is_int($port)) {
+            if ($port < 1 || $port > 65535) {
+                return '';
+            }
+            if (! in_array($port, [80, 443], true)) {
+                $authority .= ':'.$port;
+            }
+        }
+
+        $path = $parts['path'] ?? '';
+        $query = isset($parts['query']) && $parts['query'] !== '' ? '?'.$parts['query'] : '';
+
+        return $scheme.'://'.$authority.$path.$query;
     }
 
     /**
@@ -2009,7 +2618,7 @@ class SiteController extends Controller
      */
     private function normalizeMetricInt(mixed $value): ?int
     {
-        if ($value === null || $value === '') {
+        if ($value === null || $value === '' || is_array($value) || is_object($value)) {
             return null;
         }
 
@@ -2426,6 +3035,12 @@ class SiteController extends Controller
             Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
         }
 
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete publisher invite notifications before delete: '.$e->getMessage());
+        }
+
         // Deleting is how staff reject a submission outright, so the publisher
         // needs the same courtesy as a deactivation — otherwise their site just
         // vanishes and the first they hear of it is when they come looking.
@@ -2436,9 +3051,7 @@ class SiteController extends Controller
             $notifySnapshot->status_reason = $rejectionReason;
         }
 
-        if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-            Storage::disk('public')->delete($site->site_image);
-        }
+        $this->deleteStoredSiteImage(is_string($site->site_image) ? $site->site_image : null);
 
         $site->delete();
 

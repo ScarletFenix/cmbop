@@ -11,6 +11,9 @@
     $selectedPublisherUnverified = $selectedPublisherUnverified ?? false;
     $sitesBackUrl = $sitesBackUrl ?? staff_route('sites.index');
     $rawNiches = old('categories', []);
+    if (! is_string($rawNiches) && ! is_iterable($rawNiches)) {
+        $rawNiches = [];
+    }
     if (is_string($rawNiches)) {
         $rawNiches = preg_split('/\|/', $rawNiches) ?: [];
     }
@@ -18,7 +21,12 @@
     if (is_string($prefillNiches)) {
         $prefillNiches = array_values(array_filter(array_map('trim', preg_split('/\|/', $prefillNiches) ?: [])));
     }
-    $prefillNiches = collect($prefillNiches)->filter(fn ($v) => filled($v))->values()->all();
+    $prefillNiches = collect($prefillNiches)
+        ->flatten()
+        ->filter(fn ($v) => is_scalar($v) && filled($v))
+        ->map(fn ($v) => (string) $v)
+        ->values()
+        ->all();
 @endphp
 <div class="container-fluid py-3">
 
@@ -97,6 +105,7 @@
                         <label class="form-label fw-semibold" for="example_url">Example post URL <span class="text-danger">*</span></label>
                         <input type="text" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror"
                                value="{{ old_text('example_url') }}" required placeholder="https://example.com/sample-post">
+                        <div class="form-text">Must be on the same domain as the site URL.</div>
                         @error('example_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-6">
@@ -148,7 +157,7 @@
                             <option value="">Select…</option>
                             @foreach($countries as $country)
                                 <option value="{{ strtolower($country->code) }}"
-                                    @selected(old('country') === strtolower($country->code))>
+                                    @selected(old_text('country') === strtolower($country->code))>
                                     {{ $country->name }}
                                 </option>
                             @endforeach
@@ -160,10 +169,10 @@
                         <label class="form-label fw-semibold" for="language">Language <span class="text-danger">*</span></label>
                         <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language') }}">
                         <select id="language" name="language" class="form-select @error('language') is-invalid @enderror" required>
-                            <option value="">{{ old('country') ? 'Select…' : 'Select country first' }}</option>
+                            <option value="">{{ old_text('country') !== '' ? 'Select…' : 'Select country first' }}</option>
                             @foreach($languages as $language)
                                 <option value="{{ strtolower($language->code) }}"
-                                    @selected(old('language') === strtolower($language->code))>
+                                    @selected(old_text('language') === strtolower($language->code))>
                                     {{ $language->name }}
                                 </option>
                             @endforeach
@@ -202,7 +211,7 @@
                         <label class="form-label fw-semibold" for="turnaround_time">Turnaround <span class="text-danger">*</span></label>
                         <select id="turnaround_time" name="turnaround_time" class="form-select @error('turnaround_time') is-invalid @enderror" required>
                             @foreach(['24h' => '24 hours', '48h' => '48 hours', '3days' => '3 days', '5days' => '5 days', '7days' => '7 days'] as $value => $label)
-                                <option value="{{ $value }}" @selected(old('turnaround_time', '3days') === $value)>{{ $label }}</option>
+                                <option value="{{ $value }}" @selected(old_text('turnaround_time', '3days') === $value)>{{ $label }}</option>
                             @endforeach
                         </select>
                         @error('turnaround_time')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -211,7 +220,7 @@
                         <label class="form-label fw-semibold" for="publication_time">Publication time <span class="text-danger">*</span></label>
                         <select id="publication_time" name="publication_time" class="form-select @error('publication_time') is-invalid @enderror" required>
                             @foreach(['6months' => '6 months', '1year' => '1 year', 'permanent' => 'Permanent'] as $value => $label)
-                                <option value="{{ $value }}" @selected(old('publication_time', 'permanent') === $value)>{{ $label }}</option>
+                                <option value="{{ $value }}" @selected(old_text('publication_time', 'permanent') === $value)>{{ $label }}</option>
                             @endforeach
                         </select>
                         @error('publication_time')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -219,8 +228,8 @@
                     <div class="col-md-4">
                         <label class="form-label fw-semibold" for="link_type">Link type <span class="text-danger">*</span></label>
                         <select id="link_type" name="link_type" class="form-select @error('link_type') is-invalid @enderror" required>
-                            <option value="dofollow" @selected(old('link_type', 'dofollow') === 'dofollow')>Dofollow</option>
-                            <option value="nofollow" @selected(old('link_type') === 'nofollow')>Nofollow</option>
+                            <option value="dofollow" @selected(old_text('link_type', 'dofollow') === 'dofollow')>Dofollow</option>
+                            <option value="nofollow" @selected(old_text('link_type') === 'nofollow')>Nofollow</option>
                         </select>
                         @error('link_type')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
@@ -231,7 +240,7 @@
                             @foreach(['as_you_prefer' => 'As you prefer', 'sponsored' => 'Sponsored', 'partner_material' => 'Partner material'] as $value => $label)
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="site_tag" id="tag_{{ $value }}"
-                                           value="{{ $value }}" @checked(old('site_tag', 'as_you_prefer') === $value)>
+                                           value="{{ $value }}" @checked(old_text('site_tag', 'as_you_prefer') === $value)>
                                     <label class="form-check-label" for="tag_{{ $value }}">{{ $label }}</label>
                                 </div>
                             @endforeach
@@ -258,7 +267,12 @@
 
                     @php
                         $homepageDays = config('site_placement.homepage_days', [1, 7, 30]);
-                        $hasSensitiveOld = collect(['crypto','trading','CBD','forex'])->contains(fn ($t) => filled(old("sensitive.$t")) || filled(old("price_sensitive.$t")));
+                        $hasSensitiveOld = collect(['crypto','trading','CBD','forex'])->contains(function ($t) {
+                            $flag = old("sensitive.$t");
+                            $price = old("price_sensitive.$t");
+                            return ($flag !== null && $flag !== '' && $flag !== [])
+                                || ($price !== null && $price !== '' && $price !== []);
+                        });
                     @endphp
                     <div class="col-12">
                         <input type="hidden" name="placement_offers_form" value="1">
@@ -275,9 +289,10 @@
                                                    {{ old("homepage.$days") ? 'checked' : '' }}>
                                             <label class="form-check-label" for="staffHomepage{{ $days }}">{{ $days }} day{{ $days > 1 ? 's' : '' }}</label>
                                         </div>
-                                        <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1"
+                                        <input type="number" name="price_homepage[{{ $days }}]" class="form-control mt-1 @error('price_homepage.'.$days) is-invalid @enderror"
                                                placeholder="Fee (€) — 0 = Free" min="0" step="0.01" inputmode="decimal"
-                                               value="{{ old_text("price_homepage.$days") }}">
+                                               value="{{ old_text('price_homepage.'.$days) }}">
+                                        @error('price_homepage.'.$days)<div class="invalid-feedback">{{ $message }}</div>@enderror
                                     </div>
                                 @endforeach
                             </div>
@@ -304,7 +319,7 @@
                             <i class="fa fa-chevron-{{ $hasSensitiveOld ? 'down' : 'right' }}" aria-hidden="true"></i>
                             Sensitive topics (optional)
                         </button>
-                        <p class="small text-muted mb-0 mt-1">Only open if this publisher accepts crypto, trading, CBD, or forex placements.</p>
+                        <p class="small text-muted mb-0 mt-1">Only open if this publisher accepts crypto, trading, CBD, or forex. Checked + blank extra = €0 surcharge.</p>
                         <div class="disclosure-panel" id="sensitiveDisclosurePanel" @unless($hasSensitiveOld) hidden @endunless>
                             <div class="row bg-light p-3 rounded mt-2">
                                 <div class="col-12">
@@ -315,7 +330,8 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 @error('price_sensitive.'.$topic) is-invalid @enderror" placeholder="Extra (€) — 0 = none" value="{{ old_text('price_sensitive.'.$topic) }}" min="0" step="0.01">
+                                            @error('price_sensitive.'.$topic)<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </div>
                                         @endforeach
                                     </div>

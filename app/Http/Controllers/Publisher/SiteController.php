@@ -14,10 +14,12 @@ use App\Services\ActivityLogger;
 use App\Services\AgencySiteImportService;
 use App\Services\CheckoutSchemaService;
 use App\Services\EmailNotificationService;
+use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
 use App\Support\SiteDescriptionRules;
+use App\Support\SiteImageUpload;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -458,6 +460,12 @@ class SiteController extends Controller
         $site->save();
 
         try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher accepted site: '.$e->getMessage());
+        }
+
+        try {
             ActivityLogger::log(
                 'site.assignment_accepted',
                 (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
@@ -529,6 +537,12 @@ class SiteController extends Controller
 
         $siteId = $site->id;
         $domain = $site->domain ?: $site->site_name;
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
+        }
+        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
         if ($request->expectsJson() || $request->ajax()) {
@@ -680,6 +694,16 @@ class SiteController extends Controller
             }
         });
 
+        $validator->after(function ($validator) use ($request) {
+            $rawDescription = $request->input('siteDescription', '');
+            if (! is_string($rawDescription)) {
+                return;
+            }
+            foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
+                $validator->errors()->add('siteDescription', $message);
+            }
+        });
+
         if ($validator->fails()) {
             return redirect()->back()
                 ->withErrors($validator)
@@ -810,16 +834,12 @@ class SiteController extends Controller
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
-        $orderCount = $site->orderItemsCount();
-        if ($orderCount > 0) {
-            return redirect()->back()->with(
-                'error',
-                $orderCount === 1
-                    ? 'This site has 1 order and cannot be deleted. Archive it to hide it from the catalog.'
-                    : 'This site has '.$orderCount.' orders and cannot be deleted. Archive it to hide it from the catalog.'
-            );
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
         }
-
+        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
         return redirect()->back()->with('success', 'Site deleted successfully!');
@@ -1149,8 +1169,13 @@ class SiteController extends Controller
      */
     private function parseCategoryList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
-            $parts = $value;
+            array_walk_recursive($value, function ($item) use (&$parts) {
+                if (is_scalar($item) && ! is_bool($item)) {
+                    $parts[] = $item;
+                }
+            });
         } elseif (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
             if (is_array($decoded)) {
@@ -1162,8 +1187,6 @@ class SiteController extends Controller
                 $known = Category::query()->where('name', $value)->exists();
                 $parts = $known ? [$value] : (preg_split('/,/', $value) ?: []);
             }
-        } else {
-            $parts = [];
         }
 
         $categories = [];
@@ -1185,6 +1208,7 @@ class SiteController extends Controller
      */
     private function parseCodeList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
             $parts = $value;
         } else {
@@ -1200,6 +1224,18 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * Form/JSON text. Arrays/objects must not reach (string) — PHP 8 TypeError.
+     */
+    private function scalarString(mixed $value): string
+    {
+        if (! is_scalar($value) || is_bool($value)) {
+            return '';
+        }
+
+        return trim((string) $value);
     }
 
     /**

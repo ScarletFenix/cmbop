@@ -182,7 +182,16 @@ class ImageOptimizationService
         $path = $directory.'/'.$basename.'.webp';
 
         $disk = Storage::disk('public');
-        $disk->put($path, $webp);
+        try {
+            $disk->put($path, $webp);
+        } catch (\Throwable $e) {
+            Log::warning('Staff cover WebP write failed', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
 
         return $disk->exists($path) ? $path : null;
     }

@@ -13,7 +13,6 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
-use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -80,7 +79,8 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('content_revision_requested');
             })
             ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+                $q->where('status', 'review')
+                    ->where('payment_status', 'paid');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -160,7 +160,8 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('content_revision_requested');
             })
             ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+                $q->where('status', 'review')
+                    ->where('payment_status', 'paid');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -187,6 +188,13 @@ class AutoApproveOrders extends Command
                 $order = Order::where('id', $orderItem->order_id)->lockForUpdate()->first();
                 if (! $order || $order->status === 'completed' || $order->status === 'cancelled') {
                     DB::rollBack();
+
+                    continue;
+                }
+
+                if ($order->payment_status !== 'paid') {
+                    DB::rollBack();
+                    $this->warn("Skip order #{$order->id}: payment is not complete ({$order->payment_status})");
 
                     continue;
                 }
@@ -232,11 +240,6 @@ class AutoApproveOrders extends Command
 
                 $schema = app(CheckoutSchemaService::class);
                 $schema->ensureCheckoutTables();
-
-                $order->update($schema->filterExistingColumns('orders', [
-                    'status' => 'completed',
-                    'completed_at' => Carbon::now(),
-                ]));
 
                 $itemCompletion = $schema->filterExistingColumns('order_items', [
                     'completed_at' => $lockedItem->completed_at ?? Carbon::now(),
@@ -310,14 +313,29 @@ class AutoApproveOrders extends Command
                     }
                 }
 
-                $advertiserRoleId = Wallet::advertiserRoleId();
-                $advertiserWallet = $advertiserRoleId
-                    ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
-                    : null;
+                $siblings = OrderItem::query()
+                    ->where('order_id', $order->id)
+                    ->lockForUpdate()
+                    ->get();
+                $allComplete = $siblings->every(fn (OrderItem $item) => $this->itemIsCompleted($item));
 
-                if ($advertiserWallet) {
-                    app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
-                    $this->info('✓ Reserved funds released from advertiser wallet');
+                if ($allComplete) {
+                    $order->update($schema->filterExistingColumns('orders', [
+                        'status' => 'completed',
+                        'completed_at' => Carbon::now(),
+                    ]));
+
+                    $advertiserRoleId = Wallet::advertiserRoleId();
+                    $advertiserWallet = $advertiserRoleId
+                        ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
+                        : null;
+
+                    if ($advertiserWallet) {
+                        // Wallet: consume the reserved line. Card / bonus: consume
+                        // leftover promo so it is not trapped after settlement.
+                        app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
+                        $this->info('✓ Reserved funds released from advertiser wallet');
+                    }
                 }
 
                 DB::commit();
@@ -355,5 +373,19 @@ class AutoApproveOrders extends Command
         }
 
         return $approvedCount;
+    }
+
+    private function itemIsCompleted(OrderItem $item): bool
+    {
+        if ($item->auto_approve_triggered) {
+            return true;
+        }
+
+        if (Schema::hasColumn('order_items', 'completed_at') && $item->completed_at) {
+            return true;
+        }
+
+        return Schema::hasColumn('order_items', 'publisher_status')
+            && $item->publisher_status === 'completed';
     }
 }

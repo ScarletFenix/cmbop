@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Advertiser\SpendBudgetService;
+use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
@@ -27,6 +28,7 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromStripeSession(string $referenceCode, object $session): Collection
     {
+        $sessionMeta = $this->sessionMetadataArray($session);
         $newlyPaid = DB::transaction(function () use ($referenceCode, $session) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
@@ -44,31 +46,16 @@ class OrderPaymentService
             }
 
             $meta = $this->sessionMetadataArray($session);
-            if (isset($meta['expected_amount'])) {
-                $this->assertStripeAmountMatchesExpected(
-                    $session,
-                    round((float) $meta['expected_amount'], 2),
-                    $referenceCode
-                );
-            } elseif (! isset($meta['bonus_applied']) || (float) ($meta['bonus_applied'] ?? 0) <= 0) {
-                $expected = round((float) $orders->sum(fn (Order $o) => (float) $o->total_amount), 2);
-                $this->assertStripeAmountMatchesExpected($session, $expected, $referenceCode);
-            }
+            $this->assertStripeAmountMatchesExpected(
+                $session,
+                $this->expectedStripeEurosForOrders($orders, $meta),
+                $referenceCode
+            );
 
             $newlyPaid = collect();
 
             foreach ($orders as $order) {
-                if ($order->payment_status === 'paid') {
-                    continue;
-                }
-
-                // Allow pending (first attempt) and failed (Pay again / recovered session).
-                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
-                    Log::warning('Skipping order with unexpected payment status', [
-                        'order_id' => $order->id,
-                        'payment_status' => $order->payment_status,
-                    ]);
-
+                if (! $this->canMarkCardOrderPaid($order)) {
                     continue;
                 }
 
@@ -93,6 +80,12 @@ class OrderPaymentService
             return $newlyPaid;
         });
 
+        $this->recordAdvertiserPurchaseForPaidCheckout(
+            $referenceCode,
+            $newlyPaid,
+            (float) ($sessionMeta['bonus_applied'] ?? 0),
+            (float) ($sessionMeta['order_total'] ?? 0)
+        );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
 
         return $newlyPaid;
@@ -105,7 +98,14 @@ class OrderPaymentService
      */
     public function markOrdersPaidFromPaymentIntent(string $referenceCode, object $intent): Collection
     {
-        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent) {
+        $meta = [];
+        if (isset($intent->metadata)) {
+            $meta = is_array($intent->metadata)
+                ? $intent->metadata
+                : (method_exists($intent->metadata, 'toArray') ? $intent->metadata->toArray() : (array) $intent->metadata);
+        }
+
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent, $meta) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -116,12 +116,6 @@ class OrderPaymentService
                 return collect();
             }
 
-            $meta = [];
-            if (isset($intent->metadata)) {
-                $meta = is_array($intent->metadata)
-                    ? $intent->metadata
-                    : (method_exists($intent->metadata, 'toArray') ? $intent->metadata->toArray() : (array) $intent->metadata);
-            }
             $this->assertStripeAmountMatchesExpected(
                 $intent,
                 $this->expectedStripeEurosForOrders($orders, $meta),
@@ -130,10 +124,7 @@ class OrderPaymentService
 
             $newlyPaid = collect();
             foreach ($orders as $order) {
-                if ($order->payment_status === 'paid') {
-                    continue;
-                }
-                if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+                if (! $this->canMarkCardOrderPaid($order)) {
                     continue;
                 }
 
@@ -154,9 +145,63 @@ class OrderPaymentService
             return $newlyPaid;
         });
 
+        $this->recordAdvertiserPurchaseForPaidCheckout(
+            $referenceCode,
+            $newlyPaid,
+            (float) ($meta['bonus_applied'] ?? 0),
+            (float) ($meta['order_total'] ?? 0)
+        );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
 
         return $newlyPaid;
+    }
+
+    /**
+     * Card / bonus-only checkouts reserved promo without a purchase ledger row.
+     * Clawback then treated the refund as cash. Write the same purchase hint
+     * wallet checkout already writes, once per reference.
+     *
+     * @param  Collection<int, Order>  $orders
+     */
+    protected function recordAdvertiserPurchaseForPaidCheckout(
+        string $referenceCode,
+        Collection $orders,
+        float $bonusApplied,
+        float $orderTotal = 0.0
+    ): void {
+        $bonusApplied = round($bonusApplied, 2);
+        if ($bonusApplied <= 0 || $orders->isEmpty()) {
+            return;
+        }
+
+        $userId = (int) ($orders->first()->user_id ?? 0);
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if ($userId <= 0 || ! $advertiserRoleId) {
+            return;
+        }
+
+        $wallet = Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $advertiserRoleId)
+            ->first();
+        if (! $wallet) {
+            return;
+        }
+
+        $total = round($orderTotal, 2);
+        if ($total <= 0) {
+            $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
+        }
+        if ($total <= 0) {
+            $total = $bonusApplied;
+        }
+
+        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
+        if ($wallet && (float) $wallet->bonus_reserved > 0) {
+            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
+        }
+        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
+        Cache::forget($cacheKey);
     }
 
     /**
@@ -188,6 +233,8 @@ class OrderPaymentService
                 'error' => $e->getMessage(),
             ]);
         }
+        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
+        Cache::forget($cacheKey);
     }
 
     /**
@@ -196,9 +243,9 @@ class OrderPaymentService
      *
      * @return Collection<int, Order>
      */
-    public function markOrdersFailedFromReference(string $referenceCode, ?string $reason = null, ?int $userId = null): Collection
+    public function markOrdersFailedFromReference(string $referenceCode, ?string $reason = null, ?int $userId = null, ?float $bonusFallback = null): Collection
     {
-        $failed = DB::transaction(function () use ($referenceCode, $reason, $userId) {
+        $failed = DB::transaction(function () use ($referenceCode, $reason, $userId, $bonusFallback) {
             $orders = Order::query()
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -220,7 +267,11 @@ class OrderPaymentService
                 ?: ($userId ?? 0));
 
             if ($resolvedUserId > 0) {
-                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode);
+                $fallback = $bonusFallback;
+                if (($fallback ?? 0) <= 0) {
+                    $fallback = round((float) ($package['bonus_applied'] ?? 0), 2);
+                }
+                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback);
             }
             $this->forgetPendingCheckout($referenceCode);
 
@@ -258,10 +309,9 @@ class OrderPaymentService
     /**
      * Refund promotional credit reserved for a card checkout reference.
      */
-    public function refundBonusReservedForReference(int $userId, string $referenceCode): void
+    public function refundBonusReservedForReference(int $userId, string $referenceCode, ?float $fallbackBonus = null): void
     {
-        $cacheKey = 'checkout_bonus:'.$userId.':'.$referenceCode;
-        $bonus = round((float) Cache::pull($cacheKey, 0), 2);
+        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
         if ($bonus <= 0) {
             return;
         }
@@ -282,7 +332,7 @@ class OrderPaymentService
      */
     public static function pendingCheckoutCacheKey(string $referenceCode): string
     {
-        return 'pending_card_checkout:'.$referenceCode;
+        return CheckoutIntentService::pendingCheckoutCacheKey($referenceCode);
     }
 
     /**
@@ -292,12 +342,12 @@ class OrderPaymentService
      */
     public function storePendingCheckout(string $referenceCode, array $package): void
     {
-        Cache::put(self::pendingCheckoutCacheKey($referenceCode), $package, now()->addHours(6));
+        app(CheckoutIntentService::class)->storePackage($referenceCode, $package);
     }
 
     public function forgetPendingCheckout(string $referenceCode): void
     {
-        Cache::forget(self::pendingCheckoutCacheKey($referenceCode));
+        app(CheckoutIntentService::class)->forget($referenceCode);
     }
 
     /**
@@ -305,9 +355,7 @@ class OrderPaymentService
      */
     public function getPendingCheckout(string $referenceCode): ?array
     {
-        $package = Cache::get(self::pendingCheckoutCacheKey($referenceCode));
-
-        return is_array($package) ? $package : null;
+        return app(CheckoutIntentService::class)->getPackage($referenceCode);
     }
 
     /**
@@ -513,9 +561,47 @@ class OrderPaymentService
             'session_id' => $session->id ?? null,
         ]);
 
+        $this->recordAdvertiserPurchaseForPaidCheckout(
+            $referenceCode,
+            $created,
+            (float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0),
+            (float) ($package['order_total'] ?? $meta['order_total'] ?? 0)
+        );
         $this->evaluateSpendBudgetAfterPaidOrders($created);
 
         return $created;
+    }
+
+    /**
+     * Pending/failed card rows can be marked paid. Cancelled or completed
+     * orders must not be resurrected by a late Stripe webhook or success URL.
+     */
+    private function canMarkCardOrderPaid(Order $order): bool
+    {
+        if ($order->payment_status === 'paid') {
+            return false;
+        }
+
+        if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+            Log::warning('Skipping order with unexpected payment status', [
+                'order_id' => $order->id,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        if (in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+            Log::warning('Skipping Stripe mark-paid for cancelled or completed order', [
+                'order_id' => $order->id,
+                'status' => $order->status,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        return true;
     }
 
     /**
