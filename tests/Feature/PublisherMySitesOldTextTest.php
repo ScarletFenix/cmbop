@@ -98,14 +98,16 @@ class PublisherMySitesOldTextTest extends TestCase
         ]);
         $user->roles()->attach($role->id);
 
-        $this->actingAs($user)
+        $html = $this->actingAs($user)
             ->get(route('publisher.sites.ajax', [
                 'status' => ['pending'],
                 'query' => ['poisoned-search'],
                 'page' => ['2'],
             ]))
             ->assertOk()
-            ->assertDontSee('Array to string conversion', false)
-            ->assertJsonMissingPath('exception');
+            ->getContent();
+
+        $this->assertStringNotContainsString('Array to string conversion', $html);
+        $this->assertStringNotContainsString('Could not load your sites', $html);
     }
 }

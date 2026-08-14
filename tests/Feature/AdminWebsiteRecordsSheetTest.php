@@ -175,11 +175,13 @@ class AdminWebsiteRecordsSheetTest extends TestCase
             ->assertJsonPath('selected_country', 'fr')
             ->assertJsonPath('total', 1);
 
-        $this->actingAs($admin)
-            ->get(route('admin.sites.records.export', ['country' => ['fr']]))
-            ->assertOk()
-            ->assertSee('french-records.example', false)
-            ->assertDontSee('german-records.example', false);
+        $export = $this->actingAs($admin)
+            ->get(route('admin.sites.records.export', ['country' => ['fr']]));
+
+        $export->assertOk();
+        $csv = $export->streamedContent();
+        $this->assertStringContainsString('https://french-records.example', $csv);
+        $this->assertStringNotContainsString('https://german-records.example', $csv);
     }
 
     public function test_admin_can_filter_records_sheet_by_country(): void
