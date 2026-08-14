@@ -509,6 +509,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('dashboard.distributions');
         Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
             ->name('dashboard.action-queue');
+        Route::get('/dashboard/finance', [AdminDashboardController::class, 'getFinanceStrip'])
+            ->name('dashboard.finance');
         Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
             ->name('dashboard.queue-counts');
 

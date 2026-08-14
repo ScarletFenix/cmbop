@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherPublishNudge;
 use App\Models\ActivityLog;
 use App\Models\Order;
@@ -110,6 +111,7 @@ class AdminStalledOrderQueueTest extends TestCase
         $response->assertOk()->assertJson(['success' => true, 'count' => 1]);
         $response->assertJsonPath('items.0.order_number', $order->order_number);
         $response->assertJsonPath('items.0.track', 'publish');
+        $response->assertJsonPath('items.0.order_url', route('admin.orders.show', $order->id));
     }
 
     public function test_an_order_still_working_through_the_cadence_is_not_escalated_yet(): void
@@ -168,6 +170,7 @@ class AdminStalledOrderQueueTest extends TestCase
             ->assertJson(['success' => true]);
 
         Mail::assertQueued(PublisherPublishNudge::class, fn ($mail) => $mail->hasTo($publisher->email));
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
     }
 
     public function test_chasing_by_hand_does_not_consume_the_automated_escalation(): void
@@ -223,5 +226,107 @@ class AdminStalledOrderQueueTest extends TestCase
             ->assertStatus(403);
 
         Mail::assertNotQueued(PublisherPublishNudge::class);
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
+    }
+
+    public function test_remind_fails_clearly_when_the_publisher_has_no_email(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $publisher->email = '';
+        $publisher->save();
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'processing', [
+            'accepted_at' => now()->subDays(5),
+            'publish_nudge_stage' => 4,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $order->items->first()->id))
+            ->assertStatus(422)
+            ->assertJson([
+                'success' => false,
+                'message' => 'No publisher email on file for this order.',
+            ]);
+
+        Mail::assertNotQueued(PublisherPublishNudge::class);
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
+    }
+
+    public function test_an_unaccepted_order_is_chased_with_an_accept_nudge(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $item = $order->items->first();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $item->id))
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        Mail::assertQueued(PublisherAcceptNudge::class, fn ($mail) => $mail->hasTo($publisher->email));
+        Mail::assertNotQueued(PublisherPublishNudge::class);
+
+        $log = ActivityLog::where('action', 'order.publisher_reminded')
+            ->where('subject_id', $order->id)
+            ->first();
+        $this->assertSame('accept', $log?->properties['track'] ?? null);
+    }
+
+    public function test_chasing_an_unaccepted_order_does_not_consume_the_accept_cadence(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $item = $order->items->first();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $item->id))
+            ->assertOk();
+
+        $this->assertSame(3, (int) $item->fresh()->accept_nudge_stage);
+    }
+
+    public function test_stalled_count_is_not_capped_by_the_table_limit(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $site = $this->site($publisher);
+
+        for ($i = 0; $i < 26; $i++) {
+            $this->order($advertiser, $site, 'processing', [
+                'accepted_at' => now()->subDays(5),
+                'publish_nudge_stage' => 4,
+            ]);
+        }
+
+        $response = $this->actingAs($admin)->getJson(route('admin.dashboard.stalled-orders'));
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('count', 26);
+        $this->assertCount(25, $response->json('items'));
+    }
+
+    public function test_recently_overdue_stalled_orders_show_hours_not_a_full_day(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $order->paid_at = now()->subHours(5);
+        $order->save();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.stalled-orders'))
+            ->assertOk()
+            ->assertJsonPath('items.0.late_label', '5h')
+            ->assertJsonPath('items.0.days_overdue', 0);
     }
 }

@@ -101,6 +101,10 @@ class RuntimeRegressionFixesTest extends TestCase
         $this->actingAs($marketer)
             ->getJson(route('admin.dashboard.queue-counts'))
             ->assertForbidden();
+
+        $this->actingAs($marketer)
+            ->getJson(route('admin.dashboard.finance'))
+            ->assertForbidden();
     }
 
     public function test_admin_withdrawals_page_keeps_pagination_helper(): void

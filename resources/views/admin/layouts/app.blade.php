@@ -306,7 +306,7 @@
             setNavBadge('navBadgeWithdrawals', data.pending_withdrawals || 0);
             setNavBadge('navBadgeSites', data.unverified_sites || 0);
             setNavBadge('navBadgePayments', data.pending_payments || 0);
-            setNavBadge('navBadgeCommunity', data.pending_claims || 0);
+            setNavBadge('navBadgeCommunity', data.pending_community || data.pending_claims || 0);
         })
         .catch(() => {});
     }
