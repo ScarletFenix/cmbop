@@ -5,11 +5,16 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderActivity;
+use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
+use Symfony\Component\HttpKernel\Exception\HttpException;
 
 class OrderController extends Controller
 {
@@ -23,12 +28,26 @@ class OrderController extends Controller
         $query = Order::with(['user', 'items.site.publisher'])
             ->orderByDesc('created_at');
 
+        if (OrderItemDispute::tableAvailable()) {
+            $query->withCount([
+                'disputes as open_disputes_count' => fn ($q) => $q->where('status', OrderItemDispute::STATUS_OPEN),
+            ]);
+        }
+
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
                     ->orWhere('reference_code', 'like', "%{$search}%")
                     ->orWhereHas('user', function ($sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('items', function ($sub) use ($search) {
+                        $sub->where('site_name', 'like', "%{$search}%")
+                            ->orWhere('site_url', 'like', "%{$search}%");
+                    })
+                    ->orWhereHas('items.site.publisher', function ($sub) use ($search) {
                         $sub->where('name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%");
                     });
@@ -39,7 +58,10 @@ class OrderController extends Controller
             $query->where('status', $request->string('status')->toString());
         }
 
-        if ($request->filled('payment_status')) {
+        // "unpaid" is the ops queue (not paid/refunded + still open), not an enum value.
+        if ($request->input('payment_status') === 'unpaid') {
+            $query->unpaidOps();
+        } elseif ($request->filled('payment_status')) {
             $query->where('payment_status', $request->string('payment_status')->toString());
         }
 
@@ -62,6 +84,13 @@ class OrderController extends Controller
             $item = $order->items->first();
             $site = $item?->site;
             $publisher = $site?->publisher;
+            $liveUrl = $order->items->first(fn (OrderItem $line) => filled($line->live_url))?->live_url;
+            $userUrl = $order->user
+                ? route('admin.users.index').'#user-'.$order->user->id
+                : null;
+            $publisherUrl = $publisher
+                ? route('admin.users.index').'#user-'.$publisher->id
+                : null;
 
             return [
                 'id' => $order->id,
@@ -77,10 +106,23 @@ class OrderController extends Controller
                     'id' => $order->user->id,
                     'name' => $order->user->name,
                     'email' => $order->user->email,
+                    'url' => $userUrl,
                 ] : null,
                 'site_name' => $item?->site_name ?: ($site?->site_name),
+                'site_admin_url' => $site ? route('admin.sites.edit', $site->id) : null,
                 'publisher_name' => $publisher?->name,
-                'live_url' => $item?->live_url,
+                'publisher' => $publisher ? [
+                    'id' => $publisher->id,
+                    'name' => $publisher->name,
+                    'url' => $publisherUrl,
+                ] : null,
+                'live_url' => $liveUrl,
+                'has_open_dispute' => OrderItemDispute::tableAvailable()
+                    && (int) ($order->open_disputes_count ?? 0) > 0,
+                'has_live_url' => filled($liveUrl),
+                'is_scheduled' => $order->isScheduled(),
+                'scheduled_publish_at' => optional($order->scheduled_publish_at)?->toIso8601String(),
+                'scheduled_publish_at_human' => optional($order->scheduled_publish_at)?->format('M j, Y'),
                 'modification_requested' => $item?->modification_requested,
                 'url' => route('admin.orders.show', $order->id),
             ];
@@ -107,6 +149,7 @@ class OrderController extends Controller
         $order = Order::with(array_merge([
             'user',
             'items.site.publisher',
+            'items.contentSubmission',
             'chatMessages.user',
         ], OrderItemDispute::eagerPaths([
             'items.disputes.opener',
@@ -161,5 +204,70 @@ class OrderController extends Controller
         }
 
         return back()->with('success', 'Order '.$order->order_number.' moved to '.$data['status'].'.');
+    }
+
+    /**
+     * Download the article file for this placement (submission, else item snapshot).
+     */
+    public function downloadContent(OrderItem $orderItem): StreamedResponse
+    {
+        $orderItem->loadMissing('contentSubmission');
+        $submission = $orderItem->contentSubmission;
+
+        if ($submission && $submission->hasStoredFile()) {
+            $download = $this->downloadFromDisk(
+                $submission->disk ?: 'local',
+                $submission->path,
+                $submission->original_filename ?: 'article',
+                $submission->mime ?: 'application/octet-stream',
+                $orderItem,
+            );
+            if ($download) {
+                return $download;
+            }
+        }
+
+        if (filled($orderItem->content_path)) {
+            $download = $this->downloadFromDisk(
+                $orderItem->content_disk ?: 'local',
+                $orderItem->content_path,
+                $orderItem->content_original_name ?: 'article',
+                $orderItem->content_mime ?: 'application/octet-stream',
+                $orderItem,
+            );
+            if ($download) {
+                return $download;
+            }
+        }
+
+        abort(404, 'Content file not found.');
+    }
+
+    private function downloadFromDisk(
+        string $diskName,
+        string $path,
+        string $filename,
+        string $mime,
+        OrderItem $orderItem,
+    ): ?StreamedResponse {
+        try {
+            $disk = Storage::disk($diskName);
+            if (! $disk->exists($path)) {
+                return null;
+            }
+
+            return $disk->download($path, $filename, ['Content-Type' => $mime]);
+        } catch (HttpException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::warning('Admin content download failed', [
+                'order_item_id' => $orderItem->id,
+                'disk' => $diskName,
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+
+            abort(404, 'Content file not found.');
+        }
     }
 }

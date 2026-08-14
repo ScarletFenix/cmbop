@@ -19,6 +19,10 @@
         'refunded' => 'secondary',
         default => 'warning',
     };
+    $paymentsUrl = route('admin.payments', array_filter([
+        'search' => $order->order_number,
+        'payment_status' => $order->isUnpaidOps() ? 'unpaid' : null,
+    ]));
 @endphp
 <div class="container-fluid">
     @include('admin.partials.page-header', [
@@ -89,6 +93,9 @@
                                 @php
                                     $lineSite = $line->site;
                                     $linePublisher = $lineSite?->publisher;
+                                    $briefAnchor = $line->briefAnchorText();
+                                    $briefTarget = $line->briefTargetUrl();
+                                    $publicContentLink = $line->publicContentLink();
                                 @endphp
                                 @if(! $loop->first)
                                     <hr class="my-3">
@@ -131,6 +138,21 @@
                                         @endif
                                     </div>
                                 @endif
+                                <div class="mb-2"><span class="text-muted small">Anchor text</span>
+                                    <div>{{ $briefAnchor ?: '—' }}</div>
+                                </div>
+                                <div class="mb-2"><span class="text-muted small">Target URL</span>
+                                    <div>
+                                        @if($briefTarget)
+                                            <a href="{{ $briefTarget }}" target="_blank" rel="noopener">{{ $briefTarget }}</a>
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <div class="mb-2"><span class="text-muted small">Accepted at</span>
+                                    <div>{{ optional($line->accepted_at)->format('M j, Y g:i A') ?: 'Not accepted' }}</div>
+                                </div>
                                 <div class="mb-2"><span class="text-muted small">Live URL</span>
                                     <div>
                                         @if($line->live_url)
@@ -143,11 +165,22 @@
                                 <div class="mb-2"><span class="text-muted small">Modification requested</span>
                                     <div>{{ $line->modification_requested ?: 'no' }}</div>
                                 </div>
-                                @if($line->content_link)
-                                    <div class="mb-2"><span class="text-muted small">Content</span>
-                                        <div><a href="{{ $line->content_link }}" target="_blank" rel="noopener">Open content link</a></div>
+                                <div class="mb-2"><span class="text-muted small">Content</span>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                        @if($publicContentLink)
+                                            <a href="{{ $publicContentLink }}" target="_blank" rel="noopener">Open content link</a>
+                                        @endif
+                                        @if($line->hasDownloadableContent())
+                                            <a href="{{ route('admin.orders.content.download', $line) }}" class="btn btn-sm btn-outline-secondary">
+                                                <i class="fa fa-download me-1"></i>
+                                                {{ $line->contentSubmission?->original_filename ?: ($line->content_original_name ?: 'Download file') }}
+                                            </a>
+                                        @endif
+                                        @if(! $publicContentLink && ! $line->hasDownloadableContent())
+                                            <span class="text-muted">No file uploaded</span>
+                                        @endif
                                     </div>
-                                @endif
+                                </div>
                                 @if($linePublisher && $loop->count > 1)
                                     <div class="small text-muted">Publisher: {{ $linePublisher->name }}</div>
                                 @endif
@@ -174,7 +207,7 @@
                     </div>
                 </div>
                 @if($order->status === 'completed' || ($disputes ?? collect())->isNotEmpty())
-                <div class="col-12">
+                <div class="col-12" id="order-disputes">
                     <div class="card border-0 shadow-sm">
                         <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
                             <strong>Link-removed dispute / clawback</strong>
@@ -361,7 +394,7 @@
                     <p class="text-muted small mb-3">
                         To mark paid, failed, or refunded, use the Order Payments tools. This screen is inspection-only.
                     </p>
-                    <a href="{{ route('admin.payments') }}" class="btn btn-primary btn-sm">
+                    <a href="{{ $paymentsUrl }}" class="btn btn-primary btn-sm">
                         <i class="fa fa-money-bill me-1"></i> Open Order Payments
                     </a>
                 </div>
