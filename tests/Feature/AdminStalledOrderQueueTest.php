@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherPublishNudge;
 use App\Models\ActivityLog;
 use App\Models\Order;
@@ -168,6 +169,7 @@ class AdminStalledOrderQueueTest extends TestCase
             ->assertJson(['success' => true]);
 
         Mail::assertQueued(PublisherPublishNudge::class, fn ($mail) => $mail->hasTo($publisher->email));
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
     }
 
     public function test_chasing_by_hand_does_not_consume_the_automated_escalation(): void
@@ -223,5 +225,45 @@ class AdminStalledOrderQueueTest extends TestCase
             ->assertStatus(403);
 
         Mail::assertNotQueued(PublisherPublishNudge::class);
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
+    }
+
+    public function test_an_unaccepted_order_is_chased_with_an_accept_nudge(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $item = $order->items->first();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $item->id))
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        Mail::assertQueued(PublisherAcceptNudge::class, fn ($mail) => $mail->hasTo($publisher->email));
+        Mail::assertNotQueued(PublisherPublishNudge::class);
+
+        $log = ActivityLog::where('action', 'order.publisher_reminded')
+            ->where('subject_id', $order->id)
+            ->first();
+        $this->assertSame('accept', $log?->properties['track'] ?? null);
+    }
+
+    public function test_chasing_an_unaccepted_order_does_not_consume_the_accept_cadence(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $item = $order->items->first();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $item->id))
+            ->assertOk();
+
+        $this->assertSame(3, (int) $item->fresh()->accept_nudge_stage);
     }
 }
