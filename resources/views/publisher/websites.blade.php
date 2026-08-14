@@ -2985,7 +2985,7 @@ $(document).ready(function(){
             }
 
             if (quill && !quill.root.innerHTML.trim()) {
-                const oldDesc = @json(old('siteDescription', ''));
+                const oldDesc = @json(old_text('siteDescription'));
                 if (oldDesc) quill.root.innerHTML = oldDesc;
             }
 

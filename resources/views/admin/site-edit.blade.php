@@ -507,7 +507,7 @@
     const map = @json($countryLanguageMap ?? new \stdClass());
     const countryEl = document.getElementById('country');
     const langEl = document.getElementById('language');
-    const preferredLang = @json(old('language', strtolower((string) ($site->language ?? ''))));
+    const preferredLang = @json(old_text('language', strtolower((string) ($site->language ?? ''))));
 
     function refreshLanguages() {
         if (!countryEl || !langEl) return;

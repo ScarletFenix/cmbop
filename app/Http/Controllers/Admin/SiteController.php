@@ -1471,6 +1471,21 @@ class SiteController extends Controller
             $data['domain'] = $domain;
         }
 
+        // category is a VARCHAR (often 50) and is not in $rules. An array 500s
+        // the save; a long free-text value overflows the column.
+        if (array_key_exists('category', $data)) {
+            if (! is_string($data['category'])) {
+                unset($data['category']);
+            } else {
+                $trimmedCategory = trim($data['category']);
+                if ($trimmedCategory === '') {
+                    unset($data['category']);
+                } else {
+                    $data['category'] = Site::fitCategoryColumn($trimmedCategory);
+                }
+            }
+        }
+
         if ($metrics !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';

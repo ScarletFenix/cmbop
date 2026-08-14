@@ -17,6 +17,7 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -477,6 +478,115 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame('keep-domain.example', $site->fresh()->domain);
+    }
+
+    public function test_admin_update_ignores_array_category_field(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Keep Category',
+            'site_url' => 'https://keep-category.example',
+            'domain' => 'keep-category.example',
+            'da' => 40,
+            'dr' => 42,
+            'traffic' => 15000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Keep category leftover update guard. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => 'Keep Category',
+                'category' => ['spoofed', 'niches'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('News', $site->fresh()->category);
+    }
+
+    public function test_admin_update_fits_category_that_would_overflow_varchar(): void
+    {
+        Cache::put('sites_category_column_max_length', 50, 60);
+
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Fit Category',
+            'site_url' => 'https://fit-category.example',
+            'domain' => 'fit-category.example',
+            'da' => 40,
+            'dr' => 42,
+            'traffic' => 15000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Fit category leftover update guard. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $tooLong = str_repeat('OverflowNicheName', 8);
+        $this->assertGreaterThan(50, strlen($tooLong));
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => 'Fit Category',
+                'category' => $tooLong,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $saved = (string) $site->fresh()->category;
+        $this->assertSame(substr($tooLong, 0, 50), $saved);
+        $this->assertLessThanOrEqual(50, strlen($saved));
+
+        Site::flushSchemaColumnCache();
+    }
+
+    public function test_admin_edit_survives_array_old_language(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Edit Old Language',
+            'site_url' => 'https://edit-old-language.example',
+            'domain' => 'edit-old-language.example',
+            'da' => 40,
+            'dr' => 42,
+            'traffic' => 15000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Edit old language leftover guard. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->withSession([
+                '_old_input' => [
+                    'language' => ['de'],
+                    'country' => ['de'],
+                    'site_name' => ['Edit Old Language'],
+                ],
+            ])
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false)
+            ->assertSee('const preferredLang = "de"', false);
     }
 
     public function test_publisher_self_created_sites_are_accepted_immediately(): void
