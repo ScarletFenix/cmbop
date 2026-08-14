@@ -1258,12 +1258,14 @@ class SiteController extends Controller
                 'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
             ]);
         }
-        if ($request->hasAny(['da', 'dr', 'traffic'])) {
-            $request->merge([
-                'da' => $request->has('da') ? $this->normalizeMetricInt($request->input('da')) : $request->input('da'),
-                'dr' => $request->has('dr') ? $this->normalizeMetricInt($request->input('dr')) : $request->input('dr'),
-                'traffic' => $request->has('traffic') ? $this->normalizeMetricInt($request->input('traffic')) : $request->input('traffic'),
-            ]);
+        $metricMerge = [];
+        foreach (['da', 'dr', 'traffic'] as $field) {
+            if ($request->exists($field)) {
+                $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
+            }
+        }
+        if ($metricMerge !== []) {
+            $request->merge($metricMerge);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1316,9 +1318,12 @@ class SiteController extends Controller
             'price' => 'sometimes|required|numeric|min:0',
             'description' => 'sometimes|nullable|string|min:50',
             'publication_time' => 'sometimes|nullable|string|max:20',
-            'link_type' => 'sometimes|nullable|in:dofollow,nofollow',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            // Dedicated editor is free text; modal may send dofollow/nofollow.
+            'link_type' => 'sometimes|nullable|string|max:50',
         ];
+
+        // site_image is often a stored path string after upload-image; only
+        // validate as a file when a real upload is present (handled below).
 
         $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
 
@@ -1374,7 +1379,7 @@ class SiteController extends Controller
             $data['domain'] = $domain;
         }
 
-        if ($request->hasAny(['da', 'dr', 'traffic'])) {
+        if ($metricMerge !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();
