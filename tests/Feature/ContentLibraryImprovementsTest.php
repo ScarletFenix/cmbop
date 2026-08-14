@@ -1475,6 +1475,38 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertDontSee($marker, false);
     }
 
+    public function test_library_edit_boot_reports_images_without_embedding_html(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $marker = 'EDIT_BOOT_IMG_'.uniqid('', true);
+        $submission->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'preview_html' => '<p>'.$marker.'</p><p><img src="/storage/content-articles/1/x.png" alt=""></p>',
+            'extracted_text' => $marker,
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['edit' => $submission->id]))
+            ->assertOk()
+            ->assertDontSee($marker, false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/has_images"\s*:\s*true/', $html);
+        $this->assertMatchesRegularExpression('/needs_image_rights"\s*:\s*true/', $html);
+
+        $submission->update(['image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN]);
+
+        $covered = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['edit' => $submission->id]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/has_images"\s*:\s*true/', $covered);
+        $this->assertMatchesRegularExpression('/needs_image_rights"\s*:\s*false/', $covered);
+        $this->assertMatchesRegularExpression('/image_rights_covers"\s*:\s*true/', $covered);
+    }
+
     public function test_legacy_drafts_json_omits_article_bodies(): void
     {
         $advertiser = $this->advertiser();
@@ -1486,6 +1518,93 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonMissingPath('drafts.0.preview_html')
             ->assertJsonMissingPath('drafts.0.extracted_text');
+    }
+
+    public function test_library_list_scope_reports_images_without_loading_preview_html(): void
+    {
+        $advertiser = $this->advertiser();
+        $withImage = $this->createApprovedSubmission($advertiser);
+        $withImage->update([
+            'title' => 'Has Picture',
+            'preview_html' => '<p>Body</p><p><img src="/storage/content-articles/1/x.png" alt=""></p>',
+        ]);
+        $plain = $this->createApprovedSubmission($advertiser);
+        $plain->update(['title' => 'No Picture']);
+
+        $imaged = ContentSubmission::query()
+            ->forLibraryList()
+            ->where('id', $withImage->id)
+            ->first();
+        $textOnly = ContentSubmission::query()
+            ->forLibraryList()
+            ->where('id', $plain->id)
+            ->first();
+
+        $this->assertNotNull($imaged);
+        $this->assertNotNull($textOnly);
+        $this->assertArrayNotHasKey('preview_html', $imaged->getAttributes());
+        $this->assertTrue($imaged->hasImages());
+        $this->assertFalse($textOnly->hasImages());
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.drafts'))
+            ->assertOk()
+            ->assertJsonFragment(['id' => $withImage->id, 'has_images' => true])
+            ->assertJsonFragment(['id' => $plain->id, 'has_images' => false]);
+    }
+
+    public function test_library_order_post_array_id_does_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->post(route('advertiser.content-library.order.post'), [
+                'content_submission_id' => ['not-an-id'],
+            ])
+            ->assertNotFound();
+    }
+
+    public function test_drafts_array_cart_key_does_not_500(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.drafts', [
+                'cart_key' => ['abc'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertDontSee('Array to string conversion', false);
+    }
+
+    public function test_article_history_uses_site_name_not_generic_website(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'history-named');
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $order = $this->makeOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+        ]);
+        $submission->update(['order_id' => $order->id]);
+
+        $details = collect($submission->fresh()->articleHistory())
+            ->where('label', 'Ordered')
+            ->pluck('detail')
+            ->implode(' ');
+
+        $this->assertStringContainsString($site->site_name, $details);
+        $this->assertStringNotContainsString('Website ·', $details);
     }
 
     public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void
