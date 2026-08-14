@@ -325,16 +325,16 @@ class AutoApproveOrders extends Command
                         'completed_at' => Carbon::now(),
                     ]));
 
-                    if ($order->payment_method === 'wallet') {
-                        $advertiserRoleId = Wallet::advertiserRoleId();
-                        $advertiserWallet = $advertiserRoleId
-                            ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
-                            : null;
+                    $advertiserRoleId = Wallet::advertiserRoleId();
+                    $advertiserWallet = $advertiserRoleId
+                        ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
+                        : null;
 
-                        if ($advertiserWallet) {
-                            $advertiserWallet->consumeReserved((float) $order->total_amount);
-                            $this->info('✓ Reserved funds released from advertiser wallet');
-                        }
+                    if ($advertiserWallet) {
+                        // Wallet: consume the reserved line. Card / bonus: consume
+                        // leftover promo so it is not trapped after settlement.
+                        app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
+                        $this->info('✓ Reserved funds released from advertiser wallet');
                     }
                 }
 

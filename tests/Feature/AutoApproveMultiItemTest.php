@@ -207,4 +207,68 @@ class AutoApproveMultiItemTest extends TestCase
         $this->assertGreaterThan(0, (float) Wallet::query()->where('user_id', $fx['pubOne']->id)->where('role_id', Wallet::publisherRoleId())->value('balance'));
         $this->assertGreaterThan(0, (float) Wallet::query()->where('user_id', $fx['pubTwo']->id)->where('role_id', Wallet::publisherRoleId())->value('balance'));
     }
+
+    public function test_auto_approve_consumes_card_bonus_reserve(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher, 'aa-card-bonus.example');
+
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 20,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => Wallet::publisherRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-AA-CARD-BONUS',
+            'reference_code' => 'REF-AA-CARD-BONUS',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'review',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/card-bonus',
+            'price' => 80,
+            'publisher_price' => 70,
+            'live_url' => 'https://aa-card-bonus.example/post',
+            'live_url_submitted_at' => now()->subHours(3),
+            'live_url_check_ok' => true,
+            'modification_requested' => 'no',
+            'content_revision_requested' => 'no',
+            'auto_approve_triggered' => false,
+        ]);
+
+        Artisan::call('orders:auto-approve');
+
+        $this->assertSame('completed', $order->fresh()->status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+    }
 }
