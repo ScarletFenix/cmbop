@@ -796,14 +796,14 @@
                                             <input type="url" name="sites[{{ $i }}][url]"
                                                    class="form-control form-control-sm @error('sites.'.$i.'.url') is-invalid @enderror"
                                                    placeholder="https://example.com"
-                                                   value="{{ $row['url'] ?? '' }}" required>
+                                                   value="{{ old_text('sites.'.$i.'.url') }}" required>
                                             @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </td>
                                         <td>
                                             <input type="number" name="sites[{{ $i }}][price]" step="0.01" min="0"
                                                    class="form-control form-control-sm @error('sites.'.$i.'.price') is-invalid @enderror"
                                                    placeholder="99"
-                                                   value="{{ $row['price'] ?? '' }}" required>
+                                                   value="{{ old_text('sites.'.$i.'.price') }}" required>
                                             @error('sites.'.$i.'.price')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                         </td>
                                         <td class="text-end">

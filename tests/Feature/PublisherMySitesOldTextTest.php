@@ -63,12 +63,19 @@ class PublisherMySitesOldTextTest extends TestCase
                     'siteDescription' => ['<p>Poisoned description</p>'],
                     'price_homepage' => ['7' => ['25']],
                     'price_sensitive' => ['crypto' => ['15']],
+                    'sites' => [
+                        'not-a-row',
+                        ['url' => ['https://bulk-one.example'], 'price' => [['15']]],
+                        ['url' => ['https://bulk-two.example'], 'price' => ['20']],
+                    ],
                 ],
             ])
             ->get(route('publisher.websites'))
             ->assertOk()
             ->assertSee('value="Poisoned Name"', false)
             ->assertSee('value="https://poisoned-url.example"', false)
+            ->assertSee('value="https://bulk-one.example"', false)
+            ->assertSee('value="https://bulk-two.example"', false)
             ->assertDontSee('htmlspecialchars(): Argument #1', false)
             ->assertDontSee('TypeError', false);
     }
