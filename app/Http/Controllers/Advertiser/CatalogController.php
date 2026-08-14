@@ -2962,8 +2962,13 @@ class CatalogController extends Controller
                 'status' => 'processing',
             ]);
 
-            // Mark order items as modification requested AND RESET TIMER; persist reason for publisher UI
+            // Mark unpaid lines as modification requested AND RESET TIMER.
+            // Do not rewind a line that already paid the publisher.
             foreach ($order->items as $item) {
+                if ($item->isPayoutComplete()) {
+                    continue;
+                }
+
                 $payload = [
                     'modification_requested' => 'yes',
                     'modification_requested_at' => now(),
@@ -3609,6 +3614,13 @@ class CatalogController extends Controller
                 ], 422);
             }
 
+            if ($order->items->contains(fn ($line) => ! $line->isPayoutComplete() && ! $line->isReadyForAdvertiserApprove())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved until every placement has a live URL and no open revision.',
+                ], 422);
+            }
+
             if (! $order->items->contains(fn ($line) => filled($line->live_url))) {
                 return response()->json([
                     'success' => false,
@@ -3640,6 +3652,24 @@ class CatalogController extends Controller
                 ], 400);
             }
 
+            if ($order->items->contains(fn ($line) => $line->isContentRevisionRequested())) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Send the revised article first — a placement on this order is still waiting for updated content.',
+                ], 422);
+            }
+
+            if ($order->items->contains(fn ($line) => ! $line->isPayoutComplete() && ! $line->isReadyForAdvertiserApprove())) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be approved until every placement has a live URL and no open revision.',
+                ], 422);
+            }
+
             // Update order status to completed (skip missing columns on older DBs)
             $order->update($schema->filterExistingColumns('orders', [
                 'status' => 'completed',
@@ -3662,6 +3692,7 @@ class CatalogController extends Controller
             foreach ($order->items as $orderItem) {
                 // Get the site to find the publisher
                 $site = Site::find($orderItem->site_id);
+                $alreadyPaid = $orderItem->isPayoutComplete();
 
                 // Mark the line completed even when the site/publisher row is gone —
                 // otherwise the advertiser UI can keep offering Approve after a
@@ -3673,6 +3704,10 @@ class CatalogController extends Controller
                 ]);
                 if ($itemCompletion !== []) {
                     $orderItem->forceFill($itemCompletion)->save();
+                }
+
+                if ($alreadyPaid) {
+                    continue;
                 }
 
                 if ($site) {
