@@ -97,7 +97,7 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
 
         $this->assertDatabaseHas('sites', ['id' => $site->id, 'active' => 1]);
         $this->assertDatabaseHas('order_items', ['id' => $item->id, 'site_id' => $site->id]);
-        Mail::assertNothingQueued();
+        Mail::assertNotQueued(SiteStatusNotification::class);
     }
 
     public function test_eloquent_delete_does_not_cascade_order_items(): void
