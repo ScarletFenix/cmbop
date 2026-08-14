@@ -233,7 +233,7 @@
                                         <div class="row g-3">
                                             <div class="col-md-3">
                                                 <span class="text-muted small">Publication mode</span>
-                                                <div>{{ ($order->publication_mode ?? '') === 'scheduled' ? 'Scheduled' : 'Immediate' }}</div>
+                                                <div>{{ $order->isScheduled() ? 'Scheduled' : 'Immediate' }}</div>
                                             </div>
                                             <div class="col-md-3">
                                                 <span class="text-muted small">Scheduled for</span>

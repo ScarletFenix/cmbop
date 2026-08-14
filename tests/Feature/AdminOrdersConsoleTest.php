@@ -565,6 +565,7 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee('function signalBadges', false)
             ->assertSee('has_open_dispute', false)
             ->assertSee('#order-disputes', false)
+            ->assertSee('#order-schedule', false)
             ->assertSee('site_admin_url', false)
             ->assertSee('order.advertiser.url', false)
             ->assertSee('order.publisher.url', false);
@@ -584,11 +585,22 @@ class AdminOrdersConsoleTest extends TestCase
             'live_url' => 'https://admin-orders.example/published-guest-post',
         ]);
 
+        $scheduledAt = Carbon::parse('2026-09-15 14:00:00', 'UTC');
         $scheduled = $this->orderFor($advertiser, $site);
         $scheduled->update([
             'status' => 'scheduled',
             'publication_mode' => 'scheduled',
-            'scheduled_publish_at' => now()->addDays(5),
+            'scheduled_publish_at' => $scheduledAt,
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $released = $this->orderFor($advertiser, $site);
+        $released->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => $scheduledAt,
+            'schedule_timezone' => 'Europe/Berlin',
+            'schedule_released_at' => Carbon::parse('2026-09-15 14:05:00', 'UTC'),
         ]);
 
         $disputed = $this->orderFor($advertiser, $site);
@@ -625,6 +637,11 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertJsonFragment([
                 'order_number' => $scheduled->order_number,
                 'is_scheduled' => true,
+                'scheduled_publish_at_human' => 'Sep 15, 2026 4:00 PM Europe/Berlin',
+            ])
+            ->assertJsonFragment([
+                'order_number' => $released->order_number,
+                'is_scheduled' => false,
             ])
             ->assertJsonFragment([
                 'order_number' => $disputed->order_number,
@@ -764,6 +781,10 @@ class AdminOrdersConsoleTest extends TestCase
     {
         $admin = $this->userWithRole('admin');
         $order = $this->orderFor($this->userWithRole('advertiser'), $this->siteFor($this->userWithRole('publisher')));
+        $order->update([
+            'publication_mode' => 'immediate',
+            'schedule_timezone' => 'UTC',
+        ]);
 
         $this->actingAs($admin)
             ->get(route('admin.orders.show', $order->id))

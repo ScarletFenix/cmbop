@@ -17,8 +17,22 @@ class OrderScheduleTest extends TestCase
 
         $this->assertFalse($order->isScheduled());
         $this->assertFalse($order->hasPublicationSchedule());
+        $this->assertFalse($order->isAwaitingScheduledRelease());
         $this->assertSame('UTC', $order->scheduleTimezoneOrUtc());
         $this->assertNull($order->scheduledPublishAtInScheduleTimezone());
+    }
+
+    public function test_checkout_utc_timezone_alone_is_not_a_publication_schedule(): void
+    {
+        $order = new Order([
+            'status' => 'pending',
+            'publication_mode' => 'immediate',
+            'schedule_timezone' => 'UTC',
+        ]);
+
+        $this->assertFalse($order->isScheduled());
+        $this->assertFalse($order->hasPublicationSchedule());
+        $this->assertFalse($order->isAwaitingScheduledRelease());
     }
 
     public function test_has_publication_schedule_after_release(): void
@@ -33,6 +47,7 @@ class OrderScheduleTest extends TestCase
 
         $this->assertTrue($order->isScheduled());
         $this->assertTrue($order->hasPublicationSchedule());
+        $this->assertFalse($order->isAwaitingScheduledRelease());
     }
 
     public function test_scheduled_publish_at_converts_to_advertiser_timezone(): void
@@ -48,6 +63,7 @@ class OrderScheduleTest extends TestCase
         $this->assertNotNull($local);
         $this->assertSame('2026-09-15 16:00:00', $local->format('Y-m-d H:i:s'));
         $this->assertSame('Europe/Berlin', $local->timezoneName);
+        $this->assertTrue($order->isAwaitingScheduledRelease());
     }
 
     public function test_invalid_schedule_timezone_falls_back_to_utc(): void

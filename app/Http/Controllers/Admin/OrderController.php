@@ -115,9 +115,9 @@ class OrderController extends Controller
                 'has_open_dispute' => OrderItemDispute::tableAvailable()
                     && (int) ($order->open_disputes_count ?? 0) > 0,
                 'has_live_url' => filled($liveUrl),
-                'is_scheduled' => $order->isScheduled(),
+                'is_scheduled' => $order->isAwaitingScheduledRelease(),
                 'scheduled_publish_at' => optional($order->scheduled_publish_at)?->toIso8601String(),
-                'scheduled_publish_at_human' => optional($order->scheduled_publish_at)?->format('M j, Y'),
+                'scheduled_publish_at_human' => $this->scheduledPublishAtHuman($order),
                 'modification_requested' => $item?->modification_requested,
                 'url' => route('admin.orders.show', $order->id),
             ];
@@ -264,6 +264,16 @@ class OrderController extends Controller
 
             abort(404, 'Content file not found.');
         }
+    }
+
+    private function scheduledPublishAtHuman(Order $order): ?string
+    {
+        $local = $order->scheduledPublishAtInScheduleTimezone();
+        if (! $local) {
+            return null;
+        }
+
+        return $local->format('M j, Y g:i A').' '.$order->scheduleTimezoneOrUtc();
     }
 
     private function adminUserUrl(?User $user): ?string

@@ -55,14 +55,22 @@ class Order extends Model
 
     /**
      * True when this order has any scheduled-publish data, including after release.
+     * Timezone alone does not count — checkout stamps UTC on immediate orders too.
      */
     public function hasPublicationSchedule(): bool
     {
         return $this->isScheduled()
             || $this->scheduled_publish_at !== null
             || $this->schedule_released_at !== null
-            || $this->schedule_reminder_sent_at !== null
-            || filled($this->schedule_timezone);
+            || $this->schedule_reminder_sent_at !== null;
+    }
+
+    /**
+     * Still waiting on the scheduled slot (list chip). Released rows are normal queue.
+     */
+    public function isAwaitingScheduledRelease(): bool
+    {
+        return $this->isScheduled() && $this->schedule_released_at === null;
     }
 
     /**
