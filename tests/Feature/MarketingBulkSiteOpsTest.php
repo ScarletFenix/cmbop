@@ -545,7 +545,9 @@ class MarketingBulkSiteOpsTest extends TestCase
         $site = $this->seedDraft($bulk, 'oops-wrong.example');
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('marketing.sites.destroy', $site->id))
+            ->deleteJson(route('marketing.sites.destroy', $site->id), [
+                'reason' => 'Wrong domain seeded in this batch.',
+            ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
@@ -579,7 +581,9 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->deleteJson(route('marketing.sites.destroy', $site->id))
+            ->deleteJson(route('marketing.sites.destroy', $site->id), [
+                'reason' => 'Publisher withdrew this pending listing.',
+            ])
             ->assertOk()
             ->assertJsonPath('success', true);
 

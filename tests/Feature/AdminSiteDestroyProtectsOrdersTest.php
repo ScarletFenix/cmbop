@@ -168,7 +168,9 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->deleteJson(route('admin.sites.destroy', $site->id))
+            ->deleteJson(route('admin.sites.destroy', $site->id), [
+                'reason' => 'Incomplete listing details from the publisher.',
+            ])
             ->assertOk()
             ->assertJsonPath('archived', false);
 
@@ -217,6 +219,9 @@ class AdminSiteDestroyProtectsOrdersTest extends TestCase
         $this->assertStringContainsString('canArchiveSiteRow', $blade);
         $this->assertStringContainsString('Has orders — deactivate instead', $blade);
         $this->assertStringContainsString('Archive this site?', $blade);
+        $this->assertStringContainsString('body: JSON.stringify({ reason })', $blade);
+        $this->assertStringContainsString('if (!res.ok || !data.success)', $blade);
+        $this->assertStringContainsString('Please enter a reason (at least 10 characters).', $blade);
     }
 
     public function test_order_items_site_id_foreign_key_restricts_delete(): void

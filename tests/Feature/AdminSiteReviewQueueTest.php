@@ -156,7 +156,9 @@ class AdminSiteReviewQueueTest extends TestCase
         app(InAppNotificationService::class)->notifyAdminsNewSite($site, 'create');
 
         $this->actingAs($admin)
-            ->deleteJson(route('admin.sites.destroy', $siteId))
+            ->deleteJson(route('admin.sites.destroy', $siteId), [
+                'reason' => 'Does not meet marketplace quality guidelines.',
+            ])
             ->assertOk()
             ->assertJson(['success' => true]);
 

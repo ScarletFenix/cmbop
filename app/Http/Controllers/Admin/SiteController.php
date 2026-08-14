@@ -1827,12 +1827,15 @@ class SiteController extends Controller
         $domain = $site->domain;
         $bulkRequestId = $site->bulk_site_request_id;
         $onboarding = $site->onboarding_status;
-        $rejectionReason = $request->input('reason') ?: $site->status_reason;
+        $rejectionReason = $this->validatedStatusReason($request, true);
         $publisher = $site->publisher;
+
+        Site::ensureStatusReasonColumns();
+        $this->applyStatusReason($site, $rejectionReason);
 
         $shouldArchive = (bool) $site->verified || (bool) $site->active;
         if ($shouldArchive) {
-            if (! $site->archiveByStaff(is_string($rejectionReason) ? $rejectionReason : null)) {
+            if (! $site->archiveByStaff($rejectionReason)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Archive is not available yet.',
@@ -1898,6 +1901,7 @@ class SiteController extends Controller
                 'bulk_site_request_id' => $bulkRequestId,
                 'onboarding_status' => $onboarding,
                 'deleted_by_role' => $user?->activeRole(),
+                'reason' => $rejectionReason,
             ],
             $siteName
         );
