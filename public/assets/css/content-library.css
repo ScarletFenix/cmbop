@@ -720,12 +720,42 @@
         padding: .4rem .75rem;
         margin-bottom: 0;
     }
-    #articleEditorImageRights.article-editor-rights {
+    /* Language / save notices must not shrink into the Image rights strip. */
+    #articleEditorModal .modal-body > #articleEditorFeedback {
+        flex: 0 0 auto;
+        min-width: 0;
+    }
+    #articleEditorFeedback:empty {
+        display: none;
+    }
+    #articleEditorFeedback:not(:empty) {
+        padding: .65rem .85rem;
+        border: 1px solid #e2e8f0;
+        border-radius: .5rem;
+        background: #fff;
+        line-height: 1.45;
+    }
+    #articleEditorFeedback:not(:empty):has(.text-danger) {
+        background: #fef2f2;
+        border-color: #fecaca;
+    }
+    #articleEditorFeedback:not(:empty):has(.text-success) {
+        background: #f0fdf4;
+        border-color: #bbf7d0;
+    }
+    #articleEditorModal .modal-body > #articleEditorImageRights.article-editor-rights {
         flex: 0 0 auto;
         max-height: 9rem;
         overflow-x: hidden;
         overflow-y: auto;
         padding: .5rem .75rem;
+        background: #fff;
+        position: relative;
+        z-index: 0;
+    }
+    #articleEditorModal .modal-body:has(#articleEditorFeedback:not(:empty)) .article-docs-shell,
+    #articleEditorModal .modal-body:has(#articleEditorImageRights:not(.d-none)) .article-docs-shell {
+        min-height: 0;
     }
     #articleEditorImageRights.article-editor-rights .image-rights-fieldset {
         display: flex;

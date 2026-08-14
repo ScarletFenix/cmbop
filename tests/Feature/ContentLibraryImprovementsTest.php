@@ -1017,6 +1017,18 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('max-height: 28vh', $css);
         $this->assertStringContainsString('#articleEditorImageRights.article-editor-rights', $css);
         $this->assertStringContainsString('max-height: 9rem', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-body > #articleEditorFeedback', $css);
+        $this->assertStringContainsString('#articleEditorFeedback:empty', $css);
+        $this->assertStringContainsString('#articleEditorFeedback:not(:empty):has(.text-danger)', $css);
+        $this->assertStringContainsString('#articleEditorModal .modal-body > #articleEditorImageRights.article-editor-rights', $css);
+        $this->assertDoesNotMatchRegularExpression(
+            '/id="articleEditorImageRights"[\s\S]*id="articleEditorFeedback"/',
+            $library
+        );
+        $this->assertMatchesRegularExpression(
+            '/id="articleEditorFeedback"[\s\S]*id="articleEditorImageRights"/',
+            $library
+        );
         $this->assertStringContainsString('max-width: min(100%, 720px)', $css);
         $this->assertStringContainsString('function applyArticleEditorScrollport', $js);
         $this->assertStringContainsString('function bindArticleEditorScrollport', $js);
