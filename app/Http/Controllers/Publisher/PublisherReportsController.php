@@ -128,6 +128,8 @@ class PublisherReportsController extends Controller
                 $query->whereHas('order', function ($q) use ($status) {
                     if ($status === 'scheduled') {
                         $q->awaitingScheduledRelease();
+                    } elseif ($status === 'pending') {
+                        $q->where('status', 'pending')->notAwaitingScheduledRelease();
                     } else {
                         $q->where('status', $status);
                     }

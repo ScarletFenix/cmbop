@@ -227,6 +227,13 @@ class PublisherReportsTest extends TestCase
             ->assertOk()
             ->assertJsonCount(1, 'data')
             ->assertJsonPath('data.0.id', $scheduled->id);
+
+        $pending = $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'pending']))
+            ->assertOk()
+            ->json('data');
+        $this->assertCount(1, $pending);
+        $this->assertNotSame($scheduled->id, $pending[0]['id']);
     }
 
     public function test_order_details_are_scoped_to_owner(): void

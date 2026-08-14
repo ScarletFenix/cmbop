@@ -213,7 +213,8 @@ class DashboardController extends Controller
                 $q->where(function ($inner) {
                     $inner->where('payment_status', 'paid')
                         ->orWhere('payment_method', '!=', 'card');
-                })->whereIn('status', ['pending', 'processing', 'review', 'scheduled']);
+                })->whereIn('status', ['pending', 'processing', 'review'])
+                    ->notAwaitingScheduledRelease();
             })
             ->count();
     }

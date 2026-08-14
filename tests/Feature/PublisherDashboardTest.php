@@ -365,5 +365,10 @@ class PublisherDashboardTest extends TestCase
             ->getJson(route('publisher.dashboard.order-status'))
             ->assertOk()
             ->assertJsonPath('data.values', [1, 0, 0, 1, 0, 0]);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.dashboard'))
+            ->assertOk()
+            ->assertSee('id="openTasks">1', false);
     }
 }

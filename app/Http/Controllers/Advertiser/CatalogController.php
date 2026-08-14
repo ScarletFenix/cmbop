@@ -3359,7 +3359,8 @@ class CatalogController extends Controller
                 ->where(function ($q) {
                     $q->where(function ($pendingPaid) {
                         $pendingPaid->where('status', 'pending')
-                            ->where('payment_status', 'paid');
+                            ->where('payment_status', 'paid')
+                            ->notAwaitingScheduledRelease();
                     })->orWhere('status', 'processing');
                 })
                 ->count();
@@ -3423,13 +3424,15 @@ class CatalogController extends Controller
                         });
                 } elseif ($status === 'awaiting_publisher') {
                     $query->where('status', 'pending')
-                        ->where('payment_status', 'paid');
+                        ->where('payment_status', 'paid')
+                        ->notAwaitingScheduledRelease();
                 } elseif ($status === 'in_progress') {
                     // Matches funnel KPI: paid·waiting publisher + publisher working.
                     $query->where(function ($q) {
                         $q->where(function ($pendingPaid) {
                             $pendingPaid->where('status', 'pending')
-                                ->where('payment_status', 'paid');
+                                ->where('payment_status', 'paid')
+                                ->notAwaitingScheduledRelease();
                         })->orWhere('status', 'processing');
                     });
                 } elseif ($status === 'needs_action') {
