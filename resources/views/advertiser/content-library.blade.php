@@ -18,7 +18,7 @@
     };
     $statusLabels = [
         'available' => 'Approved',
-        'evaluating' => 'Evaluating',
+        'evaluating' => 'Processing',
         'in_progress' => 'In progress',
         'published' => 'Completed/LIVE',
         'needs_fix' => 'Needs corrections',
@@ -44,13 +44,17 @@
     ];
     $uploadsEnabled = $uploadsEnabled ?? true;
     $evaluatingCount = (int) ($availabilityCounts['evaluating'] ?? 0);
-    // Status strip: Approved (+ Evaluating badge) · In progress · Needs corrections · Completed/LIVE · Archived · Expired
+    // Status strip: Approved · Processing · In progress · Needs corrections · Completed/LIVE · Archived · Expired
     $libraryStatusChips = [
         'approved' => [
             'label' => 'Approved',
             'count' => (int) ($availabilityCounts['available'] ?? 0),
             'params' => ['status' => 'approved', 'availability' => 'available'],
-            'evaluating' => $evaluatingCount,
+        ],
+        'processing' => [
+            'label' => 'Processing',
+            'count' => $evaluatingCount,
+            'params' => ['status' => 'all', 'availability' => 'evaluating'],
         ],
         'in_progress' => [
             'label' => 'In progress',
@@ -81,6 +85,8 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
+    } elseif (($availabilityFilter ?? 'all') === 'evaluating') {
+        $activeLibraryChip = 'processing';
     } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
         $activeLibraryChip = 'in_progress';
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
@@ -99,7 +105,7 @@
             'needs_fix' => 'needs_fix',
             'in_progress' => 'in_progress',
             'available' => 'approved',
-            'evaluating' => 'evaluating',
+            'evaluating' => 'processing',
             'expired' => 'expired',
             'archived' => 'archived',
             default => 'pending',
@@ -109,11 +115,11 @@
             'needs_fix' => 'Needs corrections',
             'in_progress' => 'In progress',
             'approved' => 'Approved',
-            'evaluating' => 'Evaluating',
+            'processing' => 'Processing',
             'expired' => 'Expired',
             'archived' => 'Archived',
             default => ($moderationStatus === 'pending' || $moderationStatus === 'processing')
-                ? 'Evaluating'
+                ? 'Processing'
                 : ($statusLabels[$availability] ?? 'Pending'),
         };
 
@@ -147,12 +153,6 @@
     </div>
 
     <div id="libraryFlash" class="alert d-none" role="status"></div>
-    @if($evaluatingCount > 0 && ($activeLibraryChip ?? '') === 'approved')
-        <div class="alert alert-info py-2 px-3 small mb-3" role="status">
-            <i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>
-            {{ $evaluatingCount }} article{{ $evaluatingCount === 1 ? '' : 's' }} still evaluating — Order unlocks when approved.
-        </div>
-    @endif
     @if(($nearExpiryCount ?? 0) > 0)
         <div class="alert alert-warning py-2 px-3 small mb-3" role="status">
             <i class="fa fa-hourglass-half me-1" aria-hidden="true"></i>
@@ -219,13 +219,12 @@
                @if($chipActive) aria-current="page" @endif
                aria-label="{{ $chip['label'] }}, {{ $chipCount }} {{ $chipCount === 1 ? 'article' : 'articles' }}">
                 <span class="library-status-box__main">
-                    <span class="library-status-dot" aria-hidden="true"></span>
-                    <span>{{ $chip['label'] }}</span>
-                    @if($key === 'approved' && (int) ($chip['evaluating'] ?? 0) > 0)
-                        <span class="library-eval-badge" title="Articles still being checked">
-                            Evaluating {{ (int) $chip['evaluating'] }}
-                        </span>
-                    @endif
+                    <span class="library-status-box__label">
+                        <span>{{ $chip['label'] }}</span>
+                        @if($key === 'processing' && $chipCount > 0)
+                            <span class="library-status-sweep" aria-hidden="true"></span>
+                        @endif
+                    </span>
                 </span>
                 <span class="mod-count{{ $chipCount === 0 ? ' is-zero' : '' }}">{{ $chipCount }}</span>
             </a>
@@ -285,8 +284,11 @@
                             <div class="library-title text-truncate" data-title-display="{{ $submission->id }}" title="{{ $submission->title ?: $submission->original_filename }}">
                                 {{ $submission->title ?: $submission->original_filename }}
                             </div>
-                            @if($submission->isJustApproved() && ($justApprovedHint = $submission->justApprovedLabel()))
-                                <div class="library-just-approved-hint">{{ $justApprovedHint }}</div>
+                            @if($submission->isJustApproved())
+                                <span class="library-just-approved">Just approved</span>
+                                @if($justApprovedHint = $submission->justApprovedLabel())
+                                    <div class="library-just-approved-hint">{{ $justApprovedHint }}</div>
+                                @endif
                             @endif
                             @if($availability === 'published')
                                 <div class="library-live-link">
@@ -405,13 +407,16 @@
                         </td>
                         <td>
                             <div class="library-status-wrap">
-                                <span class="library-status library-status--{{ $statusCategory }}"><span class="library-status-dot" aria-hidden="true"></span>{{ $label }}</span>
-                                @if($submission->isJustApproved())
-                                    <span class="library-just-approved">Just approved</span>
-                                @elseif($statusCategory === 'completed')
-                                    <span class="library-status-hint">Done — not orderable</span>
-                                @elseif($availability === 'in_progress')
-                                    <span class="library-status-hint">In placement</span>
+                                <span class="library-status library-status--{{ $statusCategory }}">
+                                    {{ $label }}
+                                    @if($statusCategory === 'processing')
+                                        <span class="library-status-sweep" aria-hidden="true"></span>
+                                    @endif
+                                </span>
+                                @if($statusCategory === 'completed' && $publishedDateLabel)
+                                    <span class="library-status-time">Published {{ $publishedDateLabel }}</span>
+                                @elseif($submission->created_at)
+                                    <span class="library-status-time">Uploaded {{ $submission->created_at->diffForHumans() }}</span>
                                 @endif
                             </div>
                         </td>
@@ -467,9 +472,7 @@
                                         Order
                                     </a>
                                 @elseif($availability === 'evaluating')
-                                    <span class="small text-muted">
-                                        <i class="fa fa-spinner fa-spin me-1" aria-hidden="true"></i>Evaluating…
-                                    </span>
+                                    <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
                                     <a class="btn btn-sm btn-outline-primary"
                                        href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1]) }}">
@@ -577,6 +580,12 @@
                                     title="No articles in progress"
                                     message="After you Order an approved article, it stays here until the publisher posts the live URL."
                                 />
+                            @elseif(($availabilityFilter ?? 'all') === 'evaluating')
+                                <x-ui.empty-state
+                                    icon="fa-file-word"
+                                    title="No articles processing"
+                                    message="Uploads being checked appear here. Order unlocks when they are approved."
+                                />
                             @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
                                 || ($statusFilter ?? 'all') === 'rejected')
                                 <x-ui.empty-state
@@ -588,7 +597,7 @@
                                 <x-ui.empty-state
                                     icon="fa-circle-check"
                                     title="No approved articles ready to order"
-                                    message="Approved articles available for publication will show here. Mid-evaluation uploads also appear on this tab."
+                                    message="Approved articles available for publication will show here."
                                 />
                             @elseif($hasActiveSearchOrFacet || ($availabilityFilter ?? 'all') !== 'all')
                                 No articles match these filters.
