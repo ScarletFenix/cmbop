@@ -11,6 +11,7 @@ use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MarketingPanelHistoryTest extends TestCase
@@ -57,7 +58,7 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Marketing workspace', false)
             ->assertSee('Your recent tasks', false)
             ->assertSee('My task history', false)
-            ->assertSee('Seeded / added sites', false)
+            ->assertSee('<div class="fw-semibold">Seed</div>', false)
             ->assertSee('Seeded 2 draft sites for bulk #9', false)
             ->getContent();
 
@@ -259,6 +260,8 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertStringNotContainsString(route('marketing.sites.edit', 999999), $stale);
         $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', 888888), $stale);
+        $this->assertStringContainsString('data-history-removed', $stale);
+        $this->assertStringContainsString('Removed', $stale);
     }
 
     public function test_my_tasks_today_uses_app_timezone_window(): void

@@ -206,12 +206,32 @@ const IS_MARKETING_EDITOR = @json(auth()->user()->isMarketing() && ! auth()->use
 let allSites = [];
 let pendingHighlightSiteId = null;
 
+function siteIsVerified(site) {
+    return Number(site?.verified) === 1 || site?.verified === true;
+}
+
+function siteIsActive(site) {
+    return Number(site?.active) === 1 || site?.active === true;
+}
+
+function siteHasOrders(site) {
+    return (Number(site?.orders_count) || 0) > 0;
+}
+
 function canDeleteSiteRow(site) {
+    if (site?.archived) return false;
+    if (siteHasOrders(site)) return false;
+    if (siteIsVerified(site) || siteIsActive(site)) return false;
     if (CAN_DELETE_ANY_SITE) return true;
     if (!CAN_DELETE_PENDING_SITES) return false;
-    const verified = Number(site?.verified) === 1 || site?.verified === true;
-    const active = Number(site?.active) === 1 || site?.active === true;
-    return !verified && !active;
+    return true;
+}
+
+function canArchiveSiteRow(site) {
+    if (!CAN_DELETE_ANY_SITE) return false;
+    if (site?.archived) return false;
+    if (siteHasOrders(site)) return false;
+    return siteIsVerified(site) || siteIsActive(site);
 }
 
 /* ================= TOAST ================= */
@@ -691,22 +711,7 @@ document.addEventListener('click', function(e){
         const id = e.target.closest('[data-id]').dataset.id;
         const row = document.getElementById('details-' + id);
         if(!row) return;
-        const opening = !row.classList.contains('is-open');
-        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
-            if (openRow !== row) {
-                openRow.classList.remove('is-open');
-            }
-        });
-        row.classList.toggle('is-open', opening);
-        if (opening) {
-            hydrateSiteDetailImages(row);
-        }
-        const label = e.target.closest('.toggle-site-details');
-        if (label) {
-            label.innerHTML = opening
-                ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
-                : '<i class="fa fa-chevron-down me-2"></i>Details';
-        }
+        setSiteDetailsOpen(id, !row.classList.contains('is-open'));
         return;
     }
 
@@ -716,27 +721,73 @@ document.addEventListener('click', function(e){
         editSiteWithImage(id);
     }
 
-    /* DELETE */
+    /* DELETE / ARCHIVE */
     if(e.target.closest('.delete-site')){
         let id = e.target.closest('button').dataset.id;
         let site = allSites.find(s => s.id == id);
+        const isArchive = canArchiveSiteRow(site) || e.target.closest('.delete-site').dataset.archive === '1';
+        const name = site?.site_name || 'this site';
 
         Swal.fire({
-            title:'Delete this site?',
-            text: `Are you sure you want to delete "${site?.site_name}"?`,
+            title: isArchive ? 'Archive this site?' : 'Delete this site?',
+            text: isArchive
+                ? `"${name}" will be hidden from the catalog. Explain why — the publisher will see this reason. The listing is kept so order history stays intact.`
+                : `Are you sure you want to delete "${name}"? Explain why — the publisher will see this reason in email and notifications.`,
             icon:'warning',
+            input: 'textarea',
+            inputLabel: 'Reason for the publisher',
+            inputPlaceholder: 'Reason (min. 10 characters)',
+            inputAttributes: { 'aria-label': isArchive ? 'Archive reason' : 'Rejection reason', maxlength: '1000' },
             showCancelButton:true,
-            confirmButtonText:'Delete',
-            customClass: { confirmButton: 'slb-swal-danger' }
+            confirmButtonText: isArchive ? 'Archive' : 'Delete',
+            customClass: { confirmButton: 'slb-swal-danger' },
+            preConfirm: (value) => {
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            },
         }).then(result => {
             if(!result.isConfirmed) return;
 
+            const reason = String(result.value || '').trim();
+            if (reason.length < 10) {
+                toast('A reason is required (min. 10 characters).', 'error');
+                return;
+            }
+
             fetch(`${STAFF_BASE}/sites/${id}`, {
                 method:'DELETE',
-                headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}
-            }).then(() => {
-                toast('Deleted successfully');
+                headers:{
+                    'Content-Type':'application/json',
+                    'Accept':'application/json',
+                    'X-CSRF-TOKEN':'{{ csrf_token() }}'
+                },
+                body: JSON.stringify({ reason })
+            }).then(async (res) => {
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    data = {};
+                }
+                if (!res.ok || !data.success) {
+                    const reasonErr = data.errors && data.errors.reason
+                        ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
+                        : null;
+                    toast(reasonErr || data.message || (isArchive ? 'Could not archive site' : 'Could not delete site'), 'error');
+                    return;
+                }
+                toast(data.message || (data.archived ? 'Site archived' : 'Deleted successfully'));
                 afterSiteDecision();
+            }).catch((error) => {
+                toast(error.message || (isArchive ? 'Could not archive site' : 'Could not delete site'), 'error');
             });
         });
     }
@@ -1086,6 +1137,35 @@ function sitePreviewHtml(site) {
     `;
 }
 
+function syncSiteDetailsLabel(id, opening) {
+    const label = document.querySelector(`#sitesTable .toggle-site-details[data-id="${id}"]`);
+    if (!label) return;
+    label.innerHTML = opening
+        ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
+        : '<i class="fa fa-chevron-down me-2"></i>Details';
+}
+
+function setSiteDetailsOpen(id, opening) {
+    const row = document.getElementById('details-' + id);
+    if (!row) return false;
+    if (opening) {
+        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
+            if (openRow === row) return;
+            openRow.classList.remove('is-open');
+            const otherId = String(openRow.id || '').replace(/^details-/, '');
+            if (otherId) {
+                syncSiteDetailsLabel(otherId, false);
+            }
+        });
+        row.classList.add('is-open');
+        hydrateSiteDetailImages(row);
+    } else {
+        row.classList.remove('is-open');
+    }
+    syncSiteDetailsLabel(id, opening);
+    return true;
+}
+
 function hydrateSiteDetailImages(scope) {
     (scope || document).querySelectorAll('img[data-detail-src]').forEach(function (img) {
         const src = img.getAttribute('data-detail-src');
@@ -1210,6 +1290,9 @@ function renderSites(data){
             const csvMetricsBadge = site.csv_metrics_spot_check
                 ? `<span class="badge text-bg-light border badge-needs-review ms-1" title="Publisher-supplied DA/DR/traffic from agency CSV — spot-check before activate">CSV metrics — spot-check</span>`
                 : '';
+            const archivedBadge = site.archived
+                ? `<span class="badge text-bg-dark badge-needs-review ms-1">Archived</span>`
+                : '';
 
             // Publisher-style 16:10 preview + site identity
             let siteInfoHtml = `
@@ -1222,6 +1305,7 @@ function renderSites(data){
                             ${awaitingBadge}
                             ${inviteBadge}
                             ${csvMetricsBadge}
+                            ${archivedBadge}
                         </div>
                         <a href="${escapeHtml(site.site_url ?? '#')}" target="_blank" class="site-url" title="${escapeHtml(site.site_url ?? '')}">
                             ${escapeHtml(site.site_url ?? '-')}
@@ -1250,13 +1334,21 @@ function renderSites(data){
 
             const deleteItem = canDeleteSiteRow(site)
                 ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`
-                : '';
+                : (canArchiveSiteRow(site)
+                    ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}" data-archive="1"><i class="fa fa-archive me-2"></i>Archive</button></li>`
+                    : (CAN_DELETE_ANY_SITE && siteHasOrders(site) && !site.archived
+                        ? `<li><button type="button" class="dropdown-item disabled" disabled title="This listing has orders. Deactivate it to hide it from the catalog."><i class="fa fa-ban me-2"></i>Has orders — deactivate instead</button></li>`
+                        : ''));
 
             // Always offer Deactivate after Activate for marketing/admin (toggle by live flag).
+            const activateBlocked = site.can_activate === false;
+            const activateBlockReason = site.activate_block_reason || 'Cannot activate this listing yet.';
             const activeItem = CAN_TOGGLE_ACTIVE
                 ? (isActive
                     ? `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="0"><i class="fa fa-pause me-2"></i>Deactivate</button></li>`
-                    : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`)
+                    : (activateBlocked
+                        ? `<li><button type="button" class="dropdown-item disabled" disabled title="${escapeHtml(activateBlockReason)}"><i class="fa fa-ban me-2"></i>Cannot activate</button></li>`
+                        : `<li><button type="button" class="dropdown-item toggle-active" data-id="${site.id}" data-status="1"><i class="fa fa-play me-2"></i>Activate</button></li>`))
                 : '';
 
             const verifyItem = CAN_VERIFY_SITES
@@ -1346,10 +1438,8 @@ function renderSites(data){
         if (row) {
             row.classList.add('site-highlight-row');
             row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            const details = document.getElementById(`details-${highlightId}`);
-            if (details) {
-                details.classList.remove('d-none');
-            }
+            // CSS reveals the panel via .is-open, not .d-none.
+            setSiteDetailsOpen(highlightId, true);
         }
     }
 }

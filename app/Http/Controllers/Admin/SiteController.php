@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -429,6 +430,10 @@ class SiteController extends Controller
                 ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
                 : null,
             'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
+            'archived' => $site->isArchived(),
+            'can_activate' => $site->canBeActivated(),
+            'activate_block_reason' => $site->activationBlockReason(),
+            'orders_count' => $site->orderItemsCount(),
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
@@ -513,6 +518,7 @@ class SiteController extends Controller
             'enrichment_error',
             'metrics_fetched_at',
             'onboarding_status',
+            'archived_at',
             'example_url',
             'site_image',
             'screenshot_path',
@@ -546,9 +552,15 @@ class SiteController extends Controller
             }
         ));
 
-        $sites = Site::query()
+        $sitesQuery = Site::query()
             ->where('publisher_id', $user->id)
-            ->latest()
+            ->latest();
+
+        if (Schema::hasTable('order_items')) {
+            $sitesQuery->withCount('orderItems');
+        }
+
+        $sites = $sitesQuery
             ->get($select)
             ->map(fn (Site $site) => $this->staffSiteListRow($site))
             ->values();
@@ -1041,6 +1053,7 @@ class SiteController extends Controller
             'price' => $site->price,
             'language' => $site->language,
             'country' => $site->country,
+            'category' => $site->category,
             'active' => $site->active,
             'verified' => $site->verified,
         ];
@@ -1056,127 +1069,17 @@ class SiteController extends Controller
                 return $data;
             }
         } else {
-            $data = $request->only([
-                'site_name',
-                'site_url',
-                'domain',
-                'example_url',
-                'da',
-                'dr',
-                'traffic',
-                'country',
-                'language',
-                'category',
-                'price',
-                'publication_time',
-                'link_type',
-                'sponsored',
-                'partner_material',
-                'as_you_prefer',
-                'sensitive_prices',
-                'description',
-                'active',
-                'site_image',
-            ]);
-
-            // Derive domain from URL when the edit form omits it.
-            if (empty($data['domain']) && ! empty($data['site_url'])) {
-                try {
-                    $data['domain'] = preg_replace('/^www\./i', '', parse_url($data['site_url'], PHP_URL_HOST) ?: '');
-                } catch (\Throwable $e) {
-                    $data['domain'] = null;
-                }
-                if ($data['domain'] === '') {
-                    $data['domain'] = null;
-                }
-            }
-
-            // Manual metric edits from admin — mark as manual so auto-refresh does not overwrite.
-            if ($request->hasAny(['da', 'dr', 'traffic'])) {
-                $data['metrics_manual'] = true;
-                $data['metrics_provider'] = 'manual';
-                $data['metrics_fetched_at'] = now();
-                $data['enrichment_status'] = 'ready';
-            }
-
-            // Multipart form upload from the dedicated edit page.
-            if ($request->hasFile('site_image')) {
-                $upload = $request->file('site_image');
-                if ($upload && ! $upload->isValid()) {
-                    throw ValidationException::withMessages([
-                        'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
-                    ]);
-                }
-
-                // mimes only — Hostinger finfo often rejects valid WebP/JPEG via `image`.
-                $request->validate([
-                    'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
-                ], $this->siteImageValidationMessages());
-
-                $disk = Storage::disk('public');
-                $disk->makeDirectory('sites');
-                $previous = is_string($site->site_image) ? $site->site_image : null;
-
-                $stored = $upload->store('sites', 'public');
-                if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
-                    throw ValidationException::withMessages([
-                        'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
-                    ]);
-                }
-
-                PublicStorageLink::ensure();
-                if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
-                    Log::warning('Site image saved via update; public/storage probe failed (kept upload)', [
-                        'path' => $stored,
-                        'disk_root' => config('filesystems.disks.public.root'),
-                    ]);
-                }
-
-                if ($previous && $previous !== $stored && $disk->exists($previous)) {
-                    $disk->delete($previous);
-                }
-
-                $data['site_image'] = $stored;
-            } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
-                // JSON/AJAX path: image path already uploaded via upload-image.
-                $data['site_image'] = $request->site_image;
-            } else {
-                unset($data['site_image']);
-            }
-
-            // Admin edit form: homepage/social offers shown to advertisers in Site Details.
-            $placementPatch = null;
-            if ($request->boolean('placement_offers_form')) {
-                $homepagePrices = $this->collectHomepagePlacementPrices($request);
-                $placementPatch = [
-                    'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
-                    'social_promotion' => $this->collectSocialPromotion($request),
-                ];
-            }
-
-            // Prevent overwriting NOT NULL fields with null
-            $data = array_filter($data, function ($value) {
-                return $value !== null;
-            });
-
-            if ($placementPatch !== null) {
-                // Allow null to clear offers when admin unchecks everything.
-                $data = array_merge($data, $placementPatch);
-            }
-
-            if (isset($data['description']) && is_string($data['description'])) {
-                $data['description'] = app(SiteDescriptionSanitizer::class)
-                    ->sanitize($data['description']);
-            }
-
-            $country = strtolower(trim((string) ($data['country'] ?? $site->country ?? '')));
-            $language = strtolower(trim((string) ($data['language'] ?? $site->language ?? '')));
-            if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
-                throw ValidationException::withMessages([
-                    'language' => ['That language is not allowed for the selected country. Pick country first, then a paired language.'],
-                ]);
-            }
+            $data = $this->adminUpdatePayload($request, $site);
         }
+
+        unset(
+            $data['active'],
+            $data['verified'],
+            $data['verified_at'],
+            $data['verify_method'],
+            $data['verify_token'],
+            $data['verify_token_created_at']
+        );
 
         $site->update($data);
 
@@ -1225,6 +1128,227 @@ class SiteController extends Controller
     }
 
     /**
+     * Admin listing edits. Status flags are never taken from this payload.
+     *
+     * @return array<string, mixed>
+     */
+    private function adminUpdatePayload(Request $request, Site $site): array
+    {
+        if ($request->filled('site_url')) {
+            $request->merge([
+                'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url')),
+            ]);
+        }
+        if ($request->filled('example_url')) {
+            $request->merge([
+                'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
+            ]);
+        }
+        $metricMerge = [];
+        foreach (['da', 'dr', 'traffic'] as $field) {
+            if ($request->exists($field)) {
+                $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
+            }
+        }
+        if ($metricMerge !== []) {
+            $request->merge($metricMerge);
+        }
+
+        $countryCodes = $request->has('country') || $request->has('countries')
+            ? array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1)
+            : [];
+        $languageCodes = $request->has('language') || $request->has('languages')
+            ? array_slice($this->parseCodeList($request->input('language', $request->input('languages'))), 0, 1)
+            : [];
+
+        if ($countryCodes !== []) {
+            $request->merge(['country' => $countryCodes[0]]);
+        } elseif ($request->has('country') && trim((string) $request->input('country')) === '') {
+            $request->merge(['country' => null]);
+        }
+        if ($languageCodes !== []) {
+            $request->merge(['language' => $languageCodes[0]]);
+        } elseif ($request->has('language') && trim((string) $request->input('language')) === '') {
+            $request->merge(['language' => null]);
+        }
+        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+            $request->merge(['description' => null]);
+        }
+        if ($request->has('link_type') && trim((string) $request->input('link_type')) === '') {
+            $request->merge(['link_type' => null]);
+        }
+
+        $domain = null;
+        $siteUrl = trim((string) $request->input('site_url', ''));
+        if ($siteUrl !== '') {
+            $host = parse_url($siteUrl, PHP_URL_HOST);
+            if (is_string($host) && $host !== '') {
+                $domain = preg_replace('/^www\./i', '', strtolower($host));
+            }
+        } elseif ($request->filled('domain')) {
+            $domain = preg_replace('/^www\./i', '', strtolower(trim((string) $request->input('domain'))));
+        }
+
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        $rules = [
+            'site_name' => 'sometimes|required|string|max:255',
+            'site_url' => 'sometimes|required|url|max:255',
+            'example_url' => 'sometimes|nullable|url|max:255',
+            'da' => 'sometimes|required|integer|min:0|max:100',
+            'dr' => 'sometimes|required|integer|min:0|max:100',
+            'traffic' => 'sometimes|required|integer|min:0|max:4294967295',
+            'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
+            'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
+            'price' => 'sometimes|required|numeric|min:0',
+            'description' => 'sometimes|nullable|string|min:50',
+            'publication_time' => 'sometimes|nullable|string|max:20',
+            // Dedicated editor is free text; modal may send dofollow/nofollow.
+            'link_type' => 'sometimes|nullable|string|max:50',
+        ];
+
+        // site_image is often a stored path string after upload-image; only
+        // validate as a file when a real upload is present (handled below).
+
+        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+
+        $validator->after(function ($validator) use ($request, $site, $domain) {
+            if (is_string($domain) && $domain !== ''
+                && Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
+                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            }
+
+            if ($request->filled('site_url') && ($domain === null || $domain === '')) {
+                $validator->errors()->add('site_url', 'Invalid URL');
+            }
+
+            if ($request->has('country') || $request->has('language')) {
+                $country = strtolower(trim((string) ($request->input('country', $site->country) ?? '')));
+                $language = strtolower(trim((string) ($request->input('language', $site->language) ?? '')));
+                if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                    $validator->errors()->add(
+                        'language',
+                        'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                    );
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        $data = $request->only([
+            'site_name',
+            'site_url',
+            'domain',
+            'example_url',
+            'da',
+            'dr',
+            'traffic',
+            'country',
+            'language',
+            'category',
+            'price',
+            'publication_time',
+            'link_type',
+            'sponsored',
+            'partner_material',
+            'as_you_prefer',
+            'sensitive_prices',
+            'description',
+            'site_image',
+        ]);
+
+        if (empty($data['domain']) && is_string($domain) && $domain !== '') {
+            $data['domain'] = $domain;
+        }
+
+        if ($metricMerge !== []) {
+            $data['metrics_manual'] = true;
+            $data['metrics_provider'] = 'manual';
+            $data['metrics_fetched_at'] = now();
+            $data['enrichment_status'] = 'ready';
+        }
+
+        if (isset($data['country']) && $data['country'] !== null && $data['country'] !== '') {
+            $data['country'] = strtolower(trim((string) $data['country']));
+            $data['countries'] = [$data['country']];
+        }
+        if (isset($data['language']) && $data['language'] !== null && $data['language'] !== '') {
+            $data['language'] = strtolower(trim((string) $data['language']));
+            $data['languages'] = [$data['language']];
+        }
+
+        if ($request->hasFile('site_image')) {
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                throw ValidationException::withMessages([
+                    'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                ]);
+            }
+
+            $request->validate([
+                'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            ], $this->siteImageValidationMessages());
+
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
+            $previous = is_string($site->site_image) ? $site->site_image : null;
+
+            $stored = $upload->store('sites', 'public');
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                throw ValidationException::withMessages([
+                    'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                ]);
+            }
+
+            PublicStorageLink::ensure();
+            if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                Log::warning('Site image saved via update; public/storage probe failed (kept upload)', [
+                    'path' => $stored,
+                    'disk_root' => config('filesystems.disks.public.root'),
+                ]);
+            }
+
+            if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                $disk->delete($previous);
+            }
+
+            $data['site_image'] = $stored;
+        } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
+            $data['site_image'] = $request->site_image;
+        } else {
+            unset($data['site_image']);
+        }
+
+        $placementPatch = null;
+        if ($request->boolean('placement_offers_form')) {
+            $homepagePrices = $this->collectHomepagePlacementPrices($request);
+            $placementPatch = [
+                'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
+                'social_promotion' => $this->collectSocialPromotion($request),
+            ];
+        }
+
+        $data = array_filter($data, function ($value) {
+            return $value !== null;
+        });
+
+        if ($placementPatch !== null) {
+            $data = array_merge($data, $placementPatch);
+        }
+
+        if (isset($data['description']) && is_string($data['description'])) {
+            $data['description'] = app(SiteDescriptionSanitizer::class)
+                ->sanitize($data['description']);
+        }
+
+        return $data;
+    }
+
+    /**
      * Marketing may only edit metrics, geo, and niches for the bulk handoff.
      *
      * @return array<string, mixed>|JsonResponse|RedirectResponse
@@ -1248,8 +1372,13 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
-            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
         ], $this->siteImageValidationMessages());
+
+        if ($request->hasFile('site_image')) {
+            $validator->addRules([
+                'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            ]);
+        }
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches) {
             $language = strtolower(trim((string) $request->input('language', '')));
@@ -1638,21 +1767,13 @@ class SiteController extends Controller
             // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
 
-            if ($activating && $site->isPendingPublisherAcceptance()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This site is waiting for the publisher to accept it into My Sites.',
-                ], 422);
-            }
-
-            // Heal complete drafts; staff activate also clears incomplete awaiting_details
-            // so marketing can finish the same flow as admin from Sites Management.
             if ($activating) {
-                $site->promoteFromAwaitingDetailsIfComplete();
-                $site->refresh();
-                if ($site->awaitsPublisherDetails()) {
-                    $site->clearAwaitingDetailsForAdmin();
-                    $site->refresh();
+                $block = $site->activationBlockReason();
+                if ($block !== null) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $block,
+                    ], 422);
                 }
             }
 
@@ -1695,15 +1816,9 @@ class SiteController extends Controller
             $status = $site->active ? 'activated' : 'deactivated';
             $notifyReason = $activating ? null : $reason;
             $belowQualityBar = $activating && ! $site->hasGoodMetrics();
-            $missingMarketWarning = null;
-            if ($activating && ! $site->hasMarketplaceCountry()) {
-                $missingMarketWarning = 'Activated without a marketplace country — this listing will not appear in country filters. Edit the site to set a country.';
-            }
-            $qualityWarning = $belowQualityBar
+            $warning = $belowQualityBar
                 ? 'Activated below the quality bar (DA ≥ 30, DR ≥ 30, traffic ≥ 10,000). Listing is live; consider updating metrics before promoting it.'
                 : null;
-            // Prefer the missing-market warning when both apply; quality is still flagged via below_quality_bar.
-            $warning = $missingMarketWarning ?? $qualityWarning;
 
             try {
                 $publisher = $site->publisher;
@@ -1725,7 +1840,7 @@ class SiteController extends Controller
                 'active' => (bool) $site->active,
                 'reason' => $notifyReason,
                 'warning' => $warning,
-                'missing_market' => $missingMarketWarning !== null,
+                'missing_market' => false,
                 'below_quality_bar' => $belowQualityBar,
             ]);
         } catch (ValidationException $e) {
@@ -1776,7 +1891,8 @@ class SiteController extends Controller
         $site->status_reason_by = auth()->id();
     }
 
-    // DELETE — admin: any site; marketing: pending / not-live only
+    // DELETE — pending never-ordered: hard delete. Live listings: archive.
+    // Sites with order items cannot be removed (FK restrict + 422).
     public function destroy(Request $request, $id)
     {
         $user = auth()->user();
@@ -1794,11 +1910,74 @@ class SiteController extends Controller
             ], 403);
         }
 
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => $orderCount === 1
+                    ? 'This site has 1 order and cannot be deleted. Deactivate it to hide it from the catalog.'
+                    : 'This site has '.$orderCount.' orders and cannot be deleted. Deactivate it to hide it from the catalog.',
+                'order_count' => $orderCount,
+            ], 422);
+        }
+
+        if ($site->isArchived()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This site is already archived.',
+            ], 422);
+        }
+
         $siteName = $site->site_name;
         $siteId = $site->id;
         $domain = $site->domain;
         $bulkRequestId = $site->bulk_site_request_id;
         $onboarding = $site->onboarding_status;
+        $rejectionReason = $this->validatedStatusReason($request, true);
+        $publisher = $site->publisher;
+
+        Site::ensureStatusReasonColumns();
+        $this->applyStatusReason($site, $rejectionReason);
+
+        $shouldArchive = (bool) $site->verified || (bool) $site->active;
+        if ($shouldArchive) {
+            if (! $site->archiveByStaff($rejectionReason)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Archive is not available yet.',
+                ], 503);
+            }
+
+            try {
+                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Could not complete site review notifications before archive: '.$e->getMessage());
+            }
+
+            $this->notifyPublisherSiteRemoved($site->fresh() ?? $site, $publisher, $rejectionReason, 'archived');
+
+            ActivityLogger::log(
+                'site.archived',
+                ($user->name ?? 'Staff').' archived site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
+                $site,
+                [
+                    'site_id' => $siteId,
+                    'site_name' => $siteName,
+                    'domain' => $domain,
+                    'bulk_site_request_id' => $bulkRequestId,
+                    'onboarding_status' => $onboarding,
+                    'archived_by_role' => $user?->activeRole(),
+                    'reason' => $rejectionReason,
+                ],
+                $siteName
+            );
+
+            return response()->json([
+                'success' => true,
+                'archived' => true,
+                'message' => 'Site archived and hidden from the catalog.',
+            ]);
+        }
 
         try {
             app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
@@ -1806,12 +1985,7 @@ class SiteController extends Controller
             Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
         }
 
-        // Deleting is how staff reject a submission outright, so the publisher
-        // needs the same courtesy as a deactivation — otherwise their site just
-        // vanishes and the first they hear of it is when they come looking.
-        // Captured before delete(): the mailable and bell both read the model.
-        $publisher = $site->publisher;
-        $rejectionReason = $request->input('reason') ?: $site->status_reason;
+        // Deleting is how staff reject a pending submission outright.
         $notifySnapshot = clone $site;
 
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
@@ -1820,19 +1994,7 @@ class SiteController extends Controller
 
         $site->delete();
 
-        try {
-            if ($publisher?->email) {
-                Mail::to($publisher->email)->send(
-                    new SiteStatusNotification($notifySnapshot, 'removed', null, $rejectionReason)
-                );
-            }
-            if ($publisher) {
-                app(InAppNotificationService::class)
-                    ->notifySiteStatusChanged($notifySnapshot, 'removed', $rejectionReason);
-            }
-        } catch (\Throwable $e) {
-            Log::error('Failed to notify publisher after site delete: '.$e->getMessage());
-        }
+        $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
 
         ActivityLogger::log(
             $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
@@ -1843,15 +2005,39 @@ class SiteController extends Controller
                 'site_name' => $siteName,
                 'domain' => $domain,
                 'bulk_site_request_id' => $bulkRequestId,
+                'publisher_id' => $publisher?->id,
                 'onboarding_status' => $onboarding,
                 'deleted_by_role' => $user?->activeRole(),
+                'reason' => $rejectionReason,
             ],
             $siteName
         );
 
         return response()->json([
             'success' => true,
+            'archived' => false,
             'message' => 'Site deleted successfully',
         ]);
+    }
+
+    private function notifyPublisherSiteRemoved(
+        Site $site,
+        ?User $publisher,
+        ?string $reason,
+        string $action
+    ): void {
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(
+                    new SiteStatusNotification($site, $action, null, $reason)
+                );
+            }
+            if ($publisher) {
+                app(InAppNotificationService::class)
+                    ->notifySiteStatusChanged($site, $action, $reason);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to notify publisher after site '.$action.': '.$e->getMessage());
+        }
     }
 }

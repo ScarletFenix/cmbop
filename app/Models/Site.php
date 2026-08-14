@@ -622,6 +622,11 @@ class Site extends Model
         return $this->belongsTo(AgencySiteImport::class, 'agency_site_import_id');
     }
 
+    public function bulkSiteRequest()
+    {
+        return $this->belongsTo(BulkSiteRequest::class);
+    }
+
     public function isFromAgencyCsvImport(): bool
     {
         if (! static::hasSitesColumn('agency_site_import_id')) {
@@ -722,6 +727,54 @@ class Site extends Model
     public function canBeDeletedByMarketing(): bool
     {
         return ! (bool) $this->verified && ! (bool) $this->active;
+    }
+
+    /**
+     * Hard delete is safe only for pending listings that were never ordered.
+     */
+    public function canBeHardDeleted(): bool
+    {
+        return ! (bool) $this->verified
+            && ! (bool) $this->active
+            && ! $this->isArchived()
+            && $this->orderItemsCount() === 0;
+    }
+
+    public function orderItemsCount(): int
+    {
+        if (array_key_exists('order_items_count', $this->getAttributes())) {
+            return (int) $this->getAttribute('order_items_count');
+        }
+
+        if (! Schema::hasTable('order_items')) {
+            return 0;
+        }
+
+        return (int) $this->orderItems()->count();
+    }
+
+    /**
+     * Staff hide of a live listing: keep the row (and order history), drop it from the catalog.
+     */
+    public function archiveByStaff(?string $reason = null): bool
+    {
+        if (! static::hasSitesColumn('archived_at')) {
+            return false;
+        }
+
+        $this->archived_at = now();
+        $this->active = 0;
+
+        if ($reason !== null && $reason !== '') {
+            static::ensureStatusReasonColumns();
+            $this->status_reason = $reason;
+            $this->status_reason_at = now();
+            $this->status_reason_by = auth()->id();
+        }
+
+        $this->save();
+
+        return true;
     }
 
     /**
@@ -908,6 +961,54 @@ class Site extends Model
         }
 
         return $this->archived_at !== null;
+    }
+
+    /**
+     * Advertiser catalog / cart inventory: live, approved, and not staff-archived.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeCatalogVisible(Builder $query): Builder
+    {
+        return $query->active()->verified()->notArchived();
+    }
+
+    public function isCatalogVisible(): bool
+    {
+        return (bool) $this->active
+            && (bool) $this->verified
+            && ! $this->isArchived();
+    }
+
+    public function canBeActivated(): bool
+    {
+        return $this->activationBlockReason() === null;
+    }
+
+    public function activationBlockReason(): ?string
+    {
+        if ($this->isArchived()) {
+            return 'This site is archived and cannot be activated.';
+        }
+
+        if ($this->awaitsPublisherDetails()) {
+            return 'Publisher details are still incomplete. The listing cannot be activated yet.';
+        }
+
+        if ($this->isPendingPublisherAcceptance()) {
+            return 'This site is waiting for the publisher to accept it into My Sites.';
+        }
+
+        if (! (bool) $this->verified) {
+            return 'Verify this site before activating it.';
+        }
+
+        if (! $this->hasMarketplaceCountry()) {
+            return 'Set a marketplace country before activating this site.';
+        }
+
+        return null;
     }
 
     public function assignedBy()
