@@ -60,6 +60,17 @@ class InAppNotificationTest extends TestCase
             'id' => $notification->id,
             'status' => InAppNotification::STATUS_READ,
         ]);
+
+        $this->actingAs($user)
+            ->postJson(route('notifications.unread', $notification->id))
+            ->assertOk()
+            ->assertJsonPath('unread_count', 1)
+            ->assertJsonPath('notification.is_unread', true);
+
+        $this->assertDatabaseHas('in_app_notifications', [
+            'id' => $notification->id,
+            'status' => InAppNotification::STATUS_UNREAD,
+        ]);
     }
 
     public function test_deleted_notifications_are_soft_deleted(): void

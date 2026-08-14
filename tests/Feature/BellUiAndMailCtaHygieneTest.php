@@ -59,6 +59,9 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             ->assertSee('data-nc-search', false)
             ->assertSee('data-nc-filter="all"', false)
             ->assertSee('data-nc-filter="unread"', false)
+            ->assertSee('class="nc-filter is-active" data-nc-filter="unread"', false)
+            ->assertSee('data-nc-unread-label', false)
+            ->assertSee('data-unread-item-url="/notifications/__ID__/unread"', false)
             ->assertSee('data-nc-filter="orders"', false)
             ->assertSee('data-nc-filter="messages"', false)
             ->assertSee('data-nc-filter="payments"', false)
@@ -80,6 +83,10 @@ class BellUiAndMailCtaHygieneTest extends TestCase
             $this->assertStringContainsString('aria-selected', $js);
             $this->assertStringContainsString('wasActive', $js);
             $this->assertStringContainsString("next = 'all'", $js);
+            $this->assertStringContainsString("this.status = 'unread'", $js);
+            $this->assertStringContainsString('markUnread', $js);
+            $this->assertStringContainsString('window.confirm', $js);
+            $this->assertStringContainsString('Switch to All to see earlier notifications.', $js);
         }
     }
 

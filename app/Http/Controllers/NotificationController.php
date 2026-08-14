@@ -27,8 +27,12 @@ class NotificationController extends Controller
         };
 
         $category = $request->get('category', 'all');
-        $status = $category === 'unread' ? 'unread' : $request->get('status', 'active');
-        $filterCategory = $category === 'unread' ? 'all' : $category;
+        $status = match ($category) {
+            'unread' => 'unread',
+            'archived' => 'archived',
+            default => $request->get('status', 'inbox'),
+        };
+        $filterCategory = in_array($category, ['unread', 'archived'], true) ? 'all' : $category;
 
         $paginator = $this->notifications->listForUser($user->id, [
             'status' => $status,
@@ -114,6 +118,21 @@ class NotificationController extends Controller
         $role = $user->activeRole();
         $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
         $notification->markRead();
+
+        return response()->json([
+            'success' => true,
+            'notification' => $notification->fresh()->toApiArray(),
+            'unread_count' => $this->notifications->unreadCount($user->id, $role),
+        ]);
+    }
+
+    public function markUnread(Request $request, int $id)
+    {
+        InAppNotification::ensureTable();
+        $user = $request->user();
+        $role = $user->activeRole();
+        $notification = InAppNotification::forUser($user->id)->forAudience($role)->findOrFail($id);
+        $notification->markUnread();
 
         return response()->json([
             'success' => true,
