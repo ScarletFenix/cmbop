@@ -1242,6 +1242,222 @@ class SiteController extends Controller
     }
 
     /**
+     * Admin listing edits. Status flags are never taken from this payload.
+     *
+     * @return array<string, mixed>
+     */
+    private function adminUpdatePayload(Request $request, Site $site): array
+    {
+        if ($request->filled('site_url')) {
+            $request->merge([
+                'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url')),
+            ]);
+        }
+        if ($request->filled('example_url')) {
+            $request->merge([
+                'example_url' => $this->normalizeHttpUrl((string) $request->input('example_url')),
+            ]);
+        }
+        if ($request->hasAny(['da', 'dr', 'traffic'])) {
+            $request->merge([
+                'da' => $request->has('da') ? $this->normalizeMetricInt($request->input('da')) : $request->input('da'),
+                'dr' => $request->has('dr') ? $this->normalizeMetricInt($request->input('dr')) : $request->input('dr'),
+                'traffic' => $request->has('traffic') ? $this->normalizeMetricInt($request->input('traffic')) : $request->input('traffic'),
+            ]);
+        }
+
+        $countryCodes = $request->has('country') || $request->has('countries')
+            ? array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1)
+            : [];
+        $languageCodes = $request->has('language') || $request->has('languages')
+            ? array_slice($this->parseCodeList($request->input('language', $request->input('languages'))), 0, 1)
+            : [];
+
+        if ($countryCodes !== []) {
+            $request->merge(['country' => $countryCodes[0]]);
+        } elseif ($request->has('country') && trim((string) $request->input('country')) === '') {
+            $request->merge(['country' => null]);
+        }
+        if ($languageCodes !== []) {
+            $request->merge(['language' => $languageCodes[0]]);
+        } elseif ($request->has('language') && trim((string) $request->input('language')) === '') {
+            $request->merge(['language' => null]);
+        }
+        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+            $request->merge(['description' => null]);
+        }
+        if ($request->has('link_type') && trim((string) $request->input('link_type')) === '') {
+            $request->merge(['link_type' => null]);
+        }
+
+        $domain = null;
+        $siteUrl = trim((string) $request->input('site_url', ''));
+        if ($siteUrl !== '') {
+            $host = parse_url($siteUrl, PHP_URL_HOST);
+            if (is_string($host) && $host !== '') {
+                $domain = preg_replace('/^www\./i', '', strtolower($host));
+            }
+        } elseif ($request->filled('domain')) {
+            $domain = preg_replace('/^www\./i', '', strtolower(trim((string) $request->input('domain'))));
+        }
+
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        $rules = [
+            'site_name' => 'sometimes|required|string|max:255',
+            'site_url' => 'sometimes|required|url|max:255',
+            'example_url' => 'sometimes|nullable|url|max:255',
+            'da' => 'sometimes|required|integer|min:0|max:100',
+            'dr' => 'sometimes|required|integer|min:0|max:100',
+            'traffic' => 'sometimes|required|integer|min:0|max:4294967295',
+            'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
+            'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
+            'price' => 'sometimes|required|numeric|min:0',
+            'description' => 'sometimes|nullable|string|min:50',
+            'publication_time' => 'sometimes|nullable|string|max:20',
+            'link_type' => 'sometimes|nullable|in:dofollow,nofollow',
+            'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+        ];
+
+        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+
+        $validator->after(function ($validator) use ($request, $site, $domain) {
+            if (is_string($domain) && $domain !== ''
+                && Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
+                $validator->errors()->add('site_url', 'This website domain is already registered.');
+            }
+
+            if ($request->filled('site_url') && ($domain === null || $domain === '')) {
+                $validator->errors()->add('site_url', 'Invalid URL');
+            }
+
+            if ($request->has('country') || $request->has('language')) {
+                $country = strtolower(trim((string) ($request->input('country', $site->country) ?? '')));
+                $language = strtolower(trim((string) ($request->input('language', $site->language) ?? '')));
+                if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                    $validator->errors()->add(
+                        'language',
+                        'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                    );
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            throw new ValidationException($validator);
+        }
+
+        $data = $request->only([
+            'site_name',
+            'site_url',
+            'domain',
+            'example_url',
+            'da',
+            'dr',
+            'traffic',
+            'country',
+            'language',
+            'category',
+            'price',
+            'publication_time',
+            'link_type',
+            'sponsored',
+            'partner_material',
+            'as_you_prefer',
+            'sensitive_prices',
+            'description',
+            'site_image',
+        ]);
+
+        if (empty($data['domain']) && is_string($domain) && $domain !== '') {
+            $data['domain'] = $domain;
+        }
+
+        if ($request->hasAny(['da', 'dr', 'traffic'])) {
+            $data['metrics_manual'] = true;
+            $data['metrics_provider'] = 'manual';
+            $data['metrics_fetched_at'] = now();
+            $data['enrichment_status'] = 'ready';
+        }
+
+        if (isset($data['country']) && $data['country'] !== null && $data['country'] !== '') {
+            $data['country'] = strtolower(trim((string) $data['country']));
+            $data['countries'] = [$data['country']];
+        }
+        if (isset($data['language']) && $data['language'] !== null && $data['language'] !== '') {
+            $data['language'] = strtolower(trim((string) $data['language']));
+            $data['languages'] = [$data['language']];
+        }
+
+        if ($request->hasFile('site_image')) {
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                throw ValidationException::withMessages([
+                    'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                ]);
+            }
+
+            $request->validate([
+                'site_image' => 'file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
+            ], $this->siteImageValidationMessages());
+
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
+            $previous = is_string($site->site_image) ? $site->site_image : null;
+
+            $stored = $upload->store('sites', 'public');
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                throw ValidationException::withMessages([
+                    'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                ]);
+            }
+
+            PublicStorageLink::ensure();
+            if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                Log::warning('Site image saved via update; public/storage probe failed (kept upload)', [
+                    'path' => $stored,
+                    'disk_root' => config('filesystems.disks.public.root'),
+                ]);
+            }
+
+            if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                $disk->delete($previous);
+            }
+
+            $data['site_image'] = $stored;
+        } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
+            $data['site_image'] = $request->site_image;
+        } else {
+            unset($data['site_image']);
+        }
+
+        $placementPatch = null;
+        if ($request->boolean('placement_offers_form')) {
+            $homepagePrices = $this->collectHomepagePlacementPrices($request);
+            $placementPatch = [
+                'homepage_placement_prices' => $homepagePrices !== [] ? $homepagePrices : null,
+                'social_promotion' => $this->collectSocialPromotion($request),
+            ];
+        }
+
+        $data = array_filter($data, function ($value) {
+            return $value !== null;
+        });
+
+        if ($placementPatch !== null) {
+            $data = array_merge($data, $placementPatch);
+        }
+
+        if (isset($data['description']) && is_string($data['description'])) {
+            $data['description'] = app(SiteDescriptionSanitizer::class)
+                ->sanitize($data['description']);
+        }
+
+        return $data;
+    }
+
+    /**
      * Marketing may edit metrics/geo/niches, plus URL/price on pending listings.
      *
      * @return array<string, mixed>|JsonResponse|RedirectResponse
