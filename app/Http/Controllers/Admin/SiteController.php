@@ -690,7 +690,9 @@ class SiteController extends Controller
 
         $domain = preg_replace('/^www\./', '', strtolower($host));
 
-        $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
+        $resolvedNiches = Category::resolveNicheNames($request->input('categories', $request->input('category')));
+        $categories = $resolvedNiches['resolved'];
+        $unknownNiches = $resolvedNiches['unknown'];
         $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
         $categoriesArray = ! empty($categories) ? $categories : null;
 
@@ -707,6 +709,20 @@ class SiteController extends Controller
 
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        if ($allowedCountries === [] || $allowedLanguages === []) {
+            Log::error('Staff site-for-publisher store blocked: empty marketplace country/language lists', [
+                'user_id' => auth()->id(),
+                'countries' => count($allowedCountries),
+                'languages' => count($allowedLanguages),
+            ]);
+
+            return redirect()->back()
+                ->withErrors([
+                    'country' => 'Marketplace countries or languages are not configured. Please contact support — your listing was not saved.',
+                ])
+                ->withInput();
+        }
 
         $validator = Validator::make($request->all(), [
             'publisher_id' => 'required|integer|exists:users,id',
@@ -728,7 +744,7 @@ class SiteController extends Controller
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
         ], $this->siteImageValidationMessages());
 
-        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes) {
+        $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches) {
             $publisherId = (int) $request->input('publisher_id');
             $publisher = User::query()
                 ->whereKey($publisherId)
@@ -751,6 +767,10 @@ class SiteController extends Controller
                     'That language is not allowed for the selected country. Pick country first, then a paired language.'
                 );
             }
+
+            foreach ($unknownNiches as $cat) {
+                $validator->errors()->add('categories', 'Unknown niche: '.$cat);
+            }
         });
 
         if ($validator->fails()) {
@@ -766,13 +786,6 @@ class SiteController extends Controller
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
                 $site = new Site;
-
-                $sensitivePrices = [];
-                foreach (['crypto', 'trading', 'CBD', 'forex'] as $topic) {
-                    if ($request->input("sensitive.$topic")) {
-                        $sensitivePrices[$topic] = $request->input("price_sensitive.$topic");
-                    }
-                }
 
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
@@ -821,7 +834,7 @@ class SiteController extends Controller
                     'active' => false,
                     'enrichment_status' => 'pending',
                     'onboarding_status' => null,
-                    'sensitive_prices' => ! empty($sensitivePrices) ? $sensitivePrices : null,
+                    'sensitive_prices' => null,
                     'site_image' => $imagePath,
                 ]);
 
@@ -910,9 +923,14 @@ class SiteController extends Controller
             }
         }
 
+        $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.';
+        if ($site && ! $site->hasGoodMetrics()) {
+            $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
+        }
+
         return redirect()
             ->to(staff_route('sites.index', ['publisher' => $publisherId]))
-            ->with('success', 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.');
+            ->with('success', $success);
     }
 
     // Edit page (optional)

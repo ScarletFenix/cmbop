@@ -115,6 +115,17 @@
                         <div class="form-text">Monthly organic visits (whole number).</div>
                         @error('traffic')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
+                    <div class="col-12">
+                        <div class="form-text mb-0" id="qualityBarStatic"
+                             data-min-da="{{ \App\Models\Site::GOOD_MIN_DA }}"
+                             data-min-dr="{{ \App\Models\Site::GOOD_MIN_DR }}"
+                             data-min-traffic="{{ \App\Models\Site::GOOD_MIN_TRAFFIC }}">
+                            Marketing Activate needs DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, and traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}. Saving below this is allowed.
+                        </div>
+                        <div class="alert alert-warning border-0 py-2 px-3 small d-none mb-0 mt-2" id="qualityBarWarn" role="status">
+                            These metrics are below the marketing Activate bar. You can still save — admin must verify, and marketing will not be able to Activate until the bar is met.
+                        </div>
+                    </div>
 
                     <div class="col-md-6">
                         <label class="form-label fw-semibold" for="country">Country <span class="text-danger">*</span></label>
@@ -254,6 +265,26 @@
     const langHidden = document.getElementById('selectedLanguage');
     const preferredLang = @json(old('language', ''));
     const imageInput = document.getElementById('site_image');
+    const qualityBar = document.getElementById('qualityBarStatic');
+    const qualityWarn = document.getElementById('qualityBarWarn');
+    const minDa = parseInt((qualityBar && qualityBar.getAttribute('data-min-da')) || '30', 10);
+    const minDr = parseInt((qualityBar && qualityBar.getAttribute('data-min-dr')) || '30', 10);
+    const minTraffic = parseInt((qualityBar && qualityBar.getAttribute('data-min-traffic')) || '10000', 10);
+
+    function refreshQualityBar() {
+        if (!qualityWarn) return;
+        const da = parseInt((document.getElementById('da') || {}).value, 10);
+        const dr = parseInt((document.getElementById('dr') || {}).value, 10);
+        const traffic = parseInt((document.getElementById('traffic') || {}).value, 10);
+        const filled = Number.isFinite(da) && Number.isFinite(dr) && Number.isFinite(traffic);
+        const below = filled && (da < minDa || dr < minDr || traffic < minTraffic);
+        qualityWarn.classList.toggle('d-none', !below);
+    }
+    ['da', 'dr', 'traffic'].forEach(function (id) {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', refreshQualityBar);
+    });
+    refreshQualityBar();
 
     function syncLanguageHidden() {
         if (!langHidden) return;
