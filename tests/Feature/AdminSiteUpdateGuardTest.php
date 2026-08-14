@@ -221,6 +221,25 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
     }
 
+    public function test_update_ignores_array_shaped_site_image_path(): void
+    {
+        $site = $this->site([
+            'site_image' => 'sites/existing.jpg',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => ['sites/evil.jpg'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
+        $this->assertNull(Site::where('site_image', 'Array')->first());
+    }
+
     public function test_update_accepts_free_text_link_type_from_dedicated_editor(): void
     {
         $site = $this->site();

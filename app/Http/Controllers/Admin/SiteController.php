@@ -828,10 +828,11 @@ class SiteController extends Controller
         }
 
         $site = null;
+        $storedImagePath = null;
         $publisherId = (int) $request->input('publisher_id');
 
         try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site, &$storedImagePath) {
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
                     throw ValidationException::withMessages([
@@ -852,6 +853,7 @@ class SiteController extends Controller
                         ]);
                     }
                     PublicStorageLink::ensure();
+                    $storedImagePath = $stored;
                     $imagePath = $stored;
                 }
 
@@ -924,8 +926,10 @@ class SiteController extends Controller
                 }
             });
         } catch (ValidationException $e) {
+            $this->deleteStoredSiteImage($storedImagePath);
             throw $e;
         } catch (\Throwable $e) {
+            $this->deleteStoredSiteImage($storedImagePath);
             Log::error('Staff site-for-publisher store failed', [
                 'publisher_id' => $publisherId,
                 'domain' => $domain,
@@ -961,7 +965,13 @@ class SiteController extends Controller
             }
         }
 
-        if ($site) {
+        if (! $site) {
+            return redirect()->back()
+                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withInput();
+        }
+
+        try {
             ActivityLogger::log(
                 'site.assigned_for_acceptance',
                 (auth()->user()->name ?? 'Staff').' added site "'.$site->site_name.'" for publisher acceptance',
@@ -973,25 +983,36 @@ class SiteController extends Controller
                 ],
                 $site->site_name
             );
-
-            $publisher = $site->publisher;
-            try {
-                if ($publisher?->email) {
-                    Mail::to($publisher->email)->send(new AdminAssignedSiteNotification($site, $publisher));
-                }
-            } catch (\Throwable $e) {
-                Log::warning('Failed to email publisher about staff-assigned site: '.$e->getMessage());
-            }
-
-            try {
-                app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
-            } catch (\Throwable $e) {
-                Log::warning('Failed to bell-notify publisher about staff-assigned site: '.$e->getMessage());
-            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log staff-assigned site: '.$e->getMessage());
         }
 
-        $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.';
-        if ($site && ! $site->hasGoodMetrics()) {
+        $emailed = false;
+        $belled = false;
+        $publisher = $site->publisher;
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(new AdminAssignedSiteNotification($site, $publisher));
+                $emailed = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to email publisher about staff-assigned site: '.$e->getMessage());
+        }
+
+        try {
+            if ((int) ($site->publisher_id ?? 0) > 0) {
+                app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+                $belled = true;
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to bell-notify publisher about staff-assigned site: '.$e->getMessage());
+        }
+
+        $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.').';
+        $success .= ($emailed || $belled)
+            ? ' Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.'
+            : ' The listing was saved, but we could not notify the publisher. Ask them to open My Sites → Invites and Accept.';
+        if (! $site->hasGoodMetrics()) {
             $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
         }
 
@@ -1537,8 +1558,13 @@ class SiteController extends Controller
             }
 
             $data['site_image'] = $stored;
-        } elseif ($request->has('site_image') && $request->site_image !== null && $request->site_image !== '') {
-            $data['site_image'] = $request->site_image;
+        } elseif ($request->has('site_image') && ! $request->hasFile('site_image')) {
+            $path = $this->postedSiteImagePath($request->input('site_image'));
+            if ($path !== null) {
+                $data['site_image'] = $path;
+            } else {
+                unset($data['site_image']);
+            }
         } else {
             unset($data['site_image']);
         }
@@ -1750,9 +1776,9 @@ class SiteController extends Controller
             $payload['site_image'] = $stored;
         } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             // JSON/AJAX path: image already persisted via upload-image.
-            $path = (string) $request->input('site_image');
-            if ($path !== '' && ! str_contains($path, '..')) {
-                $payload['site_image'] = ltrim(str_replace('\\', '/', $path), '/');
+            $path = $this->postedSiteImagePath($request->input('site_image'));
+            if ($path !== null) {
+                $payload['site_image'] = $path;
             }
         }
 
@@ -1839,6 +1865,40 @@ class SiteController extends Controller
             'price_homepage.7' => '7-day homepage fee',
             'price_homepage.30' => '30-day homepage fee',
         ];
+    }
+
+    /**
+     * Keep only a relative public-disk path. Arrays become "Array" if cast.
+     */
+    private function postedSiteImagePath(mixed $raw): ?string
+    {
+        if (! is_string($raw) || $raw === '') {
+            return null;
+        }
+        if (str_contains($raw, '..')) {
+            return null;
+        }
+
+        return ltrim(str_replace('\\', '/', $raw), '/');
+    }
+
+    private function deleteStoredSiteImage(?string $path): void
+    {
+        if ($path === null || $path === '' || str_contains($path, '..')) {
+            return;
+        }
+
+        try {
+            $disk = Storage::disk('public');
+            if ($disk->exists($path)) {
+                $disk->delete($path);
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Failed to remove orphaned staff site image', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

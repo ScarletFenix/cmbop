@@ -210,7 +210,7 @@
                         <label class="form-label fw-semibold" for="turnaround_time">Turnaround <span class="text-danger">*</span></label>
                         <select id="turnaround_time" name="turnaround_time" class="form-select @error('turnaround_time') is-invalid @enderror" required>
                             @foreach(['24h' => '24 hours', '48h' => '48 hours', '3days' => '3 days', '5days' => '5 days', '7days' => '7 days'] as $value => $label)
-                                <option value="{{ $value }}" @selected(old('turnaround_time', '3days') === $value)>{{ $label }}</option>
+                                <option value="{{ $value }}" @selected(old_text('turnaround_time', '3days') === $value)>{{ $label }}</option>
                             @endforeach
                         </select>
                         @error('turnaround_time')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -219,7 +219,7 @@
                         <label class="form-label fw-semibold" for="publication_time">Publication time <span class="text-danger">*</span></label>
                         <select id="publication_time" name="publication_time" class="form-select @error('publication_time') is-invalid @enderror" required>
                             @foreach(['6months' => '6 months', '1year' => '1 year', 'permanent' => 'Permanent'] as $value => $label)
-                                <option value="{{ $value }}" @selected(old('publication_time', 'permanent') === $value)>{{ $label }}</option>
+                                <option value="{{ $value }}" @selected(old_text('publication_time', 'permanent') === $value)>{{ $label }}</option>
                             @endforeach
                         </select>
                         @error('publication_time')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -227,8 +227,8 @@
                     <div class="col-md-4">
                         <label class="form-label fw-semibold" for="link_type">Link type <span class="text-danger">*</span></label>
                         <select id="link_type" name="link_type" class="form-select @error('link_type') is-invalid @enderror" required>
-                            <option value="dofollow" @selected(old('link_type', 'dofollow') === 'dofollow')>Dofollow</option>
-                            <option value="nofollow" @selected(old('link_type') === 'nofollow')>Nofollow</option>
+                            <option value="dofollow" @selected(old_text('link_type', 'dofollow') === 'dofollow')>Dofollow</option>
+                            <option value="nofollow" @selected(old_text('link_type') === 'nofollow')>Nofollow</option>
                         </select>
                         @error('link_type')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
@@ -239,7 +239,7 @@
                             @foreach(['as_you_prefer' => 'As you prefer', 'sponsored' => 'Sponsored', 'partner_material' => 'Partner material'] as $value => $label)
                                 <div class="form-check">
                                     <input class="form-check-input" type="radio" name="site_tag" id="tag_{{ $value }}"
-                                           value="{{ $value }}" @checked(old('site_tag', 'as_you_prefer') === $value)>
+                                           value="{{ $value }}" @checked(old_text('site_tag', 'as_you_prefer') === $value)>
                                     <label class="form-check-label" for="tag_{{ $value }}">{{ $label }}</label>
                                 </div>
                             @endforeach

@@ -10,6 +10,7 @@ use App\Models\Language;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\InAppNotificationService;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -1018,5 +1019,58 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('Fill metrics, geo', false)
             ->assertDontSee('htmlspecialchars', false)
             ->assertSee('id="language"', false);
+    }
+
+    public function test_store_does_not_claim_notify_when_mail_and_bell_fail(): void
+    {
+        Mail::shouldReceive('to')->andThrow(new \RuntimeException('smtp down'));
+        $this->mock(InAppNotificationService::class, function ($mock) {
+            $mock->shouldReceive('notifyPublisherSiteAssignedForAcceptance')
+                ->once()
+                ->andThrow(new \RuntimeException('bell down'));
+        });
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://no-notify.example',
+                'example_url' => 'https://no-notify.example/sample',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertNotNull(Site::where('domain', 'no-notify.example')->first());
+        $this->assertStringContainsString('could not notify', (string) session('success'));
+        $this->assertStringNotContainsString('Publisher was notified', (string) session('success'));
+        $this->assertStringContainsString('Invites', (string) session('success'));
+    }
+
+    public function test_array_shaped_turnaround_old_input_keeps_create_page_usable(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'turnaround_time' => ['3days'],
+                'publication_time' => ['permanent'],
+                'link_type' => ['dofollow'],
+                'site_tag' => ['sponsored'],
+                'categories' => 'Not A Real Niche',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors();
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Add site for publisher', $html);
+        $this->assertMatchesRegularExpression(
+            '/<option[^>]+value="3days"[^>]+selected/',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/id="tag_sponsored"[^>]*checked|checked[^>]*id="tag_sponsored"/',
+            $html
+        );
     }
 }
