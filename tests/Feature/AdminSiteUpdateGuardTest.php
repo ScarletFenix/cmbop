@@ -638,6 +638,20 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertStatus(422)
             ->assertJsonValidationErrors(['site_url']);
 
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://127.1/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://guard-site.example:0/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
         $this->assertSame('https://guard-site.example', $site->fresh()->site_url);
     }
 

@@ -1455,6 +1455,42 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSessionHasErrors('site_url');
 
         $this->assertNull(Site::where('domain', 'com')->first());
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://127.1/path',
+                'example_url' => 'https://127.1/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', '127.1')->first());
+    }
+
+    public function test_store_rejects_invalid_url_ports(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://zero-port.example:0/path',
+                'example_url' => 'https://zero-port.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'zero-port.example')->first());
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://huge-port.example:65536/path',
+                'example_url' => 'https://huge-port.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'huge-port.example')->first());
     }
 
     public function test_idn_unicode_host_matches_existing_punycode_listing(): void
@@ -1601,5 +1637,59 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame(40, (int) $pending->da);
         $this->assertSame(41, (int) $pending->dr);
         $this->assertSame(15000, (int) $pending->traffic);
+    }
+
+    public function test_marketing_metrics_only_update_does_not_email_publisher(): void
+    {
+        Mail::fake();
+
+        $niche = Category::query()->where('name', 'News')->value('name')
+            ?? Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Metrics Quiet',
+            'site_url' => 'https://pending-metrics-quiet.example',
+            'domain' => 'pending-metrics-quiet.example',
+            'example_url' => 'https://pending-metrics-quiet.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => $niche,
+            'categories' => [$niche],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending metrics quiet description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Metrics Quiet',
+                'site_url' => 'https://pending-metrics-quiet.example',
+                'example_url' => 'https://pending-metrics-quiet.example/sample',
+                'price' => 50,
+                'da' => 42,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => $niche,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors()
+            ->assertSessionHas('success');
+
+        $this->assertStringNotContainsString('Publisher notified', (string) session('success'));
+        Mail::assertNothingOutgoing();
+        $this->assertSame(42, (int) $pending->fresh()->da);
     }
 }

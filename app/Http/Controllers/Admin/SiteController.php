@@ -1415,7 +1415,16 @@ class SiteController extends Controller
             : ['site_name', 'site_url', 'da', 'dr', 'traffic', 'price', 'language', 'country', 'active', 'verified'];
 
         foreach ($keys as $key) {
-            if ((string) ($oldData[$key] ?? '') !== (string) ($site->{$key} ?? '')) {
+            $oldValue = $oldData[$key] ?? null;
+            $newValue = $site->{$key} ?? null;
+            if ($key === 'price') {
+                if (round((float) $oldValue, 2) !== round((float) $newValue, 2)) {
+                    return true;
+                }
+
+                continue;
+            }
+            if ((string) $oldValue !== (string) $newValue) {
                 return true;
             }
         }
@@ -2270,13 +2279,17 @@ class SiteController extends Controller
         if (in_array($tld, ['localhost', 'local', 'internal', 'invalid'], true)) {
             return false;
         }
+        $allNumeric = true;
         foreach ($labels as $label) {
             if ($label === '') {
                 return false;
             }
+            if (! ctype_digit($label)) {
+                $allNumeric = false;
+            }
         }
 
-        return true;
+        return ! $allNumeric;
     }
 
     private function normalizeSiteName(string $raw): string
@@ -2431,8 +2444,13 @@ class SiteController extends Controller
 
         $authority = $host;
         $port = $parts['port'] ?? null;
-        if (is_int($port) && ! in_array($port, [80, 443], true)) {
-            $authority .= ':'.$port;
+        if (is_int($port)) {
+            if ($port < 1 || $port > 65535) {
+                return '';
+            }
+            if (! in_array($port, [80, 443], true)) {
+                $authority .= ':'.$port;
+            }
         }
 
         $path = $parts['path'] ?? '';
