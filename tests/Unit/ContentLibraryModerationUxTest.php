@@ -145,6 +145,11 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertTrue((bool) ($cfg['categories']['gambling']['enabled'] ?? false));
         $this->assertArrayHasKey('de', $cfg['categories']['gambling']['keywords_by_locale']);
         $this->assertArrayHasKey('sk', $cfg['categories']['gambling']['keywords_by_locale']);
+        $this->assertArrayHasKey('no', $cfg['categories']['gambling']['keywords_by_locale']);
+        $this->assertArrayHasKey('ca', $cfg['categories']['gambling']['keywords_by_locale']);
+        $this->assertArrayHasKey('de', $cfg['categories']['adult']['keywords_by_locale']);
+        $this->assertArrayHasKey('zh', $cfg['categories']['adult']['keywords_by_locale']);
+        $this->assertArrayHasKey('ar', $cfg['categories']['adult']['keywords_by_locale']);
         $this->assertContains('pornhub', $cfg['categories']['adult']['domains']);
     }
 

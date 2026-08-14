@@ -184,4 +184,94 @@ class ContentModerationHardeningTest extends TestCase
         $this->assertStringContainsString('example.com', $joined);
         $this->assertStringContainsString('pokerstars.com', $joined);
     }
+
+    public function test_every_marketplace_language_has_gambling_and_adult_keywords(): void
+    {
+        $markets = require dirname(__DIR__, 2).'/config/markets.php';
+        $languages = $markets['allowed_language_codes'] ?? [];
+        $this->assertNotEmpty($languages);
+
+        $gamblingLocales = $this->categories['gambling']['keywords_by_locale'] ?? [];
+        $adultLocales = $this->categories['adult']['keywords_by_locale'] ?? [];
+
+        foreach ($languages as $code) {
+            if ($code === 'en') {
+                continue;
+            }
+            $this->assertArrayHasKey($code, $gamblingLocales, 'gambling missing locale '.$code);
+            $this->assertNotEmpty($gamblingLocales[$code], 'gambling empty locale '.$code);
+            $this->assertArrayHasKey($code, $adultLocales, 'adult missing locale '.$code);
+            $this->assertNotEmpty($adultLocales[$code], 'adult empty locale '.$code);
+        }
+
+        foreach (['cbd', 'alcohol', 'tobacco', 'weapons', 'crypto_promo'] as $category) {
+            $locales = $this->categories[$category]['keywords_by_locale'] ?? [];
+            foreach ($languages as $code) {
+                if ($code === 'en') {
+                    continue;
+                }
+                $this->assertArrayHasKey($code, $locales, $category.' missing locale '.$code);
+                $this->assertNotEmpty($locales[$code], $category.' empty locale '.$code);
+            }
+        }
+    }
+
+    public function test_foreign_gambling_terms_fail_even_when_the_article_is_not_in_that_language(): void
+    {
+        $samples = [
+            'gambling' => [
+                'paris sportifs',
+                'glücksspiel',
+                'pengespill',
+                'apostes esportives',
+                'كازينو',
+                '赌场',
+                'sportweddenschappen',
+                'zakłady bukmacherskie',
+            ],
+            'adult' => [
+                'pornografie',
+                'pornografía',
+                '色情',
+                'إباحية',
+            ],
+        ];
+
+        foreach ($samples['gambling'] as $term) {
+            $result = $this->engine->score(
+                title: 'Industry notes',
+                text: 'This marketing briefing mentions '.$term.' among other venue types.',
+                links: [],
+                categories: $this->categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $term.' should fail gambling');
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $term);
+        }
+
+        foreach ($samples['adult'] as $term) {
+            $result = $this->engine->score(
+                title: 'Safety notes',
+                text: 'Parents should filter '.$term.' on shared devices at home.',
+                links: [],
+                categories: $this->categories,
+            );
+            $this->assertSame('adult', $result['detected_category'], $term.' should fail adult');
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $term);
+        }
+    }
+
+    public function test_merged_keywords_include_every_locale_list(): void
+    {
+        $merged = $this->engine->mergedKeywords($this->categories['gambling']);
+        $this->assertContains('casino', $merged);
+        $this->assertContains('glücksspiel', $merged);
+        $this->assertContains('paris sportifs', $merged);
+        $this->assertContains('pengespill', $merged);
+        $this->assertContains('كازينو', $merged);
+
+        $adult = $this->engine->mergedKeywords($this->categories['adult']);
+        $this->assertContains('pornography', $adult);
+        $this->assertContains('pornografie', $adult);
+        $this->assertContains('色情', $adult);
+    }
 }
