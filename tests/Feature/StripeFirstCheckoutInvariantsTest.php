@@ -223,6 +223,55 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame('pending', $order->fresh()->payment_status);
     }
 
+    public function test_checkout_session_with_bonus_metadata_still_asserts_stripe_amount(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'session-bonus-mismatch.example');
+        $ref = 'CS-BONUS-MISMATCH-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 115,
+            'tax' => 0,
+            'total_amount' => 115,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 115,
+        ]);
+
+        $session = (object) [
+            'id' => 'cs_bonus_mismatch',
+            'object' => 'checkout.session',
+            'amount_total' => 100,
+            'payment_intent' => 'pi_bonus_mismatch',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => $ref,
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        try {
+            app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
+            $this->fail('Checkout session amount mismatch should refuse to mark the order paid.');
+        } catch (\RuntimeException $e) {
+            $this->assertStringContainsString('does not match', $e->getMessage());
+        }
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
+
     public function test_session_expiry_refunds_bonus_when_no_order_rows_exist(): void
     {
         $advertiser = $this->makeUser('advertiser');
