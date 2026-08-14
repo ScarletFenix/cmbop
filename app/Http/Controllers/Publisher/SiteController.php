@@ -91,7 +91,7 @@ class SiteController extends Controller
     public function getCountryLanguages($countryCode)
     {
         $pairs = app(CountryLanguagePairs::class);
-        $rows = $pairs->mapWithNames()[strtolower(trim((string) $countryCode))] ?? [];
+        $rows = $pairs->mapWithNames()[strtolower(trim(scalar_text($countryCode)))] ?? [];
 
         return response()->json(collect($rows)->map(fn ($r) => [
             'code' => $r['code'],
@@ -119,7 +119,7 @@ class SiteController extends Controller
         // Handle categories - get as array from multi-select
         $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
         // Pipe-join avoids breaking names that contain commas (e.g. "Marketing, PR & Advertising")
-        $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->category;
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : scalar_text($request->category);
         $categoriesArray = ! empty($categories) ? $categories : null;
 
         // Single country + single language per website (manual entry — never auto-overwritten)
@@ -212,7 +212,7 @@ class SiteController extends Controller
         });
 
         $validator->after(function ($validator) use ($request) {
-            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+            foreach (SiteDescriptionRules::errors(scalar_text($request->input('siteDescription', ''))) as $message) {
                 $validator->errors()->add('siteDescription', $message);
             }
         });
@@ -325,12 +325,12 @@ class SiteController extends Controller
     {
         try {
             $this->ensureListingSchema();
-            $query = $request->get('query');
-            $status = strtolower((string) $request->get('status', 'active'));
+            $query = scalar_text($request->get('query'));
+            $status = strtolower(scalar_text($request->get('status', 'active')));
             if (! in_array($status, ['pending', 'active', 'invites', 'archived', 'all'], true)) {
                 $status = 'active';
             }
-            $page = max(1, (int) $request->get('page', 1));
+            $page = max(1, (int) scalar_text($request->get('page', 1)));
 
             $base = Site::where('publisher_id', auth()->id());
             $acceptedBase = (clone $base)->acceptedByPublisher();
@@ -1168,7 +1168,7 @@ class SiteController extends Controller
 
         $categories = [];
         foreach ($parts as $part) {
-            $name = trim((string) $part);
+            $name = trim(scalar_text($part));
             if ($name !== '') {
                 $categories[] = $name;
             }
@@ -1188,12 +1188,12 @@ class SiteController extends Controller
         if (is_array($value)) {
             $parts = $value;
         } else {
-            $parts = preg_split('/[|,]/', (string) $value) ?: [];
+            $parts = preg_split('/[|,]/', scalar_text($value)) ?: [];
         }
 
         $codes = [];
         foreach ($parts as $part) {
-            $code = strtolower(trim((string) $part));
+            $code = strtolower(trim(scalar_text($part)));
             if ($code !== '' && preg_match('/^[a-z]{2}$/', $code)) {
                 $codes[] = $code;
             }

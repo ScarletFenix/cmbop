@@ -46,7 +46,7 @@ class SiteController extends Controller
             || $request->query('verified') === '0'
             || $request->query('verified') === 0;
 
-        $publisherSearch = trim((string) $request->query('q', ''));
+        $publisherSearch = trim(scalar_text($request->query('q', '')));
         $flatQueue = $request->boolean('flat');
 
         $reviewQueue = function ($q) {
@@ -118,7 +118,7 @@ class SiteController extends Controller
      */
     public function records(Request $request)
     {
-        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         if ($countryFilter === 'all') {
             $countryFilter = '';
         }
@@ -204,7 +204,7 @@ class SiteController extends Controller
      */
     public function exportRecords(Request $request): StreamedResponse
     {
-        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         if ($countryFilter === 'all') {
             $countryFilter = '';
         }
@@ -717,7 +717,7 @@ class SiteController extends Controller
         $resolvedNiches = Category::resolveNicheNames($request->input('categories', $request->input('category')));
         $categories = $resolvedNiches['resolved'];
         $unknownNiches = $resolvedNiches['unknown'];
-        $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : scalar_text($request->input('category', ''));
         $categoriesArray = ! empty($categories) ? $categories : null;
 
         $countryCodes = array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1);
@@ -823,7 +823,7 @@ class SiteController extends Controller
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
             }
 
-            foreach (SiteDescriptionRules::errors((string) $request->input('description', '')) as $message) {
+            foreach (SiteDescriptionRules::errors(scalar_text($request->input('description', ''))) as $message) {
                 $validator->errors()->add('description', $message);
             }
         });
@@ -833,7 +833,7 @@ class SiteController extends Controller
         }
 
         $cleanDescription = app(SiteDescriptionSanitizer::class)
-            ->sanitize((string) $request->input('description'));
+            ->sanitize(scalar_text($request->input('description')));
 
         $site = null;
         $publisherId = (int) $request->input('publisher_id');
@@ -1362,23 +1362,23 @@ class SiteController extends Controller
 
         if ($countryCodes !== []) {
             $request->merge(['country' => $countryCodes[0]]);
-        } elseif ($request->has('country') && trim((string) $request->input('country')) === '') {
+        } elseif ($request->has('country') && trim(scalar_text($request->input('country'))) === '') {
             $request->merge(['country' => null]);
         }
         if ($languageCodes !== []) {
             $request->merge(['language' => $languageCodes[0]]);
-        } elseif ($request->has('language') && trim((string) $request->input('language')) === '') {
+        } elseif ($request->has('language') && trim(scalar_text($request->input('language'))) === '') {
             $request->merge(['language' => null]);
         }
-        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+        if ($request->has('description') && trim(scalar_text($request->input('description'))) === '') {
             $request->merge(['description' => null]);
         }
-        if ($request->has('link_type') && trim((string) $request->input('link_type')) === '') {
+        if ($request->has('link_type') && trim(scalar_text($request->input('link_type'))) === '') {
             $request->merge(['link_type' => null]);
         }
 
         $domain = null;
-        $siteUrl = trim((string) $request->input('site_url', ''));
+        $siteUrl = trim(scalar_text($request->input('site_url', '')));
         if ($siteUrl !== '') {
             $host = parse_url($siteUrl, PHP_URL_HOST);
             if (is_string($host) && $host !== '') {
@@ -1642,8 +1642,8 @@ class SiteController extends Controller
         }
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site) {
-            $language = strtolower(trim((string) $request->input('language', '')));
-            $country = strtolower(trim((string) $request->input('country', '')));
+            $language = strtolower(trim(scalar_text($request->input('language', ''))));
+            $country = strtolower(trim(scalar_text($request->input('country', ''))));
 
             if ($language !== '' && ! in_array($language, $allowedLanguages, true)) {
                 $validator->errors()->add('language', 'Choose a valid marketplace language.');
@@ -1663,7 +1663,7 @@ class SiteController extends Controller
             }
 
             if ($canFixListing && $request->filled('site_url')) {
-                $siteUrl = (string) $request->input('site_url', '');
+                $siteUrl = scalar_text($request->input('site_url', ''));
                 $host = parse_url($siteUrl, PHP_URL_HOST);
                 if (! $host) {
                     $validator->errors()->add('site_url', 'Invalid URL');
@@ -1688,8 +1688,8 @@ class SiteController extends Controller
             return back()->withErrors($validator)->withInput();
         }
 
-        $language = strtolower(trim((string) $request->input('language')));
-        $country = strtolower(trim((string) $request->input('country')));
+        $language = strtolower(trim(scalar_text($request->input('language'))));
+        $country = strtolower(trim(scalar_text($request->input('country'))));
 
         $payload = [
             'da' => (int) $request->input('da'),
@@ -1709,10 +1709,10 @@ class SiteController extends Controller
 
         if ($canFixListing) {
             if ($request->exists('site_name')) {
-                $payload['site_name'] = (string) $request->input('site_name');
+                $payload['site_name'] = scalar_text($request->input('site_name'));
             }
             if ($request->exists('site_url')) {
-                $siteUrl = (string) $request->input('site_url');
+                $siteUrl = scalar_text($request->input('site_url'));
                 $host = parse_url($siteUrl, PHP_URL_HOST) ?: '';
                 $payload['site_url'] = $siteUrl;
                 $payload['domain'] = preg_replace('/^www\./', '', strtolower((string) $host));
@@ -1909,12 +1909,12 @@ class SiteController extends Controller
         if (is_array($value)) {
             $parts = $value;
         } else {
-            $parts = preg_split('/[|,]/', (string) $value) ?: [];
+            $parts = preg_split('/[|,]/', scalar_text($value)) ?: [];
         }
 
         $codes = [];
         foreach ($parts as $part) {
-            $code = strtolower(trim((string) $part));
+            $code = strtolower(trim(scalar_text($part)));
             if ($code !== '' && preg_match('/^[a-z]{2}$/', $code)) {
                 $codes[] = $code;
             }
@@ -2093,7 +2093,29 @@ class SiteController extends Controller
             Site::ensureStatusReasonColumns();
             $this->applyStatusReason($site, $reason);
         }
-        $site->save();
+
+        try {
+            $site->save();
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('Failed to update site verification', [
+                'site_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $hint = '';
+            if (str_contains($e->getMessage(), 'onboarding_status')) {
+                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
+            } elseif (str_contains($e->getMessage(), 'status_reason')) {
+                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not update verification.'.$hint,
+            ], 500);
+        }
 
         $action = $site->verified ? 'site.approved' : 'site.rejected';
         $label = $site->verified ? 'approved' : 'rejected';

@@ -165,6 +165,13 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->assertFalse((bool) $site->fresh()->verified);
     }
 
+    public function test_verify_save_failure_returns_json_instead_of_leaking(): void
+    {
+        $src = (string) file_get_contents(app_path('Http/Controllers/Admin/SiteController.php'));
+        $this->assertStringContainsString('Could not update verification.', $src);
+        $this->assertStringContainsString('Failed to update site verification', $src);
+    }
+
     public function test_staff_list_flags_blocked_activate(): void
     {
         $blocked = $this->site([

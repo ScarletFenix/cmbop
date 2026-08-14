@@ -152,6 +152,21 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame(42, (int) $site->fresh()->dr);
     }
 
+    public function test_update_array_language_and_description_do_not_500(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'language' => ['de'],
+                'description' => ['Too short'],
+            ])
+            ->assertStatus(422);
+
+        $this->assertSame('de', $site->fresh()->language);
+        $this->assertStringContainsString('Admin update guard', (string) $site->fresh()->description);
+    }
+
     public function test_update_rejects_short_description_when_sent(): void
     {
         $site = $this->site();
