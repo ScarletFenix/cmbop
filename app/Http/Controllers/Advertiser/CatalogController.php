@@ -2205,6 +2205,22 @@ class CatalogController extends Controller
                 DB::commit();
                 $this->forgetCheckoutBonus((int) $userId, (string) $referenceCode);
                 $this->restoreDeferredCartAfterPayment();
+                $advertiserRoleId = Wallet::advertiserRoleId();
+                if ($advertiserRoleId) {
+                    $purchaseWallet = Wallet::query()
+                        ->where('user_id', $userId)
+                        ->where('role_id', $advertiserRoleId)
+                        ->first();
+                    if ($purchaseWallet) {
+                        app(WalletLedgerService::class)->recordPurchaseOnce(
+                            $purchaseWallet,
+                            $totalAmount,
+                            $bonusApplied,
+                            $created->first(),
+                            (string) $referenceCode
+                        );
+                    }
+                }
                 $paymentService->notifyPublishersOfPaidOrders($created);
 
                 try {
