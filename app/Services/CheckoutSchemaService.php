@@ -21,6 +21,7 @@ class CheckoutSchemaService
         $this->ensureOrdersColumns();
         $this->ensureOrderItemsColumns();
         $this->ensureSitesColumns();
+        $this->ensureCheckoutIntentsTable();
     }
 
     /**
@@ -122,6 +123,30 @@ class CheckoutSchemaService
         $this->addColumn('order_items', 'publish_nudge_sent_at', 'timestamp NULL');
         $this->addColumn('order_items', 'review_nudge_sent_at', 'timestamp NULL');
         $this->addColumn('order_items', 'stalled_notice_sent_at', 'timestamp NULL');
+    }
+
+    private function ensureCheckoutIntentsTable(): void
+    {
+        if ($this->tableExists('checkout_intents')) {
+            return;
+        }
+
+        try {
+            Schema::create('checkout_intents', function (Blueprint $table) {
+                $table->id();
+                $table->unsignedBigInteger('user_id')->nullable()->index();
+                $table->string('reference_code', 64)->unique();
+                $table->decimal('bonus_applied', 10, 2)->default(0);
+                $table->json('package')->nullable();
+                $table->timestamp('expires_at')->nullable()->index();
+                $table->timestamps();
+            });
+            Log::info('Created missing checkout_intents table');
+        } catch (\Throwable $e) {
+            Log::warning('Could not create checkout_intents table', [
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

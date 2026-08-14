@@ -196,13 +196,12 @@ class OrderPaymentService
             $total = $bonusApplied;
         }
 
-        app(WalletLedgerService::class)->recordPurchaseOnce(
-            $wallet,
-            $total,
-            $bonusApplied,
-            $orders->first(),
-            $referenceCode
-        );
+        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
+        if ($wallet && (float) $wallet->bonus_reserved > 0) {
+            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
+        }
+        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
+        Cache::forget($cacheKey);
     }
 
     /**
@@ -234,6 +233,8 @@ class OrderPaymentService
                 'error' => $e->getMessage(),
             ]);
         }
+        app(CheckoutIntentService::class)->forgetBonus((int) $order->user_id, (string) $order->reference_code);
+        Cache::forget($cacheKey);
     }
 
     /**
@@ -242,9 +243,9 @@ class OrderPaymentService
      *
      * @return Collection<int, Order>
      */
-    public function markOrdersFailedFromReference(string $referenceCode, ?string $reason = null, ?int $userId = null): Collection
+    public function markOrdersFailedFromReference(string $referenceCode, ?string $reason = null, ?int $userId = null, ?float $bonusFallback = null): Collection
     {
-        $failed = DB::transaction(function () use ($referenceCode, $reason, $userId) {
+        $failed = DB::transaction(function () use ($referenceCode, $reason, $userId, $bonusFallback) {
             $orders = Order::query()
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -266,7 +267,11 @@ class OrderPaymentService
                 ?: ($userId ?? 0));
 
             if ($resolvedUserId > 0) {
-                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode);
+                $fallback = $bonusFallback;
+                if (($fallback ?? 0) <= 0) {
+                    $fallback = round((float) ($package['bonus_applied'] ?? 0), 2);
+                }
+                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback);
             }
             $this->forgetPendingCheckout($referenceCode);
 
@@ -304,10 +309,9 @@ class OrderPaymentService
     /**
      * Refund promotional credit reserved for a card checkout reference.
      */
-    public function refundBonusReservedForReference(int $userId, string $referenceCode): void
+    public function refundBonusReservedForReference(int $userId, string $referenceCode, ?float $fallbackBonus = null): void
     {
-        $cacheKey = 'checkout_bonus:'.$userId.':'.$referenceCode;
-        $bonus = round((float) Cache::pull($cacheKey, 0), 2);
+        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
         if ($bonus <= 0) {
             return;
         }
@@ -328,7 +332,7 @@ class OrderPaymentService
      */
     public static function pendingCheckoutCacheKey(string $referenceCode): string
     {
-        return 'pending_card_checkout:'.$referenceCode;
+        return CheckoutIntentService::pendingCheckoutCacheKey($referenceCode);
     }
 
     /**
@@ -338,12 +342,12 @@ class OrderPaymentService
      */
     public function storePendingCheckout(string $referenceCode, array $package): void
     {
-        Cache::put(self::pendingCheckoutCacheKey($referenceCode), $package, now()->addHours(6));
+        app(CheckoutIntentService::class)->storePackage($referenceCode, $package);
     }
 
     public function forgetPendingCheckout(string $referenceCode): void
     {
-        Cache::forget(self::pendingCheckoutCacheKey($referenceCode));
+        app(CheckoutIntentService::class)->forget($referenceCode);
     }
 
     /**
@@ -351,9 +355,7 @@ class OrderPaymentService
      */
     public function getPendingCheckout(string $referenceCode): ?array
     {
-        $package = Cache::get(self::pendingCheckoutCacheKey($referenceCode));
-
-        return is_array($package) ? $package : null;
+        return app(CheckoutIntentService::class)->getPackage($referenceCode);
     }
 
     /**

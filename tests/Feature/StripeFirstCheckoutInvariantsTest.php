@@ -361,52 +361,75 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
 
-    public function test_legacy_bonus_session_without_expected_amount_still_checks_charge(): void
+    public function test_finalize_survives_cache_flush_via_durable_checkout_intent(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
-        $site = $this->makeSite($publisher, 'bonus-legacy.example');
-        $ref = 'BONUS-LEGACY-1';
+        $site = $this->makeSite($publisher, 'durable-package.example', 80);
+        $ref = 'DURABLE-PKG-1';
 
-        $order = Order::create([
-            'user_id' => $advertiser->id,
-            'order_number' => (string) random_int(100000, 999999),
-            'reference_code' => $ref,
-            'subtotal' => 100,
-            'tax' => 0,
-            'total_amount' => 100,
-            'payment_method' => 'card',
-            'payment_status' => 'pending',
-            'status' => 'pending',
-        ]);
-        OrderItem::create([
-            'order_id' => $order->id,
-            'site_id' => $site->id,
-            'site_name' => $site->site_name,
-            'site_url' => $site->site_url,
-            'content_link' => 'https://example.com/a',
-            'price' => 100,
-        ]);
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package(
+            $advertiser,
+            [$this->lineFor($site, 80)],
+            80
+        ));
 
-        $session = (object) [
-            'id' => 'cs_bonus_legacy',
-            'object' => 'checkout.session',
-            'amount_total' => 100,
-            'payment_intent' => 'pi_bonus_legacy',
-            'metadata' => (object) [
-                'type' => 'order_payment',
-                'reference_code' => $ref,
-                'bonus_applied' => '20',
+        Cache::flush();
+        $this->assertNull(Cache::get(OrderPaymentService::pendingCheckoutCacheKey($ref)));
+
+        $created = app(OrderPaymentService::class)->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_durable_pkg')
+        );
+
+        $this->assertCount(1, $created);
+        $order = Order::where('reference_code', $ref)->first();
+        $this->assertNotNull($order);
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
+    }
+
+    public function test_session_expiry_refunds_bonus_after_cache_flush(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $this->makeSite($publisher, 'expire-durable.example');
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'EXPIRE-DURABLE-1';
+
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package(
+            $advertiser,
+            [$this->lineFor($this->makeSite($publisher, 'expire-durable-line.example'), 40)],
+            20,
+            20
+        ));
+
+        Cache::flush();
+
+        $this->signedWebhook([
+            'id' => 'evt_expire_durable_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.expired',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expired_durable',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'unpaid',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'bonus_applied' => '20',
+                    ],
+                ],
             ],
-        ];
+        ])->assertOk();
 
-        try {
-            app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
-            $this->fail('Bonus card sessions without expected_amount must still verify the Stripe charge.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('does not match', $e->getMessage());
-        }
-
-        $this->assertSame('pending', $order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
 }
