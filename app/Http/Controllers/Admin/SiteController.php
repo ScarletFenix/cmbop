@@ -759,7 +759,7 @@ class SiteController extends Controller
             'country' => 'required|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'required|string|size:2|in:'.implode(',', $allowedLanguages),
             'categories' => 'required|array|min:1|max:7',
-            'price' => 'required|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:99999999.99',
             'turnaround_time' => 'required|string|in:24h,48h,3days,5days,7days',
             'publication_time' => 'required|string|max:20|in:6months,1year,permanent',
             'link_type' => 'required|in:dofollow,nofollow',
@@ -767,21 +767,21 @@ class SiteController extends Controller
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
-            'price_sensitive.*' => 'nullable|numeric|min:0',
+            'price_sensitive.*' => 'nullable|numeric|min:0|max:99999999.99',
             'sensitive.crypto' => 'nullable|boolean',
             'sensitive.trading' => 'nullable|boolean',
             'sensitive.CBD' => 'nullable|boolean',
             'sensitive.forex' => 'nullable|boolean',
-            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0',
-            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0',
-            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0',
-            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0',
+            'price_sensitive.crypto' => 'nullable|required_with:sensitive.crypto|numeric|min:0|max:99999999.99',
+            'price_sensitive.trading' => 'nullable|required_with:sensitive.trading|numeric|min:0|max:99999999.99',
+            'price_sensitive.CBD' => 'nullable|required_with:sensitive.CBD|numeric|min:0|max:99999999.99',
+            'price_sensitive.forex' => 'nullable|required_with:sensitive.forex|numeric|min:0|max:99999999.99',
             'homepage.1' => 'nullable|boolean',
             'homepage.7' => 'nullable|boolean',
             'homepage.30' => 'nullable|boolean',
-            'price_homepage.1' => 'nullable|numeric|min:0',
-            'price_homepage.7' => 'nullable|numeric|min:0',
-            'price_homepage.30' => 'nullable|numeric|min:0',
+            'price_homepage.1' => 'nullable|numeric|min:0|max:99999999.99',
+            'price_homepage.7' => 'nullable|numeric|min:0|max:99999999.99',
+            'price_homepage.30' => 'nullable|numeric|min:0|max:99999999.99',
             'social.facebook' => 'nullable|boolean',
             'social.instagram' => 'nullable|boolean',
             'social.x' => 'nullable|boolean',
@@ -1385,7 +1385,10 @@ class SiteController extends Controller
                 $domain = preg_replace('/^www\./i', '', strtolower($host));
             }
         } elseif ($request->filled('domain')) {
-            $domain = preg_replace('/^www\./i', '', strtolower(trim((string) $request->input('domain'))));
+            $postedDomain = $request->input('domain');
+            if (is_string($postedDomain) && trim($postedDomain) !== '') {
+                $domain = preg_replace('/^www\./i', '', strtolower(trim($postedDomain)));
+            }
         }
 
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
@@ -1400,7 +1403,7 @@ class SiteController extends Controller
             'traffic' => 'sometimes|required|integer|min:0|max:4294967295',
             'country' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedCountries),
             'language' => 'sometimes|nullable|string|size:2|in:'.implode(',', $allowedLanguages),
-            'price' => 'sometimes|required|numeric|min:0',
+            'price' => 'sometimes|required|numeric|min:0|max:99999999.99',
             'description' => 'sometimes|nullable|string|min:50',
             'publication_time' => 'sometimes|nullable|string|max:20',
             'link_type' => 'sometimes|nullable|string|max:64',
@@ -1459,6 +1462,10 @@ class SiteController extends Controller
             'description',
             'site_image',
         ]);
+
+        if (! isset($data['domain']) || ! is_string($data['domain']) || trim($data['domain']) === '') {
+            unset($data['domain']);
+        }
 
         if (empty($data['domain']) && is_string($domain) && $domain !== '') {
             $data['domain'] = $domain;
@@ -1606,7 +1613,7 @@ class SiteController extends Controller
             $rules['site_name'] = 'sometimes|required|string|max:255';
             $rules['site_url'] = 'sometimes|required|url|max:255';
             $rules['example_url'] = 'nullable|url|max:255';
-            $rules['price'] = 'sometimes|required|numeric|min:0';
+            $rules['price'] = 'sometimes|required|numeric|min:0|max:99999999.99';
         }
 
         $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());

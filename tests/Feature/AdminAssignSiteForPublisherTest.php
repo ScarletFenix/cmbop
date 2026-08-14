@@ -410,6 +410,75 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertSame('https://array-url.example', $site->site_url);
     }
 
+    public function test_admin_store_rejects_price_that_would_overflow_decimal(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $niche = Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.create'))
+            ->post(route('admin.sites.store'), [
+                'publisher_id' => $this->publisher->id,
+                'site_name' => 'Overflow Price',
+                'site_url' => 'https://overflow-price.example',
+                'example_url' => 'https://overflow-price.example/sample',
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+                'country' => strtolower((string) $country->code),
+                'language' => strtolower((string) $language->code),
+                'categories' => $niche,
+                'price' => '100000000000',
+                'turnaround_time' => '3days',
+                'publication_time' => 'permanent',
+                'link_type' => 'dofollow',
+                'description' => str_repeat('Overflow price leftover store guard. ', 4),
+                'site_tag' => 'as_you_prefer',
+                'written_request' => 1,
+            ])
+            ->assertRedirect(route('admin.sites.create'))
+            ->assertSessionHasErrors('price')
+            ->assertSessionDoesntHaveErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'overflow-price.example')->first());
+    }
+
+    public function test_admin_update_ignores_array_domain_field(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Keep Domain',
+            'site_url' => 'https://keep-domain.example',
+            'domain' => 'keep-domain.example',
+            'da' => 40,
+            'dr' => 42,
+            'traffic' => 15000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Keep domain leftover update guard. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => 'Keep Domain',
+                'domain' => ['spoofed.example'],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('keep-domain.example', $site->fresh()->domain);
+    }
+
     public function test_publisher_self_created_sites_are_accepted_immediately(): void
     {
         $country = Country::marketplace()->where('code', 'de')->first()
@@ -440,6 +509,41 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertNotNull($site);
         $this->assertNotNull($site->publisher_accepted_at);
         $this->assertFalse($site->isPendingPublisherAcceptance());
+    }
+
+    public function test_publisher_store_rejects_traffic_that_would_overflow_unsigned_int(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $niche = Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Overflow Traffic',
+                'siteUrl' => 'overflow-traffic.example',
+                'exampleUrl' => 'https://overflow-traffic.example/post',
+                'da' => 33,
+                'dr' => 34,
+                'traffic' => '5000000000',
+                'country' => strtolower((string) $country->code),
+                'language' => strtolower((string) $language->code),
+                'categories' => $niche,
+                'price' => 70,
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Overflow traffic leftover store guard. ', 4),
+                'site_tag' => 'as_you_prefer',
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('traffic')
+            ->assertSessionDoesntHaveErrors('siteUrl');
+
+        $this->assertNull(Site::where('domain', 'overflow-traffic.example')->first());
     }
 
     public function test_admin_create_coerces_da_dr_traffic_from_noisy_input(): void
