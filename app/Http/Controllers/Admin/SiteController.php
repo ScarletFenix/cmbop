@@ -630,18 +630,35 @@ class SiteController extends Controller
      */
     public function createForPublisher(Request $request): View
     {
+        $selectedPublisherId = (int) ($request->query('publisher') ?: old('publisher_id', 0));
+
         $publishers = User::query()
             ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->where(function ($q) use ($selectedPublisherId) {
+                $q->whereNotNull('email_verified_at');
+                if ($selectedPublisherId > 0) {
+                    $q->orWhere('id', $selectedPublisherId);
+                }
+            })
+            ->withCount('sites')
             ->orderBy('name')
-            ->get(['id', 'name', 'email']);
+            ->get(['id', 'name', 'email', 'email_verified_at']);
+
+        $selectedPublisherUnverified = $selectedPublisherId > 0
+            && $publishers->contains(
+                fn (User $publisher) => (int) $publisher->id === $selectedPublisherId
+                    && blank($publisher->email_verified_at)
+            );
 
         $languages = Language::marketplace()->orderBy('name')->get();
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
         $categories = Category::catalogPickerNames();
         $countryLanguageMap = app(CountryLanguagePairs::class)->mapWithNames();
-        $selectedPublisherId = (int) $request->query('publisher', 0);
         $isMarketingEditor = $this->isMarketingEditor(auth()->user());
+        $sitesBackUrl = $selectedPublisherId > 0
+            ? staff_route('sites.index', ['publisher' => $selectedPublisherId])
+            : staff_route('sites.index');
 
         return view('admin.site-create', compact(
             'publishers',
@@ -650,7 +667,9 @@ class SiteController extends Controller
             'categories',
             'countryLanguageMap',
             'selectedPublisherId',
-            'isMarketingEditor'
+            'selectedPublisherUnverified',
+            'isMarketingEditor',
+            'sitesBackUrl'
         ));
     }
 
@@ -742,7 +761,10 @@ class SiteController extends Controller
             'description' => 'required|string|min:50',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
-        ], $this->siteImageValidationMessages());
+            'written_request' => 'accepted',
+        ], array_merge($this->siteImageValidationMessages(), [
+            'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
+        ]));
 
         $validator->after(function ($validator) use ($request, $domain, $countryCodes, $languageCodes, $unknownNiches) {
             $publisherId = (int) $request->input('publisher_id');
@@ -928,8 +950,13 @@ class SiteController extends Controller
             $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
         }
 
+        $redirectParams = ['publisher' => $publisherId];
+        if ($site?->id) {
+            $redirectParams['site'] = $site->id;
+        }
+
         return redirect()
-            ->to(staff_route('sites.index', ['publisher' => $publisherId]))
+            ->to(staff_route('sites.index', $redirectParams))
             ->with('success', $success);
     }
 

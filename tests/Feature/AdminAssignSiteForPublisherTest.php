@@ -79,6 +79,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Quality editorial site for guest posts. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ]);
 
         $response->assertRedirect();
@@ -86,6 +87,9 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $site = Site::where('domain', 'staff-added-news.example')->first();
         $this->assertNotNull($site);
+        $location = (string) $response->headers->get('Location');
+        $this->assertStringContainsString('publisher='.$this->publisher->id, $location);
+        $this->assertStringContainsString('site='.$site->id, $location);
         $this->assertSame((int) $this->publisher->id, (int) $site->publisher_id);
         $this->assertSame((int) $this->admin->id, (int) $site->assigned_by_user_id);
         $this->assertNull($site->publisher_accepted_at);
@@ -290,6 +294,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Metrics coerce site description text. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ])->assertRedirect();
 
         $site = Site::where('domain', 'metrics-coerce.example')->first();
@@ -364,6 +369,9 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertSee('Select a language', false)
             ->assertSee('data-max-kb', false)
             ->assertSee('Site image must be under', false)
+            ->assertSee('id="publisherFilter"', false)
+            ->assertSee('written_request', false)
+            ->assertSee('This emails and bells the publisher', false)
             ->getContent();
 
         $this->assertStringNotContainsString('required disabled', $html);

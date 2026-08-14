@@ -79,6 +79,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Quality editorial site for guest posts. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ], $overrides);
     }
 
@@ -95,10 +96,15 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('id="qualityBarWarn"', false)
             ->assertDontSee('Activate / Deactivate as usual', false)
             ->assertSee('id="selectedLanguage"', false)
+            ->assertSee('id="publisherFilter"', false)
+            ->assertSee('written_request', false)
+            ->assertSee('I have a written request', false)
+            ->assertSee('This emails and bells the publisher', false)
             ->getContent();
 
         $this->assertStringContainsString('data-min-da="'.Site::GOOD_MIN_DA.'"', $html);
         $this->assertStringContainsString('data-min-traffic="'.Site::GOOD_MIN_TRAFFIC.'"', $html);
+        $this->assertStringContainsString('href="'.e(route('marketing.sites.index')).'"', $html);
     }
 
     public function test_marketing_create_page_prefills_publisher_query(): void
@@ -110,6 +116,11 @@ class MarketingAssignSiteForPublisherTest extends TestCase
 
         $this->assertMatchesRegularExpression(
             '/<option[^>]+value="'.$this->publisher->id.'"[^>]+selected/',
+            $html
+        );
+        $this->assertStringContainsString('publisher='.$this->publisher->id, $html);
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*d-none[^"]*" id="unverifiedPublisherWarn"/',
             $html
         );
     }
@@ -124,12 +135,13 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $response->assertRedirect();
         $response->assertSessionHas('success');
 
+        $site = Site::where('domain', 'marketing-added-news.example')->first();
+        $this->assertNotNull($site);
+
         $location = (string) $response->headers->get('Location');
         $this->assertStringContainsString('/marketing/sites', $location);
         $this->assertStringContainsString('publisher='.$this->publisher->id, $location);
-
-        $site = Site::where('domain', 'marketing-added-news.example')->first();
-        $this->assertNotNull($site);
+        $this->assertStringContainsString('site='.$site->id, $location);
         $this->assertSame((int) $this->publisher->id, (int) $site->publisher_id);
         $this->assertSame((int) $this->marketer->id, (int) $site->assigned_by_user_id);
         $this->assertNull($site->publisher_accepted_at);
@@ -226,5 +238,52 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             'not configured',
             (string) session('errors')->first('country')
         );
+    }
+
+    public function test_marketing_create_hides_unverified_publishers_unless_prefilled(): void
+    {
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $unverified = User::factory()->create([
+            'name' => 'Unverified Pub',
+            'email' => 'unverified-pub@example.com',
+            'email_verified_at' => null,
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $unverified->roles()->attach($publisherRole->id);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->assertDontSee('unverified-pub@example.com', false);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create', ['publisher' => $unverified->id]))
+            ->assertOk()
+            ->assertSee('unverified-pub@example.com', false)
+            ->assertSee('cannot log in to Accept', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/<option[^>]+value="'.$unverified->id.'"[^>]+selected/',
+            $html
+        );
+        $this->assertStringContainsString('publisher='.$unverified->id, $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/class="[^"]*d-none[^"]*" id="unverifiedPublisherWarn"/',
+            $html
+        );
+    }
+
+    public function test_marketing_store_requires_written_request(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'written_request' => 0,
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('written_request');
+
+        $this->assertNull(Site::where('domain', 'marketing-added-news.example')->first());
     }
 }

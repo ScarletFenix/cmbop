@@ -7,6 +7,9 @@
     $categories = $categories ?? collect();
     $languages = $languages ?? collect();
     $isMarketingEditor = $isMarketingEditor ?? false;
+    $selectedPublisherId = (int) ($selectedPublisherId ?? 0);
+    $selectedPublisherUnverified = $selectedPublisherUnverified ?? false;
+    $sitesBackUrl = $sitesBackUrl ?? staff_route('sites.index');
     $rawNiches = old('categories', []);
     if (is_string($rawNiches)) {
         $rawNiches = preg_split('/\|/', $rawNiches) ?: [];
@@ -32,7 +35,7 @@
                 See the <a href="{{ staff_route('staff-handbook') }}">{{ __('messages.staff_handbook_title') }}</a>.
             </p>
         </div>
-        <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-secondary">← Back to Sites</a>
+        <a href="{{ $sitesBackUrl }}" class="btn btn-sm btn-outline-secondary">← Back to Sites</a>
     </div>
 
     @if($errors->any())
@@ -52,16 +55,28 @@
 
                 <div class="row g-3">
                     <div class="col-12">
-                        <label class="form-label fw-semibold" for="publisher_id">Publisher <span class="text-danger">*</span></label>
+                        <label class="form-label fw-semibold" for="publisherFilter">Publisher <span class="text-danger">*</span></label>
+                        <input type="search" id="publisherFilter" class="form-control mb-2" placeholder="Type to filter publishers…" autocomplete="off" aria-label="Filter publishers">
                         <select id="publisher_id" name="publisher_id" class="form-select @error('publisher_id') is-invalid @enderror" required>
                             <option value="">Select publisher…</option>
                             @foreach($publishers as $publisher)
                                 <option value="{{ $publisher->id }}"
+                                    data-verified="{{ filled($publisher->email_verified_at) ? '1' : '0' }}"
                                     @selected((int) old('publisher_id', $selectedPublisherId) === (int) $publisher->id)>
                                     {{ $publisher->name }} · {{ $publisher->email }}
+                                    @if((int) ($publisher->sites_count ?? 0) > 0)
+                                        ({{ (int) $publisher->sites_count }} {{ \Illuminate\Support\Str::plural('site', (int) $publisher->sites_count) }})
+                                    @endif
+                                    @if(blank($publisher->email_verified_at))
+                                        · unverified
+                                    @endif
                                 </option>
                             @endforeach
                         </select>
+                        <div class="form-text">Verified-email publishers only. An unverified account from the URL still appears with a warning.</div>
+                        <div class="alert alert-warning border-0 py-2 px-3 small mb-0 mt-2 {{ $selectedPublisherUnverified ? '' : 'd-none' }}" id="unverifiedPublisherWarn" role="status">
+                            This publisher has not verified their email. They cannot log in to Accept the invite until they verify.
+                        </div>
                         @error('publisher_id')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
 
@@ -241,13 +256,26 @@
                         <div class="form-text">At least 50 characters.</div>
                         @error('description')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
+
+                    <div class="col-12">
+                        <div class="form-check">
+                            <input class="form-check-input @error('written_request') is-invalid @enderror"
+                                   type="checkbox" name="written_request" id="written_request" value="1"
+                                   @checked(old('written_request')) required>
+                            <label class="form-check-label" for="written_request">
+                                I have a written request from this publisher’s account email
+                            </label>
+                        </div>
+                        <div class="form-text">Handbook: only after a ticket, email, or in-product chat from that account.</div>
+                        @error('written_request')<div class="invalid-feedback d-block">{{ $message }}</div>@enderror
+                    </div>
                 </div>
 
                 <div class="d-flex flex-wrap gap-2 mt-4">
                     <button type="submit" class="btn btn-primary">
                         <i class="fa fa-plus me-1"></i> Add site &amp; notify publisher
                     </button>
-                    <a href="{{ staff_route('sites.index') }}" class="btn btn-outline-secondary">Cancel</a>
+                    <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                 </div>
             </form>
         </div>
@@ -358,8 +386,34 @@
         ms.setSelectedItems(prefills, prefills);
     }
 
+    const publisherFilter = document.getElementById('publisherFilter');
+    const publisherSelect = document.getElementById('publisher_id');
+    const unverifiedWarn = document.getElementById('unverifiedPublisherWarn');
+    function refreshUnverifiedPublisherWarn() {
+        if (!unverifiedWarn || !publisherSelect) return;
+        const selected = publisherSelect.options[publisherSelect.selectedIndex];
+        const unverified = !!(selected && selected.value && selected.getAttribute('data-verified') === '0');
+        unverifiedWarn.classList.toggle('d-none', !unverified);
+    }
+    if (publisherFilter && publisherSelect) {
+        publisherFilter.addEventListener('input', function () {
+            const q = String(publisherFilter.value || '').trim().toLowerCase();
+            Array.prototype.forEach.call(publisherSelect.options, function (opt, i) {
+                if (i === 0 && !opt.value) {
+                    opt.hidden = false;
+                    return;
+                }
+                opt.hidden = q !== '' && String(opt.textContent || '').toLowerCase().indexOf(q) === -1;
+            });
+        });
+        publisherSelect.addEventListener('change', refreshUnverifiedPublisherWarn);
+        refreshUnverifiedPublisherWarn();
+    }
+
     const form = document.getElementById('staffAssignSiteForm');
     const hidden = document.getElementById('selectedCategories');
+    const writtenRequest = document.getElementById('written_request');
+    let assignConfirmed = false;
     if (form) {
         form.addEventListener('submit', function (e) {
             if (langEl) {
@@ -396,7 +450,33 @@
                     } else if (window.Swal) {
                         Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
                     }
+                    return;
                 }
+            }
+            if (writtenRequest && !writtenRequest.checked) {
+                e.preventDefault();
+                if (window.slbAlert) {
+                    window.slbAlert({ icon: 'warning', title: 'Confirm you have a written request from this publisher’s account email' });
+                } else if (window.Swal) {
+                    Swal.fire({ icon: 'warning', title: 'Confirm you have a written request from this publisher’s account email', timer: 2800, showConfirmButton: false });
+                }
+                return;
+            }
+            if (!assignConfirmed && typeof window.slbConfirm === 'function') {
+                e.preventDefault();
+                window.slbConfirm({
+                    title: 'Add site & notify publisher?',
+                    text: 'This emails and bells the publisher. They must Accept the invite in My Sites.',
+                    confirmText: 'Add site & notify',
+                }).then(function (ok) {
+                    if (!ok) return;
+                    assignConfirmed = true;
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                    } else {
+                        HTMLFormElement.prototype.submit.call(form);
+                    }
+                });
             }
         });
     }
