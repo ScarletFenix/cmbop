@@ -97,7 +97,10 @@ class MarketingNicheHtmlEntityTest extends TestCase
                 'categories' => 'Business &amp; Finance',
                 'site_image' => $file,
             ])
-            ->assertRedirect(route('marketing.sites.edit', $site->id))
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]))
             ->assertSessionHasNoErrors();
 
         $site->refresh();
@@ -124,7 +127,10 @@ class MarketingNicheHtmlEntityTest extends TestCase
                 'country' => 'us',
                 'categories' => 'Business &amp; Finance|'.$second,
             ])
-            ->assertRedirect(route('marketing.sites.edit', $site->id))
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]))
             ->assertSessionHasNoErrors();
 
         $site->refresh();

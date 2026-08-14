@@ -14,6 +14,7 @@ use App\Models\Site;
 use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
+use App\Support\MarketingOpsQueues;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -32,30 +33,20 @@ class BulkSiteRequestController extends Controller
                 'sites',
                 'sites as awaiting_details_count' => fn ($q) => $q->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS),
                 'sites as ready_count' => fn ($q) => $q->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW),
+                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
             ])
             ->latest();
 
-        if ($status !== '' && $status !== 'all') {
-            $query->where('status', $status);
-        }
+        MarketingOpsQueues::applyBulkIndexStatus($query, $status);
 
         $requests = $query->paginate(20)->withQueryString();
+        $selectedStatus = $status !== '' ? $status : 'all';
 
         return view('admin.bulk-site-requests.index', [
             'requests' => $requests,
-            'status' => $status !== '' ? $status : 'all',
-            'openCount' => BulkSiteRequest::query()
-                ->where(function ($q) {
-                    $q->whereNotIn('status', [
-                        BulkSiteRequest::STATUS_COMPLETED,
-                        BulkSiteRequest::STATUS_CANCELLED,
-                    ])->orWhere(function ($inner) {
-                        // Partial batches: publisher finished seeded drafts, marketer still has rows.
-                        $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
-                            ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
-                    });
-                })
-                ->count(),
+            'status' => $selectedStatus,
+            'filtersActive' => $selectedStatus !== 'all',
+            'waitingOnYouCount' => MarketingOpsQueues::bulkWaitingOnMarketer()->count(),
         ]);
     }
 
@@ -104,8 +95,8 @@ class BulkSiteRequestController extends Controller
     {
         $bulkRequest = BulkSiteRequest::findOrFail($id);
 
-        if ($bulkRequest->status === BulkSiteRequest::STATUS_CANCELLED) {
-            return back()->with('error', 'This request was cancelled.');
+        if (! $bulkRequest->canMarkSheetSent()) {
+            return back()->with('error', 'Sheet emailed can only be marked before drafts are added.');
         }
 
         $bulkRequest->forceFill([
@@ -399,7 +390,7 @@ class BulkSiteRequestController extends Controller
             ];
         }
 
-        return $this->createDraftSitesAndNotify($bulkRequest, $rows, []);
+        return $this->createDraftSitesAndNotify($bulkRequest, $rows, [], 'bulk_request.done');
     }
 
     /**
@@ -444,15 +435,20 @@ class BulkSiteRequestController extends Controller
                 ->withInput();
         }
 
-        return $this->createDraftSitesAndNotify($bulkRequest, $parsed['rows'], $parsed['failures']);
+        return $this->createDraftSitesAndNotify($bulkRequest, $parsed['rows'], $parsed['failures'], 'bulk_request.seeded');
     }
 
     /**
      * @param  list<array<string, mixed>>  $rows
      * @param  list<array<string, mixed>>  $failures
+     * @param  'bulk_request.done'|'bulk_request.seeded'  $action
      */
-    private function createDraftSitesAndNotify(BulkSiteRequest $bulkRequest, array $rows, array $failures)
+    private function createDraftSitesAndNotify(BulkSiteRequest $bulkRequest, array $rows, array $failures, string $action)
     {
+        if (! in_array($action, ['bulk_request.done', 'bulk_request.seeded'], true)) {
+            throw new \InvalidArgumentException('Unsupported bulk history action.');
+        }
+
         $created = 0;
         $createdDomains = [];
 
@@ -527,9 +523,13 @@ class BulkSiteRequestController extends Controller
         });
 
         if ($created > 0) {
+            $verb = $action === 'bulk_request.done'
+                ? 'marked Done and added'
+                : 'seeded';
+
             ActivityLogger::log(
-                'bulk_request.seeded',
-                (auth()->user()->name ?? 'Staff').' added '.$created.' draft site(s) to publisher panel on bulk request #'.$bulkRequest->id,
+                $action,
+                (auth()->user()->name ?? 'Staff').' '.$verb.' '.$created.' draft site(s) to publisher panel on bulk request #'.$bulkRequest->id,
                 $bulkRequest,
                 [
                     'bulk_site_request_id' => $bulkRequest->id,
@@ -537,6 +537,7 @@ class BulkSiteRequestController extends Controller
                     'created_count' => $created,
                     'failed_count' => count($failures),
                     'domains' => $createdDomains,
+                    'source' => $action === 'bulk_request.done' ? 'done' : 'seed',
                 ],
                 'Bulk request #'.$bulkRequest->id
             );
@@ -560,8 +561,9 @@ class BulkSiteRequestController extends Controller
         }
 
         $remaining = $bulkRequest->items()->whereNull('site_id')->count();
+        $headline = $action === 'bulk_request.done' ? 'Done' : 'Seed';
         $message = $created > 0
-            ? "Done — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify."
+            ? "{$headline} — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify."
             : 'No sites were added.';
         if ($created > 0 && $remaining > 0) {
             $message .= " {$remaining} website(s) still pending — fill and submit them when ready.";

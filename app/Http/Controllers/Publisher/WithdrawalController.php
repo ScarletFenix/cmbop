@@ -158,7 +158,7 @@ class WithdrawalController extends Controller
                 ], 422);
             }
 
-            $withdrawal = Withdrawal::create([
+            $withdrawal = Withdrawal::create(array_merge([
                 'user_id' => $user->id,
                 'amount' => $amount,
                 'fee' => $fee,
@@ -166,7 +166,7 @@ class WithdrawalController extends Controller
                 'payment_method' => $request->payment_method,
                 'payment_details' => $paymentDetails,
                 'status' => 'pending',
-            ]);
+            ], Withdrawal::walletIdAttributes($wallet)));
 
             $wallet->deductWithdrawable($amount);
 
@@ -361,31 +361,35 @@ class WithdrawalController extends Controller
                 ], 404);
             }
 
-            $wallet = $user->activeWallet();
-            if ($wallet) {
-                $wallet = Wallet::where('id', $wallet->id)->lockForUpdate()->first();
-                if ($wallet) {
-                    $wallet->credit((float) $withdrawal->amount);
-                    try {
-                        app(WalletLedgerService::class)->recordAdjustment(
-                            $wallet,
-                            (float) $withdrawal->amount,
-                            'credit',
-                            $withdrawal,
-                            'WD-'.$withdrawal->id.'-cancel',
-                            'Withdrawal cancelled — funds returned to wallet',
-                            [
-                                'withdrawal_id' => $withdrawal->id,
-                                'reason' => 'withdrawal_cancelled_by_user',
-                            ]
-                        );
-                    } catch (\Throwable $e) {
-                        Log::warning('Failed to record withdrawal cancel ledger credit', [
-                            'withdrawal_id' => $withdrawal->id,
-                            'error' => $e->getMessage(),
-                        ]);
-                    }
-                }
+            $wallet = $withdrawal->resolveDebitedWallet(lockForUpdate: true);
+            if (! $wallet) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Cannot return these funds: the source wallet is unknown. Please contact support.',
+                ], 422);
+            }
+
+            $wallet->credit((float) $withdrawal->amount);
+            try {
+                app(WalletLedgerService::class)->recordAdjustment(
+                    $wallet,
+                    (float) $withdrawal->amount,
+                    'credit',
+                    $withdrawal,
+                    'WD-'.$withdrawal->id.'-cancel',
+                    'Withdrawal cancelled — funds returned to wallet',
+                    [
+                        'withdrawal_id' => $withdrawal->id,
+                        'reason' => 'withdrawal_cancelled_by_user',
+                    ]
+                );
+            } catch (\Throwable $e) {
+                Log::warning('Failed to record withdrawal cancel ledger credit', [
+                    'withdrawal_id' => $withdrawal->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             $withdrawal->status = 'cancelled';

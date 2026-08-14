@@ -22,17 +22,25 @@
                 <div class="row g-3 align-items-center">
                     <!-- Search Box -->
                     <div class="col-md-6">
-                        <div style="position: relative;">
-                            <i class="fa fa-search" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #999;"></i>
-                            <input type="search" 
-                                   id="liveSearch" 
-                                   class="form-control" 
-                                   placeholder="Search articles by title, content, or author..." 
+                        <label class="form-label fw-semibold small text-muted mb-1" for="liveSearch">Search</label>
+                        <div class="position-relative slb-search-wrap">
+                            <i class="fa fa-search" style="position: absolute; left: 16px; top: 50%; transform: translateY(-50%); color: #999; z-index: 1;" aria-hidden="true"></i>
+                            <input type="search"
+                                   id="liveSearch"
+                                   class="form-control"
+                                   placeholder="Search articles by title, content, or author..."
                                    style="padding-left: 45px; height: 50px; border-radius: 12px; border:1px solid #eef0f3;"
-                                   title="Results update as you type"
+                                   title="Type at least 2 characters, or press Enter. Clear restores the full list."
                                    autocomplete="off"
-                                   enterkeyhint="search">
+                                   enterkeyhint="search"
+                                   aria-describedby="liveSearchStatus"
+                                   data-slb-live-clear="liveSearchClear"
+                                   data-slb-live-status="liveSearchStatus">
+                            <button type="button" id="liveSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                                <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                            </button>
                         </div>
+                        <div id="liveSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                     </div>
                     
                     <!-- Tags Filter -->
@@ -324,7 +332,8 @@ document.addEventListener('DOMContentLoaded', function() {
         if (typeof window.SlbLiveSearch !== 'undefined') {
             window.SlbLiveSearch.init(searchInput, {
                 mode: 'client',
-                minChars: 1,
+                statusEl: document.getElementById('liveSearchStatus'),
+                clearBtn: document.getElementById('liveSearchClear'),
                 onSearch: function (detail) {
                     currentSearch = String(detail.query || '').toLowerCase();
                     filterPosts();

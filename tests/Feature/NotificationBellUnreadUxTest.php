@@ -146,6 +146,8 @@ class NotificationBellUnreadUxTest extends TestCase
         $this->assertStringContainsString('.nc-item.is-unread', $css);
         $this->assertStringContainsString('border-left-color', $css);
         $this->assertStringContainsString('.nc-item-state', $css);
+        $this->assertStringContainsString('min-height: 0', $css);
+        $this->assertStringContainsString('flex-shrink: 0', $css);
 
         $paths = [
             public_path('js/notification-center.js'),
@@ -157,6 +159,10 @@ class NotificationBellUnreadUxTest extends TestCase
             $js = (string) file_get_contents($path);
             $hashes[] = md5($js);
             $this->assertStringContainsString("this.status = 'unread'", $js);
+            $this->assertStringContainsString("self.showAllLink.style.display = 'inline-flex'", $js);
+            $this->assertStringNotContainsString('data.pagination.total > 0', $js);
+            $this->assertStringNotContainsString("allParams.set('category', 'unread')", $js);
+            $this->assertStringContainsString('window.location.assign', $js);
             $this->assertStringContainsString('syncUnreadLabel', $js);
             $this->assertStringContainsString('Mark as unread', $js);
             $this->assertStringContainsString('unreadItemUrl', $js);

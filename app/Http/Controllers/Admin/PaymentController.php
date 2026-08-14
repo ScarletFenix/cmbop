@@ -16,7 +16,6 @@ use App\Services\Billing\BillingDocumentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
-use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
@@ -55,8 +54,10 @@ class PaymentController extends Controller
                 });
             }
 
-            // Payment status filter
-            if ($request->filled('payment_status')) {
+            // Payment status filter. "unpaid" is the ops queue, not an enum value.
+            if ($request->input('payment_status') === 'unpaid') {
+                $query->unpaidOps();
+            } elseif ($request->filled('payment_status')) {
                 $query->where('payment_status', $request->payment_status);
             }
 
@@ -154,6 +155,10 @@ class PaymentController extends Controller
                 }
             }
 
+            if ($request->payment_status === 'failed' && $oldStatus === 'paid' && $order->payment_method === 'wallet') {
+                $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
+            }
+
             $order->save();
 
             Log::info('Payment status updated by admin', [
@@ -166,11 +171,12 @@ class PaymentController extends Controller
 
             // Send email notification to user when payment is marked as paid
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
-                $this->consumeReservedCheckoutBonus($order);
                 $this->sendPaymentConfirmationEmail($order);
             }
 
-            if (in_array($request->payment_status, ['failed', 'refunded'], true) && $oldStatus !== $request->payment_status) {
+            // Unpaid failure: release leftover checkout bonus. Paid refunds go
+            // through creditAdvertiserRefund so promo is not minted as cash.
+            if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
                 $this->refundReservedCheckoutBonus($order);
             }
 
@@ -192,6 +198,13 @@ class PaymentController extends Controller
 
             if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
                 $notifications->notifyPaymentFailed([$fresh], $request->notes);
+                if ($refundAmount > 0) {
+                    $notifications->notifyRefundCredited(
+                        $fresh,
+                        $refundAmount,
+                        $request->notes ?: 'Admin marked payment failed'
+                    );
+                }
             }
 
             if ($request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
@@ -287,25 +300,6 @@ class PaymentController extends Controller
         }
     }
 
-    private function consumeReservedCheckoutBonus(Order $order): void
-    {
-        $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $bonus = round((float) Cache::pull($key, 0), 2);
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
-    }
-
     private function refundReservedCheckoutBonus(Order $order): void
     {
         $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
@@ -326,6 +320,63 @@ class PaymentController extends Controller
     }
 
     /**
+     * Paid wallet orders keep cash/bonus in reserved_balance until approve/reject.
+     * Admin "failed" used to flip payment_status only, leaving the hold locked
+     * and Approve still able to pay the publisher from that reserved bucket.
+     */
+    private function releaseWalletHoldOnAdminFailed(Order $order): float
+    {
+        if (in_array((string) $order->status, ['completed', 'cancelled'], true)) {
+            return 0.0;
+        }
+
+        $amount = round((float) $order->total_amount, 2);
+        if ($amount <= 0) {
+            if ($order->status !== 'cancelled') {
+                $order->status = 'cancelled';
+            }
+
+            return 0.0;
+        }
+
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if (! $advertiserRoleId) {
+            throw new \RuntimeException('Advertiser role not configured');
+        }
+
+        $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
+        $reservedBefore = round((float) $wallet->reserved_balance, 2);
+        if ($reservedBefore <= 0) {
+            if ($order->status !== 'cancelled') {
+                $order->status = 'cancelled';
+            }
+
+            return 0.0;
+        }
+
+        $bonusReservedBefore = (float) $wallet->bonus_reserved;
+        $wallet->refundReserved($amount);
+        $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
+        $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
+
+        if ($refunded > 0) {
+            app(WalletLedgerService::class)->recordRefund(
+                $wallet,
+                $refunded,
+                $bonusRestored,
+                $order,
+                $order->reference_code ?? $order->order_number
+            );
+        }
+
+        if ($order->status !== 'cancelled') {
+            $order->status = 'cancelled';
+        }
+
+        return $refunded;
+    }
+
+    /**
      * Credit the advertiser wallet when admin marks a paid order as refunded.
      * Mirrors publisher reject refund behaviour.
      */
@@ -341,34 +392,7 @@ class PaymentController extends Controller
             return 0.0;
         }
 
-        $advertiserRoleId = Wallet::advertiserRoleId();
-        if (! $advertiserRoleId) {
-            throw new \RuntimeException('Advertiser role not configured');
-        }
-
-        $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
-
-        if ($order->payment_method === 'wallet') {
-            $bonusReservedBefore = (float) $wallet->bonus_reserved;
-            $wallet->refundReserved($amount);
-            $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
-            app(WalletLedgerService::class)->recordRefund(
-                $wallet,
-                $amount,
-                $bonusRestored,
-                $order,
-                $order->reference_code ?? $order->order_number
-            );
-        } else {
-            $wallet->credit($amount);
-            app(WalletLedgerService::class)->recordRefund(
-                $wallet,
-                $amount,
-                0,
-                $order,
-                $order->reference_code ?? $order->order_number
-            );
-        }
+        app(OrderRefundService::class)->refundToAdvertiser($order, $amount, 'Admin refund');
 
         return $amount;
     }

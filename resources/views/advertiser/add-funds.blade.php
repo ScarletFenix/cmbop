@@ -585,10 +585,7 @@
         <div class="card-body border-bottom">
             <form id="historyFilters" class="row g-2 align-items-end">
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                    <input type="search" class="form-control form-control-sm" name="search" id="addFundsSearchInput"
-                           placeholder="Reference, description…"
-                           title="Results update as you type" autocomplete="off" enterkeyhint="search">
+                    <x-slb-search-field name="search" id="addFundsSearchInput" placeholder="Reference, description…" mode="" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">Type</label>
@@ -1294,6 +1291,8 @@
         if (typeof window.SlbLiveSearch !== 'undefined') {
             window.SlbLiveSearch.init(document.getElementById('addFundsSearchInput'), {
                 mode: 'event',
+                statusEl: document.getElementById('addFundsSearchInputStatus'),
+                clearBtn: document.getElementById('addFundsSearchInputClear'),
                 onSearch: function () { loadTransactions(1); },
             });
         }

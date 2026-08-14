@@ -117,9 +117,11 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Ordered Piece')
             ->assertDontSee('Growth Playbook')
             ->assertSee('Approved')
-            ->assertSee('In progress')
-            ->assertSee('library-status--in_progress', false)
-            ->assertSee('Uploaded', false);
+            ->assertSee('Processing')
+            ->assertSee('library-status--processing', false)
+            ->assertSee('library-status-sweep', false)
+            ->assertSee('Uploaded', false)
+            ->assertDontSee('>In progress</span>', false);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['q' => 'Growth']))
@@ -250,19 +252,19 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertStringContainsString('availability=completed', $html);
         $this->assertStringContainsString('availability=available', $html);
-        $this->assertStringContainsString('availability=evaluating', $html);
         $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('availability=archived', $html);
         $this->assertStringContainsString('availability=expired', $html);
+        $this->assertStringNotContainsString('availability=evaluating', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
         $this->assertStringContainsString('>Processing</span>', $html);
-        $this->assertStringContainsString('>In progress</span>', $html);
+        $this->assertStringNotContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
         $this->assertStringContainsString('>Archived</span>', $html);
         $this->assertStringContainsString('>Expired</span>', $html);
         $this->assertStringContainsString('library-status-box--processing', $html);
-        $this->assertStringContainsString('library-status-box--in_progress', $html);
+        $this->assertStringNotContainsString('library-status-box--in_progress', $html);
         $this->assertStringContainsString('library-status-box--archived', $html);
         $this->assertStringContainsString('library-status-box--expired', $html);
         $this->assertStringNotContainsString('>All</span>', $html);
@@ -285,7 +287,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="libraryCountryFilter"', $html);
         $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
         $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
-        $this->assertStringContainsString('visually-hidden" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('for="librarySearchInput">Search</label>', $html);
+        $this->assertStringContainsString('id="librarySearchClear"', $html);
+        $this->assertStringContainsString('id="librarySearchStatus"', $html);
         $this->assertStringContainsString('visually-hidden">Search</button>', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
@@ -293,8 +297,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('All countries', $html);
         $this->assertStringContainsString('All languages', $html);
         $this->assertStringNotContainsString('>Apply<', $html);
-        $this->assertStringNotContainsString('form-label small text-muted mb-1" for="librarySearchInput"', $html);
-        $this->assertStringNotContainsString('library-filter-bar__actions', $html);
+        $this->assertStringContainsString('form-label fw-semibold small text-muted mb-1" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('id="libraryFilterReset"', $html);
+        $this->assertStringContainsString('library-filter-bar__actions d-none', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.library-status-row', $css);
@@ -310,8 +315,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
         $this->assertStringContainsString('.library-browse-link', $css);
         $this->assertStringNotContainsString('.library-page-actions.upload-zone', $css);
-        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: center;", $css);
-        $this->assertStringNotContainsString('align-items: flex-end', $css);
+        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: flex-end;", $css);
         $boxPos = strpos($css, '.library-status-box {');
         $mediaPos = strpos($css, '@media (max-width: 575.98px)');
         $this->assertNotFalse($boxPos);
@@ -342,10 +346,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->createApprovedSubmission($advertiser);
 
         $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library', ['availability' => 'evaluating']))
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
             ->assertOk()
             ->assertSee('No articles processing')
             ->assertSee('library-status-box--processing', false)
+            ->assertDontSee('No articles in progress')
             ->assertDontSee('No articles yet');
     }
 
@@ -469,7 +474,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->get(route('advertiser.content-library'))
             ->assertOk()
             ->assertSee('Order')
-            ->assertSee(route('advertiser.content-library.order', $submission), false)
+            ->assertSee(route('advertiser.content-library.order', $submission, false), false)
             ->assertDontSee('id="orderContentModal"', false);
     }
 
@@ -872,6 +877,26 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringStartsWith('/storage/content-articles/', $url);
     }
 
+    public function test_editor_image_php_reject_does_not_blame_article_docx_cap(): void
+    {
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/editor-img-'.uniqid('', true).'.png';
+        file_put_contents($path, 'fake-png');
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-submissions.editor-image'), [
+            'image' => new UploadedFile($path, 'figure.png', 'image/png', UPLOAD_ERR_INI_SIZE, true),
+        ]);
+
+        @unlink($path);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('image could not be uploaded', $message);
+        $this->assertStringNotContainsString('.docx', $message);
+        $this->assertStringNotContainsString('over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+    }
+
     public function test_content_library_preview_modal_exposes_external_link_rows(): void
     {
         $advertiser = $this->advertiser();
@@ -1084,7 +1109,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $response->assertStatus(422)->assertJsonPath('success', false);
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('The file failed to upload', $message);
-        $this->assertStringContainsString('MB limit', $message);
+        $this->assertStringContainsString('MB', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
     public function test_library_upload_accepts_docx_sniffed_as_zip(): void
@@ -1158,12 +1187,18 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Max 10 MB', $html);
         $this->assertStringNotContainsString('Max 2 MB', $html);
         $this->assertStringNotContainsString('Max 5 MB', $html);
+        $this->assertStringNotContainsString('server PHP still allows only', $html);
+        $this->assertStringNotContainsString('libraryPhpUploadLimitWarn', $html);
+        $this->assertStringNotContainsString('hosting PHP settings', $html);
+        $this->assertStringNotContainsString('article cap is 10 MB', $html);
         $this->assertMatchesRegularExpression('/maxKilobytes:\s*10240/', $html);
+        $this->assertMatchesRegularExpression('/phpMaxKilobytes:\s*\d+/', $html);
 
         $this->actingAs($advertiser)
             ->getJson(route('advertiser.content-submissions.config'))
             ->assertOk()
-            ->assertJsonPath('config.max_kilobytes', 10240);
+            ->assertJsonPath('config.max_kilobytes', 10240)
+            ->assertJsonStructure(['config' => ['php_max_kilobytes']]);
 
         ContentModerationSetting::setValue('upload_config', [
             'max_kilobytes' => 5120,
@@ -1177,11 +1212,81 @@ class ContentLibraryImprovementsTest extends TestCase
         $service = app(ContentUploadService::class);
         $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 2048]));
         $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 5120]));
-        $this->assertSame(20480, $service->effectiveMaxKilobytes(['max_kilobytes' => 20480]));
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 20480]));
+        $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
 
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
-        $this->assertStringContainsString('php_value upload_max_filesize 16M', $htaccess);
+        $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
+        $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
+
+        $userIni = (string) file_get_contents(public_path('.user.ini'));
+        $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
+        $this->assertStringContainsString('post_max_size = 64M', $userIni);
+        $rootIni = (string) file_get_contents(base_path('.user.ini'));
+        $this->assertStringContainsString('upload_max_filesize = 64M', $rootIni);
+        $publicPhpIni = (string) file_get_contents(public_path('php.ini'));
+        $this->assertStringContainsString('upload_max_filesize = 64M', $publicPhpIni);
+
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
+        $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
+        $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
+        $this->assertStringContainsString('X-Upload-Bytes', $js);
+        $this->assertStringContainsString('The image could not be uploaded', $js);
+        $this->assertStringContainsString('10240 * 1024', $js);
+        $this->assertStringNotContainsString('hosting PHP settings', $js);
+        $this->assertStringNotContainsString('server PHP upload limit', $js);
+        $this->assertStringNotContainsString('upload_max_filesize to 64M', $js);
+
+        $bootstrap = (string) file_get_contents(base_path('bootstrap/app.php'));
+        $this->assertStringContainsString('PostTooLargeException', $bootstrap);
+        $this->assertStringContainsString('phpSizeRejectedMessage', $bootstrap);
+    }
+
+    public function test_missing_file_with_oversize_content_length_explains_php_limit(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->call(
+            'POST',
+            route('advertiser.content-library.upload'),
+            ['country' => 'us', 'language' => 'en'],
+            [],
+            [],
+            [
+                'HTTP_ACCEPT' => 'application/json',
+                'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+                'CONTENT_LENGTH' => (string) (6 * 1024 * 1024),
+            ]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+        $this->assertStringNotContainsString('hosting PHP settings', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+    }
+
+    public function test_missing_file_with_client_bytes_and_no_content_length_is_not_a_missing_file(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->postJson(
+            route('advertiser.content-library.upload', ['client_bytes' => 5 * 1024 * 1024]),
+            ['country' => 'us', 'language' => 'en'],
+            ['X-Upload-Bytes' => (string) (5 * 1024 * 1024)]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string

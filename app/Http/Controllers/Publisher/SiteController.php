@@ -509,6 +509,24 @@ class SiteController extends Controller
                 ->with('error', 'This site is not waiting for acceptance.');
         }
 
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            $message = $orderCount === 1
+                ? 'This site has 1 order and cannot be removed. Contact support if the invitation was sent in error.'
+                : 'This site has '.$orderCount.' orders and cannot be removed. Contact support if the invitation was sent in error.';
+
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 422);
+            }
+
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', $message);
+        }
+
         $siteId = $site->id;
         $domain = $site->domain ?: $site->site_name;
         $site->delete();
@@ -790,6 +808,16 @@ class SiteController extends Controller
 
         if ($site->isArchived()) {
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
+        }
+
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            return redirect()->back()->with(
+                'error',
+                $orderCount === 1
+                    ? 'This site has 1 order and cannot be deleted. Archive it to hide it from the catalog.'
+                    : 'This site has '.$orderCount.' orders and cannot be deleted. Archive it to hide it from the catalog.'
+            );
         }
 
         $site->delete();

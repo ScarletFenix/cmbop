@@ -46,7 +46,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
             'example_url' => 'https://ready-site.example/sample',
             'da' => 30,
             'dr' => 30,
-            'traffic' => 5000,
+            'traffic' => 10000,
             'country' => 'de',
             'language' => 'de',
             'category' => 'Technology',
@@ -54,13 +54,13 @@ class MarketingActivateSitesPermissionTest extends TestCase
             'publication_time' => 'permanent',
             'link_type' => 'dofollow',
             'description' => str_repeat('Ready for admin activation description. ', 2),
-            'verified' => false,
+            'verified' => true,
             'active' => false,
             'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
         ], $overrides));
     }
 
-    public function test_admin_can_grant_and_revoke_activate_sites_permission(): void
+    public function test_admin_can_grant_and_revoke_marketing_without_activate_toggle(): void
     {
         $admin = $this->userWithRoles(['admin'], 'admin');
         $member = $this->userWithRoles(['advertiser', 'publisher'], 'advertiser');
@@ -68,7 +68,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->actingAs($admin)
             ->postJson(route('admin.users.updateRoles', $member->id), [
                 'marketing' => true,
-                'can_activate_sites' => true,
+                'can_activate_sites' => false,
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -79,16 +79,6 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue($member->hasRole('marketing'));
         $this->assertTrue((bool) $member->can_activate_sites);
         $this->assertTrue($member->fresh()->canActivateSites());
-
-        $this->actingAs($admin)
-            ->postJson(route('admin.users.updateRoles', $member->id), [
-                'marketing' => true,
-                'can_activate_sites' => false,
-            ])
-            ->assertOk()
-            ->assertJsonPath('can_activate_sites', false);
-
-        $this->assertFalse((bool) $member->fresh()->can_activate_sites);
 
         $this->actingAs($admin)
             ->postJson(route('admin.users.updateRoles', $member->id), [
@@ -155,7 +145,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
-    public function test_marketer_can_activate_awaiting_details_site_like_admin(): void
+    public function test_marketer_cannot_activate_awaiting_details_site(): void
     {
         $marketer = $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => true]);
         $publisher = $this->userWithRoles(['publisher'], 'publisher');
@@ -172,15 +162,102 @@ class MarketingActivateSitesPermissionTest extends TestCase
 
         $this->actingAs($marketer)
             ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Publisher has not finished listing details.');
 
         $site->refresh();
-        $this->assertTrue((bool) $site->active);
-        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
     }
 
-    public function test_admin_can_still_activate_awaiting_details_site(): void
+    public function test_marketer_cannot_activate_details_complete_site(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'Publisher Reviewing Site',
+            'site_url' => 'https://publisher-reviewing.example',
+            'domain' => 'publisher-reviewing.example',
+            'onboarding_status' => Site::ONBOARDING_DETAILS_COMPLETE,
+        ]);
+
+        $this->assertTrue($site->hasDetailsComplete());
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'Publisher is still reviewing this listing.');
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->hasDetailsComplete());
+    }
+
+    public function test_marketer_cannot_activate_archived_site(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'Archived Ready Site',
+            'site_url' => 'https://archived-ready-activate.example',
+            'domain' => 'archived-ready-activate.example',
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_marketer_cannot_activate_site_without_marketplace_country(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'No Country Site',
+            'site_url' => 'https://no-country.example',
+            'domain' => 'no-country.example',
+            'country' => '',
+            'countries' => [],
+        ]);
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('missing_market', true);
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_marketer_cannot_activate_site_below_quality_bar(): void
+    {
+        $marketer = $this->userWithRoles(['marketing'], 'marketing');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+        $site = $this->makeSite($publisher, [
+            'site_name' => 'Thin Metrics Site',
+            'site_url' => 'https://thin-metrics.example',
+            'domain' => 'thin-metrics.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 500,
+        ]);
+
+        $this->actingAs($marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('below_quality_bar', true);
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_admin_cannot_activate_awaiting_details_site(): void
     {
         $admin = $this->userWithRoles(['admin'], 'admin');
         $publisher = $this->userWithRoles(['publisher'], 'publisher');
@@ -190,12 +267,12 @@ class MarketingActivateSitesPermissionTest extends TestCase
 
         $this->actingAs($admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $site->refresh();
-        $this->assertTrue((bool) $site->active);
-        $this->assertFalse($site->awaitsPublisherDetails());
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
     }
 
     public function test_marketer_with_permission_can_deactivate(): void
@@ -254,6 +331,7 @@ class MarketingActivateSitesPermissionTest extends TestCase
         // Manage menu must still offer Deactivate after activate (and Activate after deactivate).
         $html = file_get_contents(resource_path('views/admin/sites.blade.php'));
         $this->assertStringContainsString('const isActive = Number(site.active) === 1', $html);
+        $this->assertStringContainsString('marketingActivateBlocked', $html);
         $this->assertStringContainsString('data-status="0"', $html);
         $this->assertStringContainsString('Deactivate', $html);
         $this->assertStringContainsString('Reason for the publisher', $html);
@@ -273,15 +351,17 @@ class MarketingActivateSitesPermissionTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
-    public function test_users_page_exposes_activate_permission_toggle(): void
+    public function test_users_page_does_not_expose_activate_permission_toggle(): void
     {
         $admin = $this->userWithRoles(['admin'], 'admin');
-        $marketer = $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => true]);
+        $this->userWithRoles(['marketing'], 'marketing', ['can_activate_sites' => true]);
 
         $this->actingAs($admin)
             ->get(route('admin.users.index'))
             ->assertOk()
-            ->assertSee('data-can-activate-sites="1"', false)
-            ->assertSee('Activate sites', false);
+            ->assertDontSee('data-can-activate-sites', false)
+            ->assertDontSee('Can activate websites', false)
+            ->assertDontSee('Activate sites', false)
+            ->assertSee('Marketing team member', false);
     }
 }

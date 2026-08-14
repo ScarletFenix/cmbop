@@ -125,7 +125,15 @@ class PublisherReportsController extends Controller
 
             $status = (string) $request->get('status', 'completed');
             if ($status !== '' && $status !== 'all' && in_array($status, self::ORDER_STATUSES, true)) {
-                $query->whereHas('order', fn ($q) => $q->where('status', $status));
+                $query->whereHas('order', function ($q) use ($status) {
+                    if ($status === 'scheduled') {
+                        $q->awaitingScheduledRelease();
+                    } elseif ($status === 'pending') {
+                        $q->where('status', 'pending')->notAwaitingScheduledRelease();
+                    } else {
+                        $q->where('status', $status);
+                    }
+                });
             }
 
             $perPage = max(1, min(100, (int) $request->get('per_page', 20)));
@@ -151,6 +159,7 @@ class PublisherReportsController extends Controller
                         'order_number' => $item->order->order_number,
                         'reference_code' => $item->order->reference_code,
                         'status' => $item->order->status,
+                        'is_awaiting_scheduled_release' => $item->order->isAwaitingScheduledRelease(),
                         'payment_status' => $item->order->payment_status,
                         'payment_method' => $item->order->payment_method,
                         'created_at' => $item->order->created_at,

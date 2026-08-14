@@ -17,14 +17,27 @@
             </div>
 
             <div class="catalog-bulk-controls">
-                <label class="catalog-bulk-search visually-hidden" for="bulkDealSearch">Search deal by site</label>
-                <input type="search"
-                       id="bulkDealSearch"
-                       class="form-control form-control-sm catalog-bulk-search-input"
-                       data-bulk-search
-                       placeholder="Search deal by site"
-                       autocomplete="off"
-                       spellcheck="false">
+                <div class="catalog-bulk-search">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="bulkDealSearch">Search</label>
+                    <div class="position-relative slb-search-wrap">
+                        <input type="search"
+                               id="bulkDealSearch"
+                               class="form-control form-control-sm catalog-bulk-search-input"
+                               data-bulk-search
+                               placeholder="Search deal by site"
+                               title="Type at least 2 characters, or press Enter. Clear restores the full list."
+                               autocomplete="off"
+                               spellcheck="false"
+                               enterkeyhint="search"
+                               aria-describedby="bulkDealSearchStatus"
+                               data-slb-live-clear="bulkDealSearchClear"
+                               data-slb-live-status="bulkDealSearchStatus">
+                        <button type="button" id="bulkDealSearchClear" class="btn btn-sm btn-link slb-search-clear d-none" aria-label="Clear search">
+                            <i class="fa-solid fa-xmark" aria-hidden="true"></i>
+                        </button>
+                    </div>
+                    <div id="bulkDealSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
+                </div>
                 <button type="button"
                         class="btn btn-sm btn-link catalog-bulk-toggle"
                         data-bulk-toggle

@@ -355,10 +355,9 @@ class Category extends Model
      * "Technology & Gadgets"). HTML entities are decoded first so Blade-escaped
      * multi-select values still match.
      *
-     * @param  iterable<int, mixed>|string|null  $raw
      * @return array{resolved: list<string>, unknown: list<string>}
      */
-    public static function resolveNicheNames(iterable|string|null $raw): array
+    public static function resolveNicheNames(mixed $raw): array
     {
         $inputs = self::normalizeNicheInputs($raw);
         if ($inputs === []) {
@@ -396,10 +395,9 @@ class Category extends Model
     }
 
     /**
-     * @param  iterable<int, mixed>|string|null  $raw
      * @return list<string>
      */
-    public static function normalizeNicheInputs(iterable|string|null $raw): array
+    public static function normalizeNicheInputs(mixed $raw): array
     {
         $normalize = static function ($v): string {
             $decoded = html_entity_decode(trim((string) $v), ENT_QUOTES | ENT_HTML5, 'UTF-8');
@@ -407,8 +405,12 @@ class Category extends Model
             return trim($decoded);
         };
 
-        if ($raw === null) {
+        if ($raw === null || $raw === '') {
             return [];
+        }
+
+        if (is_int($raw) || is_float($raw) || is_bool($raw)) {
+            $raw = (string) $raw;
         }
 
         if (is_string($raw)) {
@@ -418,6 +420,10 @@ class Category extends Model
             }
 
             return array_values(array_filter(array_map($normalize, preg_split('/\|/', $str) ?: [])));
+        }
+
+        if (! is_iterable($raw)) {
+            return [];
         }
 
         $out = [];

@@ -8,14 +8,14 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">My task history</h1>
-            <p class="text-muted mb-0">Every marketing action you’ve performed — seeding, edits, deletes, and bulk updates. Append-only and permanent.</p>
+            <p class="text-muted mb-0">Seed, edit, activate, deactivate, assign, delete, image, metrics, and bulk updates. Append-only and permanent.</p>
         </div>
         <a href="{{ route('marketing.dashboard') }}" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
     </div>
 
-    <form method="GET" class="row g-2 mb-3">
+    <form method="GET" class="row g-2 mb-3 align-items-end">
         <div class="col-md-4">
-            <input type="search" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Search description, subject, or action" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+            <x-slb-search-field name="q" id="marketingHistorySearch" :value="request('q')" placeholder="Search description, subject, or action" />
         </div>
         <div class="col-md-3">
             <select name="action" class="form-select form-select-sm">
@@ -37,14 +37,21 @@
             <button class="btn btn-sm btn-primary flex-grow-1" type="submit">Filter</button>
         </div>
     </form>
-    @if(request()->hasAny(['q', 'action', 'from', 'to']))
-        <div class="mb-3">
-            <a href="{{ route('marketing.history') }}" class="small">Reset filters</a>
+    @if(!empty($dateErrors))
+        <div class="alert alert-warning border-0 py-2" data-history-date-error>
+            {{ implode(' ', $dateErrors) }}
         </div>
+    @endif
+    @if($logs->count() > 0)
+        <p class="small text-muted mb-2" data-history-count>Showing {{ $logs->firstItem() }}–{{ $logs->lastItem() }} of {{ $logs->total() }} {{ \Illuminate\Support\Str::plural('task', $logs->total()) }}</p>
+    @elseif($logs->total() > 0)
+        <p class="small text-muted mb-2" data-history-count>{{ $logs->total() }} {{ \Illuminate\Support\Str::plural('task', $logs->total()) }}</p>
+    @elseif(!empty($filtersActive))
+        <p class="small text-muted mb-2" data-history-count>0 tasks match these filters</p>
     @endif
 
     <div class="card border-0 shadow-sm">
-        @include('marketing.partials.history-table', ['logs' => $logs])
+        @include('marketing.partials.history-table', ['logs' => $logs, 'filtersActive' => $filtersActive ?? false])
         <div class="p-3">
             {{ $logs->links() }}
         </div>

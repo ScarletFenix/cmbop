@@ -5,6 +5,7 @@
 @section('content')
 @php
     $isMarketingEditor = $isMarketingEditor ?? false;
+    $marketingListingLocked = $marketingListingLocked ?? false;
     $categories = $categories ?? collect();
     $rawMarketingNiches = old('categories', $site->categories_array ?? []);
     if (is_string($rawMarketingNiches)) {
@@ -29,7 +30,7 @@
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
         <div>
-            <h4 class="mb-1 fw-bold">{{ $isMarketingEditor ? 'Fill metrics, geo & niches' : 'Edit site' }}</h4>
+            <h4 class="mb-1 fw-bold">{{ $isMarketingEditor ? ($marketingListingLocked ? 'View site' : 'Fill metrics, geo & niches') : 'Edit site' }}</h4>
             <p class="text-muted mb-0 small">
                 {{ $site->publisher?->name ?? 'Unknown publisher' }}
                 @if($site->publisher?->email)
@@ -57,11 +58,29 @@
     <div class="card border-0 shadow-sm">
         <div class="card-body">
             @if($isMarketingEditor)
-                <div class="alert alert-info border-0 mb-4">
-                    Publisher already provided URL and price. Fill metrics, geo, and niches, then the publisher completes listing details for admin review.
-                </div>
+                @if($marketingListingLocked)
+                    <div class="alert alert-warning border-0 mb-4">
+                        This listing is live, verified, or archived. Marketing cannot change it. Ask an admin.
+                    </div>
+                @else
+                    <div class="alert alert-info border-0 mb-4">
+                        Fix the URL, price, or metrics if needed. Description stays with the publisher.
+                        Metrics, geo, and niche-only saves do not email the publisher.
+                    </div>
+                    @if(! $site->hasMarketplaceCountry())
+                        <div class="alert alert-danger border-0 mb-3">
+                            Missing marketplace country — marketing cannot activate until a country is set.
+                        </div>
+                    @endif
+                    @if(! $site->hasGoodMetrics())
+                        <div class="alert alert-warning border-0 mb-3">
+                            Below the quality bar (DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}). Update metrics before Activate.
+                        </div>
+                    @endif
+                @endif
 
                 <div class="row g-3 mb-4">
+                    @if($marketingListingLocked)
                     <div class="col-md-4">
                         <div class="text-muted small">Website</div>
                         <div class="fw-semibold text-break">{{ $site->domain ?: $site->site_name }}</div>
@@ -73,6 +92,7 @@
                         <div class="text-muted small">Price</div>
                         <div class="fw-semibold">€{{ number_format((float) $site->price, 2) }}</div>
                     </div>
+                    @endif
                     <div class="col-md-4">
                         <div class="text-muted small">Status</div>
                         <div class="d-flex flex-wrap gap-2 mt-1">
@@ -86,11 +106,53 @@
                     </div>
                 </div>
 
+                @if($marketingListingLocked)
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="text-muted small">DA</div>
+                            <div class="fw-semibold">{{ $site->da }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-muted small">DR</div>
+                            <div class="fw-semibold">{{ $site->dr }}</div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="text-muted small">Traffic</div>
+                            <div class="fw-semibold">{{ number_format((int) $site->traffic) }}</div>
+                        </div>
+                    </div>
+                @else
                 <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
                     @csrf
                     @method('PUT')
 
                     <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="site_name">Site name <span class="text-danger">*</span></label>
+                            <input type="text" id="site_name" name="site_name" class="form-control @error('site_name') is-invalid @enderror"
+                                   value="{{ old_text('site_name', $site->site_name) }}" required>
+                            @error('site_name')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="site_url">Site URL <span class="text-danger">*</span></label>
+                            <input type="url" id="site_url" name="site_url" class="form-control @error('site_url') is-invalid @enderror"
+                                   value="{{ old_text('site_url', $site->site_url) }}" required>
+                            @error('site_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="example_url">Example URL</label>
+                            <input type="url" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror"
+                                   value="{{ old_text('example_url', $site->example_url) }}">
+                            <div class="form-text">Optional sample article or placement URL.</div>
+                            @error('example_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label fw-semibold" for="price">Price (€) <span class="text-danger">*</span></label>
+                            <input type="number" id="price" name="price" class="form-control @error('price') is-invalid @enderror"
+                                   min="0" step="0.01" required
+                                   value="{{ old_text('price', $site->price) }}">
+                            @error('price')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                        </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="country">Country <span class="text-danger">*</span></label>
                             <select id="country" name="country" class="form-select @error('country') is-invalid @enderror" required>
@@ -196,7 +258,7 @@
 
                     <div class="d-flex flex-wrap gap-2 mt-4">
                         <button type="submit" class="btn btn-primary">
-                            <i class="fa fa-save me-1"></i> Save metrics &amp; niches
+                            <i class="fa fa-save me-1"></i> Save listing &amp; metrics
                         </button>
                         <a href="{{ $sitesBackUrl }}" class="btn btn-outline-secondary">Cancel</a>
                     </div>
@@ -254,6 +316,7 @@
                     }
                 })();
                 </script>
+                @endif
             @else
                 <form method="POST" action="{{ staff_route('sites.update', $site->id) }}" enctype="multipart/form-data">
                     @csrf
@@ -360,7 +423,7 @@
                                     @foreach($homepageDays as $days)
                                         @php
                                             $checked = old("homepage.$days", array_key_exists((string) $days, $existingHomepage) || array_key_exists($days, $existingHomepage));
-                                            $priceVal = old("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
+                                            $priceVal = old_text("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
                                         @endphp
                                         <div style="min-width:140px;">
                                             <div class="form-check">

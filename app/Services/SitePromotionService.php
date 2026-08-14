@@ -25,6 +25,32 @@ class SitePromotionService
     }
 
     /**
+     * Refuse to apply a featured placement when Stripe charged a different amount.
+     */
+    public function assertStripeChargeMatchesFeaturePrice(object $session): void
+    {
+        $expected = $this->featurePrice();
+        $stripeCents = null;
+        if (isset($session->amount_total)) {
+            $stripeCents = (int) $session->amount_total;
+        } elseif (isset($session->amount_received) || isset($session->amount)) {
+            $stripeCents = (int) ($session->amount_received ?: $session->amount);
+        }
+
+        if ($stripeCents === null) {
+            throw new \RuntimeException('Stripe site-feature session is missing the charged amount.');
+        }
+
+        $charged = StripePaymentService::fromCents($stripeCents);
+        if (abs($charged - $expected) > 0.01) {
+            throw new \RuntimeException(
+                'Stripe charged €'.number_format($charged, 2)
+                .' but featured placement costs €'.number_format($expected, 2).'.'
+            );
+        }
+    }
+
+    /**
      * Purchase featured placement using publisher wallet balance.
      *
      * @return array{success:bool, message:string, site?:Site, needs_top_up?:bool, balance?:float, price?:float}

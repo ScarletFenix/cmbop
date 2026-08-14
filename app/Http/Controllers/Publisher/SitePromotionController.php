@@ -155,6 +155,8 @@ class SitePromotionController extends Controller
                     ->with('error', 'Payment session does not match this website.');
             }
 
+            $this->promotions->assertStripeChargeMatchesFeaturePrice($session);
+
             // Apply after payment is confirmed — even if the site was archived meantime —
             // so the publisher is not charged without receiving the feature.
             $result = $this->promotions->featureFromStripePayment($site, auth()->user(), $sessionId);

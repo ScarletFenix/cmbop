@@ -446,6 +446,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':marketing'])
     ->group(function () use ($registerStaffOpsRoutes) {
         Route::get('/dashboard', [MarketingPanelController::class, 'dashboard'])
             ->name('dashboard');
+        Route::get('/dashboard/queue-counts', [MarketingPanelController::class, 'queueCounts'])
+            ->name('dashboard.queue-counts');
         Route::get('/history', [MarketingPanelController::class, 'history'])
             ->name('history');
         $registerStaffOpsRoutes();
@@ -509,6 +511,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
             ->name('dashboard.distributions');
         Route::get('/dashboard/action-queue', [AdminDashboardController::class, 'getActionQueue'])
             ->name('dashboard.action-queue');
+        Route::get('/dashboard/finance', [AdminDashboardController::class, 'getFinanceStrip'])
+            ->name('dashboard.finance');
         Route::get('/dashboard/queue-counts', [AdminDashboardController::class, 'getQueueCounts'])
             ->name('dashboard.queue-counts');
 
@@ -619,6 +623,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');
+        Route::get('/orders/items/{orderItem}/content', [AdminOrderController::class, 'downloadContent'])
+            ->name('orders.content.download');
         Route::get('/orders/{id}', [AdminOrderController::class, 'show'])->name('orders.show');
         Route::post('/orders/{id}/status', [AdminOrderController::class, 'updateStatus'])->name('orders.status');
         Route::post('/orders/{id}/disputes', [AdminOrderDisputeController::class, 'open'])->name('orders.disputes.open');
@@ -844,6 +850,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Content Library (upload → evaluate → select sites → order)
         Route::get('/content-library', [ContentLibraryController::class, 'index'])
             ->name('content-library');
+        Route::get('/content-library/results', [ContentLibraryController::class, 'results'])
+            ->name('content-library.results');
         Route::post('/content-library/upload', [ContentLibraryController::class, 'upload'])
             ->middleware('throttle:30,1')
             ->name('content-library.upload');

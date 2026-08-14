@@ -39,6 +39,7 @@
          hover system in the cascade. --}}
     @stack('page-styles')
     <link href="{{ asset('assets/css/slb-live-search.css') }}?v={{ @filemtime(public_path('assets/css/slb-live-search.css')) ?: '1' }}" rel="stylesheet">
+    <link href="{{ asset('assets/css/slb-pagination.css') }}?v={{ @filemtime(public_path('assets/css/slb-pagination.css')) ?: '1' }}" rel="stylesheet">
     <link href="{{ asset('assets/css/hover-system.css') }}?v={{ @filemtime(public_path('assets/css/hover-system.css')) ?: '1' }}" rel="stylesheet">
     <script src="{{ asset('assets/js/pulse-badge.js') }}?v={{ @filemtime(public_path('assets/js/pulse-badge.js')) ?: '1' }}" defer></script>
     <script src="{{ asset('assets/js/glass-tip.js') }}?v={{ @filemtime(public_path('assets/js/glass-tip.js')) ?: '1' }}" defer></script>
@@ -118,6 +119,11 @@
             <span class="nav-label">Saved Sites</span>
         </a>
 
+        <a href="{{ route('advertiser.projects.index') }}" class="{{ request()->routeIs('advertiser.projects*') ? 'active' : '' }}">
+            <i class="fa fa-folder-open" aria-hidden="true"></i>
+            <span class="nav-label">Projects</span>
+        </a>
+
         <a href="{{ route('site-claims.index') }}" class="{{ request()->routeIs('site-claims.*') ? 'active' : '' }}">
             <i class="fa fa-user-check" aria-hidden="true"></i>
             <span class="nav-label">My Claims</span>
@@ -167,7 +173,7 @@
 
         <!-- Cart — count + estimated total while browsing -->
         @php
-            $headerCart = session('cart', []);
+            $headerCart = is_array($headerCart ?? null) ? $headerCart : session('cart', []);
             $headerCartCount = (int) array_sum(array_map(fn ($row) => (int) ($row['quantity'] ?? 0), $headerCart));
             $headerCartTotal = round(array_sum(array_map(
                 fn ($row) => ((float) ($row['price'] ?? 0)) * ((int) ($row['quantity'] ?? 0)),
@@ -433,7 +439,13 @@
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
-        const removed = Array.isArray(data?.removed_inactive) ? data.removed_inactive : [];
+        toastRemovedCartNames(
+            Array.isArray(data?.removed_inactive) ? data.removed_inactive : [],
+            Array.isArray(data?.removed_owned) ? data.removed_owned : []
+        );
+    }
+
+    function toastRemovedCartNames(removed, removedOwned) {
         if (removed.length === 1) {
             showToast(removed[0] + ' was deactivated and removed from your cart.', 'warning');
         } else if (removed.length > 1) {
@@ -441,7 +453,6 @@
             const more = removed.length > 2 ? ' (+' + (removed.length - 2) + ' more)' : '';
             showToast(removed.length + ' sites were deactivated and removed from your cart: ' + preview + more + '.', 'warning');
         }
-        const removedOwned = Array.isArray(data?.removed_owned) ? data.removed_owned : [];
         if (removedOwned.length === 1) {
             showToast(removedOwned[0] + ' is your listing and was removed from your cart.', 'warning');
         } else if (removedOwned.length > 1) {
@@ -1197,6 +1208,14 @@
     
     // Load cart on page load
     loadCart();
+    // Catalog shows its own banner; other pages toast names already dropped during render.
+    const onCatalogPage = {{ request()->routeIs('advertiser.catalog') ? 'true' : 'false' }};
+    if (!onCatalogPage) {
+        toastRemovedCartNames(
+            @json($ssrCartRemovedInactive ?? []),
+            @json($ssrCartRemovedOwned ?? [])
+        );
+    }
 </script>
 
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>

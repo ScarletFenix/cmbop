@@ -8,6 +8,8 @@ use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
+use App\Support\PhpIniSize;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -17,7 +19,7 @@ use Symfony\Component\Mime\MimeTypes;
 
 class ContentUploadService
 {
-    /** Product cap for article .docx uploads (10 MB). */
+    /** Hard article .docx cap (10 MB). Admin cannot raise this. */
     public const MAX_KILOBYTES = 10240;
 
     public function __construct(
@@ -31,15 +33,10 @@ class ContentUploadService
         $override = ContentModerationSetting::getValue('upload_config', []) ?: [];
 
         if (! is_array($override) || $override === []) {
-            $base['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($base['max_kilobytes'] ?? self::MAX_KILOBYTES));
-
-            return $base;
+            return $this->withClampedUploadLimit($base);
         }
 
-        $merged = array_replace_recursive($base, $override);
-        $merged['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($merged['max_kilobytes'] ?? self::MAX_KILOBYTES));
-
-        return $merged;
+        return $this->withClampedUploadLimit(array_replace_recursive($base, $override));
     }
 
     /**
@@ -527,13 +524,62 @@ class ContentUploadService
     }
 
     /**
-     * Article cap is 10 MB. Never advertise less than that (old admin/PHP 2–5 MB clamps).
+     * Hard article cap: 10 MB. Files at or under this size are allowed;
+     * anything larger is rejected. Admin / env cannot raise this.
      */
     public function effectiveMaxKilobytes(?array $cfg = null): int
     {
-        $cfg = $cfg ?? $this->effectiveConfig();
+        return self::MAX_KILOBYTES;
+    }
 
-        return max(self::MAX_KILOBYTES, (int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
+    public function clampMaxKilobytes(int $kilobytes): int
+    {
+        return self::MAX_KILOBYTES;
+    }
+
+    /**
+     * @param  array<string, mixed>  $cfg
+     * @return array<string, mixed>
+     */
+    private function withClampedUploadLimit(array $cfg): array
+    {
+        $cfg['max_kilobytes'] = self::MAX_KILOBYTES;
+        $help = is_array($cfg['help'] ?? null) ? $cfg['help'] : [];
+        $help['before_upload'] = 'Supported format: Microsoft Word (.docx) only. Maximum size: 10 MB. Unused articles are kept for 6 months; after that the original file is removed and a preview stays in Expired.';
+        $cfg['help'] = $help;
+
+        return $cfg;
+    }
+
+    public function phpUploadMaxKilobytes(): int
+    {
+        return PhpIniSize::uploadMaxKilobytes(self::MAX_KILOBYTES);
+    }
+
+    public function phpLimitBlocksArticleCap(?array $cfg = null): bool
+    {
+        return $this->phpUploadMaxKilobytes() < $this->effectiveMaxKilobytes($cfg);
+    }
+
+    /**
+     * PHP rejected the file before Laravel saw the bytes (UPLOAD_ERR_INI_SIZE /
+     * FORM_SIZE / empty body after post_max_size).
+     *
+     * Never blame the 10 MB article cap here. ini_get() can already read 64M
+     * from .user.ini while LiteSpeed still enforces 2M, and a 5 MB .docx then
+     * looks "over the 10 MB limit". The cap message is only for a measured
+     * file that is actually larger than 10 MB (JS + file.max + validateUpload).
+     */
+    public function phpSizeRejectedMessage(?array $cfg = null): string
+    {
+        $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
+
+        return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
+    }
+
+    public function phpImageRejectedMessage(): string
+    {
+        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
     }
 
     /**
@@ -541,7 +587,7 @@ class ContentUploadService
      */
     public function uploadValidationMessages(?array $cfg = null): array
     {
-        $mb = max(1, (int) round($this->effectiveMaxKilobytes($cfg) / 1024));
+        $mb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
 
         return [
             'file.uploaded' => 'The article could not be uploaded. Use a Word .docx under '.$mb.' MB and try again.',
@@ -554,6 +600,96 @@ class ContentUploadService
     }
 
     /**
+     * PHP discarded the multipart body (post_max_size) or the file (upload_max_filesize).
+     * A 5 MB .docx then looks like "no file" unless we check Content-Length.
+     *
+     * Do not require Content-Length to exceed ini_get(). Hostinger can already
+     * report 64M while LiteSpeed still drops a 5 MB body; comparing to the
+     * reported cap then falls through to "country required" / "drop a .docx".
+     */
+    public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
+    {
+        if ($file instanceof UploadedFile) {
+            return $this->invalidUploadMessage($file, $cfg);
+        }
+
+        if ($clientFileBytes !== null && $clientFileBytes > self::MAX_KILOBYTES * 1024) {
+            $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
+
+            return 'That file is over the '.$appMb.' MB limit.';
+        }
+
+        $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
+        if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
+            return $this->phpSizeRejectedMessage($cfg);
+        }
+
+        return null;
+    }
+
+    public function rejectedImageUploadMessage(?UploadedFile $file, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
+    {
+        if ($file instanceof UploadedFile && ! $file->isValid()) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        if ($file instanceof UploadedFile) {
+            return null;
+        }
+
+        if ($clientFileBytes !== null && $clientFileBytes > 5120 * 1024) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
+        if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        return null;
+    }
+
+    /**
+     * Content-Length can be 0 after LiteSpeed drops the body. The browser still
+     * knows the file size — JS sends it as X-Upload-Bytes and ?client_bytes=.
+     *
+     * @return array{0:?int, 1:?int} content-length, client file bytes
+     */
+    public function uploadByteHints(Request $request): array
+    {
+        return [$this->headerByteValue($request, 'Content-Length', 'CONTENT_LENGTH'), $this->headerByteValue($request, 'X-Upload-Bytes', null, 'client_bytes')];
+    }
+
+    private function headerByteValue(Request $request, string $header, ?string $serverKey = null, ?string $queryKey = null): ?int
+    {
+        $value = $request->header($header);
+        if (($value === null || $value === '') && $serverKey) {
+            $value = $request->server($serverKey);
+        }
+        if (($value === null || $value === '') && $queryKey) {
+            $value = $request->query($queryKey);
+        }
+        if (is_array($value)) {
+            $value = $value[0] ?? null;
+        }
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $bytes = (int) $value;
+
+        return $bytes > 0 ? $bytes : null;
+    }
+
+    /**
+     * Larger than CSRF + country/language fields. A real missing-file submit
+     * is a few KB; a discarded 5 MB .docx still sends Content-Length ≈ 5 MB.
+     */
+    public function contentLengthLooksLikeStrippedUpload(?int $contentLengthBytes): bool
+    {
+        return $contentLengthBytes !== null && $contentLengthBytes > 64 * 1024;
+    }
+
+    /**
      * PHP rejected the multipart file (size, tmp dir, partial, etc.) before we can parse it.
      * Laravel's default copy is "The file failed to upload."
      */
@@ -563,16 +699,18 @@ class ContentUploadService
             return null;
         }
 
-        $mb = max(1, (int) round($this->effectiveMaxKilobytes($cfg) / 1024));
+        $mb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
 
         Log::notice('Content article upload rejected by PHP', [
             'error' => $file->getError(),
             'error_message' => $file->getErrorMessage(),
+            'php_upload_max_kb' => $this->phpUploadMaxKilobytes(),
+            'article_max_kb' => $this->effectiveMaxKilobytes($cfg),
             'user_id' => auth()->id(),
         ]);
 
         return match ($file->getError()) {
-            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => 'That file is over the '.$mb.' MB limit. Save as a smaller .docx and try again.',
+            UPLOAD_ERR_INI_SIZE, UPLOAD_ERR_FORM_SIZE => $this->phpSizeRejectedMessage($cfg),
             UPLOAD_ERR_PARTIAL => 'The upload was interrupted. Please try again.',
             UPLOAD_ERR_NO_FILE => 'Drop a .docx or click the box to choose a file.',
             UPLOAD_ERR_NO_TMP_DIR, UPLOAD_ERR_CANT_WRITE => 'The server could not save the upload. Please try again in a moment.',

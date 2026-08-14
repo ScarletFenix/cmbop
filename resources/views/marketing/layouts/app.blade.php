@@ -58,10 +58,22 @@
 
         <div class="mkt-nav-section">Catalog ops</div>
         <a href="{{ route('marketing.sites.index') }}" class="{{ request()->routeIs('marketing.sites.*') ? 'active' : '' }}">
-            <i class="fa fa-globe"></i> <span class="nav-label">Sites</span>
+            <i class="fa fa-globe"></i>
+            <span class="d-flex align-items-center w-100">
+                <span class="nav-label">Sites</span>
+                @if(($mktReadySiteCount ?? 0) > 0)
+                    <span class="mkt-nav-badge badge bg-warning text-dark rounded-pill ms-auto" data-nav-badge="sites" data-count="{{ $mktReadySiteCount }}">{{ $mktReadySiteCount > 99 ? '99+' : $mktReadySiteCount }}</span>
+                @endif
+            </span>
         </a>
         <a href="{{ route('marketing.bulk-site-requests.index') }}" class="{{ request()->routeIs('marketing.bulk-site-requests.*') ? 'active' : '' }}">
-            <i class="fa fa-layer-group"></i> <span class="nav-label">Bulk requests</span>
+            <i class="fa fa-layer-group"></i>
+            <span class="d-flex align-items-center w-100">
+                <span class="nav-label">Bulk requests</span>
+                @if(($mktBulkWaitingCount ?? 0) > 0)
+                    <span class="mkt-nav-badge badge bg-warning text-dark rounded-pill ms-auto" data-nav-badge="bulk" data-count="{{ $mktBulkWaitingCount }}">{{ $mktBulkWaitingCount > 99 ? '99+' : $mktBulkWaitingCount }}</span>
+                @endif
+            </span>
         </a>
         <a href="{{ route('marketing.staff-handbook') }}" class="{{ request()->routeIs('marketing.staff-handbook') ? 'active' : '' }}">
             <i class="fa fa-book"></i> <span class="nav-label">Staff handbook</span>
@@ -182,6 +194,32 @@
 
     document.body.classList.remove('layout-dark');
     try { localStorage.removeItem('layoutDarkMode'); } catch (e) {}
+
+    window.refreshAdminQueueBadges = function refreshMarketingQueueBadges() {
+        fetch(@json(route('marketing.dashboard.queue-counts')), {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+        })
+        .then((r) => r.json())
+        .then((data) => {
+            if (!data || !data.success) return;
+            const map = { sites: data.ready_sites || 0, bulk: data.bulk_waiting || 0 };
+            Object.keys(map).forEach((key) => {
+                const el = document.querySelector('[data-nav-badge="' + key + '"]');
+                if (!el) return;
+                const count = Number(map[key]) || 0;
+                el.dataset.count = String(count);
+                if (count > 0) {
+                    el.style.display = '';
+                    el.textContent = count > 99 ? '99+' : String(count);
+                } else {
+                    el.style.display = 'none';
+                }
+            });
+        })
+        .catch(() => {});
+    };
+    window.refreshAdminQueueBadges();
 </script>
 <script src="{{ asset('js/role-switch.js') }}?v={{ @filemtime(public_path('js/role-switch.js')) ?: '1' }}"></script>
 <script src="{{ asset('assets/js/notification-center.js') }}?v={{ @filemtime(public_path('assets/js/notification-center.js')) ?: '8' }}" defer></script>

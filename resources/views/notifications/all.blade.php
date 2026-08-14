@@ -1,5 +1,7 @@
 @extends($layout)
 
+@section('title', 'Notifications')
+
 @section('content')
 <link rel="stylesheet" href="{{ asset('assets/css/pulse-badge.css') }}?v={{ @filemtime(public_path('assets/css/pulse-badge.css')) ?: '1' }}">
 <link rel="stylesheet" href="{{ asset('assets/css/notification-center.css') }}?v={{ @filemtime(public_path('assets/css/notification-center.css')) ?: '4' }}">
@@ -29,8 +31,7 @@
 
     <form method="GET" action="{{ route('notifications.all', absolute: false) }}" class="row g-2 align-items-end mb-3 nc-filter-bar">
         <div class="col-md-4">
-            <label class="form-label small text-muted mb-1">Search</label>
-            <input type="search" name="q" value="{{ $filters['q'] }}" class="form-control form-control-sm" placeholder="Search notifications…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+            <x-slb-search-field name="q" id="notificationsSearch" :value="$filters['q']" placeholder="Search notifications…" />
         </div>
         <div class="col-md-3">
             <label class="form-label small text-muted mb-1">Category</label>

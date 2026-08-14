@@ -141,6 +141,79 @@ class OrderItem extends Model
     }
 
     /**
+     * Uploaded article on the submission or a path snapshotted onto the item.
+     */
+    public function hasDownloadableContent(): bool
+    {
+        $submission = $this->relatedContentSubmission();
+
+        if ($submission && $submission->hasStoredFile()) {
+            return true;
+        }
+
+        return filled($this->content_path);
+    }
+
+    /**
+     * External article URL only. Library fulfillments store the advertiser
+     * download route here, which RoleMiddleware blocks for staff.
+     */
+    public function publicContentLink(): ?string
+    {
+        $link = trim((string) ($this->content_link ?: ''));
+        if ($link === '') {
+            return null;
+        }
+
+        if ($this->isInternalAdvertiserDownloadUrl($link)) {
+            return null;
+        }
+
+        return $link;
+    }
+
+    public function briefAnchorText(): ?string
+    {
+        $anchor = trim((string) ($this->anchor_text ?: ''));
+        if ($anchor !== '') {
+            return $anchor;
+        }
+
+        $fromSubmission = trim((string) ($this->relatedContentSubmission()?->anchor_text ?: ''));
+
+        return $fromSubmission !== '' ? $fromSubmission : null;
+    }
+
+    public function briefTargetUrl(): ?string
+    {
+        $target = trim((string) ($this->target_url ?: ''));
+        if ($target !== '') {
+            return $target;
+        }
+
+        $fromSubmission = trim((string) ($this->relatedContentSubmission()?->target_url ?: ''));
+
+        return $fromSubmission !== '' ? $fromSubmission : null;
+    }
+
+    protected function relatedContentSubmission(): ?ContentSubmission
+    {
+        return $this->relationLoaded('contentSubmission')
+            ? $this->contentSubmission
+            : $this->contentSubmission()->first();
+    }
+
+    protected function isInternalAdvertiserDownloadUrl(string $link): bool
+    {
+        $path = parse_url($link, PHP_URL_PATH);
+        if (! is_string($path) || $path === '') {
+            $path = $link;
+        }
+
+        return (bool) preg_match('#/content-submissions/\d+/download/?$#', $path);
+    }
+
+    /**
      * Get the publisher (site owner) for this order item
      */
     public function getPublisherAttribute()
@@ -432,6 +505,93 @@ class OrderItem extends Model
     public function hasLiveUrl()
     {
         return ! is_null($this->live_url) && $this->live_url !== '';
+    }
+
+    /**
+     * Publisher already received earnings for this line (approve or auto-approve).
+     * Used so a later Approve cannot credit the same placement twice.
+     */
+    public function isPayoutComplete(): bool
+    {
+        if ((bool) $this->auto_approve_triggered) {
+            return true;
+        }
+
+        $table = $this->getTable();
+        if (Schema::hasColumn($table, 'completed_at') && $this->completed_at) {
+            return true;
+        }
+
+        if (Schema::hasColumn($table, 'publisher_status') && $this->publisher_status === 'completed') {
+            return true;
+        }
+
+        return $this->hasPublisherEarningsLedger();
+    }
+
+    /**
+     * Unpaid line the advertiser may complete: live URL in, no open revision.
+     */
+    public function isReadyForAdvertiserApprove(): bool
+    {
+        if (! $this->hasLiveUrl()) {
+            return false;
+        }
+
+        if ($this->isContentRevisionRequested() || $this->isModificationRequested()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function hasPublisherEarningsLedger(): bool
+    {
+        if (! $this->id || ! Schema::hasTable('wallet_transactions')) {
+            return false;
+        }
+
+        try {
+            return WalletTransaction::query()
+                ->where('reference', 'ORDER-ITEM-'.$this->id)
+                ->where('type', WalletTransaction::TYPE_TRANSFER_IN)
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Staff can chase from the order show page: paid, still open, no live URL yet.
+     * Same endpoint as the stalled-order queue; does not require the cadence to be exhausted.
+     */
+    public function canAdminRemindPublisher(?Order $order = null): bool
+    {
+        $order ??= $this->relationLoaded('order') ? $this->order : $this->order()->first();
+        if (! $order || $order->payment_status !== 'paid') {
+            return false;
+        }
+        if (! in_array($order->status, ['pending', 'processing', 'review'], true)) {
+            return false;
+        }
+        if ($order->isAwaitingScheduledRelease()) {
+            return false;
+        }
+        if ($this->hasLiveUrl()) {
+            return false;
+        }
+
+        $publisher = $this->site?->publisher;
+
+        return filled($publisher?->email);
+    }
+
+    /**
+     * Track the stalled-order reminder uses: accept until accepted, then publish.
+     */
+    public function adminRemindTrack(): string
+    {
+        return $this->accepted_at === null ? 'accept' : 'publish';
     }
 
     /**

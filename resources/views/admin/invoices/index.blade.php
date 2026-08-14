@@ -58,8 +58,7 @@
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label small text-muted mb-1">Search</label>
-                    <input type="search" name="search" value="{{ request('search') }}" class="form-control form-control-sm" placeholder="Invoice, order, email…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                    <x-slb-search-field name="search" id="adminInvoicesSearch" :value="request('search')" placeholder="Invoice, order, email…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted mb-1">Status</label>

@@ -243,6 +243,7 @@
 .nc-body {
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
   max-height: 320px;
   background: var(--nc-bg-soft, #f7fafb);
 }
@@ -553,6 +554,7 @@ a.nc-item:focus {
 }
 
 .nc-footer {
+  flex-shrink: 0;
   border-top: 1px solid var(--nc-border-soft, #e2e8f0);
   padding: 10px 16px;
   background: var(--nc-bg, #ffffff);

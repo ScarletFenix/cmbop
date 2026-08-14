@@ -4,7 +4,7 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
 
 @switch($action)
     @case('update')
-        Your site **{{ $site->site_name }}** has been updated by an administrator.
+        Your site **{{ $site->site_name }}** has been updated by our team.
         
         @if($oldData)
         **Changes made:**
@@ -87,6 +87,22 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         @endif
 
         You are welcome to submit the site again once the points above are addressed, or contact support if you believe this was a mistake.
+        @break
+
+    @case('archived')
+        Your site **{{ $site->site_name }}** has been **archived** and is hidden from the catalog.
+
+        **What this means:**
+        - Your site is no longer visible to advertisers
+        - New orders cannot be placed
+        - Existing orders are unchanged
+
+        @if(!empty($reason))
+        **Reason:**
+        {{ $reason }}
+        @endif
+
+        Please contact support if you believe this is an error.
         @break
 
     @default

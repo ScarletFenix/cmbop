@@ -14,8 +14,7 @@
 
     <form method="GET" action="{{ route('admin.content-library.index') }}" class="row g-2 align-items-end mb-3">
         <div class="col-md-3">
-            <label class="form-label small text-muted mb-1">Search</label>
-            <input type="search" name="q" class="form-control form-control-sm" value="{{ $search }}" placeholder="Title, file, email">
+            <x-slb-search-field name="q" id="adminContentLibrarySearch" :value="$search" placeholder="Title, file, email" />
         </div>
         <div class="col-6 col-md-2">
             <label class="form-label small text-muted mb-1">Status</label>
