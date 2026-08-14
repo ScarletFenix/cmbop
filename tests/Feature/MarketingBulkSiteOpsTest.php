@@ -130,7 +130,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->actingAs($this->marketer)
             ->post(route('marketing.bulk-site-requests.seed', $bulk), ['rows' => $rows])
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('success', fn ($message) => is_string($message) && str_starts_with($message, 'Seed —'));
 
         $this->assertDatabaseHas('sites', [
             'domain' => 'seed-mkt.example',
@@ -520,7 +520,7 @@ class MarketingBulkSiteOpsTest extends TestCase
                 ],
             ])
             ->assertRedirect()
-            ->assertSessionHas('success');
+            ->assertSessionHas('success', fn ($message) => is_string($message) && str_starts_with($message, 'Done —'));
 
         $this->assertDatabaseHas('sites', [
             'domain' => 'mkt-done-a.example',

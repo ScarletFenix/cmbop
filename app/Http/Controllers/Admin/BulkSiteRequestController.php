@@ -442,6 +442,10 @@ class BulkSiteRequestController extends Controller
      */
     private function createDraftSitesAndNotify(BulkSiteRequest $bulkRequest, array $rows, array $failures, string $action)
     {
+        if (! in_array($action, ['bulk_request.done', 'bulk_request.seeded'], true)) {
+            throw new \InvalidArgumentException('Unsupported bulk history action.');
+        }
+
         $created = 0;
         $createdDomains = [];
 
@@ -554,8 +558,9 @@ class BulkSiteRequestController extends Controller
         }
 
         $remaining = $bulkRequest->items()->whereNull('site_id')->count();
+        $headline = $action === 'bulk_request.done' ? 'Done' : 'Seed';
         $message = $created > 0
-            ? "Done — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify."
+            ? "{$headline} — {$created} site(s) added to the publisher’s Pending sites. Publisher notified (email + in-app). Still inactive until they finish details and you verify."
             : 'No sites were added.';
         if ($created > 0 && $remaining > 0) {
             $message .= " {$remaining} website(s) still pending — fill and submit them when ready.";
