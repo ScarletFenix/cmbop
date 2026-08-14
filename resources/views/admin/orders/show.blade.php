@@ -267,10 +267,16 @@
                                     @endif
                                     @if($dispute->isOpen())
                                         <div class="d-flex flex-wrap gap-2 mt-3">
-                                            <button type="button" class="btn btn-sm btn-danger" onclick="resolveDispute({{ $dispute->id }}, 'uphold')">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-danger js-resolve-dispute"
+                                                    data-action="uphold"
+                                                    data-resolve-url="{{ route('admin.orders.disputes.uphold', $dispute) }}">
                                                 Uphold &amp; claw back
                                             </button>
-                                            <button type="button" class="btn btn-sm btn-outline-secondary" onclick="resolveDispute({{ $dispute->id }}, 'dismiss')">
+                                            <button type="button"
+                                                    class="btn btn-sm btn-outline-secondary js-resolve-dispute"
+                                                    data-action="dismiss"
+                                                    data-resolve-url="{{ route('admin.orders.disputes.dismiss', $dispute) }}">
                                                 Dismiss
                                             </button>
                                         </div>
@@ -421,7 +427,6 @@
         </div>
     </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.all.min.js"></script>
 <script>
 (function () {
     const csrf = document.querySelector('meta[name="csrf-token"]')?.content
@@ -515,7 +520,7 @@
         });
     });
 
-    window.resolveDispute = async function (disputeId, action) {
+    async function resolveDispute(url, action) {
         const isUphold = action === 'uphold';
         const { value: notes } = await Swal.fire({
             title: isUphold ? 'Uphold dispute & claw back' : 'Dismiss dispute',
@@ -536,9 +541,6 @@
             },
         });
         if (!notes) return;
-        const url = isUphold
-            ? `/admin/order-disputes/${disputeId}/uphold`
-            : `/admin/order-disputes/${disputeId}/dismiss`;
         try {
             const data = await postJson(url, { admin_notes: notes });
             await Swal.fire('Done', data.message, 'success');
@@ -546,7 +548,11 @@
         } catch (e) {
             Swal.fire('Error', e.message || 'Failed', 'error');
         }
-    };
+    }
+
+    document.querySelectorAll('.js-resolve-dispute').forEach((btn) => {
+        btn.addEventListener('click', () => resolveDispute(btn.dataset.resolveUrl, btn.dataset.action));
+    });
 })();
 </script>
 @endsection

@@ -661,6 +661,32 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee('id="order-disputes"', false);
     }
 
+    public function test_order_show_uses_named_dispute_routes_and_layout_sweetalert(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $order->update(['status' => 'completed', 'completed_at' => now()->subDay()]);
+        OrderItemDispute::ensureTable();
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live link was removed after approval.',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee(route('admin.orders.disputes.uphold', $dispute), false)
+            ->assertSee(route('admin.orders.disputes.dismiss', $dispute), false)
+            ->assertSee('data-resolve-url', false)
+            ->assertDontSee('/admin/order-disputes/${', false)
+            ->assertDontSee('sweetalert2.all.min.js', false)
+            ->assertSee('cdn.jsdelivr.net/npm/sweetalert2@11', false);
+    }
+
     public function test_order_show_offers_accept_reminder_while_the_publisher_has_not_accepted(): void
     {
         $admin = $this->userWithRole('admin');
