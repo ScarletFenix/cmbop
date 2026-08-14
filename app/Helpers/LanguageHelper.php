@@ -4,6 +4,7 @@ use App\Models\ActivityLog;
 use App\Models\User;
 use App\Support\MarketingHistoryDisplay;
 use App\Support\PublicI18n;
+use App\Support\StaffWorkspace;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
 
@@ -458,6 +459,26 @@ if (! function_exists('staff_route')) {
     function staff_route(string $name, mixed $parameters = [], bool $absolute = true): string
     {
         return route(staff_route_prefix().ltrim($name, '.'), $parameters, $absolute);
+    }
+}
+
+if (! function_exists('staff_route_for')) {
+    /**
+     * Named staff route for a recipient (bells / mail), not the current request user.
+     */
+    function staff_route_for(?User $user, string $name, mixed $parameters = [], bool $absolute = true): string
+    {
+        return StaffWorkspace::routeFor($user, $name, $parameters, $absolute);
+    }
+}
+
+if (! function_exists('staff_ops_url_for')) {
+    /**
+     * Rewrite leftover /admin/{ops} URLs to /marketing/{ops} for marketing-only users.
+     */
+    function staff_ops_url_for(?User $user, ?string $url): ?string
+    {
+        return StaffWorkspace::actionUrlFor($user, $url);
     }
 }
 

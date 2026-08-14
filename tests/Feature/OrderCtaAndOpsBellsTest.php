@@ -144,7 +144,7 @@ class OrderCtaAndOpsBellsTest extends TestCase
         );
     }
 
-    public function test_bulk_staff_bell_uses_admin_route_not_marketing_only(): void
+    public function test_bulk_staff_bell_uses_workspace_route_per_recipient(): void
     {
         $bulk = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
@@ -169,7 +169,8 @@ class OrderCtaAndOpsBellsTest extends TestCase
             ->where('related_id', $bulk->id)
             ->first();
         $this->assertNotNull($marketingNote);
-        $this->assertStringContainsString('/admin/bulk-site-requests/'.$bulk->id, (string) $marketingNote->action_url);
+        $this->assertStringContainsString('/marketing/bulk-site-requests/'.$bulk->id, (string) $marketingNote->action_url);
+        $this->assertStringNotContainsString('/admin/bulk-site-requests/', (string) $marketingNote->action_url);
     }
 
     public function test_ops_bells_go_to_admin_not_marketing(): void
@@ -213,15 +214,16 @@ class OrderCtaAndOpsBellsTest extends TestCase
                 ->count()
         );
 
-        // Site review bells remain shared with marketing.
+        // Site review bells remain shared with marketing, on the marketing sites URL.
         $notifications->notifyAdminsNewSite($this->site, 'create');
-        $this->assertSame(
-            1,
-            InAppNotification::query()
-                ->where('user_id', $this->marketer->id)
-                ->where('related_type', Site::class)
-                ->where('related_id', $this->site->id)
-                ->count()
-        );
+        $marketingSiteNote = InAppNotification::query()
+            ->where('user_id', $this->marketer->id)
+            ->where('related_type', Site::class)
+            ->where('related_id', $this->site->id)
+            ->first();
+        $this->assertNotNull($marketingSiteNote);
+        $this->assertStringContainsString('/marketing/sites', (string) $marketingSiteNote->action_url);
+        $this->assertStringContainsString('needs_review=1', (string) $marketingSiteNote->action_url);
+        $this->assertStringNotContainsString('/admin/sites', (string) $marketingSiteNote->action_url);
     }
 }

@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
 use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
@@ -288,6 +289,15 @@ class InAppNotification extends Model
         return $this;
     }
 
+    /**
+     * Click-through URL for the current (or given) staff user.
+     * Rewrites leftover /admin/{ops} paths so marketers land on /marketing.
+     */
+    public function actionUrlFor(?User $user = null): ?string
+    {
+        return staff_ops_url_for($user ?? Auth::user(), $this->action_url);
+    }
+
     public function toApiArray(): array
     {
         return [
@@ -305,7 +315,7 @@ class InAppNotification extends Model
             'related_type' => $this->related_type,
             'related_id' => $this->related_id,
             'action_label' => $this->action_label ?: 'View details',
-            'action_url' => $this->action_url,
+            'action_url' => $this->actionUrlFor(Auth::user()),
             'meta' => $this->meta ?? [],
             'created_at' => optional($this->created_at)?->toIso8601String(),
             'updated_at' => optional($this->updated_at)?->toIso8601String(),
