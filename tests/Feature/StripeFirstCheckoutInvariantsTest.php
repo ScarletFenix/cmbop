@@ -311,4 +311,76 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $order->total_amount, 0.01);
         $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
+
+    public function test_finalize_survives_cache_flush_via_durable_checkout_intent(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'durable-package.example', 80);
+        $ref = 'DURABLE-PKG-1';
+
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package(
+            $advertiser,
+            [$this->lineFor($site, 80)],
+            80
+        ));
+
+        Cache::flush();
+        $this->assertNull(Cache::get(OrderPaymentService::pendingCheckoutCacheKey($ref)));
+
+        $created = app(OrderPaymentService::class)->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_durable_pkg')
+        );
+
+        $this->assertCount(1, $created);
+        $order = Order::where('reference_code', $ref)->first();
+        $this->assertNotNull($order);
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
+    }
+
+    public function test_session_expiry_refunds_bonus_after_cache_flush(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $this->makeSite($publisher, 'expire-durable.example');
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'EXPIRE-DURABLE-1';
+
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package(
+            $advertiser,
+            [$this->lineFor($this->makeSite($publisher, 'expire-durable-line.example'), 40)],
+            20,
+            20
+        ));
+
+        Cache::flush();
+
+        $this->signedWebhook([
+            'id' => 'evt_expire_durable_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.expired',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expired_durable',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'unpaid',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'bonus_applied' => '20',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
 }

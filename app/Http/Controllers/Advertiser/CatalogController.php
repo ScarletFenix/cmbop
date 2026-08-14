@@ -29,6 +29,7 @@ use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
 use App\Services\Catalog\SiteUrlVisibility;
+use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
@@ -52,7 +53,6 @@ use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -4261,29 +4261,30 @@ class CatalogController extends Controller
 
     private function checkoutBonusCacheKey(int $userId, string $referenceCode): string
     {
-        return 'checkout_bonus:'.$userId.':'.$referenceCode;
+        return CheckoutIntentService::bonusCacheKey($userId, $referenceCode);
     }
 
     private function rememberCheckoutBonus(int $userId, string $referenceCode, float $amount): void
     {
-        Cache::put($this->checkoutBonusCacheKey($userId, $referenceCode), round($amount, 2), now()->addHours(12));
+        app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $amount);
     }
 
     private function forgetCheckoutBonus(int $userId, string $referenceCode): void
     {
-        Cache::forget($this->checkoutBonusCacheKey($userId, $referenceCode));
+        app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
     }
 
     private function consumeCheckoutBonus(int $userId, string $referenceCode, ?float $amount = null): void
     {
-        $key = $this->checkoutBonusCacheKey($userId, $referenceCode);
-        $bonus = $amount ?? (float) Cache::pull($key, 0);
+        $bonus = $amount ?? app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode);
         if ($bonus <= 0) {
             return;
         }
 
         $roleId = Wallet::advertiserRoleId();
         if (! $roleId) {
+            app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
+
             return;
         }
 
@@ -4291,13 +4292,12 @@ class CatalogController extends Controller
         if ($wallet && (float) $wallet->bonus_reserved > 0) {
             $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
         }
-        Cache::forget($key);
+        app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
     }
 
     private function refundCheckoutBonus(int $userId, string $referenceCode): void
     {
-        $key = $this->checkoutBonusCacheKey($userId, $referenceCode);
-        $bonus = (float) Cache::pull($key, 0);
+        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode);
         if ($bonus <= 0) {
             return;
         }

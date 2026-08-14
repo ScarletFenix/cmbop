@@ -13,13 +13,13 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -291,8 +291,7 @@ class PaymentController extends Controller
 
     private function consumeReservedCheckoutBonus(Order $order): void
     {
-        $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $bonus = round((float) Cache::pull($key, 0), 2);
+        $bonus = app(CheckoutIntentService::class)->takeBonus((int) $order->user_id, (string) $order->reference_code);
         if ($bonus <= 0) {
             return;
         }
@@ -310,8 +309,7 @@ class PaymentController extends Controller
 
     private function refundReservedCheckoutBonus(Order $order): void
     {
-        $key = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $bonus = round((float) Cache::pull($key, 0), 2);
+        $bonus = app(CheckoutIntentService::class)->takeBonus((int) $order->user_id, (string) $order->reference_code);
         if ($bonus <= 0) {
             return;
         }

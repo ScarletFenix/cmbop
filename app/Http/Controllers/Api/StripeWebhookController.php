@@ -193,10 +193,12 @@ class StripeWebhookController extends Controller
         }
 
         $userId = isset($metadata['user_id']) ? (int) $metadata['user_id'] : null;
+        $bonusFallback = isset($metadata['bonus_applied']) ? round((float) $metadata['bonus_applied'], 2) : null;
         app(OrderPaymentService::class)->markOrdersFailedFromReference(
             $referenceCode,
             $reason,
-            $userId && $userId > 0 ? $userId : null
+            $userId && $userId > 0 ? $userId : null,
+            $bonusFallback
         );
     }
 
