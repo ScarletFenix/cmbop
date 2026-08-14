@@ -654,17 +654,25 @@ function updateRoleBadges(id, roles, activeRole, canActivateSites = false){
         });
     }
 
-    if (typeof window.SlbLiveSearch !== 'undefined') {
-        window.SlbLiveSearch.init(document.getElementById('userSearch'), {
-            mode: 'client',
-            statusEl: document.getElementById('userSearchStatus'),
-            clearBtn: document.getElementById('userSearchClear'),
-            onSearch: function (detail) { filterUsers(detail.query); },
-        });
-    } else {
+    function boot() {
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(document.getElementById('userSearch'), {
+                mode: 'client',
+                statusEl: document.getElementById('userSearchStatus'),
+                clearBtn: document.getElementById('userSearchClear'),
+                onSearch: function (detail) { filterUsers(detail.query); },
+            });
+            return;
+        }
         document.getElementById('userSearch').addEventListener('keyup', function () {
             filterUsers(this.value);
         });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
     }
 })();
 

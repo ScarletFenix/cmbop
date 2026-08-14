@@ -13,7 +13,7 @@
         <a href="{{ route('marketing.dashboard') }}" class="btn btn-sm btn-outline-secondary">← Dashboard</a>
     </div>
 
-    <form method="GET" class="row g-2 mb-3">
+    <form method="GET" class="row g-2 mb-3 align-items-end">
         <div class="col-md-4">
             <x-slb-search-field name="q" id="marketingHistorySearch" :value="request('q')" placeholder="Search description, subject, or action" />
         </div>

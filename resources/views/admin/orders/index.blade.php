@@ -290,14 +290,15 @@
     });
     {{-- Page clicks are handled by renderAdminPagination's delegated listener. --}}
 
-    if (typeof window.SlbLiveSearch !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof window.SlbLiveSearch === 'undefined') return;
         window.SlbLiveSearch.init(document.getElementById('searchInput'), {
             mode: 'event',
             statusEl: document.getElementById('adminOrdersSearchStatus'),
             clearBtn: document.getElementById('adminOrdersSearchClear'),
             onSearch: function () { loadOrders(1); },
         });
-    }
+    });
 
     const boot = new URLSearchParams(window.location.search);
     if (boot.get('status')) document.getElementById('statusFilter').value = boot.get('status');

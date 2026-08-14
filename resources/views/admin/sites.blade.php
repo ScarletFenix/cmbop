@@ -1472,26 +1472,34 @@ document.getElementById('backBtn').addEventListener('click', function(){
         });
     }
 
-    if (typeof window.SlbLiveSearch !== 'undefined') {
-        window.SlbLiveSearch.init(document.getElementById('userSearch'), {
-            mode: 'client',
-            statusEl: document.getElementById('userSearchStatus'),
-            clearBtn: document.getElementById('userSearchClear'),
-            onSearch: function (detail) { filterUsers(detail.query); },
-        });
-        window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
-            mode: 'client',
-            statusEl: document.getElementById('siteSearchStatus'),
-            clearBtn: document.getElementById('siteSearchClear'),
-            onSearch: function () { applySiteFilters(); },
-        });
-    } else {
+    function boot() {
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(document.getElementById('userSearch'), {
+                mode: 'client',
+                statusEl: document.getElementById('userSearchStatus'),
+                clearBtn: document.getElementById('userSearchClear'),
+                onSearch: function (detail) { filterUsers(detail.query); },
+            });
+            window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
+                mode: 'client',
+                statusEl: document.getElementById('siteSearchStatus'),
+                clearBtn: document.getElementById('siteSearchClear'),
+                onSearch: function () { applySiteFilters(); },
+            });
+            return;
+        }
         document.getElementById('userSearch').addEventListener('keyup', function(){
             filterUsers(this.value);
         });
         document.getElementById('siteSearch').addEventListener('keyup', function(){
             applySiteFilters();
         });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
     }
 })();
 

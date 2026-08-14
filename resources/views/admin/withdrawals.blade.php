@@ -760,18 +760,20 @@ $('#queueFilter').on('change', function() {
     loadWithdrawals(1);
 });
 
-if (typeof window.SlbLiveSearch !== 'undefined') {
-    window.SlbLiveSearch.init(document.getElementById('searchInput'), {
-        mode: 'event',
-        statusEl: document.getElementById('adminWithdrawalsSearchStatus'),
-        clearBtn: document.getElementById('adminWithdrawalsSearchClear'),
-        onSearch: function () { loadWithdrawals(1); },
-    });
-} else {
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof window.SlbLiveSearch !== 'undefined') {
+        window.SlbLiveSearch.init(document.getElementById('searchInput'), {
+            mode: 'event',
+            statusEl: document.getElementById('adminWithdrawalsSearchStatus'),
+            clearBtn: document.getElementById('adminWithdrawalsSearchClear'),
+            onSearch: function () { loadWithdrawals(1); },
+        });
+        return;
+    }
     $('#searchInput').on('keypress', function(e) {
         if (e.which === 13) loadWithdrawals(1);
     });
-}
+});
 
 // Deep-link query support (?status=completed&queue=history)
 (function initFromQuery() {

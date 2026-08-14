@@ -91,7 +91,7 @@
     <!-- Filters -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
-            <form method="GET" class="row g-3">
+            <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label fw-semibold">Status</label>
                     <select name="status" class="form-select">

@@ -78,6 +78,18 @@ class SitewideLiveSearchFlowTest extends TestCase
             $this->assertStringContainsString('SlbLiveSearch', $body, basename($path));
         }
 
+        $mustWaitForHelper = [
+            resource_path('views/admin/orders/index.blade.php'),
+            resource_path('views/admin/withdrawals.blade.php'),
+            resource_path('views/admin/sites.blade.php'),
+            resource_path('views/admin/users.blade.php'),
+        ];
+        foreach ($mustWaitForHelper as $path) {
+            $body = (string) file_get_contents($path);
+            $this->assertStringContainsString('DOMContentLoaded', $body, basename($path).' must wait for slb-live-search.js');
+            $this->assertStringContainsString('SlbLiveSearch.init', $body, basename($path));
+        }
+
         $forms = [
             resource_path('views/notifications/all.blade.php'),
             resource_path('views/advertiser/billing/index.blade.php'),

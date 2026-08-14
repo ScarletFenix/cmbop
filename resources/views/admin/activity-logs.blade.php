@@ -10,7 +10,7 @@
         </div>
     </div>
 
-    <form method="GET" class="row g-2 mb-3">
+    <form method="GET" class="row g-2 mb-3 align-items-end">
         <div class="col-md-3">
             <x-slb-search-field name="user" id="logUser" :value="request('user')" placeholder="Filter by user name / email" />
         </div>
