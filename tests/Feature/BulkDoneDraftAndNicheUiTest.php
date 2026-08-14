@@ -67,7 +67,9 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('id="bulkDoneForm"', false)
+            ->assertSee('bulk-done-panel', false)
             ->assertSee('bulk-done-table-wrap', false)
+            ->assertSee('data-bulk-done-row', false)
             ->assertSee('bulkDoneDraft:'.$bulk->id.':'.$this->marketer->id, false)
             ->assertSee('sessionStorage', false)
             ->assertSee('restoreDraftIfNeeded', false)
@@ -76,17 +78,21 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $this->assertStringContainsString('Select niches', $html);
         $this->assertStringContainsString('bulk-done-niches-cell', $html);
+        $this->assertStringContainsString('bulk-done-row__summary', $html);
+        $this->assertStringContainsString('bulk-done-row__body', $html);
+        $this->assertStringContainsString('data-bulk-clear-row', $html);
+        $this->assertStringContainsString('data-bulk-copy-above', $html);
         $this->assertStringContainsString('No categories found', $html);
         $this->assertStringContainsString('Type to search niches', $html);
         $this->assertStringContainsString("emptyId: 'categoryEmpty-", $html);
         $this->assertStringNotContainsString('table-responsive mb-3', $html);
 
-        // The fixed grid layout now lives in the shared stylesheet, not inline.
         $this->assertStringContainsString('staff-sites.css', $html);
-        $this->assertStringContainsString('bulk-done-grid', $html);
+        $this->assertStringContainsString('bulk-done-list', $html);
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
-        $this->assertStringContainsString('.bulk-done-grid', $staffCss);
-        $this->assertStringContainsString('table-layout: fixed', $staffCss);
+        $this->assertStringContainsString('.bulk-done-panel', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__fields', $staffCss);
+        $this->assertStringNotContainsString('table-layout: fixed', $staffCss);
 
         $js = file_get_contents(public_path('js/multi-select.js'));
         $this->assertStringContainsString('multi-select-dropdown--fixed', $js);
