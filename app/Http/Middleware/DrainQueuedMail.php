@@ -25,7 +25,9 @@ use Illuminate\Support\Facades\Schema;
  */
 class DrainQueuedMail
 {
-    /** Jobs to attempt per request. */
+    /** Jobs to attempt per request. Oldest first — a burst of welcome/admin
+     *  mail queued on the same request can leave a newer chat email for the
+     *  next page view. Keep this small so php-fpm is not held hostage. */
     private const MAX_JOBS = 5;
 
     /** Wall-clock budget per request, in seconds. */
