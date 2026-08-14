@@ -1006,49 +1006,7 @@ class CatalogController extends Controller
      */
     private function pruneInactiveCartLines(array $cart): array
     {
-        $cart = array_values($cart);
-        if ($cart === []) {
-            return ['cart' => [], 'removed_inactive' => [], 'removed_owned' => [], 'changed' => false];
-        }
-
-        $siteIds = collect($cart)->pluck('id')->filter()->unique()->values();
-        $sites = $siteIds->isEmpty()
-            ? collect()
-            : Site::query()->catalogVisible()->whereIn('id', $siteIds)->get()->keyBy('id');
-        $buyer = auth()->user();
-
-        $kept = [];
-        $removed = [];
-        $removedOwned = [];
-        foreach ($cart as $line) {
-            $site = $sites->get((int) ($line['id'] ?? 0));
-            $name = trim((string) ($site?->site_name ?? $line['name'] ?? ''));
-            if ($name === '') {
-                $name = 'A website';
-            }
-            if (! $site || ! $site->isCatalogVisible()) {
-                $removed[] = $name;
-
-                continue;
-            }
-            if ($site->isOwnedBy($buyer)) {
-                $removedOwned[] = $name;
-
-                continue;
-            }
-            $kept[] = $line;
-        }
-
-        $removed = array_values(array_unique($removed));
-        $removedOwned = array_values(array_unique($removedOwned));
-        $changed = count($kept) !== count($cart);
-
-        return [
-            'cart' => $kept,
-            'removed_inactive' => $removed,
-            'removed_owned' => $removedOwned,
-            'changed' => $changed,
-        ];
+        return $this->cartPricing()->pruneAdvertiserCart($cart, auth()->user());
     }
 
     /**
@@ -1058,12 +1016,7 @@ class CatalogController extends Controller
      */
     private function syncPrunedSessionCart(): array
     {
-        $pruned = $this->pruneInactiveCartLines(session()->get('cart', []));
-        if ($pruned['changed']) {
-            session()->put('cart', array_values($pruned['cart']));
-        }
-
-        return $pruned['removed_inactive'];
+        return $this->cartPricing()->syncAdvertiserSessionCart(auth()->user())['removed_inactive'];
     }
 
     /**
