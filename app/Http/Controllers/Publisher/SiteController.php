@@ -14,6 +14,7 @@ use App\Services\ActivityLogger;
 use App\Services\AgencySiteImportService;
 use App\Services\CheckoutSchemaService;
 use App\Services\EmailNotificationService;
+use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Support\NormalizesHttpUrls;
@@ -459,6 +460,12 @@ class SiteController extends Controller
         $site->save();
 
         try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher accepted site: '.$e->getMessage());
+        }
+
+        try {
             ActivityLogger::log(
                 'site.assignment_accepted',
                 (auth()->user()->name ?? 'Publisher').' accepted staff-assigned site "'.$site->site_name.'"',
@@ -512,6 +519,11 @@ class SiteController extends Controller
 
         $siteId = $site->id;
         $domain = $site->domain ?: $site->site_name;
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
+        }
         SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
@@ -794,6 +806,12 @@ class SiteController extends Controller
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
+        }
+        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
         $site->delete();
 
         return redirect()->back()->with('success', 'Site deleted successfully!');

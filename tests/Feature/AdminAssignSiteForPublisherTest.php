@@ -10,6 +10,7 @@ use App\Models\Language;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\InAppNotificationService;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -163,6 +164,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'active' => false,
         ]);
 
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
             ->assertStatus(422);
@@ -174,6 +177,13 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $site->refresh();
         $this->assertNotNull($site->publisher_accepted_at);
+        $inviteBell = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->where('related_id', $site->id)
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
         $this->assertFalse($site->isPendingPublisherAcceptance());
         $this->assertTrue($site->needsAdminReview());
         $this->assertDatabaseHas('activity_logs', [
@@ -231,6 +241,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'site_image' => 'sites/decline-cover.jpg',
         ]);
 
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+
         $this->actingAs($this->publisher)
             ->postJson(route('publisher.sites.reject-assignment', $site->id))
             ->assertOk()
@@ -238,6 +250,95 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $this->assertDatabaseMissing('sites', ['id' => $site->id]);
         $this->assertFalse(Storage::disk('public')->exists('sites/decline-cover.jpg'));
+        $inviteBell = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->where('related_id', $site->id)
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
+    }
+
+    public function test_staff_delete_of_pending_invite_archives_accept_bell(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Staff Removed Invite',
+            'site_url' => 'https://staff-removed-invite.example',
+            'domain' => 'staff-removed-invite.example',
+            'example_url' => 'https://staff-removed-invite.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Staff removed this invite site description. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        app(InAppNotificationService::class)->notifyPublisherSiteAssignedForAcceptance($site);
+
+        $this->actingAs($this->admin)
+            ->deleteJson(route('admin.sites.destroy', $site->id), [
+                'reason' => 'Publisher asked us to withdraw the invite.',
+            ])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $inviteBell = InAppNotification::query()
+            ->where('user_id', $this->publisher->id)
+            ->where('title', 'Please accept a website we added for you')
+            ->where('related_id', $site->id)
+            ->first();
+        $this->assertNotNull($inviteBell);
+        $this->assertTrue($inviteBell->isArchived());
+    }
+
+    public function test_publisher_delete_of_accepted_pending_site_removes_cover(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('sites/accepted-cover.jpg', 'cover');
+
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Accepted Then Deleted',
+            'site_url' => 'https://accepted-then-deleted.example',
+            'domain' => 'accepted-then-deleted.example',
+            'example_url' => 'https://accepted-then-deleted.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Accepted then deleted site description. ', 3),
+            'verified' => false,
+            'active' => false,
+            'site_image' => 'sites/accepted-cover.jpg',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites', ['status' => 'pending']))
+            ->delete(route('publisher.sites.destroy', $site->id))
+            ->assertRedirect();
+
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $this->assertFalse(Storage::disk('public')->exists('sites/accepted-cover.jpg'));
     }
 
     public function test_publisher_self_created_sites_are_accepted_immediately(): void

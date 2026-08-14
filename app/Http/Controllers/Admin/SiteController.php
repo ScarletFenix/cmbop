@@ -1433,6 +1433,15 @@ class SiteController extends Controller
 
                 continue;
             }
+            if ($key === 'site_name') {
+                $oldName = is_string($oldValue) ? $this->normalizeSiteName($oldValue) : '';
+                $newName = is_string($newValue) ? $this->normalizeSiteName((string) $newValue) : '';
+                if ($oldName !== $newName) {
+                    return true;
+                }
+
+                continue;
+            }
             if ((string) $oldValue !== (string) $newValue) {
                 return true;
             }
@@ -2842,6 +2851,12 @@ class SiteController extends Controller
             Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
         }
 
+        try {
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+        } catch (\Throwable $e) {
+            Log::warning('Could not complete publisher invite notifications before delete: '.$e->getMessage());
+        }
+
         // Deleting is how staff reject a submission outright, so the publisher
         // needs the same courtesy as a deactivation — otherwise their site just
         // vanishes and the first they hear of it is when they come looking.
@@ -2852,9 +2867,7 @@ class SiteController extends Controller
             $notifySnapshot->status_reason = $rejectionReason;
         }
 
-        if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
-            Storage::disk('public')->delete($site->site_image);
-        }
+        $this->deleteStoredSiteImage(is_string($site->site_image) ? $site->site_image : null);
 
         $site->delete();
 

@@ -1747,4 +1747,59 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame('https://pending-case.example/Path', $pending->site_url);
         $this->assertSame(41, (int) $pending->da);
     }
+
+    public function test_marketing_update_does_not_email_for_canonical_name_only_change(): void
+    {
+        Mail::fake();
+
+        $niche = Category::query()->where('name', 'News')->value('name')
+            ?? Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => "Pending  Name\u{200B}",
+            'site_url' => 'https://pending-name-quiet.example',
+            'domain' => 'pending-name-quiet.example',
+            'example_url' => 'https://pending-name-quiet.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => $niche,
+            'categories' => [$niche],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending name quiet description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => "Pending  Name\u{200B}",
+                'site_url' => 'https://pending-name-quiet.example',
+                'example_url' => 'https://pending-name-quiet.example/sample',
+                'price' => 50,
+                'da' => 41,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => $niche,
+            ])
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
+
+        $this->assertStringNotContainsString('Publisher notified', (string) session('success'));
+        Mail::assertNothingOutgoing();
+        $pending->refresh();
+        $this->assertSame('Pending Name', $pending->site_name);
+        $this->assertSame(41, (int) $pending->da);
+    }
 }
