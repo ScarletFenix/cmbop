@@ -66,7 +66,9 @@ class AdminEnrichmentsSchemaDriftResilienceTest extends TestCase
             ->get(route('admin.site-enrichment.index'))
             ->assertOk()
             ->assertDontSee('Something went wrong')
-            ->assertSee('Publisher Enrichment');
+            ->assertSee('Publisher Enrichment')
+            ->assertSee('Needs attention', false)
+            ->assertSee('No scans need attention.', false);
     }
 
     public function test_enrichment_index_ok_when_metrics_columns_missing(): void
