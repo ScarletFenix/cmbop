@@ -1992,11 +1992,17 @@ class CatalogController extends Controller
         }
 
         try {
-            $this->syncPrunedSessionCart();
-            // Get cart from session
+            $prunedCart = $this->cartPricing()->syncAdvertiserSessionCart(auth()->user());
             $cart = session()->get('cart', []);
 
             if (empty($cart)) {
+                if (($prunedCart['removed_owned'] ?? []) !== []) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'You cannot order placements on your own websites.',
+                    ], 422);
+                }
+
                 return response()->json([
                     'success' => false,
                     'message' => 'Your cart is empty.',
@@ -2043,6 +2049,14 @@ class CatalogController extends Controller
             );
             if ($checkoutContent instanceof JsonResponse) {
                 return $checkoutContent;
+            }
+
+            $checkoutContent = $this->excludeSelfOwnedCheckoutLines($checkoutContent, (int) $userId);
+            if ($checkoutContent['lines'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot order placements on your own websites.',
+                ], 422);
             }
 
             $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
@@ -3982,7 +3996,10 @@ class CatalogController extends Controller
         try {
             $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.')]);
+            $message = UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.');
+            $status = str_contains($e->getMessage(), 'own websites') ? 422 : 200;
+
+            return response()->json(['success' => false, 'message' => $message], $status);
         }
 
         if ($expandedOrders === []) {
@@ -4174,6 +4191,28 @@ class CatalogController extends Controller
             'label' => 'Publication: '.$date.', '.$time.' '.$tz.' — change at checkout',
             'checkout_url' => route('advertiser.checkout'),
         ];
+    }
+
+    /**
+     * Defense in depth: drop the advertiser's own publisher sites if they
+     * still appear after cart prune / expandCart. Own-only carts 422 earlier.
+     *
+     * @param  array{lines: array<int, mixed>, schedule: array}  $checkoutContent
+     * @return array{lines: array<int, mixed>, schedule: array}
+     */
+    private function excludeSelfOwnedCheckoutLines(array $checkoutContent, int $userId): array
+    {
+        $buyer = User::query()->find($userId);
+        $checkoutContent['lines'] = array_values(array_filter(
+            $checkoutContent['lines'] ?? [],
+            function ($line) use ($buyer) {
+                $site = is_array($line) ? ($line['orderItem']['site'] ?? null) : null;
+
+                return ! ($site instanceof Site && $site->isOwnedBy($buyer));
+            }
+        ));
+
+        return $checkoutContent;
     }
 
     /**
