@@ -4,7 +4,6 @@ namespace App\Services\Wallet;
 
 use App\Mail\WithdrawalStatusUpdated;
 use App\Models\User;
-use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
 use App\Services\Billing\WithdrawalPayoutStatementService;
@@ -184,54 +183,30 @@ class ManualWithdrawalSettlementService
 
     protected function refundWallet(Withdrawal $withdrawal): void
     {
-        // Prefer publisher wallet (historic admin path), then advertiser — withdrawals
-        // can originate from either role.
-        $wallet = null;
-        $publisherRoleId = Wallet::publisherRoleId();
-        if ($publisherRoleId) {
-            $wallet = Wallet::query()
-                ->where('user_id', $withdrawal->user_id)
-                ->where('role_id', $publisherRoleId)
-                ->lockForUpdate()
-                ->first();
-        }
-
+        $wallet = $withdrawal->resolveDebitedWallet(lockForUpdate: true);
         if (! $wallet) {
-            $advertiserRoleId = Wallet::advertiserRoleId();
-            if ($advertiserRoleId) {
-                $wallet = Wallet::query()
-                    ->where('user_id', $withdrawal->user_id)
-                    ->where('role_id', $advertiserRoleId)
-                    ->lockForUpdate()
-                    ->first();
-            }
+            throw ManualWithdrawalUnknownWalletException::forWithdrawal((int) $withdrawal->id);
         }
 
-        if (! $wallet && $publisherRoleId) {
-            $wallet = Wallet::lockOrCreateForRole($withdrawal->user_id, $publisherRoleId);
-        }
-
-        if ($wallet) {
-            $wallet->credit((float) $withdrawal->amount);
-            try {
-                app(WalletLedgerService::class)->recordAdjustment(
-                    $wallet,
-                    (float) $withdrawal->amount,
-                    'credit',
-                    $withdrawal,
-                    'WD-'.$withdrawal->id.'-refund',
-                    'Withdrawal rejected — funds returned to wallet',
-                    [
-                        'withdrawal_id' => $withdrawal->id,
-                        'reason' => 'withdrawal_rejected',
-                    ]
-                );
-            } catch (\Throwable $e) {
-                Log::warning('Failed to record withdrawal reject ledger credit', [
+        $wallet->credit((float) $withdrawal->amount);
+        try {
+            app(WalletLedgerService::class)->recordAdjustment(
+                $wallet,
+                (float) $withdrawal->amount,
+                'credit',
+                $withdrawal,
+                'WD-'.$withdrawal->id.'-refund',
+                'Withdrawal rejected — funds returned to wallet',
+                [
                     'withdrawal_id' => $withdrawal->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+                    'reason' => 'withdrawal_rejected',
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record withdrawal reject ledger credit', [
+                'withdrawal_id' => $withdrawal->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 
