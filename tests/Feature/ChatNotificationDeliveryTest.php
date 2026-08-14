@@ -143,15 +143,19 @@ class ChatNotificationDeliveryTest extends TestCase
 
     public function test_the_queued_chat_email_actually_leaves_the_queue(): void
     {
+        // Build fixtures on the sync queue so welcome/admin/enrichment mail
+        // is not sitting in front of the one chat job. Web drain only takes
+        // five jobs per request; older mail would otherwise leave the chat
+        // email behind (attempts=0) and look like drain is broken.
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($advertiser, $this->siteFor($publisher));
+
         config([
             'queue.default' => 'database',
             'email_notifications.queue_connection' => 'database',
             'email_notifications.auto_drain' => true,
         ]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        $publisher = $this->userWithRole('publisher');
-        $order = $this->order($advertiser, $this->siteFor($publisher));
 
         // Deliberately not Mail::fake(): the point is that the job is really
         // pushed onto the database queue and then really consumed.
@@ -175,15 +179,15 @@ class ChatNotificationDeliveryTest extends TestCase
 
     public function test_a_backlogged_chat_email_is_delivered_by_ordinary_traffic(): void
     {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($advertiser, $this->siteFor($publisher));
+
         config([
             'queue.default' => 'database',
             'email_notifications.queue_connection' => 'database',
             'email_notifications.auto_drain' => false,
         ]);
-
-        $advertiser = $this->userWithRole('advertiser');
-        $publisher = $this->userWithRole('publisher');
-        $order = $this->order($advertiser, $this->siteFor($publisher));
 
         // Drain off: this is the state the deployment was in, with mail piling up.
         $this->actingAs($advertiser)

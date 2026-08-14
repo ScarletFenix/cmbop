@@ -143,6 +143,7 @@ class OpsMailPolishTest extends TestCase
         $this->assertStringContainsString('CRON_SECRET', $body);
         $this->assertStringContainsString('MAIL_QUEUE_AUTO_DRAIN', $body);
         $this->assertStringContainsString('PUBLIC_APP_URL', $body);
+        $this->assertStringContainsString('ops:production-ready', $body);
         $this->assertStringContainsString('schedule:run', $body);
         $this->assertStringContainsString('/cron/run', $body);
     }

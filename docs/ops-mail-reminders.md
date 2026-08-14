@@ -32,6 +32,7 @@ Accept / reject / live-URL flows send a **dedicated** advertiser mailable. Those
 ## Quick health checks
 
 ```bash
+php artisan ops:production-ready
 php artisan schedule:list
 php artisan queue:failed
 tail -n 50 storage/logs/laravel.log

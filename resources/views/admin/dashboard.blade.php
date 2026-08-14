@@ -14,7 +14,28 @@
          so it has to say so here. --}}
     @php
         $moderationOff = ! app(\App\Services\ContentModeration\ContentModerationService::class)->isEnabled();
+        $opsAlerts = app(\App\Support\ProductionReadiness::class)->dashboardAlerts();
     @endphp
+    @if($opsAlerts !== [])
+        <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+            <i class="fa fa-server mt-1" aria-hidden="true"></i>
+            <div>
+                <strong>Production is misconfigured.</strong>
+                Register, verify-email, catalog images, or chat mail can fail silently until this is fixed.
+                <ul class="mb-1 mt-2">
+                    @foreach($opsAlerts as $opsAlert)
+                        <li>
+                            {{ $opsAlert['title'] }}
+                            @if($opsAlert['detail'] !== '')
+                                — {{ $opsAlert['detail'] }}
+                            @endif
+                        </li>
+                    @endforeach
+                </ul>
+                Run <code>php artisan ops:production-ready --repair</code> then <code>php artisan migrate --force</code>.
+            </div>
+        </div>
+    @endif
     @if($moderationOff)
         <div class="alert alert-danger d-flex align-items-start gap-2" role="alert">
             <i class="fa fa-triangle-exclamation mt-1" aria-hidden="true"></i>

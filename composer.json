@@ -47,6 +47,9 @@
             "@php -r \"file_exists('.env') || copy('.env.example', '.env');\"",
             "@php artisan key:generate",
             "@php artisan migrate --force",
+            "@php artisan db:seed --force",
+            "@php artisan media:ensure-link",
+            "@php artisan ops:production-ready",
             "npm install",
             "npm run build"
         ],
