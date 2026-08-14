@@ -52,7 +52,7 @@ class SiteClaimController extends Controller
     public function store(Request $request)
     {
         $request->merge([
-            'website_url' => $this->normalizeHttpUrl((string) $request->input('website_url', '')),
+            'website_url' => $this->normalizeHttpUrl($request->input('website_url', '')),
         ]);
 
         $data = $request->validate([

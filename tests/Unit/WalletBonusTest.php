@@ -108,6 +108,95 @@ class WalletBonusTest extends TestCase
         $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
 
+    public function test_repair_does_not_retag_deposited_cash_after_welcome_is_spent(): void
+    {
+        $wallet = $this->makeWallet(100, 0);
+        DB::table('wallet_transactions')->insert([
+            [
+                'user_id' => $wallet->user_id,
+                'wallet_id' => $wallet->id,
+                'type' => 'bonus_credit',
+                'direction' => 'credit',
+                'amount' => 20,
+                'bonus_amount' => 20,
+                'currency' => 'EUR',
+                'status' => 'completed',
+                'description' => 'Welcome promotional bonus',
+                'created_at' => now()->subDay(),
+                'updated_at' => now()->subDay(),
+            ],
+            [
+                'user_id' => $wallet->user_id,
+                'wallet_id' => $wallet->id,
+                'type' => 'purchase',
+                'direction' => 'debit',
+                'amount' => 20,
+                'bonus_amount' => 20,
+                'currency' => 'EUR',
+                'status' => 'completed',
+                'description' => 'Marketplace purchase',
+                'created_at' => now()->subHour(),
+                'updated_at' => now()->subHour(),
+            ],
+            [
+                'user_id' => $wallet->user_id,
+                'wallet_id' => $wallet->id,
+                'type' => 'deposit',
+                'direction' => 'credit',
+                'amount' => 100,
+                'bonus_amount' => 0,
+                'currency' => 'EUR',
+                'status' => 'completed',
+                'description' => 'Wallet deposit',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->assertFalse($wallet->repairOrphanedWelcomeBonus());
+        $wallet->refresh();
+        $this->assertSame(0.0, (float) $wallet->bonus_balance);
+        $this->assertSame(100.0, $wallet->withdrawableBalance());
+    }
+
+    public function test_repair_tags_only_unspent_welcome_bonus(): void
+    {
+        $wallet = $this->makeWallet(90, 0);
+        DB::table('wallet_transactions')->insert([
+            [
+                'user_id' => $wallet->user_id,
+                'wallet_id' => $wallet->id,
+                'type' => 'bonus_credit',
+                'direction' => 'credit',
+                'amount' => 20,
+                'bonus_amount' => 20,
+                'currency' => 'EUR',
+                'status' => 'completed',
+                'description' => 'Welcome promotional bonus',
+                'created_at' => now()->subDay(),
+                'updated_at' => now()->subDay(),
+            ],
+            [
+                'user_id' => $wallet->user_id,
+                'wallet_id' => $wallet->id,
+                'type' => 'purchase',
+                'direction' => 'debit',
+                'amount' => 10,
+                'bonus_amount' => 10,
+                'currency' => 'EUR',
+                'status' => 'completed',
+                'description' => 'Marketplace purchase',
+                'created_at' => now()->subHour(),
+                'updated_at' => now()->subHour(),
+            ],
+        ]);
+
+        $this->assertTrue($wallet->repairOrphanedWelcomeBonus());
+        $wallet->refresh();
+        $this->assertSame(10.0, (float) $wallet->bonus_balance);
+        $this->assertSame(80.0, $wallet->withdrawableBalance());
+    }
+
     public function test_reconcile_inflated_bonus_clamps_to_ledger_credits(): void
     {
         $wallet = $this->makeWallet(45, 45);
@@ -177,6 +266,53 @@ class WalletBonusTest extends TestCase
         $wallet->refresh();
         $this->assertEquals(20.0, (float) $wallet->balance);
         $this->assertEquals(20.0, (float) $wallet->bonus_balance);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+    }
+
+    public function test_consume_reserved_does_not_go_negative_when_bucket_is_empty(): void
+    {
+        $wallet = $this->makeWallet(20, 20);
+
+        $wallet->consumeReserved(50);
+
+        $wallet->refresh();
+        $this->assertEquals(20.0, (float) $wallet->balance);
+        $this->assertEquals(0.0, (float) $wallet->reserved_balance);
+        $this->assertEquals(20.0, (float) $wallet->bonus_balance);
+        $this->assertEquals(0.0, (float) $wallet->bonus_reserved);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+    }
+
+    public function test_refund_reserved_does_not_mint_cash_when_bucket_is_empty(): void
+    {
+        $wallet = $this->makeWallet(0, 0);
+
+        $wallet->refundReserved(50);
+
+        $wallet->refresh();
+        $this->assertEquals(0.0, (float) $wallet->balance);
+        $this->assertEquals(0.0, (float) $wallet->reserved_balance);
+        $this->assertEquals(0.0, (float) $wallet->bonus_balance);
+        $this->assertEquals(0.0, (float) $wallet->bonus_reserved);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+    }
+
+    public function test_consume_and_refund_reserved_clamp_to_what_is_actually_reserved(): void
+    {
+        $wallet = $this->makeWallet(20, 20);
+        $wallet->reserveForOrder(20);
+
+        $wallet->consumeReserved(50);
+        $wallet->refresh();
+        $this->assertEquals(0.0, (float) $wallet->reserved_balance);
+        $this->assertEquals(0.0, (float) $wallet->bonus_reserved);
+        $this->assertEquals(0.0, (float) $wallet->balance);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+
+        $wallet->refundReserved(50);
+        $wallet->refresh();
+        $this->assertEquals(0.0, (float) $wallet->balance);
+        $this->assertEquals(0.0, (float) $wallet->reserved_balance);
         $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
 }

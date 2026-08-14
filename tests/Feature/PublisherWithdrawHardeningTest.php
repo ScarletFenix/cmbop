@@ -74,6 +74,7 @@ class PublisherWithdrawHardeningTest extends TestCase
 
         $this->assertDatabaseHas('withdrawals', [
             'user_id' => $publisher->id,
+            'wallet_id' => $publisher->activeWallet()?->id,
             'amount' => 20,
             'status' => 'pending',
         ]);
@@ -132,6 +133,60 @@ class PublisherWithdrawHardeningTest extends TestCase
             'direction' => 'credit',
             'reference' => 'WD-'.$withdrawal->id.'-cancel',
         ]);
+    }
+
+    public function test_cancel_credits_the_debited_wallet_not_the_active_role(): void
+    {
+        Mail::fake();
+
+        $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $user->roles()->attach([$advertiserRole->id, $publisherRole->id]);
+
+        $advertiserWallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $advertiserRole->id,
+            'balance' => 50,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+        $publisherWallet = Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $publisherRole->id,
+            'balance' => 80,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $this->actingAs($user)
+            ->postJson(route('advertiser.balance.withdraw'), [
+                'amount' => 20,
+                'payment_method' => 'paypal',
+                'business_name' => 'Acme Media',
+                'paypal_email' => 'user@example.com',
+            ])
+            ->assertOk();
+
+        $withdrawal = Withdrawal::where('user_id', $user->id)->firstOrFail();
+        $this->assertSame($advertiserWallet->id, (int) $withdrawal->wallet_id);
+        $this->assertSame(30.0, (float) $advertiserWallet->fresh()->balance);
+
+        $user->active_role_id = $publisherRole->id;
+        $user->save();
+
+        $this->actingAs($user->fresh())
+            ->postJson(route('publisher.withdrawals.cancel', $withdrawal->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(50.0, (float) $advertiserWallet->fresh()->balance);
+        $this->assertSame(80.0, (float) $publisherWallet->fresh()->balance);
     }
 
     public function test_admin_reject_label_is_rejected(): void

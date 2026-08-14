@@ -428,4 +428,104 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertCount(1, $response->json('orders'));
         $this->assertStringContainsString('ORD-PAGE', $response->json('orders.0.order_number'));
     }
+
+    public function test_list_puts_review_above_active_and_sinks_completed_and_cancelled(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Queue Site');
+
+        $completed = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-Q-DONE',
+            'status' => 'completed',
+        ], [
+            'live_url' => 'https://live.example/done',
+        ]);
+        $cancelled = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-Q-CXL',
+            'status' => 'cancelled',
+        ]);
+        $processing = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-Q-PROC',
+            'status' => 'processing',
+        ]);
+        $review = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-Q-REV',
+            'status' => 'review',
+        ], [
+            'live_url' => 'https://live.example/review-me',
+        ]);
+        $completed->forceFill(['created_at' => now()->subDay()])->save();
+        $cancelled->forceFill(['created_at' => now()->subHours(2)])->save();
+        $processing->forceFill(['created_at' => now()->subHours(6)])->save();
+        $review->forceFill(['created_at' => now()->subHours(8)])->save();
+
+        $ids = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+
+        $this->assertSame([
+            $review->id,
+            $processing->id,
+            $cancelled->id,
+            $completed->id,
+        ], $ids);
+    }
+
+    public function test_completed_filter_is_newest_first_without_sink(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Completed Filter Site');
+
+        $older = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-C-OLD',
+            'status' => 'completed',
+        ]);
+        $newer = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-C-NEW',
+            'status' => 'completed',
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-C-PROC',
+            'status' => 'processing',
+        ]);
+        $older->forceFill(['created_at' => now()->subDays(3)])->save();
+        $newer->forceFill(['created_at' => now()->subDay()])->save();
+
+        $ids = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['status' => 'completed']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+
+        $this->assertSame([$newer->id, $older->id], $ids);
+    }
+
+    public function test_search_still_returns_completed_but_keeps_it_sunk(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher, 'Sink Search Site');
+
+        $completed = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SINK-DONE',
+            'reference_code' => 'REF-SINK-SHARED',
+            'status' => 'completed',
+        ]);
+        $processing = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'ORD-SINK-PROC',
+            'reference_code' => 'REF-SINK-SHARED',
+            'status' => 'processing',
+        ]);
+        $completed->forceFill(['created_at' => now()->subHour()])->save();
+        $processing->forceFill(['created_at' => now()->subHours(3)])->save();
+
+        $ids = collect($this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', ['search' => 'SINK-SHARED']))
+            ->assertOk()
+            ->json('orders'))->pluck('id')->all();
+
+        $this->assertSame([$processing->id, $completed->id], $ids);
+    }
 }

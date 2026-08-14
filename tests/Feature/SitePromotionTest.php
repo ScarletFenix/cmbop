@@ -69,6 +69,23 @@ class SitePromotionTest extends TestCase
         $this->assertSame(40.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
     }
 
+    public function test_feature_cannot_spend_promotional_bonus(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        Wallet::where('user_id', $publisher->id)->update([
+            'bonus_balance' => 50,
+        ]);
+        $site = $this->site($publisher);
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.feature', $site->id))
+            ->assertStatus(422)
+            ->assertJson(['needs_top_up' => true]);
+
+        $this->assertFalse($site->fresh()->isFeatured());
+        $this->assertEqualsWithDelta(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);
+        $this->assertEqualsWithDelta(50.0, (float) Wallet::where('user_id', $publisher->id)->value('bonus_balance'), 0.01);
+    }
+
     public function test_feature_requires_sufficient_balance(): void
     {
         $publisher = $this->publisherWithWallet(5);
@@ -217,5 +234,17 @@ class SitePromotionTest extends TestCase
             'payment_method' => 'stripe',
             'stripe_session_id' => 'cs_test_feature_audit_1',
         ]);
+    }
+
+    public function test_feature_stripe_amount_must_match_configured_price(): void
+    {
+        config(['site_promotions.feature.price' => 10]);
+        $promotions = app(SitePromotionService::class);
+
+        $promotions->assertStripeChargeMatchesFeaturePrice((object) ['amount_total' => 1000]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('featured placement costs');
+        $promotions->assertStripeChargeMatchesFeaturePrice((object) ['amount_total' => 100]);
     }
 }

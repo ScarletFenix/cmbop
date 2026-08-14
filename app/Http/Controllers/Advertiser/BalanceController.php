@@ -210,7 +210,7 @@ class BalanceController extends Controller
                     );
                 }
 
-                $withdrawal = Withdrawal::create([
+                $withdrawal = Withdrawal::create(array_merge([
                     'user_id' => $user->id,
                     'amount' => $amount,
                     'fee' => $fee,
@@ -218,7 +218,7 @@ class BalanceController extends Controller
                     'payment_method' => $request->payment_method,
                     'payment_details' => $paymentDetails,
                     'status' => 'pending',
-                ]);
+                ], Withdrawal::walletIdAttributes($locked)));
 
                 $locked->deductWithdrawable($amount);
 

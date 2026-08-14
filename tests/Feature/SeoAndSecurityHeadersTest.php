@@ -186,5 +186,12 @@ class SeoAndSecurityHeadersTest extends TestCase
         $this->assertStringContainsString('cdn.quilljs.com', $csp);
         $this->assertStringContainsString('cdn.jsdelivr.net', $csp);
         $this->assertStringContainsString('js.stripe.com', $csp);
+
+        $htaccess = (string) file_get_contents(public_path('.htaccess'));
+        $this->assertStringNotContainsString(
+            'Content-Security-Policy',
+            $htaccess,
+            'A second CSP in .htaccess is intersected by the browser and blocks Quill/jsDelivr.'
+        );
     }
 }

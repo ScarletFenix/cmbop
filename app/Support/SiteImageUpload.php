@@ -14,6 +14,11 @@ final class SiteImageUpload
 {
     public const APP_MAX_KILOBYTES = 10240;
 
+    /**
+     * Paths already persisted by the dedicated upload-image endpoint.
+     */
+    public const STORED_PATH_REGEX = '/^sites\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.(jpe?g|png|gif|webp)$/i';
+
     public static function maxKilobytes(): int
     {
         return max(1, min(self::APP_MAX_KILOBYTES, self::phpUploadMaxKilobytes()));
@@ -67,44 +72,36 @@ final class SiteImageUpload
     /**
      * Lowest of upload_max_filesize and (post_max_size minus a small form-fields headroom).
      */
-    public static function phpUploadMaxKilobytes(): int
+    public static function fieldRules(bool $hasUploadedFile, bool $required = false): array|string
     {
-        $upload = self::iniSizeToKilobytes(ini_get('upload_max_filesize') ?: '');
-        $post = self::iniSizeToKilobytes(ini_get('post_max_size') ?: '');
+        $presence = $required ? 'required' : 'nullable';
 
-        $limits = [];
-        if ($upload !== null) {
-            $limits[] = $upload;
-        }
-        if ($post !== null) {
-            // Leave room for CSRF + other fields so post_max_size is not the silent failure mode.
-            $limits[] = max(1, $post - 256);
+        if ($hasUploadedFile) {
+            return $presence.'|file|mimes:jpeg,png,jpg,gif,webp|max:'.self::maxKilobytes();
         }
 
-        return $limits !== [] ? min($limits) : self::APP_MAX_KILOBYTES;
+        return [$presence, 'string', 'max:255', 'regex:'.self::STORED_PATH_REGEX];
     }
 
-    private static function iniSizeToKilobytes(string $value): ?int
+    public static function normalizeStoredPath(mixed $value): ?string
     {
-        $value = trim($value);
-        if ($value === '' || $value === '0') {
+        if (! is_string($value) || $value === '') {
             return null;
         }
 
-        $unit = strtolower(substr($value, -1));
-        $number = (float) $value;
-
-        $bytes = match ($unit) {
-            'g' => (int) round($number * 1024 * 1024 * 1024),
-            'm' => (int) round($number * 1024 * 1024),
-            'k' => (int) round($number * 1024),
-            default => (int) round((float) $value),
-        };
-
-        if ($bytes < 1024) {
-            return 1;
+        $path = ltrim(str_replace('\\', '/', $value), '/');
+        if ($path === '' || str_contains($path, '..') || preg_match(self::STORED_PATH_REGEX, $path) !== 1) {
+            return null;
         }
 
-        return (int) floor($bytes / 1024);
+        return $path;
+    }
+
+    /**
+     * Lowest of upload_max_filesize and (post_max_size minus a small form-fields headroom).
+     */
+    public static function phpUploadMaxKilobytes(): int
+    {
+        return PhpIniSize::uploadMaxKilobytes(self::APP_MAX_KILOBYTES);
     }
 }

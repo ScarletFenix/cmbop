@@ -17,6 +17,7 @@ use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
@@ -25,6 +26,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -843,6 +845,18 @@ class SiteController extends Controller
         $storedImagePath = null;
         $publisherId = (int) $request->input('publisher_id');
 
+        $imagePath = null;
+        if ($request->hasFile('site_image')) {
+            $stored = $this->storeStaffSiteImage($request->file('site_image'));
+            if ($stored === null) {
+                throw ValidationException::withMessages([
+                    'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                ]);
+            }
+            PublicStorageLink::ensure();
+            $imagePath = $stored;
+        }
+
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site, &$storedImagePath) {
                 $existing = $this->findSiteByDomain($domain, lock: true);
@@ -1168,8 +1182,8 @@ class SiteController extends Controller
         $previous = is_string($site->site_image) ? $site->site_image : null;
 
         // Store new image first — only delete the previous file after success.
-        $path = $file->store('sites', 'public');
-        if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
+        $path = $this->storeStaffSiteImage($file);
+        if ($path === null) {
             $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
 
             if ($request->expectsJson() || $request->ajax()) {
@@ -1291,18 +1305,12 @@ class SiteController extends Controller
             'verified' => $site->verified,
         ];
 
-        if ($isMarketingEditor) {
-            $data = $this->marketingUpdatePayload($request, $site);
+        $data = $isMarketingEditor
+            ? $this->marketingUpdatePayload($request, $site)
+            : $this->adminUpdatePayload($request, $site);
 
-            if ($data instanceof JsonResponse) {
-                return $data;
-            }
-
-            if ($data instanceof RedirectResponse) {
-                return $data;
-            }
-        } else {
-            $data = $this->adminUpdatePayload($request, $site);
+        if ($data instanceof JsonResponse || $data instanceof RedirectResponse) {
+            return $data;
         }
 
         unset(
@@ -1475,8 +1483,8 @@ class SiteController extends Controller
                 $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
             }
         }
-        if ($metricMerge !== []) {
-            $request->merge($metricMerge);
+        if ($metrics !== []) {
+            $request->merge($metrics);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1644,7 +1652,22 @@ class SiteController extends Controller
             $data['domain'] = $domain;
         }
 
-        if ($metricMerge !== []) {
+        // category is a VARCHAR (often 50) and is not in $rules. An array 500s
+        // the save; a long free-text value overflows the column.
+        if (array_key_exists('category', $data)) {
+            if (! is_string($data['category'])) {
+                unset($data['category']);
+            } else {
+                $trimmedCategory = trim($data['category']);
+                if ($trimmedCategory === '') {
+                    unset($data['category']);
+                } else {
+                    $data['category'] = Site::fitCategoryColumn($trimmedCategory);
+                }
+            }
+        }
+
+        if ($metrics !== []) {
             $data['metrics_manual'] = true;
             $data['metrics_provider'] = 'manual';
             $data['metrics_fetched_at'] = now();
@@ -1675,8 +1698,8 @@ class SiteController extends Controller
             $disk = Storage::disk('public');
             $disk->makeDirectory('sites');
 
-            $stored = $upload->store('sites', 'public');
-            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            $stored = $this->storeStaffSiteImage($upload);
+            if ($stored === null) {
                 throw ValidationException::withMessages([
                     'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
                 ]);
@@ -1745,6 +1768,16 @@ class SiteController extends Controller
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $canFixListing = ! $this->marketingListingIsLocked($site);
 
+        $metrics = [];
+        foreach (['da', 'dr', 'traffic'] as $metric) {
+            if ($request->exists($metric)) {
+                $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
+            }
+        }
+        if ($metrics !== []) {
+            $request->merge($metrics);
+        }
+
         if ($canFixListing) {
             $this->mergeNormalizedUrlOrFail($request, 'site_url', 'siteUrl');
             $this->mergeNormalizedUrlOrFail($request, 'example_url', 'exampleUrl', nullable: true);
@@ -1774,6 +1807,7 @@ class SiteController extends Controller
             'language' => 'required|string|max:10',
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
+            'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
         ];
         if ($canFixListing) {
             $rules['site_name'] = 'sometimes|required|string|max:255';
@@ -1924,8 +1958,8 @@ class SiteController extends Controller
             $disk = Storage::disk('public');
             $disk->makeDirectory('sites');
 
-            $stored = $upload->store('sites', 'public');
-            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            $stored = $this->storeStaffSiteImage($upload);
+            if ($stored === null) {
                 $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
                 if ($request->expectsJson() || $request->ajax()) {
                     return response()->json([
@@ -2174,9 +2208,28 @@ class SiteController extends Controller
             'site_image.uploaded' => 'The site image failed to upload. Use JPEG, PNG, GIF, or WebP under '.$mb.' MB (check the file is not corrupted).',
             'site_image.image' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
             'site_image.mimes' => 'The site image must be a JPEG, PNG, GIF, or WebP file.',
+            'site_image.regex' => 'The site image must be a stored sites/ path or an uploaded JPEG, PNG, GIF, or WebP file.',
             'site_image.max' => 'The site image must be under '.$mb.' MB.',
             'site_image.required' => 'Choose a site image to upload.',
         ];
+    }
+
+    /**
+     * Persist a staff cover as WebP when GD can convert; otherwise keep the original file.
+     */
+    private function storeStaffSiteImage(UploadedFile $file): ?string
+    {
+        $disk = Storage::disk('public');
+        $disk->makeDirectory('sites');
+
+        $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
+            ?? $file->store('sites', 'public');
+
+        if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+            return null;
+        }
+
+        return $stored;
     }
 
     /**
@@ -2449,6 +2502,29 @@ class SiteController extends Controller
         $query = isset($parts['query']) && $parts['query'] !== '' ? '?'.$parts['query'] : '';
 
         return $scheme.'://'.$authority.$path.$query;
+    }
+
+    /**
+     * First usable positive int from a query/form value.
+     * PHP casts any non-empty array to 1, which would select user 1.
+     */
+    private function firstPositiveInt(mixed $value): int
+    {
+        if (is_array($value)) {
+            $flat = [];
+            array_walk_recursive($value, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $value = $flat[0] ?? 0;
+        }
+
+        if (! is_scalar($value)) {
+            return 0;
+        }
+
+        return max(0, (int) $value);
     }
 
     /**

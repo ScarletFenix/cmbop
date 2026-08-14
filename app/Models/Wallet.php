@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 
 class Wallet extends Model
@@ -337,6 +338,10 @@ class Wallet extends Model
     /**
      * Repair wallets where welcome credit landed in balance but bonus_balance was left at 0
      * (e.g. bonus columns added after registration without a backfill).
+     *
+     * Uses remaining promotional credit (received − spent − reserved), not lifetime
+     * bonus_credit. Lifetime credits re-tagged deposited cash after the welcome
+     * bonus had already been spent.
      */
     public function repairOrphanedWelcomeBonus(): bool
     {
@@ -350,25 +355,12 @@ class Wallet extends Model
             return false;
         }
 
-        $ledgerBonus = 0.0;
-        if (Schema::hasTable('wallet_transactions')) {
-            $ledgerBonus = (float) DB::table('wallet_transactions')
-                ->where('wallet_id', $this->id)
-                ->where('type', 'bonus_credit')
-                ->sum('bonus_amount');
-            if ($ledgerBonus <= 0) {
-                $ledgerBonus = (float) DB::table('wallet_transactions')
-                    ->where('wallet_id', $this->id)
-                    ->where('type', 'bonus_credit')
-                    ->sum('amount');
-            }
-        }
-
-        if ($ledgerBonus <= 0) {
+        $remaining = $this->remainingPromotionalCredit();
+        if ($remaining === null || $remaining <= 0) {
             return false;
         }
 
-        $this->bonus_balance = round(min($balance, $ledgerBonus), 2);
+        $this->bonus_balance = round(min($balance, $remaining), 2);
         $this->save();
 
         return true;
@@ -384,8 +376,35 @@ class Wallet extends Model
             return false;
         }
 
-        if (! Schema::hasTable('wallet_transactions')) {
+        $remaining = $this->remainingPromotionalCredit();
+        if ($remaining === null) {
             return false;
+        }
+
+        $balance = round((float) $this->balance, 2);
+        $current = round((float) $this->bonus_balance, 2);
+        $target = round(min($balance, $remaining), 2);
+
+        if ($current <= $target + 0.001) {
+            return false;
+        }
+
+        $this->bonus_balance = $target;
+        $this->save();
+
+        return true;
+    }
+
+    /**
+     * Promotional credit still available to tag as bonus_balance.
+     * received bonus_credit − spent debit bonus_amount − currently reserved promo.
+     *
+     * @return float|null null when the ledger has no promotional credits (or no table)
+     */
+    public function remainingPromotionalCredit(): ?float
+    {
+        if (! Schema::hasTable('wallet_transactions')) {
+            return null;
         }
 
         $received = (float) DB::table('wallet_transactions')
@@ -399,7 +418,7 @@ class Wallet extends Model
                 ->sum('amount');
         }
         if ($received <= 0) {
-            return false;
+            return null;
         }
 
         $spent = (float) DB::table('wallet_transactions')
@@ -408,20 +427,8 @@ class Wallet extends Model
             ->sum('bonus_amount');
 
         $reserved = round((float) $this->bonus_reserved, 2);
-        $allowedRemaining = max(0, round($received - $spent, 2));
-        $allowedAvailable = max(0, round($allowedRemaining - $reserved, 2));
-        $balance = round((float) $this->balance, 2);
-        $current = round((float) $this->bonus_balance, 2);
-        $target = round(min($balance, $allowedAvailable), 2);
 
-        if ($current <= $target + 0.001) {
-            return false;
-        }
-
-        $this->bonus_balance = $target;
-        $this->save();
-
-        return true;
+        return max(0, round($received - $spent - $reserved, 2));
     }
 
     /**
@@ -436,15 +443,43 @@ class Wallet extends Model
 
     /**
      * Order completed: drop reserved funds (bonus portion is permanently spent).
+     * Never drive reserved_balance / bonus_reserved negative — clamp and log.
      */
     public function consumeReserved(float $amount): void
     {
         $amount = round($amount, 2);
-        $this->reserved_balance = round((float) $this->reserved_balance - $amount, 2);
+        if ($amount <= 0) {
+            return;
+        }
+
+        $available = max(0, round((float) $this->reserved_balance, 2));
+        if ($available <= 0) {
+            Log::warning('Wallet consumeReserved skipped: reserved_balance is empty', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+            ]);
+
+            return;
+        }
+
+        $consume = min($amount, $available);
+        if ($consume < $amount) {
+            Log::warning('Wallet consumeReserved clamped to reserved_balance', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+                'consumed' => $consume,
+                'reserved_balance' => $available,
+            ]);
+        }
+
+        $this->reserved_balance = round($available - $consume, 2);
 
         if (Schema::hasColumn('wallets', 'bonus_reserved')) {
-            $fromBonus = min($amount, (float) $this->bonus_reserved);
-            $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+            $bonusReserved = max(0, round((float) ($this->bonus_reserved ?? 0), 2));
+            $fromBonus = min($consume, $bonusReserved);
+            $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         }
 
         $this->save();
@@ -452,15 +487,43 @@ class Wallet extends Model
 
     /**
      * Order rejected / cancelled: return reserved funds; restore any promo portion as spend-only.
+     * Only moves money that is actually reserved — never invents withdrawable cash.
      */
     public function refundReserved(float $amount): void
     {
         $amount = round($amount, 2);
-        $fromBonus = min($amount, (float) $this->bonus_reserved);
+        if ($amount <= 0) {
+            return;
+        }
 
-        $this->reserved_balance = round((float) $this->reserved_balance - $amount, 2);
-        $this->balance = round((float) $this->balance + $amount, 2);
-        $this->bonus_reserved = round((float) $this->bonus_reserved - $fromBonus, 2);
+        $available = max(0, round((float) $this->reserved_balance, 2));
+        if ($available <= 0) {
+            Log::warning('Wallet refundReserved skipped: reserved_balance is empty', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+            ]);
+
+            return;
+        }
+
+        $refund = min($amount, $available);
+        if ($refund < $amount) {
+            Log::warning('Wallet refundReserved clamped to reserved_balance', [
+                'wallet_id' => $this->id,
+                'user_id' => $this->user_id,
+                'requested' => $amount,
+                'refunded' => $refund,
+                'reserved_balance' => $available,
+            ]);
+        }
+
+        $bonusReserved = max(0, round((float) ($this->bonus_reserved ?? 0), 2));
+        $fromBonus = min($refund, $bonusReserved);
+
+        $this->reserved_balance = round($available - $refund, 2);
+        $this->balance = round((float) $this->balance + $refund, 2);
+        $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         $this->bonus_balance = round((float) $this->bonus_balance + $fromBonus, 2);
         $this->save();
     }

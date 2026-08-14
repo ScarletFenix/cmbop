@@ -12,6 +12,7 @@ class ContentQualityAnalyzer
     {
         $words = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY) ?: [];
         $wordCount = count($words);
+        $sampleWords = count($words) > 15000 ? array_slice($words, 0, 15000) : $words;
         $min = (int) ($qualityConfig['min_word_count'] ?? 500);
         $warn = (int) ($qualityConfig['warn_word_count'] ?? 300);
         $maxLinks = (int) ($qualityConfig['max_external_links'] ?? 15);
@@ -32,7 +33,7 @@ class ContentQualityAnalyzer
         }
 
         // Readability (Flesch-like approximation)
-        $readability = $this->readabilityScore($text);
+        $readability = $this->readabilityScore($text, $sampleWords);
         $checks[] = $this->check(
             'readability',
             'Readability',
@@ -63,7 +64,7 @@ class ContentQualityAnalyzer
         }
 
         // Keyword stuffing heuristic
-        $stuffing = $this->keywordStuffingRatio($words);
+        $stuffing = $this->keywordStuffingRatio($sampleWords);
         $checks[] = $this->check(
             'keyword_stuffing',
             'Keyword Density',
@@ -101,10 +102,14 @@ class ContentQualityAnalyzer
         return compact('key', 'label', 'status', 'detail');
     }
 
-    protected function readabilityScore(string $text): array
+    /**
+     * @param  array<int, string>|null  $words
+     */
+    protected function readabilityScore(string $text, ?array $words = null): array
     {
-        $sentences = preg_split('/[.!?]+/u', $text, -1, PREG_SPLIT_NO_EMPTY) ?: [];
-        $words = preg_split('/\s+/u', trim($text), -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $sample = mb_strlen($text) > 80000 ? mb_substr($text, 0, 80000) : $text;
+        $sentences = preg_split('/[.!?]+/u', $sample, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+        $words = $words ?? (preg_split('/\s+/u', trim($sample), -1, PREG_SPLIT_NO_EMPTY) ?: []);
         $syllables = 0;
         foreach ($words as $w) {
             $syllables += max(1, preg_match_all('/[aeiouy]+/i', $w));

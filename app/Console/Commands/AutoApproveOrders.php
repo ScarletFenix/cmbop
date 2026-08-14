@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -79,7 +80,8 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('content_revision_requested');
             })
             ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+                $q->where('status', 'review')
+                    ->where('payment_status', 'paid');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -159,7 +161,8 @@ class AutoApproveOrders extends Command
                     ->orWhereNull('content_revision_requested');
             })
             ->whereHas('order', function ($q) {
-                $q->where('status', 'review');
+                $q->where('status', 'review')
+                    ->where('payment_status', 'paid');
             });
 
         if (OrderItem::autoApproveRequiresLiveUrlOk() && Schema::hasColumn('order_items', 'live_url_check_ok')) {
@@ -186,6 +189,13 @@ class AutoApproveOrders extends Command
                 $order = Order::where('id', $orderItem->order_id)->lockForUpdate()->first();
                 if (! $order || $order->status === 'completed' || $order->status === 'cancelled') {
                     DB::rollBack();
+
+                    continue;
+                }
+
+                if ($order->payment_status !== 'paid') {
+                    DB::rollBack();
+                    $this->warn("Skip order #{$order->id}: payment is not complete ({$order->payment_status})");
 
                     continue;
                 }
@@ -309,16 +319,14 @@ class AutoApproveOrders extends Command
                     }
                 }
 
-                if ($order->payment_method === 'wallet') {
-                    $advertiserRoleId = Wallet::advertiserRoleId();
-                    $advertiserWallet = $advertiserRoleId
-                        ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
-                        : null;
+                $advertiserRoleId = Wallet::advertiserRoleId();
+                $advertiserWallet = $advertiserRoleId
+                    ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
+                    : null;
 
-                    if ($advertiserWallet) {
-                        $advertiserWallet->consumeReserved((float) $order->total_amount);
-                        $this->info('✓ Reserved funds released from advertiser wallet');
-                    }
+                if ($advertiserWallet) {
+                    app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
+                    $this->info('✓ Reserved funds released from advertiser wallet');
                 }
 
                 DB::commit();
