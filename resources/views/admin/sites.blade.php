@@ -734,26 +734,51 @@ document.addEventListener('click', function(e){
     if(e.target.closest('.delete-site')){
         let id = e.target.closest('button').dataset.id;
         let site = allSites.find(s => s.id == id);
+        const needsReason = IS_MARKETING_EDITOR;
 
         Swal.fire({
-            title:'Delete this site?',
-            text: `Are you sure you want to delete "${site?.site_name}"?`,
+            title: needsReason ? 'Reject this site?' : 'Delete this site?',
+            text: needsReason
+                ? `Explain why "${site?.site_name}" is being rejected. The publisher will see this reason.`
+                : `Are you sure you want to delete "${site?.site_name}"?`,
+            input: needsReason ? 'textarea' : undefined,
+            inputPlaceholder: needsReason ? 'Rejection reason (at least 10 characters)' : undefined,
+            inputAttributes: needsReason ? { 'aria-label': 'Rejection reason', maxlength: '1000' } : undefined,
             icon:'warning',
             showCancelButton:true,
-            confirmButtonText:'Delete',
-            customClass: { confirmButton: 'slb-swal-danger' }
+            confirmButtonText: needsReason ? 'Reject' : 'Delete',
+            customClass: { confirmButton: 'slb-swal-danger' },
+            preConfirm: needsReason ? (value) => {
+                const reason = String(value || '').trim();
+                if (reason.length < 10) {
+                    Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                    return false;
+                }
+                if (reason.length > 1000) {
+                    Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                    return false;
+                }
+                return reason;
+            } : undefined,
         }).then(result => {
             if(!result.isConfirmed) return;
 
-            fetch(`${STAFF_BASE}/sites/${id}`, {
+            const headers = {
+                'X-CSRF-TOKEN': CSRF_TOKEN,
+                'Accept': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest',
+            };
+            const opts = {
                 method:'DELETE',
-                headers:{
-                    'X-CSRF-TOKEN': CSRF_TOKEN,
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest',
-                },
+                headers,
                 credentials: 'same-origin',
-            })
+            };
+            if (needsReason) {
+                headers['Content-Type'] = 'application/json';
+                opts.body = JSON.stringify({ reason: String(result.value || '').trim() });
+            }
+
+            fetch(`${STAFF_BASE}/sites/${id}`, opts)
             .then(async (res) => {
                 let data = {};
                 try {
@@ -763,7 +788,10 @@ document.addEventListener('click', function(e){
                 }
 
                 if(!res.ok || !data.success) {
-                    throw new Error(data.message || 'Failed to delete site');
+                    const reasonErr = data.errors && data.errors.reason
+                        ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
+                        : null;
+                    throw new Error(reasonErr || data.message || 'Failed to delete site');
                 }
 
                 toast(data.message || 'Deleted successfully');
