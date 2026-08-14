@@ -144,6 +144,19 @@ class ContentModerationHardeningTest extends TestCase
         $this->assertEmpty($result['blocked_urls']);
     }
 
+    public function test_crypto_promo_copy_is_accepted(): void
+    {
+        $result = $this->engine->score(
+            title: 'Bitcoin market notes',
+            text: 'Guaranteed crypto profits from our pump and dump group — get rich with bitcoin now.',
+            links: [],
+            categories: $this->categories,
+        );
+
+        $this->assertLessThan(70, $result['max_confidence']);
+        $this->assertNotSame('crypto_promo', $result['detected_category']);
+    }
+
     public function test_generic_english_words_are_not_treated_as_gambling(): void
     {
         $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
@@ -253,7 +266,7 @@ class ContentModerationHardeningTest extends TestCase
             $this->assertNotEmpty($adultLocales[$code], 'adult empty locale '.$code);
         }
 
-        foreach (['cbd', 'alcohol', 'tobacco', 'weapons', 'crypto_promo'] as $category) {
+        foreach (['cbd', 'alcohol', 'tobacco', 'weapons'] as $category) {
             $locales = $this->categories[$category]['keywords_by_locale'] ?? [];
             foreach ($languages as $code) {
                 if ($code === 'en') {

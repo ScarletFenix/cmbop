@@ -425,9 +425,12 @@ return [
             'domains' => [],
             'intent_phrases' => [],
         ],
+        // Crypto is an accepted marketplace topic (publishers can sell crypto
+        // placements). Keep the category for an admin who wants it back, but
+        // do not scan it by default.
         'crypto_promo' => [
             'label' => 'Cryptocurrency Promotions',
-            'enabled' => true,
+            'enabled' => false,
             'weight' => 0.7,
             'keywords' => ['guaranteed crypto profits', 'pump and dump', 'get rich with bitcoin'],
             'keywords_by_locale' => [

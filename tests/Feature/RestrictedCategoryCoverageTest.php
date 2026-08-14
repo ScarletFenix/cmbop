@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentModerationSetting;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
@@ -39,7 +40,6 @@ class RestrictedCategoryCoverageTest extends TestCase
             'alcohol' => 'Our online liquor store lets you buy vodka and cheap whiskey delivered to your door.',
             'tobacco' => 'Buy cigarettes online and get vape juice wholesale from our tobacco shop online.',
             'weapons' => 'Buy firearms and ammunition for sale, including ghost gun kits, shipped discreetly.',
-            'crypto_promo' => 'Guaranteed crypto profits from our pump and dump group — get rich with bitcoin now.',
         ];
 
         $slippedThrough = [];
@@ -52,6 +52,15 @@ class RestrictedCategoryCoverageTest extends TestCase
 
         // Reported together: knowing only the first gap hides the rest.
         $this->assertSame([], $slippedThrough, 'Not flagged: '.implode(', ', $slippedThrough));
+    }
+
+    public function test_crypto_articles_are_accepted(): void
+    {
+        $result = $this->scan(
+            'Guaranteed crypto profits from our pump and dump group — get rich with bitcoin now.'
+        );
+
+        $this->assertTrue((bool) ($result['passed'] ?? false), 'Crypto copy was rejected.');
     }
 
     public function test_ordinary_marketing_copy_still_passes(): void
@@ -72,8 +81,31 @@ class RestrictedCategoryCoverageTest extends TestCase
             ->keys()
             ->all();
 
-        // A category shipped off is one nobody knows is off.
-        $this->assertSame([], $off, 'Categories default to disabled: '.implode(', ', $off));
+        // Crypto is an accepted topic; everything else must stay on.
+        $this->assertSame(['crypto_promo'], $off, 'Unexpected categories default to disabled: '.implode(', ', $off));
+    }
+
+    public function test_a_stored_enable_list_does_not_keep_crypto_promo_on(): void
+    {
+        ContentModerationSetting::setValue('disabled_categories', []);
+        ContentModerationSetting::setValue('enabled_categories', [
+            'gambling', 'adult', 'cbd', 'alcohol', 'tobacco', 'weapons', 'crypto_promo',
+        ]);
+
+        $migration = require database_path(
+            'migrations/2026_08_14_192600_disable_crypto_promo_moderation_category.php'
+        );
+        $migration->up();
+        ContentModerationSetting::clearCache();
+
+        $off = collect(app(ContentModerationService::class)->activeCategories())
+            ->reject(fn ($cat) => (bool) ($cat['enabled'] ?? false))
+            ->keys()
+            ->all();
+
+        $this->assertContains('crypto_promo', $off);
+        $this->assertNotContains('gambling', $off);
+        $this->assertNotContains('cbd', $off);
     }
 
     public function test_the_admin_screen_warns_when_moderation_is_off(): void
