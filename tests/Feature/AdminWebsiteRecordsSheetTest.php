@@ -289,7 +289,16 @@ class AdminWebsiteRecordsSheetTest extends TestCase
 
         $this->actingAs($marketer)
             ->get(route('admin.sites.records'))
-            ->assertRedirect();
+            ->assertRedirect(route('marketing.dashboard'));
+
+        $this->actingAs($marketer)
+            ->get(route('admin.sites.records.export'))
+            ->assertRedirect(route('marketing.dashboard'));
+
+        $this->actingAs($marketer)
+            ->get(route('marketing.dashboard'))
+            ->assertOk()
+            ->assertSee('Marketing workspace', false);
 
         $this->actingAs($advertiser)
             ->get(route('admin.sites.records'))
