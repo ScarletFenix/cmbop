@@ -134,6 +134,37 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
+    public function test_array_active_zero_deactivates_instead_of_activating(): void
+    {
+        $site = $this->site(['active' => false]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), [
+                'active' => ['0'],
+                'reason' => 'Keep this listing off the catalog for now.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', false);
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_array_verified_zero_does_not_approve(): void
+    {
+        $site = $this->site(['verified' => false, 'active' => false]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), [
+                'verified' => ['0'],
+                'reason' => 'Still waiting on listing details from the publisher.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse((bool) $site->fresh()->verified);
+    }
+
     public function test_staff_list_flags_blocked_activate(): void
     {
         $blocked = $this->site([

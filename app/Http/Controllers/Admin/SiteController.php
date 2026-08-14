@@ -1975,6 +1975,36 @@ class SiteController extends Controller
     }
 
     /**
+     * On/off flag from JSON or form input.
+     * PHP casts any non-empty array to 1, so active:[0] would activate.
+     */
+    private function requestFlag(Request $request, string $key): bool
+    {
+        $value = $request->input($key);
+        if (is_array($value)) {
+            $flat = [];
+            array_walk_recursive($value, function ($item) use (&$flat) {
+                if (is_scalar($item)) {
+                    $flat[] = $item;
+                }
+            });
+            $value = $flat[0] ?? false;
+        }
+
+        if (is_bool($value)) {
+            return $value;
+        }
+
+        if (is_int($value) || is_float($value)) {
+            return (int) $value === 1;
+        }
+
+        $raw = strtolower(trim((string) $value));
+
+        return in_array($raw, ['1', 'true', 'on', 'yes'], true);
+    }
+
+    /**
      * Normalize DA/DR/traffic from number inputs (commas, decimals, blanks).
      */
     private function normalizeMetricInt(mixed $value): ?int
@@ -2028,7 +2058,7 @@ class SiteController extends Controller
             ], 403);
         }
 
-        $approving = (bool) (int) $request->verified;
+        $approving = $this->requestFlag($request, 'verified');
         $reason = $this->validatedStatusReason($request, ! $approving);
 
         $site = Site::findOrFail($id);
@@ -2132,7 +2162,7 @@ class SiteController extends Controller
 
         try {
             $site = Site::findOrFail($id);
-            $activating = (bool) (int) $request->active;
+            $activating = $this->requestFlag($request, 'active');
             // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
 
