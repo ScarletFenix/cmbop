@@ -168,6 +168,7 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
             [$first->id, $second->id],
             OrderItem::whereIn('order_id', Order::where('reference_code', $ref)->pluck('id'))
                 ->pluck('site_id')
+                ->map(fn ($id) => (int) $id)
                 ->all()
         );
         $this->assertTrue($secondPass->every(fn (Order $order) => $order->payment_status === 'paid'));
