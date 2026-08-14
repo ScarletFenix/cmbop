@@ -56,7 +56,7 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Marketing workspace', false)
             ->assertSee('Your recent tasks', false)
             ->assertSee('My task history', false)
-            ->assertSee('Seeded / added sites', false)
+            ->assertSee('<div class="fw-semibold">Seed</div>', false)
             ->assertSee('Seeded 2 draft sites for bulk #9', false)
             ->getContent();
 
@@ -423,6 +423,51 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Use a valid From date.', false)
             ->assertSee('Use a valid To date.', false)
             ->assertSee('Kept when February 31 is submitted', false);
+    }
+
+    public function test_history_shows_done_and_seed_as_distinct_tasks(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'bulk_request.done',
+            'description' => 'Marketer Casey marked Done and added 2 draft site(s) to publisher panel on bulk request #11',
+            'subject_label' => 'Bulk request #11',
+        ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'bulk_request.seeded',
+            'description' => 'Marketer Casey seeded 1 draft site(s) to publisher panel on bulk request #12',
+            'subject_label' => 'Bulk request #12',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('<div class="fw-semibold">Done</div>', false)
+            ->assertSee('<div class="fw-semibold">Seed</div>', false)
+            ->assertSee('Bulk request #11', false)
+            ->assertSee('Bulk request #12', false)
+            ->assertDontSee('Seeded / added sites', false)
+            ->assertDontSee('>bulk_request.done<', false)
+            ->assertDontSee('>bulk_request.seeded<', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'Done']))
+            ->assertOk()
+            ->assertSee('Bulk request #11', false)
+            ->assertDontSee('Bulk request #12', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'Seed']))
+            ->assertOk()
+            ->assertSee('Bulk request #12', false)
+            ->assertDontSee('Bulk request #11', false);
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void
