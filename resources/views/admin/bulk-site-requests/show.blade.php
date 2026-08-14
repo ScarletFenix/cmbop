@@ -200,7 +200,7 @@
                         Reject a site you will not add; the rest of the batch stays open.
                     </p>
 
-                    @if($errors->any())
+                    @if($errors->any() && ! $errors->has('rows'))
                         <div class="alert alert-danger py-2 small">
                             <strong>Finish the boxes first.</strong>
                             {{ $errors->first() }}
@@ -208,7 +208,12 @@
                     @endif
 
                     @if($bulkRequest->items->isEmpty())
-                        <div class="form-text">Legacy request — no URL + price rows. Use Advanced Seed below if you still need to add drafts.</div>
+                        <div class="form-text">
+                            Legacy request — no URL + price rows.
+                            @if($bulkRequest->canAddDraftSites())
+                                Use Advanced Seed below if you still need to add drafts.
+                            @endif
+                        </div>
                     @elseif($pendingItems->isEmpty())
                         <div class="form-text">All submitted rows are already added or rejected.</div>
                     @else

@@ -216,6 +216,58 @@ class MarketingBulkSiteOpsTest extends TestCase
         Mail::assertNothingOutgoing();
     }
 
+    public function test_closed_legacy_request_hides_seed_and_rejects_post(): void
+    {
+        Mail::fake();
+        [$country, $language] = $this->marketplaceCodes();
+
+        $completed = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_COMPLETED,
+            'estimated_count' => 2,
+            'completed_at' => now(),
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $completed))
+            ->assertOk()
+            ->assertSee('Legacy request', false)
+            ->assertDontSee('Use Advanced Seed below', false)
+            ->assertDontSee('data-bulk-advanced-seed', false);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $completed))
+            ->post(route('marketing.bulk-site-requests.seed', $completed), [
+                'rows' => "https://closed-legacy.example,99,40,45,12000,{$country},{$language},Closed",
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $completed))
+            ->assertSessionHas('error', 'This request is closed. Advanced Seed is only for open legacy requests.');
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'closed-legacy.example']);
+        Mail::assertNothingOutgoing();
+    }
+
+    public function test_legacy_seed_validation_error_stays_on_the_seed_box(): void
+    {
+        $bulk = $this->makeBulkRequest();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), [
+                'rows' => '',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('rows');
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertDontSee('Finish the boxes first.', false)
+            ->getContent();
+
+        $this->assertStringContainsString('data-bulk-advanced-seed', $html);
+    }
+
     public function test_marketer_done_rejects_da_or_dr_above_100(): void
     {
         [$country, $language] = $this->marketplaceCodes();
