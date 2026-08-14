@@ -1343,7 +1343,7 @@ class CatalogController extends Controller
                     continue;
                 }
                 $site = $sites->get((int) $row['id']);
-                if (! $site) {
+                if (! $site || $site->isOwnedBy(auth()->user())) {
                     continue;
                 }
                 $key = $this->cartIdentityKey($row);
@@ -1369,7 +1369,7 @@ class CatalogController extends Controller
                 $merged[] = $this->normalizeCartLineForSite($site, $row);
             }
 
-            session()->put('cart', array_values($merged));
+            $this->putCatalogVisibleCart($merged);
 
             return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
@@ -1429,6 +1429,8 @@ class CatalogController extends Controller
 
         $site = Site::query()->catalogVisible()->where('id', $siteId)->first();
         if (! $site) {
+            $this->putCatalogVisibleCart($cart);
+
             return response()->json(['success' => false, 'error' => 'Site not found or inactive.'], 404);
         }
 
@@ -1443,7 +1445,7 @@ class CatalogController extends Controller
         if ($submissionId <= 0) {
             $ids[$copyIndex] = 0;
             $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart($cart);
 
             return response()->json(array_merge(['success' => true, 'message' => 'Article cleared for this placement.'], $this->cartPayloadForClient()));
         }
@@ -1495,7 +1497,7 @@ class CatalogController extends Controller
         } else {
             unset($cart[$lineKey]['language_note']);
         }
-        session()->put('cart', array_values($cart));
+        $this->putCatalogVisibleCart($cart);
 
         $message = $mismatchNote
             ? 'Article assigned (language differs: '.$mismatchNote.').'
@@ -1527,6 +1529,8 @@ class CatalogController extends Controller
 
             $site = Site::query()->catalogVisible()->where('id', $id)->first();
             if (! $site) {
+                $this->putCatalogVisibleCart(session()->get('cart', []));
+
                 return response()->json([
                     'success' => false,
                     'error' => 'Site not found or inactive.',
@@ -1710,7 +1714,7 @@ class CatalogController extends Controller
                 }
             }
 
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart($cart);
 
             $cartCount = array_sum(array_column($cart, 'quantity'));
             $cartTotal = array_sum(array_map(function ($item) {
@@ -1824,7 +1828,7 @@ class CatalogController extends Controller
                 break;
             }
 
-            session()->put('cart', array_values($cart));
+            $this->putCatalogVisibleCart($cart);
 
             return response()->json(array_merge(['success' => true], $this->cartPayloadForClient()));
         } catch (\Exception $e) {
@@ -4316,8 +4320,6 @@ class CatalogController extends Controller
 
             $siteId = (int) ($item['id'] ?? 0);
             if ($siteId <= 0) {
-                $deferred[] = $item;
-
                 continue;
             }
 
