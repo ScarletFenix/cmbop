@@ -204,9 +204,10 @@
                                                         </div>
                                                     </div>
                                                 </div>
-                                                @if($summaryArticle->preview_html)
+                                                @php $previewText = $summaryArticle->checkoutPreviewText(); @endphp
+                                                @if($previewText !== '')
                                                     <div class="order-summary-article-preview">
-                                                        {!! \App\Services\ContentUpload\ArticlePreviewHtml::normalize((string) $summaryArticle->preview_html) !!}
+                                                        {{ $previewText }}
                                                     </div>
                                                 @endif
                                                 @php $history = $summaryArticle->articleHistory(); @endphp

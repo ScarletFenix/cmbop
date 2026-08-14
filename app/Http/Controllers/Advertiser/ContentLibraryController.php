@@ -7,7 +7,6 @@ use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
-use App\Services\ContentUpload\ArticlePreviewHtml;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
@@ -535,6 +534,7 @@ class ContentLibraryController extends Controller
         }
 
         return ContentSubmission::query()
+            ->forArticlePicker()
             ->where('id', (int) $id)
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
@@ -564,7 +564,6 @@ class ContentLibraryController extends Controller
             'title' => $s->title,
             'country' => $s->country,
             'language' => $s->language,
-            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'word_count' => $s->word_count,
             'moderation_status' => $s->moderation_status,
             'can_order' => $s->canBeOrdered(),

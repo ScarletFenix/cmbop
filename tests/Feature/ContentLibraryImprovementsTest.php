@@ -1426,6 +1426,55 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('substr(extracted_text', $sql);
     }
 
+    public function test_checkout_page_does_not_embed_full_article_html(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'checkout-excerpt');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $tail = 'CHECKOUT_BODY_TAIL_'.uniqid('', true);
+        $submission->update([
+            'title' => 'Checkout Excerpt Article',
+            'preview_html' => '<p>Opening sentence about productivity software for teams.</p><p>'.str_repeat('More body copy. ', 80).$tail.'</p>',
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $submission->id,
+                    'price' => 46,
+                ]],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->assertSee('Checkout Excerpt Article', false)
+            ->assertSee('Opening sentence about productivity software', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString($tail, $html);
+        $this->assertStringNotContainsString('<p>Opening sentence', $html);
+    }
+
+    public function test_library_edit_query_does_not_embed_article_body(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $marker = 'EDIT_BOOT_BODY_'.uniqid('', true);
+        $submission->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'preview_html' => '<p>'.$marker.'</p>',
+            'extracted_text' => $marker,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['edit' => $submission->id]))
+            ->assertOk()
+            ->assertDontSee($marker, false);
+    }
+
     public function test_legacy_drafts_json_omits_article_bodies(): void
     {
         $advertiser = $this->advertiser();

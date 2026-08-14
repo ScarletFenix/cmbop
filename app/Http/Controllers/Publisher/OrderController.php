@@ -97,7 +97,7 @@ class OrderController extends Controller
             }
 
             // Only paid orders — bank/Wise/crypto fund the wallet first; unpaid card checkouts stay hidden.
-            $query = OrderItem::with(['order.user', 'site', 'contentSubmission'])
+            $query = OrderItem::with(['order.user', 'site'])
                 ->whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
                     $q->where('payment_status', 'paid');
@@ -216,7 +216,9 @@ class OrderController extends Controller
                     'target_url' => $item->target_url,
                     'feature_image_url' => $item->feature_image_url,
                     'moderation_status' => $item->moderation_status,
-                    ...$this->articlePreviewFields($item),
+                    'article_title' => $item->content_original_name ?: null,
+                    'preview_html' => null,
+                    'detected_links' => [],
                     'live_url' => $item->live_url,
                     'live_url_submitted_at' => $item->live_url_submitted_at ?? null,
                     'auto_approve_triggered' => (bool) ($item->auto_approve_triggered ?? false),

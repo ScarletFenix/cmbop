@@ -11,6 +11,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class ContentSubmission extends Model
 {
@@ -273,6 +274,37 @@ class ContentSubmission extends Model
             ->selectRaw(
                 'CASE WHEN '.$table.'.preview_html IS NOT NULL AND '.$table.'.preview_html != \'\' THEN 1 ELSE 0 END as has_preview_html'
             );
+    }
+
+    /**
+     * Checkout cards need history + a short excerpt — not the full 10 MB body.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeForCheckoutSummary($query)
+    {
+        $table = $query->getModel()->getTable();
+
+        return $query->forLibraryList()
+            ->selectRaw('substr('.$table.'.preview_html, 1, 1500) as preview_excerpt');
+    }
+
+    /**
+     * Plain-text snippet for the clipped checkout article card.
+     */
+    public function checkoutPreviewText(int $limit = 280): string
+    {
+        $raw = (string) ($this->attributes['preview_excerpt'] ?? '');
+        if ($raw === '' && array_key_exists('preview_html', $this->attributes)) {
+            $raw = (string) ($this->preview_html ?? '');
+        }
+        $text = trim((string) preg_replace('/\s+/u', ' ', strip_tags($raw)));
+        if ($text === '') {
+            return '';
+        }
+
+        return Str::limit($text, $limit);
     }
 
     /**

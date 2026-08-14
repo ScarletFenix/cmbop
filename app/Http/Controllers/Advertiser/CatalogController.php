@@ -1947,6 +1947,7 @@ class CatalogController extends Controller
             $articleIds = $articleIds->push((int) $librarySubmission->id)->unique()->values();
         }
         $checkoutArticles = ContentSubmission::query()
+            ->forCheckoutSummary()
             ->with(['orderItems.site', 'orderItems.order'])
             ->where('user_id', auth()->id())
             ->whereIn('id', $articleIds->all() ?: [0])
@@ -4387,6 +4388,7 @@ class CatalogController extends Controller
         }
 
         return ContentSubmission::query()
+            ->forCheckoutSummary()
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
             ->orderable()
