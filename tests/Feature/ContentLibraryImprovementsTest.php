@@ -1256,6 +1256,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('The image could not be uploaded', $js);
         $this->assertStringContainsString('The article editor failed to load', $js);
         $this->assertStringContainsString('editor_notice', $js);
+        $this->assertStringContainsString('function submissionForEditor', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
         $this->assertStringContainsString('status === 413 || status === 0', $js);
         $this->assertStringNotContainsString('status === 500', $js);
@@ -1330,6 +1331,57 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('The article could not be uploaded', $message);
         $this->assertStringNotContainsString('Drop a .docx', $message);
         $this->assertStringNotContainsString('country', strtolower($message));
+    }
+
+    public function test_library_list_does_not_select_article_body_columns(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $row = ContentSubmission::query()
+            ->forLibraryList()
+            ->where('id', $submission->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertArrayNotHasKey('extracted_text', $row->getAttributes());
+        $this->assertArrayNotHasKey('preview_html', $row->getAttributes());
+        $this->assertTrue($row->hasPreviewHtml());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->assertSee('js-open-preview', false);
+    }
+
+    public function test_library_upload_json_omits_preview_html(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/omit-html-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 60));
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title' => 'Omit html article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+
+        @unlink($path);
+
+        $response->assertOk()->assertJsonPath('success', true);
+        $this->assertArrayNotHasKey('preview_html', $response->json('submission') ?? []);
+        $this->assertNotEmpty($response->json('submission.id'));
     }
 
     public function test_evaluation_crash_keeps_the_upload_and_returns_json(): void

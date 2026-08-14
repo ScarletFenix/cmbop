@@ -491,6 +491,24 @@ async function parseLibraryJson(res) {
     }
 }
 
+async function submissionForEditor(submission) {
+    if (!submission || !submission.id) {
+        return submission;
+    }
+    if (submission.preview_html) {
+        return submission;
+    }
+    try {
+        const payload = await fetchSubmissionPayload(submission.id);
+        return Object.assign({}, submission, payload, {
+            preview_html: payload.preview_html || payload.html || '',
+            detected_links: payload.detected_links || payload.links || submission.detected_links || [],
+        });
+    } catch (e) {
+        return submission;
+    }
+}
+
 async function fetchSubmissionPayload(submissionId) {
     const res = await fetch(libraryPreviewUrlBase + '/' + submissionId + '/preview', {
         headers: { 'Accept': 'application/json' },
@@ -1771,11 +1789,12 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
                 data.message,
                 !!(data.approved || data.submission.can_order)
             );
-            openArticleEditor(Object.assign({}, data.submission, {
+            const submission = await submissionForEditor(Object.assign({}, data.submission, {
                 can_order: !!(data.submission.can_order || data.approved),
                 editor_notice: data.approved ? '' : (data.message || ''),
                 editor_notice_ok: !!data.approved,
             }));
+            openArticleEditor(submission);
         } else {
             goToLibraryResult({}, data.message || 'Article uploaded.', !!data.approved);
         }

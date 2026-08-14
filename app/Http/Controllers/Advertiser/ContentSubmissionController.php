@@ -284,7 +284,16 @@ class ContentSubmissionController extends Controller
         }
 
         $ext = strtolower($file->getClientOriginalExtension() ?: 'png');
-        $url = $this->uploads->storeArticleImage($binary, $ext, $file->getClientOriginalName(), auth()->user());
+        try {
+            $url = $this->uploads->storeArticleImage($binary, $ext, $file->getClientOriginalName(), auth()->user());
+        } catch (\Throwable $e) {
+            Log::error('Editor image store failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'Unable to store image.'], 500);
+        }
 
         if (! $url) {
             return response()->json(['success' => false, 'message' => 'Unable to store image.'], 500);
@@ -630,7 +639,6 @@ class ContentSubmissionController extends Controller
             'evaluation_status' => $s->evaluation_status,
             'moderation_status' => $s->moderation_status,
             'scan_token' => $s->scan_token,
-            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
             'detected_links' => $s->detectedLinks(),

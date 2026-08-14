@@ -90,6 +90,7 @@ class ContentLibraryController extends Controller
         }
 
         $query = ContentSubmission::query()
+            ->forLibraryList()
             ->with(['orderItem.site', 'orderItems.site'])
             ->where('user_id', auth()->id())
             ->latest('id');
@@ -458,6 +459,22 @@ class ContentLibraryController extends Controller
             ], 422);
         }
 
+        try {
+            $submission = $this->serialize($result['submission']);
+        } catch (\Throwable $e) {
+            Log::error('Content library upload serialize failed', [
+                'submission_id' => $result['submission']->id ?? null,
+                'error' => $e->getMessage(),
+            ]);
+            $submission = [
+                'id' => $result['submission']->id ?? null,
+                'title' => $result['submission']->title ?? $result['title'],
+                'moderation_status' => $result['submission']->moderation_status ?? null,
+                'can_order' => false,
+                'editable' => true,
+            ];
+        }
+
         return response()->json([
             'success' => true,
             'accepted' => true,
@@ -467,7 +484,7 @@ class ContentLibraryController extends Controller
             'report' => $result['report'] ?? null,
             'has_link' => (bool) ($result['has_link'] ?? false),
             'links' => $result['links'] ?? [],
-            'submission' => $this->serialize($result['submission']),
+            'submission' => $submission,
         ]);
     }
 
@@ -578,7 +595,6 @@ class ContentLibraryController extends Controller
             'moderation_status' => $s->moderation_status,
             'evaluation_status' => $s->evaluation_status,
             'evaluation_report' => $s->evaluation_report,
-            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
             'detected_links' => $s->detectedLinks(),
