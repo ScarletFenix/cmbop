@@ -40,11 +40,22 @@ class SiteController extends Controller
             || $request->query('verified') === '0'
             || $request->query('verified') === 0;
 
+        $publisherSearch = trim((string) $request->query('q', ''));
+
         // Counts only — do not eager-load every site row for the publisher list.
-        $query = User::withCount('sites')
+        $query = User::query()
+            ->whereHas('roles', fn ($q) => $q->where('name', 'publisher'))
+            ->withCount('sites')
             ->withCount(['sites as needs_review_sites_count' => function ($q) {
                 $q->needsAdminReview();
             }]);
+
+        if ($publisherSearch !== '') {
+            $query->where(function ($q) use ($publisherSearch) {
+                $q->where('name', 'like', '%'.$publisherSearch.'%')
+                    ->orWhere('email', 'like', '%'.$publisherSearch.'%');
+            });
+        }
 
         // Ops queue: publishers with sites ready for admin decision (not unfinished drafts)
         if ($needsReviewFilter) {
@@ -55,7 +66,12 @@ class SiteController extends Controller
             }]);
         }
 
-        $users = $query->latest()->paginate(20)->appends($request->query());
+        $users = $query
+            ->orderByDesc('needs_review_sites_count')
+            ->orderByDesc('sites_count')
+            ->orderBy('name')
+            ->paginate(20)
+            ->appends($request->query());
         $unverifiedFilter = $needsReviewFilter;
         $needsReviewFilterActive = $needsReviewFilter;
         $openReviewCount = Site::query()->needsAdminReview()->count();
@@ -66,7 +82,8 @@ class SiteController extends Controller
             'unverifiedFilter',
             'needsReviewFilterActive',
             'openReviewCount',
-            'missingMarketCount'
+            'missingMarketCount',
+            'publisherSearch'
         ));
     }
 

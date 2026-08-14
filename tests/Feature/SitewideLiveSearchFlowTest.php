@@ -83,6 +83,7 @@ class SitewideLiveSearchFlowTest extends TestCase
             resource_path('views/advertiser/billing/index.blade.php'),
             resource_path('views/admin/deposits.blade.php'),
             resource_path('views/marketing/history.blade.php'),
+            resource_path('views/admin/sites.blade.php'),
         ];
 
         foreach ($forms as $path) {

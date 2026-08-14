@@ -1,6 +1,10 @@
 @extends(staff_layout())
 
 @section('content')
+@php
+    $publisherSearch = trim((string) ($publisherSearch ?? ''));
+    $publisherSearchQuery = array_filter(['q' => $publisherSearch !== '' ? $publisherSearch : null]);
+@endphp
 <div class="container-fluid py-3">
 
     <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-4">
@@ -21,11 +25,11 @@
         </div>
         <div class="d-flex flex-wrap gap-2">
             @if(!empty($needsReviewFilterActive))
-                <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">
+                <a href="{{ staff_route('sites.index', $publisherSearchQuery) }}" class="btn btn-sm btn-outline-dark">
                     Show all publishers
                 </a>
             @else
-                <a href="{{ staff_route('sites.index', ['needs_review' => 1]) }}" class="btn btn-sm btn-warning">
+                <a href="{{ staff_route('sites.index', array_filter(['needs_review' => 1] + $publisherSearchQuery)) }}" class="btn btn-sm btn-warning">
                     <i class="fa fa-bell me-1"></i> Needs review
                     @if(($openReviewCount ?? 0) > 0)
                         <span class="badge text-bg-dark ms-1">{{ $openReviewCount }}</span>
@@ -56,20 +60,24 @@
                 <strong>Needs review queue</strong>
                 <span class="ms-1">Publishers with new/ready sites waiting for Verify, Activate, Reject, or Delete. Reminders stay until you decide.</span>
             </div>
-            <a href="{{ staff_route('sites.index') }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
+            <a href="{{ staff_route('sites.index', $publisherSearchQuery) }}" class="btn btn-sm btn-outline-dark">Show all publishers</a>
         </div>
     @endif
 
     <!-- ================= USERS TABLE ================= -->
     <div id="usersSection">
 
-        <div class="mb-2" style="max-width: 250px;">
-            <input type="search" id="userSearch" class="form-control form-control-sm" placeholder="Search users…" title="Results update as you type" autocomplete="off" enterkeyhint="search">
-        </div>
+        <form method="GET" action="{{ staff_route('sites.index') }}" class="mb-2" style="max-width: 250px;" role="search">
+            @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
+                <input type="hidden" name="needs_review" value="1">
+            @endif
+            <label class="visually-hidden" for="userSearch">Search publishers</label>
+            <input type="search" id="userSearch" name="q" value="{{ $publisherSearch }}" class="form-control form-control-sm" placeholder="Search publishers…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+        </form>
 
         <div class="card shadow-sm border-0 mb-3 admin-table-fit">
             <div class="card-header bg-white fw-semibold">
-                {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Users' }}
+                {{ !empty($needsReviewFilterActive) || !empty($unverifiedFilter) ? 'Publishers with sites needing review' : 'Publishers' }}
             </div>
 
             <div class="table-responsive">
@@ -118,7 +126,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5" class="text-center text-muted">No users found</td>
+                            <td colspan="5" class="text-center text-muted">No publishers found</td>
                         </tr>
                     @endforelse
                     </tbody>
@@ -733,10 +741,30 @@ document.addEventListener('click', function(e){
 
             fetch(`${STAFF_BASE}/sites/${id}`, {
                 method:'DELETE',
-                headers:{'X-CSRF-TOKEN':'{{ csrf_token() }}'}
-            }).then(() => {
-                toast('Deleted successfully');
+                headers:{
+                    'X-CSRF-TOKEN': CSRF_TOKEN,
+                    'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                },
+                credentials: 'same-origin',
+            })
+            .then(async (res) => {
+                let data = {};
+                try {
+                    data = await res.json();
+                } catch (_) {
+                    throw new Error(`Failed to delete site (${res.status})`);
+                }
+
+                if(!res.ok || !data.success) {
+                    throw new Error(data.message || 'Failed to delete site');
+                }
+
+                toast(data.message || 'Deleted successfully');
                 afterSiteDecision();
+            })
+            .catch((error) => {
+                toast(error.message || 'Failed to delete site', 'error');
             });
         });
     }
@@ -1374,30 +1402,16 @@ document.getElementById('backBtn').addEventListener('click', function(){
 });
 
 /* ================= SEARCH (Catalog-parity live search) ================= */
+/* Publisher search is server-side (?q=) via data-slb-live-search="form". */
 (function initStaffSitesLiveSearch() {
-    function filterUsers(query) {
-        var val = String(query || '').toLowerCase();
-        document.querySelectorAll('#usersTable tr').forEach(function (r) {
-            r.style.display = r.innerText.toLowerCase().includes(val) ? '' : 'none';
-        });
-    }
-
     if (typeof window.SlbLiveSearch !== 'undefined') {
-        window.SlbLiveSearch.init(document.getElementById('userSearch'), {
-            mode: 'client',
-            minChars: 1,
-            onSearch: function (detail) { filterUsers(detail.query); },
-        });
         window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
             mode: 'client',
             minChars: 1,
             onSearch: function () { applySiteFilters(); },
         });
     } else {
-        document.getElementById('userSearch').addEventListener('keyup', function(){
-            filterUsers(this.value);
-        });
-        document.getElementById('siteSearch').addEventListener('keyup', function(){
+        document.getElementById('siteSearch')?.addEventListener('keyup', function(){
             applySiteFilters();
         });
     }
