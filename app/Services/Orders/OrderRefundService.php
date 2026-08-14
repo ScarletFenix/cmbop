@@ -118,7 +118,20 @@ class OrderRefundService
             $wallet->refundReserved($amount);
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
         } else {
-            $wallet->credit($amount);
+            // Card / Wise / bank / crypto may still hold leftover checkout bonus
+            // in reserved. Restore that slice as spend-only; credit only the
+            // captured cash. Crediting the full line minted withdrawable cash
+            // from promotional credit.
+            $bonusShare = min($amount, max(0, round((float) $wallet->bonus_reserved, 2)));
+            $cashShare = round($amount - $bonusShare, 2);
+            if ($bonusShare > 0) {
+                $bonusReservedBefore = (float) $wallet->bonus_reserved;
+                $wallet->refundReserved($bonusShare);
+                $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
+            }
+            if ($cashShare > 0) {
+                $wallet->credit($cashShare);
+            }
         }
 
         $this->ledger->recordRefund(
@@ -140,5 +153,29 @@ class OrderRefundService
         ]);
 
         return true;
+    }
+
+    /**
+     * Drop reserved funds when an order is completed.
+     * Wallet checkouts consume the full line. Card / manual checkouts only
+     * consume leftover promotional reserve so it cannot be refunded as cash later.
+     */
+    public function consumeReservedForSettledOrder(Order $order, Wallet $wallet): void
+    {
+        $total = round((float) $order->total_amount, 2);
+        if ($total <= 0) {
+            return;
+        }
+
+        if ($order->payment_method === 'wallet') {
+            $wallet->consumeReserved($total);
+
+            return;
+        }
+
+        $bonus = min($total, max(0, round((float) $wallet->bonus_reserved, 2)));
+        if ($bonus > 0) {
+            $wallet->consumeReserved($bonus);
+        }
     }
 }

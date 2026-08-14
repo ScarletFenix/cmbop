@@ -87,9 +87,8 @@ class OrderPaymentService
                 $newlyPaid->push($order->fresh('items'));
             }
 
-            if ($newlyPaid->isNotEmpty()) {
-                $this->consumeBonusAppliedFromStripeSession($newlyPaid->first(), $session);
-            }
+            // Keep leftover checkout bonus reserved until approve/reject.
+            // Consuming here made card+bonus rejects credit the promo slice as cash.
 
             return $newlyPaid;
         });
@@ -150,15 +149,7 @@ class OrderPaymentService
                 $newlyPaid->push($order->fresh('items'));
             }
 
-            if ($newlyPaid->isNotEmpty()) {
-                $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
-                if ($bonus <= 0) {
-                    $bonus = round((float) Cache::get('checkout_bonus:'.$newlyPaid->first()->user_id.':'.$referenceCode, 0), 2);
-                }
-                if ($bonus > 0) {
-                    $this->consumeBonusAmount($newlyPaid->first(), $bonus);
-                }
-            }
+            // Keep leftover checkout bonus reserved until approve/reject.
 
             return $newlyPaid;
         });
@@ -197,56 +188,6 @@ class OrderPaymentService
                 'error' => $e->getMessage(),
             ]);
         }
-    }
-
-    protected function consumeBonusAmount(Order $order, float $bonus): void
-    {
-        $cacheKey = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            Cache::forget($cacheKey);
-
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
-        Cache::forget($cacheKey);
-    }
-
-    /**
-     * When a card checkout applied promotional credit, permanently consume the reserved bonus.
-     */
-    protected function consumeBonusAppliedFromStripeSession(Order $order, object $session): void
-    {
-        $meta = [];
-        if (isset($session->metadata)) {
-            $meta = is_array($session->metadata)
-                ? $session->metadata
-                : (method_exists($session->metadata, 'toArray') ? $session->metadata->toArray() : (array) $session->metadata);
-        }
-
-        $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
-        $cacheKey = 'checkout_bonus:'.$order->user_id.':'.$order->reference_code;
-        if ($bonus <= 0) {
-            $bonus = round((float) Cache::get($cacheKey, 0), 2);
-        }
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
-        Cache::forget($cacheKey);
     }
 
     /**
@@ -549,11 +490,6 @@ class OrderPaymentService
                 if ($siteId > 0) {
                     $takenSiteIds[$siteId] = true;
                 }
-            }
-
-            $bonus = round((float) ($package['bonus_applied'] ?? 0), 2);
-            if ($bonus > 0 && $orders->isNotEmpty()) {
-                $this->consumeBonusAmount($orders->first(), $bonus);
             }
 
             return $orders;

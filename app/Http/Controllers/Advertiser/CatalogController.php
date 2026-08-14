@@ -41,6 +41,7 @@ use App\Services\OrderChatContactGuard;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\ContentRevisionService;
 use App\Services\Orders\OrderClawbackService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\PlatformFeeService;
 use App\Services\StripeCustomerService;
 use App\Services\StripePaymentService;
@@ -3679,10 +3680,9 @@ class CatalogController extends Controller
             $publisherRoleId = Wallet::publisherRoleId();
             $advertiserRoleId = Wallet::advertiserRoleId();
 
-            $advertiserWallet = null;
-            if ($order->payment_method === 'wallet' && $advertiserRoleId) {
-                $advertiserWallet = Wallet::lockOrCreateForRole((int) $order->user_id, (int) $advertiserRoleId);
-            }
+            $advertiserWallet = $advertiserRoleId
+                ? Wallet::lockOrCreateForRole((int) $order->user_id, (int) $advertiserRoleId)
+                : null;
 
             $transferPublishers = [];
             $totalTransferred = 0;
@@ -3798,15 +3798,16 @@ class CatalogController extends Controller
                 }
             }
 
-            // If payment method was wallet, consume reserved funds (bonus portion stays non-withdrawable / spent)
-            if ($order->payment_method === 'wallet' && $advertiserWallet) {
-                $totalOrderAmount = $order->total_amount;
-                $advertiserWallet->consumeReserved($totalOrderAmount);
+            // Wallet: consume the reserved line. Card / manual: consume leftover
+            // checkout bonus so a later reject cannot mint it as cash.
+            if ($advertiserWallet) {
+                app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
 
                 Log::info('Reserved funds released from advertiser wallet', [
                     'user_id' => auth()->id(),
                     'order_id' => $order->id,
-                    'order_total' => $totalOrderAmount,
+                    'order_total' => $order->total_amount,
+                    'payment_method' => $order->payment_method,
                     'remaining_reserved_balance' => $advertiserWallet->reserved_balance,
                     'bonus_reserved' => $advertiserWallet->bonus_reserved,
                 ]);
