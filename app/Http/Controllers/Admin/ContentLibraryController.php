@@ -22,6 +22,7 @@ class ContentLibraryController extends Controller
         }
 
         $query = ContentSubmission::query()
+            ->forLibraryList()
             ->with(['user:id,name,email'])
             ->latest('id');
 

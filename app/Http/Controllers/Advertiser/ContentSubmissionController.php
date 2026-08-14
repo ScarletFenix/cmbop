@@ -14,6 +14,7 @@ use App\Services\ContentUpload\ScheduledOrderService;
 use App\Services\Orders\OrderRefundService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\Rule;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -117,19 +118,31 @@ class ContentSubmissionController extends Controller
             }
         }
 
-        $result = $this->uploads->uploadAndProcess(
-            file: $request->file('file'),
-            user: auth()->user(),
-            siteId: isset($data['site_id']) ? (int) $data['site_id'] : null,
-            copyIndex: (int) ($data['copy_index'] ?? 0),
-            cartKey: $data['cart_key'] ?? null,
-            replace: $replace,
-            title: $data['title'] ?? null,
-            country: $data['country'],
-            language: $data['language'],
-            imageRights: $data['image_rights'],
-            imageRightsSource: $data['image_rights_source'] ?? null,
-        );
+        try {
+            $result = $this->uploads->uploadAndProcess(
+                file: $request->file('file'),
+                user: auth()->user(),
+                siteId: isset($data['site_id']) ? (int) $data['site_id'] : null,
+                copyIndex: (int) ($data['copy_index'] ?? 0),
+                cartKey: $data['cart_key'] ?? null,
+                replace: $replace,
+                title: $data['title'] ?? null,
+                country: $data['country'],
+                language: $data['language'],
+                imageRights: $data['image_rights'],
+                imageRightsSource: $data['image_rights_source'] ?? null,
+            );
+        } catch (\Throwable $e) {
+            Log::error('Content submission upload failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'The article could not be uploaded. Please try again.',
+            ], 500);
+        }
 
         $submission = $result['submission'] ?? null;
 
@@ -161,7 +174,7 @@ class ContentSubmissionController extends Controller
         }
 
         $data = $request->validate([
-            'preview_html' => ['required', 'string', 'max:500000'],
+            'preview_html' => ['required', 'string', 'max:'.ContentUploadService::PREVIEW_HTML_MAX_CHARS],
             'title' => ['nullable', 'string', 'max:200'],
             'image_rights' => ['nullable', Rule::in(ContentSubmission::imageRightsOptions())],
             'image_rights_source' => [
@@ -169,6 +182,7 @@ class ContentSubmissionController extends Controller
                 'required_if:image_rights,'.ContentSubmission::IMAGE_RIGHTS_LICENSED,
             ],
         ], [
+            'preview_html.max' => 'This article is too large to save in the editor. Shorten it and try again.',
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
@@ -200,11 +214,23 @@ class ContentSubmissionController extends Controller
             ]);
         }
 
-        $result = $this->uploads->updateArticleContent(
-            $submission,
-            $data['preview_html'],
-            $data['title'] ?? null,
-        );
+        try {
+            $result = $this->uploads->updateArticleContent(
+                $submission,
+                $data['preview_html'],
+                $data['title'] ?? null,
+            );
+        } catch (\Throwable $e) {
+            Log::error('Content article save failed', [
+                'submission_id' => $submission->id,
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not save article. Please try again.',
+            ], 500);
+        }
 
         if (! $result['ok']) {
             return response()->json([
@@ -258,7 +284,16 @@ class ContentSubmissionController extends Controller
         }
 
         $ext = strtolower($file->getClientOriginalExtension() ?: 'png');
-        $url = $this->uploads->storeArticleImage($binary, $ext, $file->getClientOriginalName(), auth()->user());
+        try {
+            $url = $this->uploads->storeArticleImage($binary, $ext, $file->getClientOriginalName(), auth()->user());
+        } catch (\Throwable $e) {
+            Log::error('Editor image store failed', [
+                'user_id' => auth()->id(),
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json(['success' => false, 'message' => 'Unable to store image.'], 500);
+        }
 
         if (! $url) {
             return response()->json(['success' => false, 'message' => 'Unable to store image.'], 500);
@@ -297,7 +332,7 @@ class ContentSubmissionController extends Controller
             'links' => ['nullable', 'array', 'max:20'],
             'links.*.anchor' => ['nullable', 'string', 'max:'.$anchorMax],
             'links.*.url' => ['nullable', 'string', 'max:1000'],
-            'preview_html' => ['nullable', 'string', 'max:500000'],
+            'preview_html' => ['nullable', 'string', 'max:'.ContentUploadService::PREVIEW_HTML_MAX_CHARS],
             'feature_image_url' => ['nullable', 'string', 'max:1000'],
             'publication_mode' => ['nullable', 'in:immediate,scheduled'],
             'scheduled_date' => ['nullable', 'date_format:Y-m-d'],
@@ -305,6 +340,8 @@ class ContentSubmissionController extends Controller
             'timezone' => ['nullable', 'timezone'],
             'wizard_step' => ['nullable', 'integer', 'min:1', 'max:5'],
             'draft_payload' => ['nullable', 'array'],
+        ], [
+            'preview_html.max' => 'This article is too large to save in the editor. Shorten it and try again.',
         ]);
 
         $contentChanged = array_key_exists('links', $data)
@@ -427,6 +464,7 @@ class ContentSubmissionController extends Controller
     {
         $cartKey = $request->query('cart_key');
         $query = ContentSubmission::query()
+            ->forLibraryList()
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->latest('id');
@@ -602,7 +640,6 @@ class ContentSubmissionController extends Controller
             'evaluation_status' => $s->evaluation_status,
             'moderation_status' => $s->moderation_status,
             'scan_token' => $s->scan_token,
-            'preview_html' => ArticlePreviewHtml::normalize((string) ($s->preview_html ?? '')),
             'anchor_text' => $s->anchor_text,
             'target_url' => $s->target_url,
             'detected_links' => $s->detectedLinks(),

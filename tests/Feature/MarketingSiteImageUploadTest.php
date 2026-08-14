@@ -6,6 +6,7 @@ use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -238,6 +239,26 @@ class MarketingSiteImageUploadTest extends TestCase
         $site = Site::query()->where('domain', 'admin-create-webp.example')->first();
         $this->assertNotNull($site);
         $this->assertCoverStoredAsWebp($site->site_image);
+    }
+
+    public function test_create_image_save_failure_returns_site_image_error(): void
+    {
+        Mail::fake();
+        $this->mock(ImageOptimizationService::class, function ($mock) {
+            $mock->shouldReceive('storeUploadedImageAsWebp')->andReturn('sites/missing-cover.webp');
+        });
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.create'))
+            ->post(route('admin.sites.store'), $this->staffCreatePayload(
+                'admin-create-image-fail.example',
+                UploadedFile::fake()->image('broken-cover.png', 320, 200)
+            ))
+            ->assertRedirect(route('admin.sites.create'))
+            ->assertSessionHasErrors('site_image')
+            ->assertSessionDoesntHaveErrors('site_url');
+
+        $this->assertNull(Site::query()->where('domain', 'admin-create-image-fail.example')->first());
     }
 
     public function test_marketer_create_converts_jpeg_cover_to_webp(): void

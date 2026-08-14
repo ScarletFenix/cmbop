@@ -10,6 +10,7 @@ use App\Models\OrderItemDispute;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Support\Facades\DB;
@@ -178,19 +179,22 @@ class OrderClawbackService
 
             if ($advertiserRoleId && $advertiserCredit > 0) {
                 $advertiserWallet = Wallet::lockOrCreateForRole((int) $order->user_id, (int) $advertiserRoleId);
-                $advertiserWallet->credit($advertiserCredit);
+                $bonusShare = $this->bonusShareFromPurchaseLedger($advertiserWallet, $order, $advertiserCredit);
+                $cashShare = round($advertiserCredit - $bonusShare, 2);
+                if ($bonusShare > 0) {
+                    $advertiserWallet->creditBonus($bonusShare);
+                }
+                if ($cashShare > 0) {
+                    $advertiserWallet->credit($cashShare);
+                }
                 $this->ledger->recordRefund(
                     $advertiserWallet,
                     $advertiserCredit,
-                    0,
+                    $bonusShare,
                     $order,
-                    'CLAWBACK-REFUND-'.$item->id
+                    $order->reference_code ?: 'CLAWBACK-REFUND-'.$item->id
                 );
             }
-
-            $order->update([
-                'payment_status' => 'refunded',
-            ]);
 
             $dispute->update([
                 'status' => OrderItemDispute::STATUS_UPHELD,
@@ -201,6 +205,12 @@ class OrderClawbackService
                 'advertiser_credited' => $advertiserCredit,
                 'debt_created' => $debtCreated,
             ]);
+
+            if ($this->everyItemHasBeenClawedBack($order)) {
+                $order->update([
+                    'payment_status' => 'refunded',
+                ]);
+            }
 
             if ($site) {
                 Site::refreshCompletedOrdersCount((int) $site->id);
@@ -284,6 +294,51 @@ class OrderClawbackService
     }
 
     /**
+     * Completed orders already consumed reserved bonus. Restore that slice as
+     * spend-only so a clawback cannot turn welcome credit into withdrawable cash.
+     */
+    private function bonusShareFromPurchaseLedger(Wallet $wallet, Order $order, float $amount): float
+    {
+        $amount = round($amount, 2);
+        if ($amount <= 0) {
+            return 0.0;
+        }
+
+        $reference = (string) ($order->reference_code ?: $order->order_number);
+        $purchasedBonus = (float) WalletTransaction::query()
+            ->where('wallet_id', $wallet->id)
+            ->where('type', WalletTransaction::TYPE_PURCHASE)
+            ->where(function ($query) use ($order, $reference) {
+                $query->where(function ($related) use ($order) {
+                    $related->where('related_type', $order->getMorphClass())
+                        ->where('related_id', $order->id);
+                });
+                if ($reference !== '') {
+                    $query->orWhere('reference', $reference);
+                }
+            })
+            ->sum('bonus_amount');
+
+        $alreadyRestored = (float) WalletTransaction::query()
+            ->where('wallet_id', $wallet->id)
+            ->where('type', WalletTransaction::TYPE_REFUND)
+            ->where(function ($query) use ($order, $reference) {
+                $query->where(function ($related) use ($order) {
+                    $related->where('related_type', $order->getMorphClass())
+                        ->where('related_id', $order->id);
+                });
+                if ($reference !== '') {
+                    $query->orWhere('reference', $reference);
+                }
+            })
+            ->sum('bonus_amount');
+
+        $remaining = max(0, round($purchasedBonus - $alreadyRestored, 2));
+
+        return min($amount, $remaining);
+    }
+
+    /**
      * @throws ValidationException
      */
     protected function assertCanOpen(Order $order, ?OrderItem $item, bool $asAdmin = false): void
@@ -327,8 +382,27 @@ class OrderClawbackService
 
         if ($blocking) {
             throw ValidationException::withMessages([
-                'order' => 'A dispute is already open or was already upheld for this order.',
+                'order' => 'A dispute is already open or was already upheld for this placement.',
             ]);
         }
+    }
+
+    private function everyItemHasBeenClawedBack(Order $order): bool
+    {
+        $itemIds = OrderItem::query()
+            ->where('order_id', $order->id)
+            ->pluck('id');
+
+        if ($itemIds->isEmpty()) {
+            return false;
+        }
+
+        $upheldItemIds = OrderItemDispute::query()
+            ->where('order_id', $order->id)
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->pluck('order_item_id')
+            ->unique();
+
+        return $itemIds->every(fn ($id) => $upheldItemIds->contains($id));
     }
 }

@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\Order;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WalletTransaction;
 use App\Services\CartPricingService;
 use App\Services\LiveUrlHealthChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -254,6 +256,72 @@ class BonusOnlyCheckoutWalletInvariantTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta($total, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+    }
+
+    public function test_bonus_only_checkout_writes_a_purchase_ledger_row(): void
+    {
+        [$advertiser, , $site, $wallet, $total] = $this->bonusCoveredCheckoutSetup();
+        $this->placeBonusOnlyOrder($advertiser, $site, 'BONUS-LEDGER');
+
+        $purchase = WalletTransaction::query()
+            ->where('wallet_id', $wallet->id)
+            ->where('type', WalletTransaction::TYPE_PURCHASE)
+            ->where('reference', 'BONUS-LEDGER')
+            ->first();
+
+        $this->assertNotNull($purchase);
+        $this->assertEqualsWithDelta($total, (float) $purchase->amount, 0.01);
+        $this->assertEqualsWithDelta($total, (float) $purchase->bonus_amount, 0.01);
+        $this->assertSame('debit', $purchase->direction);
+    }
+
+    public function test_upholding_bonus_only_dispute_restores_spend_only_bonus(): void
+    {
+        [$advertiser, $publisher, $site, $wallet, $total] = $this->bonusCoveredCheckoutSetup();
+        $order = $this->placeBonusOnlyOrder($advertiser, $site, 'BONUS-CLAW');
+        $item = $order->items()->first();
+        $this->assertNotNull($item);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.accept', $item->id))
+            ->assertOk();
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.complete', $item->id), [
+                'live_url' => 'https://bonus-cover.example/published-post',
+            ])
+            ->assertOk();
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $order->id))
+            ->assertOk();
+
+        $order->refresh();
+        $this->assertSame('completed', $order->status);
+
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'The live article was deleted two days after completion.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed 404. Refund must not turn promo credit into cash.']
+        )->assertOk()->assertJson(['success' => true]);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta($total, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta($total, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta($total, $wallet->lockedBonusBalance(), 0.01);
         $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
 }

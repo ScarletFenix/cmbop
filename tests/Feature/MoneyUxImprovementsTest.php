@@ -11,8 +11,11 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\OrderPaymentService;
+use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
+use Stripe\Checkout\Session;
 use Tests\TestCase;
 
 class MoneyUxImprovementsTest extends TestCase
@@ -245,6 +248,44 @@ class MoneyUxImprovementsTest extends TestCase
             ->getJson(route('advertiser.orders.list'))
             ->assertOk()
             ->assertJsonPath('orders.0.can_retry_payment', true);
+    }
+
+    public function test_retry_payment_releases_leftover_checkout_bonus(): void
+    {
+        $user = $this->advertiserWithBonus(20, 0);
+        $wallet = Wallet::where('user_id', $user->id)->firstOrFail();
+        $wallet->reserveBonusOnly(20);
+        $order = $this->cardOrder($user, 'failed', 'pending');
+
+        Cache::put(
+            'checkout_bonus:'.$user->id.':'.$order->reference_code,
+            20,
+            now()->addHour()
+        );
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('configured')->andReturn(true);
+            $mock->shouldReceive('createCheckoutSession')->once()->andReturn(
+                Session::constructFrom([
+                    'id' => 'cs_retry_bonus',
+                    'object' => 'checkout.session',
+                    'url' => 'https://checkout.stripe.test/retry',
+                ])
+            );
+        });
+
+        $this->actingAs($user)
+            ->postJson(route('advertiser.orders.retry-payment', $order))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('amount_due', 46);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertSame('pending', $order->fresh()->payment_status);
     }
 
     public function test_retry_payment_rejected_when_not_failed(): void

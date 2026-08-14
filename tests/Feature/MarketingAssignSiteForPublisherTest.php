@@ -467,4 +467,55 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertEqualsWithDelta(15.0, (float) ($site->sensitive_prices['crypto'] ?? 0), 0.001);
         $this->assertTrue($site->isPendingPublisherAcceptance());
     }
+
+    public function test_marketing_update_coerces_da_dr_traffic_from_noisy_input(): void
+    {
+        $niche = Category::query()->where('name', 'News')->value('name')
+            ?? Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Metrics Update Site',
+            'site_url' => 'https://mkt-metrics-update.example',
+            'domain' => 'mkt-metrics-update.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'countries' => ['de'],
+            'languages' => ['de'],
+            'category' => $niche,
+            'categories' => [$niche],
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'description' => str_repeat('Marketing metrics update listing. ', 3),
+            'link_type' => 'dofollow',
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $site->id))
+            ->put(route('marketing.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'da' => ' 52 ',
+                'dr' => '48.0',
+                'traffic' => '15,000',
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => $niche,
+                'price' => 40,
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success')
+            ->assertSessionDoesntHaveErrors();
+
+        $site->refresh();
+        $this->assertSame(52, (int) $site->da);
+        $this->assertSame(48, (int) $site->dr);
+        $this->assertSame(15000, (int) $site->traffic);
+    }
 }

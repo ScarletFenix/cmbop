@@ -17,6 +17,7 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
@@ -327,6 +328,41 @@ class AdminAssignSiteForPublisherTest extends TestCase
         $this->assertNotNull($site);
         $this->assertNotNull($site->publisher_accepted_at);
         $this->assertFalse($site->isPendingPublisherAcceptance());
+    }
+
+    public function test_publisher_store_rejects_traffic_that_would_overflow_unsigned_int(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $niche = Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Overflow Traffic',
+                'siteUrl' => 'overflow-traffic.example',
+                'exampleUrl' => 'https://overflow-traffic.example/post',
+                'da' => 33,
+                'dr' => 34,
+                'traffic' => '5000000000',
+                'country' => strtolower((string) $country->code),
+                'language' => strtolower((string) $language->code),
+                'categories' => $niche,
+                'price' => 70,
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Overflow traffic leftover store guard. ', 4),
+                'site_tag' => 'as_you_prefer',
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('traffic')
+            ->assertSessionDoesntHaveErrors('siteUrl');
+
+        $this->assertNull(Site::where('domain', 'overflow-traffic.example')->first());
     }
 
     public function test_admin_create_coerces_da_dr_traffic_from_noisy_input(): void
