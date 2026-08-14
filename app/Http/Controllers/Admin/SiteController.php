@@ -19,6 +19,7 @@ use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
+use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\JsonResponse;
@@ -1424,6 +1425,261 @@ class SiteController extends Controller
             $payload['site_image'] = $stored;
         } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             // JSON/AJAX path: image already persisted via upload-image.
+            $path = (string) $request->input('site_image');
+            if ($path !== '' && ! str_contains($path, '..')) {
+                $payload['site_image'] = ltrim(str_replace('\\', '/', $path), '/');
+            }
+        }
+
+        return $payload;
+    }
+
+    /**
+     * Admin may patch any listing fields. Only keys present on the request are written.
+     *
+     * @return array<string, mixed>|JsonResponse|RedirectResponse
+     */
+    private function adminUpdatePayload(Request $request, Site $site)
+    {
+        if ($request->exists('site_url') || $request->exists('siteUrl')) {
+            $request->merge([
+                'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', ''))),
+            ]);
+        }
+        if ($request->exists('example_url') || $request->exists('exampleUrl')) {
+            $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+            $request->merge([
+                'example_url' => $exampleUrl !== '' ? $exampleUrl : null,
+            ]);
+        }
+
+        foreach (['da', 'dr', 'traffic'] as $metric) {
+            if ($request->exists($metric)) {
+                $normalized = $this->normalizeMetricInt($request->input($metric));
+                if ($normalized !== null) {
+                    $request->merge([$metric => $normalized]);
+                }
+            }
+        }
+
+        $hasCategories = $request->exists('categories') || $request->exists('category');
+        $resolved = ['resolved' => [], 'unknown' => []];
+        if ($hasCategories) {
+            $resolved = Category::resolveNicheNames($request->input('categories', $request->input('category', [])));
+            $request->merge(['categories' => $resolved['resolved']]);
+        }
+
+        $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        $rules = [
+            'site_name' => 'sometimes|required|string|max:255',
+            'site_url' => 'sometimes|required|url|max:255',
+            'example_url' => 'sometimes|nullable|url|max:255',
+            'da' => 'sometimes|required|integer|min:0|max:100',
+            'dr' => 'sometimes|required|integer|min:0|max:100',
+            'traffic' => 'sometimes|required|integer|min:0|max:4294967295',
+            'language' => 'sometimes|required|string|max:10',
+            'country' => 'sometimes|required|string|max:10',
+            'categories' => 'sometimes|array|min:1|max:7',
+            'price' => 'sometimes|required|numeric|min:0',
+            'publication_time' => 'sometimes|nullable|string|max:20',
+            'link_type' => 'sometimes|nullable|string|max:255',
+            'description' => 'sometimes|required|string|min:'.SiteDescriptionRules::MIN_CHARS,
+            'turnaround_time' => 'sometimes|nullable|string|max:20',
+        ];
+
+        if ($request->hasFile('site_image')) {
+            $rules['site_image'] = 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes();
+        } else {
+            $rules['site_image'] = 'sometimes|nullable|string|max:255';
+        }
+
+        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+
+        $validator->after(function ($validator) use ($request, $site, $allowedCountries, $allowedLanguages, $hasCategories, $resolved) {
+            $language = $request->exists('language')
+                ? strtolower(trim((string) $request->input('language', '')))
+                : strtolower(trim((string) $site->language));
+            $country = $request->exists('country')
+                ? strtolower(trim((string) $request->input('country', '')))
+                : strtolower(trim((string) $site->country));
+
+            if ($request->exists('language') && $language !== '' && ! in_array($language, $allowedLanguages, true)) {
+                $validator->errors()->add('language', 'Choose a valid marketplace language.');
+            }
+            if ($request->exists('country') && $country !== '' && ! in_array($country, $allowedCountries, true)) {
+                $validator->errors()->add('country', 'Choose a valid marketplace country.');
+            }
+            if (($request->exists('country') || $request->exists('language'))
+                && $country !== ''
+                && $language !== ''
+                && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
+                $validator->errors()->add(
+                    'language',
+                    'That language is not allowed for the selected country. Pick country first, then a paired language.'
+                );
+            }
+
+            if ($hasCategories) {
+                foreach ($resolved['unknown'] as $cat) {
+                    $validator->errors()->add('categories', 'Unknown niche: '.$cat);
+                }
+            }
+
+            if ($request->filled('site_url')) {
+                $siteUrl = (string) $request->input('site_url', '');
+                $host = parse_url($siteUrl, PHP_URL_HOST);
+                if (! $host) {
+                    $validator->errors()->add('site_url', 'Invalid URL');
+                } else {
+                    $domain = preg_replace('/^www\./', '', strtolower((string) $host));
+                    if (Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
+                        $validator->errors()->add('site_url', 'This website domain is already registered.');
+                    }
+                }
+            }
+
+            if ($request->exists('description')) {
+                foreach (SiteDescriptionRules::errors((string) $request->input('description', '')) as $message) {
+                    $validator->errors()->add('description', $message);
+                }
+            }
+        });
+
+        if ($validator->fails()) {
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $validator->errors()->first(),
+                    'errors' => $validator->errors(),
+                ], 422);
+            }
+
+            return back()->withErrors($validator)->withInput();
+        }
+
+        $payload = [];
+
+        if ($request->exists('site_name')) {
+            $payload['site_name'] = (string) $request->input('site_name');
+        }
+
+        if ($request->exists('site_url')) {
+            $siteUrl = (string) $request->input('site_url');
+            $host = parse_url($siteUrl, PHP_URL_HOST) ?: '';
+            $payload['site_url'] = $siteUrl;
+            $payload['domain'] = preg_replace('/^www\./', '', strtolower((string) $host));
+        }
+
+        if ($request->exists('example_url')) {
+            $payload['example_url'] = $request->input('example_url');
+        }
+
+        $metricsTouched = false;
+        foreach (['da', 'dr', 'traffic'] as $metric) {
+            if ($request->exists($metric)) {
+                $payload[$metric] = (int) $request->input($metric);
+                $metricsTouched = true;
+            }
+        }
+        if ($metricsTouched) {
+            $payload['metrics_manual'] = true;
+            $payload['metrics_provider'] = 'manual';
+            $payload['metrics_fetched_at'] = now();
+        }
+
+        if ($request->exists('language')) {
+            $language = strtolower(trim((string) $request->input('language')));
+            $payload['language'] = $language;
+            $payload['languages'] = [$language];
+        }
+
+        if ($request->exists('country')) {
+            $country = strtolower(trim((string) $request->input('country')));
+            $payload['country'] = $country;
+            $payload['countries'] = [$country];
+        }
+
+        if ($hasCategories) {
+            $categories = $resolved['resolved'];
+            $payload['category'] = Site::fitCategoryColumn(implode('|', $categories), $categories);
+            $payload['categories'] = $categories;
+        }
+
+        if ($request->exists('price')) {
+            $payload['price'] = $request->input('price');
+        }
+
+        if ($request->exists('publication_time')) {
+            $payload['publication_time'] = $request->input('publication_time');
+        }
+
+        if ($request->exists('link_type')) {
+            $payload['link_type'] = (string) $request->input('link_type');
+        }
+
+        if ($request->exists('turnaround_time')) {
+            $payload['turnaround_time'] = $request->input('turnaround_time');
+        }
+
+        if ($request->exists('description')) {
+            $payload['description'] = app(SiteDescriptionSanitizer::class)
+                ->sanitize((string) $request->input('description'));
+        }
+
+        if ($request->exists('placement_offers_form')) {
+            $payload['homepage_placement_prices'] = $this->collectHomepagePlacementPrices($request);
+            $payload['social_promotion'] = $this->collectSocialPromotion($request);
+        }
+
+        if ($request->hasFile('site_image')) {
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                $message = $this->siteImageValidationMessages()['site_image.uploaded'];
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 422);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
+            $disk = Storage::disk('public');
+            $disk->makeDirectory('sites');
+            $previous = is_string($site->site_image) ? $site->site_image : null;
+
+            $stored = $upload->store('sites', 'public');
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
+                if ($request->expectsJson() || $request->ajax()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $message,
+                        'errors' => ['site_image' => [$message]],
+                    ], 500);
+                }
+
+                return back()->withErrors(['site_image' => $message])->withInput();
+            }
+
+            PublicStorageLink::ensure();
+            if (! PublicStorageLink::pathIsPubliclyReachable($stored)) {
+                Log::warning('Site image saved via admin update; public/storage probe failed (kept upload)', [
+                    'path' => $stored,
+                    'disk_root' => config('filesystems.disks.public.root'),
+                ]);
+            }
+
+            if ($previous && $previous !== $stored && $disk->exists($previous)) {
+                $disk->delete($previous);
+            }
+
+            $payload['site_image'] = $stored;
+        } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             $path = (string) $request->input('site_image');
             if ($path !== '' && ! str_contains($path, '..')) {
                 $payload['site_image'] = ltrim(str_replace('\\', '/', $path), '/');
