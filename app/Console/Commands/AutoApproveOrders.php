@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
@@ -309,16 +310,14 @@ class AutoApproveOrders extends Command
                     }
                 }
 
-                if ($order->payment_method === 'wallet') {
-                    $advertiserRoleId = Wallet::advertiserRoleId();
-                    $advertiserWallet = $advertiserRoleId
-                        ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
-                        : null;
+                $advertiserRoleId = Wallet::advertiserRoleId();
+                $advertiserWallet = $advertiserRoleId
+                    ? Wallet::lockForUserRole($order->user_id, $advertiserRoleId)
+                    : null;
 
-                    if ($advertiserWallet) {
-                        $advertiserWallet->consumeReserved((float) $order->total_amount);
-                        $this->info('✓ Reserved funds released from advertiser wallet');
-                    }
+                if ($advertiserWallet) {
+                    app(OrderRefundService::class)->consumeReservedForSettledOrder($order, $advertiserWallet);
+                    $this->info('✓ Reserved funds released from advertiser wallet');
                 }
 
                 DB::commit();

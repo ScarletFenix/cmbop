@@ -38,9 +38,9 @@ class InactiveCartPruneTest extends TestCase
         $this->publisher->roles()->attach($publisherRole->id);
     }
 
-    private function makeSite(string $slug, bool $active): Site
+    private function makeSite(string $slug, bool $active, array $overrides = []): Site
     {
-        return Site::create([
+        return Site::create(array_merge([
             'publisher_id' => $this->publisher->id,
             'site_name' => 'Site '.$slug,
             'site_url' => 'https://'.$slug.'.example',
@@ -59,7 +59,7 @@ class InactiveCartPruneTest extends TestCase
             'description' => 'Test site',
             'verified' => true,
             'active' => $active,
-        ]);
+        ], $overrides));
     }
 
     public function test_cart_get_prunes_inactive_sites_and_reports_them_once(): void
@@ -144,11 +144,125 @@ class InactiveCartPruneTest extends TestCase
         $this->assertEmpty(session('cart', []));
     }
 
+    public function test_cart_get_prunes_unverified_and_archived_sites(): void
+    {
+        $live = $this->makeSite('keep-live', true);
+        $unverified = $this->makeSite('still-active-unverified', true, ['verified' => false]);
+        $archived = $this->makeSite('archived-listing', false, ['archived_at' => now()]);
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                    ['id' => $archived->id, 'name' => $archived->site_name, 'price' => 60, 'quantity' => 1],
+                ],
+            ])
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->assertJsonPath('removed_inactive_count', 2)
+            ->assertJsonPath('cart_count', 1);
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
+    }
+
+    public function test_catalog_page_prunes_hidden_sites_from_banner(): void
+    {
+        $live = $this->makeSite('catalog-keep', true);
+        $unverified = $this->makeSite('catalog-unverified', true, ['verified' => false]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 2],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 2],
+                ],
+            ])
+            ->get(route('advertiser.catalog'))
+            ->assertOk();
+
+        $html->assertSee('You have <strong>1</strong>', false);
+        $html->assertSee($unverified->site_name, false);
+        $html->assertSee('no longer available and was removed from your cart', false);
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
+    }
+
+    public function test_advertiser_header_prunes_hidden_sites_outside_catalog(): void
+    {
+        $live = $this->makeSite('dash-keep', true);
+        $unverified = $this->makeSite('dash-unverified', true, ['verified' => false]);
+
+        $html = $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 2],
+                ],
+            ])
+            ->get(route('advertiser.dashboard'))
+            ->assertOk();
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
+        $this->assertMatchesRegularExpression('/id="cartBadge"[^>]*>1</', $html->getContent());
+        $html->assertSee('was deactivated and removed from your cart.', false);
+        $html->assertSee($unverified->site_name, false);
+    }
+
     public function test_advertiser_layout_toasts_removed_inactive_payload(): void
     {
         $html = file_get_contents(resource_path('views/advertiser/layouts/app.blade.php'));
         $this->assertStringContainsString('removed_inactive', $html);
         $this->assertStringContainsString('was deactivated and removed from your cart.', $html);
         $this->assertStringContainsString('showToast', $html);
+    }
+
+    public function test_add_to_cart_404_prunes_hidden_siblings(): void
+    {
+        $live = $this->makeSite('add-keep', true);
+        $unverified = $this->makeSite('add-unverified', true, ['verified' => false]);
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.cart.add'), ['id' => $unverified->id])
+            ->assertNotFound()
+            ->assertJsonPath('error', 'Site not found or inactive.');
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
+    }
+
+    public function test_save_cart_drops_hidden_and_invalid_ids(): void
+    {
+        $live = $this->makeSite('save-keep', true);
+        $unverified = $this->makeSite('save-unverified', true, ['verified' => false]);
+
+        $this->actingAs($this->advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.cart.save'), [
+                'cart' => [
+                    ['id' => $live->id, 'name' => $live->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $unverified->id, 'name' => $unverified->site_name, 'price' => 55, 'quantity' => 1],
+                    ['id' => 0, 'name' => 'Broken line', 'price' => 10, 'quantity' => 1],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('cart_count', 1);
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($live->id, (int) session('cart')[0]['id']);
     }
 }

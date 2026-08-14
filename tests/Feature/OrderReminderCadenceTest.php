@@ -213,6 +213,23 @@ class OrderReminderCadenceTest extends TestCase
         $this->assertSame(3, (int) $order->items->first()->fresh()->accept_nudge_stage);
     }
 
+    public function test_an_upcoming_scheduled_order_is_not_accept_nudged(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [], [
+            'paid_at' => now()->subHours(80),
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $this->artisan('orders:nudge-publishers')->assertSuccessful();
+
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
+        Mail::assertNotQueued(AdminStalledOrderAlert::class);
+        $this->assertSame(0, (int) $order->items->first()->fresh()->accept_nudge_stage);
+    }
+
     // —— Publisher: publish track ——————————————————————————————————
 
     public function test_a_publisher_inside_their_own_turnaround_is_not_nagged(): void

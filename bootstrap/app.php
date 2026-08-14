@@ -5,10 +5,12 @@
 use App\Http\Middleware\DrainQueuedMail;
 use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SetLocale;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
+use Illuminate\Http\Exceptions\PostTooLargeException;
 
 return Application::configure(basePath: dirname(__DIR__))
     ->withRouting(
@@ -38,6 +40,33 @@ return Application::configure(basePath: dirname(__DIR__))
         // Production uses branded resources/views/errors/* pages (APP_DEBUG=false).
         $exceptions->shouldRenderJsonWhen(function ($request, Throwable $e) {
             return $request->expectsJson();
+        });
+
+        // ValidatePostSize runs before routing. A 5 MB .docx with PHP still at
+        // 2M/8M becomes a 413 with no file. Return JSON so the Library fetch
+        // does not show a generic "Upload failed" / "over the 10 MB limit".
+        $exceptions->render(function (PostTooLargeException $e, $request) {
+            if (! $request->expectsJson()) {
+                return null;
+            }
+            $uploads = app(ContentUploadService::class);
+            if ($request->is('advertiser/content-submissions/editor-image')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $uploads->phpImageRejectedMessage(),
+                ], 422);
+            }
+            if (! $request->is(
+                'advertiser/content-library/upload',
+                'advertiser/content-submissions/upload',
+            )) {
+                return null;
+            }
+
+            return response()->json([
+                'success' => false,
+                'message' => $uploads->phpSizeRejectedMessage(),
+            ], 422);
         });
     })
     ->withSchedule(function (Schedule $schedule) {

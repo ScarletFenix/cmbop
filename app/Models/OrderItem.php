@@ -508,6 +508,93 @@ class OrderItem extends Model
     }
 
     /**
+     * Publisher already received earnings for this line (approve or auto-approve).
+     * Used so a later Approve cannot credit the same placement twice.
+     */
+    public function isPayoutComplete(): bool
+    {
+        if ((bool) $this->auto_approve_triggered) {
+            return true;
+        }
+
+        $table = $this->getTable();
+        if (Schema::hasColumn($table, 'completed_at') && $this->completed_at) {
+            return true;
+        }
+
+        if (Schema::hasColumn($table, 'publisher_status') && $this->publisher_status === 'completed') {
+            return true;
+        }
+
+        return $this->hasPublisherEarningsLedger();
+    }
+
+    /**
+     * Unpaid line the advertiser may complete: live URL in, no open revision.
+     */
+    public function isReadyForAdvertiserApprove(): bool
+    {
+        if (! $this->hasLiveUrl()) {
+            return false;
+        }
+
+        if ($this->isContentRevisionRequested() || $this->isModificationRequested()) {
+            return false;
+        }
+
+        return true;
+    }
+
+    public function hasPublisherEarningsLedger(): bool
+    {
+        if (! $this->id || ! Schema::hasTable('wallet_transactions')) {
+            return false;
+        }
+
+        try {
+            return WalletTransaction::query()
+                ->where('reference', 'ORDER-ITEM-'.$this->id)
+                ->where('type', WalletTransaction::TYPE_TRANSFER_IN)
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Staff can chase from the order show page: paid, still open, no live URL yet.
+     * Same endpoint as the stalled-order queue; does not require the cadence to be exhausted.
+     */
+    public function canAdminRemindPublisher(?Order $order = null): bool
+    {
+        $order ??= $this->relationLoaded('order') ? $this->order : $this->order()->first();
+        if (! $order || $order->payment_status !== 'paid') {
+            return false;
+        }
+        if (! in_array($order->status, ['pending', 'processing', 'review'], true)) {
+            return false;
+        }
+        if ($order->isAwaitingScheduledRelease()) {
+            return false;
+        }
+        if ($this->hasLiveUrl()) {
+            return false;
+        }
+
+        $publisher = $this->site?->publisher;
+
+        return filled($publisher?->email);
+    }
+
+    /**
+     * Track the stalled-order reminder uses: accept until accepted, then publish.
+     */
+    public function adminRemindTrack(): string
+    {
+        return $this->accepted_at === null ? 'accept' : 'publish';
+    }
+
+    /**
      * Check if modification was requested
      */
     public function isModificationRequested()

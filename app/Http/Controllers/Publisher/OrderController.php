@@ -119,7 +119,7 @@ class OrderController extends Controller
             if ($request->boolean('needs_action')) {
                 $query->where(function ($q) {
                     $q->whereHas('order', function ($sub) {
-                        $sub->where('status', 'pending');
+                        $sub->where('status', 'pending')->notAwaitingScheduledRelease();
                     })->orWhere(function ($sub) {
                         $sub->where('modification_requested', 'yes');
                     })->orWhere(function ($sub) {
@@ -140,9 +140,15 @@ class OrderController extends Controller
                     });
                 });
             } elseif ($request->filled('status')) {
-                // Status filter - using orders.status (the order status)
-                $query->whereHas('order', function ($sub) use ($request) {
-                    $sub->where('status', $request->status);
+                $status = (string) $request->status;
+                $query->whereHas('order', function ($sub) use ($status) {
+                    if ($status === 'scheduled') {
+                        $sub->awaitingScheduledRelease();
+                    } elseif ($status === 'pending') {
+                        $sub->where('status', 'pending')->notAwaitingScheduledRelease();
+                    } else {
+                        $sub->where('status', $status);
+                    }
                 });
             }
 
@@ -233,6 +239,7 @@ class OrderController extends Controller
                         'publication_mode' => $item->order->publication_mode,
                         'scheduled_publish_at' => optional($item->order->scheduled_publish_at)?->toIso8601String(),
                         'schedule_timezone' => $item->order->schedule_timezone,
+                        'is_awaiting_scheduled_release' => $item->order->isAwaitingScheduledRelease(),
                         'scheduled_label' => $item->order->scheduled_publish_at
                             ? $item->order->scheduled_publish_at
                                 ->timezone($item->order->schedule_timezone ?: 'UTC')
@@ -382,6 +389,7 @@ class OrderController extends Controller
                     'publication_mode' => $orderItem->order->publication_mode,
                     'scheduled_publish_at' => optional($orderItem->order->scheduled_publish_at)?->toIso8601String(),
                     'schedule_timezone' => $orderItem->order->schedule_timezone,
+                    'is_awaiting_scheduled_release' => $orderItem->order->isAwaitingScheduledRelease(),
                     'scheduled_label' => $orderItem->order->scheduled_publish_at
                         ? $orderItem->order->scheduled_publish_at
                             ->timezone($orderItem->order->schedule_timezone ?: 'UTC')
@@ -1246,7 +1254,10 @@ class OrderController extends Controller
 
             $stats = [
                 'total_orders' => count($orderIds),
-                'pending_orders' => Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
+                'pending_orders' => Order::whereIn('id', $orderIds)
+                    ->where('status', 'pending')
+                    ->notAwaitingScheduledRelease()
+                    ->count(),
                 'accepted_orders' => Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
                 'review_orders' => Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
                 'completed_orders' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),

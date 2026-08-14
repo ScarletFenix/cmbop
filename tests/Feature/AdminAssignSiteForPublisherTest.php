@@ -7,6 +7,8 @@ use App\Models\Category;
 use App\Models\Country;
 use App\Models\InAppNotification;
 use App\Models\Language;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -79,6 +81,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Quality editorial site for guest posts. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ]);
 
         $response->assertRedirect();
@@ -86,6 +89,9 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $site = Site::where('domain', 'staff-added-news.example')->first();
         $this->assertNotNull($site);
+        $location = (string) $response->headers->get('Location');
+        $this->assertStringContainsString('publisher='.$this->publisher->id, $location);
+        $this->assertStringContainsString('site='.$site->id, $location);
         $this->assertSame((int) $this->publisher->id, (int) $site->publisher_id);
         $this->assertSame((int) $this->admin->id, (int) $site->assigned_by_user_id);
         $this->assertNull($site->publisher_accepted_at);
@@ -104,7 +110,11 @@ class AdminAssignSiteForPublisherTest extends TestCase
             }
             $mail->build();
 
-            return str_contains((string) ($mail->viewData['acceptUrl'] ?? ''), 'status=invites');
+            $html = $mail->render();
+
+            return str_contains((string) ($mail->viewData['acceptUrl'] ?? ''), 'status=invites')
+                && str_contains($html, 'Catalog Activate is not automatic')
+                && ! str_contains($html, 'Our team can activate it for the catalog when ready');
         });
 
         $bell = InAppNotification::query()
@@ -113,6 +123,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->first();
         $this->assertNotNull($bell);
         $this->assertStringContainsString('status=invites', (string) $bell->action_url);
+        $this->assertStringContainsString('staff review', (string) $bell->message);
+        $this->assertStringNotContainsString('You can still verify ownership with the TXT file', (string) $bell->message);
 
         $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']))
@@ -182,6 +194,10 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertDontSee('invite-site.example', false);
 
         $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk();
+
+        $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
             ->assertOk()
             ->assertJson(['success' => true]);
@@ -218,6 +234,119 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertJson(['success' => true]);
 
         $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+    }
+
+    public function test_publisher_reject_does_not_delete_invite_with_order_items(): void
+    {
+        $site = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'assigned_by_user_id' => $this->admin->id,
+            'publisher_accepted_at' => null,
+            'site_name' => 'Ordered Invite',
+            'site_url' => 'https://ordered-invite.example',
+            'domain' => 'ordered-invite.example',
+            'example_url' => 'https://ordered-invite.example/post',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Invite that already has an order item. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $advertiserRole = Role::where('name', 'advertiser')->firstOrFail();
+        $advertiser = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $advertiserRole->id,
+        ]);
+        $advertiser->roles()->attach($advertiserRole->id);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-INVITE-ORD',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.sites.reject-assignment', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('sites', ['id' => $site->id]);
+        $this->assertDatabaseHas('order_items', ['site_id' => $site->id]);
+    }
+
+    public function test_create_page_survives_array_old_language_and_prices(): void
+    {
+        $this->actingAs($this->admin)
+            ->withSession([
+                '_old_input' => [
+                    'language' => ['de'],
+                    'country' => ['de'],
+                    'price_homepage' => ['7' => ['25']],
+                    'price_sensitive' => ['crypto' => ['15']],
+                    'categories' => 1,
+                ],
+            ])
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false);
+    }
+
+    public function test_admin_store_does_not_500_on_integer_categories(): void
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.sites.create'))
+            ->post(route('admin.sites.store'), [
+                'publisher_id' => $this->publisher->id,
+                'site_name' => 'Integer Niche',
+                'site_url' => 'https://int-niche.example',
+                'example_url' => 'https://int-niche.example/sample',
+                'da' => 40,
+                'dr' => 45,
+                'traffic' => 12000,
+                'country' => strtolower((string) $country->code),
+                'language' => strtolower((string) $language->code),
+                'categories' => 1,
+                'price' => 90,
+                'turnaround_time' => '3days',
+                'publication_time' => 'permanent',
+                'link_type' => 'dofollow',
+                'description' => str_repeat('Integer niche leftover store guard. ', 4),
+                'site_tag' => 'as_you_prefer',
+                'written_request' => 1,
+            ])
+            ->assertRedirect(route('admin.sites.create'))
+            ->assertSessionHasErrors('categories');
+
+        $this->assertNull(Site::where('domain', 'int-niche.example')->first());
     }
 
     public function test_publisher_self_created_sites_are_accepted_immediately(): void
@@ -280,6 +409,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Metrics coerce site description text. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ])->assertRedirect();
 
         $site = Site::where('domain', 'metrics-coerce.example')->first();
@@ -338,5 +468,29 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertOk()
             ->assertSee('No site invites waiting', false)
             ->assertSee('Accept / Decline', false);
+    }
+
+    public function test_admin_create_page_uses_verify_first_copy_and_posts_language(): void
+    {
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertSee('Add site for publisher', false)
+            ->assertSee('catalog Activate is not automatic', false)
+            ->assertSee('Accept ≠ Verified', false)
+            ->assertDontSee('Activate / Deactivate as usual', false)
+            ->assertSee('id="selectedLanguage"', false)
+            ->assertSee('name="language"', false)
+            ->assertSee('Select a language', false)
+            ->assertSee('data-max-kb', false)
+            ->assertSee('Site image must be under', false)
+            ->assertSee('id="publisherFilter"', false)
+            ->assertSee('written_request', false)
+            ->assertSee('This emails and bells the publisher', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('required disabled', $html);
+        $this->assertMatchesRegularExpression('/<select[^>]+id="language"[^>]*required/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
     }
 }

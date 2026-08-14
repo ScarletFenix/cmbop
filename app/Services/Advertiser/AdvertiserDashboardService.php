@@ -90,7 +90,8 @@ class AdvertiserDashboardService
             ->where(function ($q) {
                 $q->where(function ($pendingPaid) {
                     $pendingPaid->where('status', 'pending')
-                        ->where('payment_status', 'paid');
+                        ->where('payment_status', 'paid')
+                        ->notAwaitingScheduledRelease();
                 })->orWhere('status', 'processing');
             })
             ->count();
@@ -104,9 +105,13 @@ class AdvertiserDashboardService
                     ->orWhere('payment_status', '!=', 'paid');
             })
             ->count();
+        $upcomingScheduled = (clone $base)
+            ->awaitingScheduledRelease()
+            ->where('payment_status', 'paid')
+            ->count();
 
         return [
-            'total' => $completed + $inProgress + $needsReview,
+            'total' => $completed + $inProgress + $needsReview + $upcomingScheduled,
             'completed' => $completed,
             'in_progress' => $inProgress,
             'cancelled' => $cancelled,
@@ -130,11 +135,7 @@ class AdvertiserDashboardService
 
     protected function recommendedSites(?User $user = null): Collection
     {
-        $query = Site::query()
-            ->where('active', 1)
-            ->where(function ($q) {
-                $q->where('verified', 1)->orWhere('verified', true);
-            });
+        $query = Site::query()->catalogVisible();
 
         if ($user) {
             $query->where(function ($q) use ($user) {

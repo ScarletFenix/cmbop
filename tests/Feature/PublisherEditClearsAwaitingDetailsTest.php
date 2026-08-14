@@ -109,7 +109,15 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
         $this->assertSame(Site::ONBOARDING_DETAILS_COMPLETE, $site->onboarding_status);
         $this->assertFalse($site->isReadyForAdminReview());
 
-        // Publisher still needs Review & submit before admin queue; staff can still activate.
+        // Publisher still needs Review & submit before admin queue; activate needs verify first.
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.verify', $site->id), ['verified' => 1])
+            ->assertOk();
+
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
             ->assertOk()
@@ -118,7 +126,7 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
         $this->assertTrue((bool) $site->fresh()->active);
     }
 
-    public function test_admin_can_activate_stale_awaiting_details_site_when_details_already_complete(): void
+    public function test_admin_cannot_activate_stale_awaiting_details_site(): void
     {
         $site = $this->makeAwaitingDetailsSite();
 
@@ -127,16 +135,15 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $site->refresh();
-        $this->assertFalse($site->awaitsPublisherDetails());
-        $this->assertTrue($site->isReadyForAdminReview());
-        $this->assertTrue((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
+        $this->assertFalse((bool) $site->active);
     }
 
-    public function test_admin_can_activate_incomplete_awaiting_details_site(): void
+    public function test_admin_cannot_activate_incomplete_awaiting_details_site(): void
     {
         $site = $this->makeAwaitingDetailsSite([
             'description' => 'Please replace this placeholder with a real site description (at least 50 characters) before submitting for review.',
@@ -149,13 +156,12 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
 
         $this->actingAs($this->admin)
             ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $site->refresh();
-        $this->assertTrue((bool) $site->active);
-        $this->assertFalse($site->awaitsPublisherDetails());
-        $this->assertTrue($site->isReadyForAdminReview());
+        $this->assertFalse((bool) $site->active);
+        $this->assertTrue($site->awaitsPublisherDetails());
     }
 
     public function test_admin_can_approve_incomplete_awaiting_details_site(): void

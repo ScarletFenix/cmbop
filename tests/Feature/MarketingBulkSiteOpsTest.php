@@ -687,7 +687,7 @@ class MarketingBulkSiteOpsTest extends TestCase
 
         $this->actingAs($this->marketer)
             ->deleteJson(route('marketing.sites.destroy', $site->id), [
-                'reason' => 'Wrong domain seeded in this batch.',
+                'reason' => 'Wrong domain submitted by the publisher.',
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
@@ -703,6 +703,7 @@ class MarketingBulkSiteOpsTest extends TestCase
         $this->assertSame($bulk->id, (int) ($log->properties['bulk_site_request_id'] ?? 0));
         $this->assertSame($this->publisher->id, (int) ($log->properties['publisher_id'] ?? 0));
         $this->assertSame('oops-wrong.example', $log->properties['domain'] ?? null);
+        $this->assertSame('Wrong domain submitted by the publisher.', $log->properties['reason'] ?? null);
 
         $this->actingAs($this->marketer)
             ->get(route('marketing.bulk-site-requests.show', $bulk))
@@ -724,12 +725,32 @@ class MarketingBulkSiteOpsTest extends TestCase
 
         $this->actingAs($this->marketer)
             ->deleteJson(route('marketing.sites.destroy', $site->id), [
-                'reason' => 'Publisher withdrew this pending listing.',
+                'reason' => 'Metrics do not meet the marketplace quality bar.',
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
         $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+    }
+
+    public function test_marketer_delete_requires_reject_reason(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $site = $this->seedDraft($bulk, 'needs-reason.example');
+
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('marketing.sites.destroy', $site->id))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('marketing.sites.destroy', $site->id), [
+                'reason' => 'too short',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['reason']);
+
+        $this->assertDatabaseHas('sites', ['id' => $site->id]);
     }
 
     public function test_marketer_cannot_delete_verified_or_active_site(): void

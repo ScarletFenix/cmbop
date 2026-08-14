@@ -100,7 +100,10 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
                 'categories' => 'Technology',
                 'site_image' => $file,
             ])
-            ->assertRedirect(route('marketing.sites.edit', $site->id))
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]))
             ->assertSessionHasNoErrors();
 
         $site->refresh();
@@ -127,7 +130,10 @@ class MarketingNicheGroupAndImageFixTest extends TestCase
                 'categories' => 'Technology & Gadgets|Business & Finance',
                 'site_image' => $file,
             ])
-            ->assertRedirect(route('marketing.sites.edit', $site->id))
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]))
             ->assertSessionHasNoErrors();
 
         $site->refresh();

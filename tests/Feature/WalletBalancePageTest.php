@@ -250,6 +250,7 @@ class WalletBalancePageTest extends TestCase
         $this->assertSame(20.0, $this->wallet->withdrawableBalance());
         $this->assertDatabaseHas('withdrawals', [
             'user_id' => $this->user->id,
+            'wallet_id' => $this->wallet->id,
             'amount' => 30,
             'status' => 'pending',
         ]);

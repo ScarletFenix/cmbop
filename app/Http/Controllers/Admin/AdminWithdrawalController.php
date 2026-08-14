@@ -7,6 +7,7 @@ use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
 use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
+use App\Services\Wallet\ManualWithdrawalUnknownWalletException;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
@@ -405,6 +406,11 @@ class AdminWithdrawalController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'This withdrawal cannot be updated from its current status.'),
             ], 400);
+        } catch (ManualWithdrawalUnknownWalletException $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Cannot return these funds: the source wallet is unknown.'),
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Error updating withdrawal status: '.$e->getMessage());
 

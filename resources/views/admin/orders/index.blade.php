@@ -28,7 +28,7 @@
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <div id="adminOrdersSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                    <div id="adminOrdersSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted">Order status</label>
@@ -193,7 +193,7 @@
             const when = order.scheduled_publish_at_human
                 ? ' title="' + escapeHtml(order.scheduled_publish_at_human) + '"'
                 : '';
-            chips.push('<span class="badge text-bg-warning text-dark"' + when + '>Scheduled</span>');
+            chips.push(textLink(order.url + '#order-schedule', 'Scheduled', 'badge text-bg-warning text-dark text-decoration-none', when));
         }
         if (!chips.length) return '';
         return '<div class="d-flex flex-wrap gap-1 mt-1">' + chips.join('') + '</div>';
@@ -290,14 +290,15 @@
     });
     {{-- Page clicks are handled by renderAdminPagination's delegated listener. --}}
 
-    if (typeof window.SlbLiveSearch !== 'undefined') {
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof window.SlbLiveSearch === 'undefined') return;
         window.SlbLiveSearch.init(document.getElementById('searchInput'), {
             mode: 'event',
             statusEl: document.getElementById('adminOrdersSearchStatus'),
             clearBtn: document.getElementById('adminOrdersSearchClear'),
             onSearch: function () { loadOrders(1); },
         });
-    }
+    });
 
     const boot = new URLSearchParams(window.location.search);
     if (boot.get('status')) document.getElementById('statusFilter').value = boot.get('status');

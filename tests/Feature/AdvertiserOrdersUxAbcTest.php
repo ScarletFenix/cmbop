@@ -148,6 +148,12 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('No matching orders', $js);
         $this->assertStringContainsString('payment-refunded', $js);
         $this->assertStringContainsString('paginationPageWindow', $js);
+        $this->assertStringContainsString('ordersPageHref', $js);
+        $this->assertStringContainsString('if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', $js);
+        $this->assertStringContainsString('catalog-pagination__meta', $js);
+        $this->assertStringContainsString('catalog-pagination__links', $js);
+        $this->assertStringContainsString('if (!pagination || !pagination.total)', $js);
+        $this->assertStringNotContainsString('pagination.last_page <= 1', $js);
         $this->assertStringContainsString('popstate', $js);
         $this->assertStringContainsString('window.viewOrder', $js);
         $this->assertStringContainsString('+${moreCount} more', $js);
@@ -157,6 +163,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('scheduleOrdersLiveSearch', $js);
         $this->assertStringContainsString('runOrdersLiveFetch', $js);
         $this->assertStringContainsString('bootAdvertiserOrdersPage', $js);
+        $this->assertStringContainsString('isAwaitingScheduledRelease', $js);
         $this->assertStringContainsString("credentials: 'same-origin'", $js);
         // Live search must not depend on OrderChat succeeding first.
         $earlyFetchAssign = strpos($js, 'window.fetchOrders = fetchOrders');
@@ -387,5 +394,38 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertSame(1, $response->json('pagination.from'));
         $this->assertSame(1, $response->json('pagination.to'));
         $this->assertSame(1, $response->json('pagination.total'));
+        $this->assertSame(1, $response->json('pagination.last_page'));
+    }
+
+    public function test_page_two_keeps_search_and_status_filters(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+
+        for ($i = 1; $i <= 21; $i++) {
+            $this->makeOrder($advertiser, $site, [
+                'order_number' => sprintf('ORD-PAGE-%02d', $i),
+                'status' => 'processing',
+                'payment_status' => 'paid',
+            ]);
+        }
+
+        $response = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.list', [
+                'page' => 2,
+                'search' => 'ORD-PAGE',
+                'status' => 'processing',
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(2, $response->json('pagination.current_page'));
+        $this->assertSame(2, $response->json('pagination.last_page'));
+        $this->assertSame(21, $response->json('pagination.from'));
+        $this->assertSame(21, $response->json('pagination.to'));
+        $this->assertSame(21, $response->json('pagination.total'));
+        $this->assertCount(1, $response->json('orders'));
+        $this->assertStringContainsString('ORD-PAGE', $response->json('orders.0.order_number'));
     }
 }

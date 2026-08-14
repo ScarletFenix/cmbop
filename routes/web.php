@@ -448,6 +448,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':marketing'])
     ->group(function () use ($registerStaffOpsRoutes) {
         Route::get('/dashboard', [MarketingPanelController::class, 'dashboard'])
             ->name('dashboard');
+        Route::get('/dashboard/queue-counts', [MarketingPanelController::class, 'queueCounts'])
+            ->name('dashboard.queue-counts');
         Route::get('/history', [MarketingPanelController::class, 'history'])
             ->name('history');
         $registerStaffOpsRoutes();
@@ -850,6 +852,8 @@ Route::middleware(['auth', 'verified', RoleMiddleware::class.':advertiser'])
         // Content Library (upload → evaluate → select sites → order)
         Route::get('/content-library', [ContentLibraryController::class, 'index'])
             ->name('content-library');
+        Route::get('/content-library/results', [ContentLibraryController::class, 'results'])
+            ->name('content-library.results');
         Route::post('/content-library/upload', [ContentLibraryController::class, 'upload'])
             ->middleware('throttle:30,1')
             ->name('content-library.upload');
