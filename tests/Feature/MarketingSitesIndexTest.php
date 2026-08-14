@@ -120,6 +120,32 @@ class MarketingSitesIndexTest extends TestCase
             ->assertDontSee('alpha-other-pub@example.test', false);
     }
 
+    public function test_sites_index_array_q_does_not_500(): void
+    {
+        $match = $this->userWithRole('publisher', [
+            'name' => 'Array Query Pub',
+            'email' => 'array-query-pub@example.test',
+        ]);
+        $other = $this->userWithRole('publisher', [
+            'name' => 'Other Query Pub',
+            'email' => 'other-query-pub@example.test',
+        ]);
+        $this->makeSite($match);
+        $this->makeSite($other);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.sites.index', ['q' => ['Array Query Pub']]))
+            ->assertOk()
+            ->assertSee('array-query-pub@example.test', false)
+            ->assertDontSee('other-query-pub@example.test', false)
+            ->assertDontSee('Array to string conversion', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['q' => [['not-a-name']]]))
+            ->assertOk()
+            ->assertDontSee('Array to string conversion', false);
+    }
+
     public function test_sites_index_search_survives_pagination_and_needs_review_toggle(): void
     {
         foreach (range(1, 21) as $i) {

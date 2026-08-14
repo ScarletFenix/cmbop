@@ -150,6 +150,40 @@ class AdminWebsiteRecordsSheetTest extends TestCase
         $this->assertStringContainsString('country=fr', (string) $response->json('export_url'));
     }
 
+    public function test_records_sheet_array_country_does_not_500(): void
+    {
+        $admin = $this->userWithRoles(['admin'], 'admin');
+        $publisher = $this->userWithRoles(['publisher'], 'publisher');
+
+        $this->makeSite($publisher, [
+            'site_url' => 'https://german-records.example',
+            'domain' => 'german-records.example',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+        $this->makeSite($publisher, [
+            'site_url' => 'https://french-records.example',
+            'domain' => 'french-records.example',
+            'country' => 'fr',
+            'countries' => ['fr'],
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.sites.records', ['country' => ['fr'], 'partial' => 1]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('selected_country', 'fr')
+            ->assertJsonPath('total', 1);
+
+        $export = $this->actingAs($admin)
+            ->get(route('admin.sites.records.export', ['country' => ['fr']]));
+
+        $export->assertOk();
+        $csv = $export->streamedContent();
+        $this->assertStringContainsString('https://french-records.example', $csv);
+        $this->assertStringNotContainsString('https://german-records.example', $csv);
+    }
+
     public function test_admin_can_filter_records_sheet_by_country(): void
     {
         $admin = $this->userWithRoles(['admin'], 'admin');
