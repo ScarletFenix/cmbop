@@ -3245,6 +3245,14 @@ class CatalogController extends Controller
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
 
+            // Pay again charges the full package on the card. Release any leftover
+            // checkout bonus for this reference first so promo is not left reserved
+            // while the advertiser pays the original total again.
+            app(OrderPaymentService::class)->refundBonusReservedForReference(
+                (int) auth()->id(),
+                $referenceCode
+            );
+
             Stripe::setApiKey(config('services.stripe.secret'));
 
             $retryPayload = [
