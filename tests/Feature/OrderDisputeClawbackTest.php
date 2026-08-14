@@ -288,6 +288,109 @@ class OrderDisputeClawbackTest extends TestCase
         ])->assertStatus(422)->assertJsonPath('code', 'wallet_debt');
     }
 
+    public function test_upholding_one_line_does_not_block_a_sibling_dispute(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $firstPublisher = $this->makeUser('publisher');
+        $secondPublisher = $this->makeUser('publisher');
+        $firstSite = $this->makeSite($firstPublisher);
+        $secondSite = Site::create([
+            'publisher_id' => $secondPublisher->id,
+            'site_name' => 'Sibling Clawback Blog',
+            'site_url' => 'https://sibling-clawback.example',
+            'domain' => 'sibling-clawback.example',
+            'example_url' => 'https://sibling-clawback.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Sibling clawback site description. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-CLAW-MULTI-'.random_int(1000, 9999),
+            'subtotal' => 230,
+            'tax' => 0,
+            'total_amount' => 230,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDays(1),
+        ]);
+        $firstItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $firstSite->id,
+            'site_name' => $firstSite->site_name,
+            'site_url' => $firstSite->site_url,
+            'content_link' => 'https://example.com/article-a',
+            'price' => 115,
+            'publisher_price' => 100,
+            'live_url' => 'https://clawback-blog.example/live-a',
+        ]);
+        $secondItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $secondSite->id,
+            'site_name' => $secondSite->site_name,
+            'site_url' => $secondSite->site_url,
+            'content_link' => 'https://example.com/article-b',
+            'price' => 115,
+            'publisher_price' => 100,
+            'live_url' => 'https://sibling-clawback.example/live-b',
+        ]);
+
+        $this->publisherWallet($firstPublisher, 100);
+        $this->publisherWallet($secondPublisher, 100);
+        $advWallet = $this->advertiserWallet($advertiser, 0);
+
+        $firstDispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $firstItem->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'First placement live URL was deleted after completion.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $firstDispute->id),
+            ['admin_notes' => 'First line confirmed removed; claw back only that publisher.']
+        )->assertOk();
+
+        $this->assertSame('paid', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(115.0, (float) $advWallet->fresh()->balance, 0.01);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.open', $order->id),
+            [
+                'reason' => 'Second placement was also deleted after the first clawback.',
+                'order_item_id' => $secondItem->id,
+            ]
+        )->assertOk();
+
+        $secondDispute = OrderItemDispute::query()
+            ->where('order_item_id', $secondItem->id)
+            ->first();
+        $this->assertNotNull($secondDispute);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $secondDispute->id),
+            ['admin_notes' => 'Second line also removed; now the whole order is refunded.']
+        )->assertOk();
+
+        $this->assertSame('refunded', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(230.0, (float) $advWallet->fresh()->balance, 0.01);
+    }
+
     public function test_second_uphold_is_rejected(): void
     {
         $admin = $this->makeUser('admin');

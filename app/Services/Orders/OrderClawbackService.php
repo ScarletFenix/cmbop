@@ -196,10 +196,6 @@ class OrderClawbackService
                 );
             }
 
-            $order->update([
-                'payment_status' => 'refunded',
-            ]);
-
             $dispute->update([
                 'status' => OrderItemDispute::STATUS_UPHELD,
                 'admin_notes' => $notes,
@@ -209,6 +205,12 @@ class OrderClawbackService
                 'advertiser_credited' => $advertiserCredit,
                 'debt_created' => $debtCreated,
             ]);
+
+            if ($this->everyItemHasBeenClawedBack($order)) {
+                $order->update([
+                    'payment_status' => 'refunded',
+                ]);
+            }
 
             if ($site) {
                 Site::refreshCompletedOrdersCount((int) $site->id);
@@ -380,8 +382,27 @@ class OrderClawbackService
 
         if ($blocking) {
             throw ValidationException::withMessages([
-                'order' => 'A dispute is already open or was already upheld for this order.',
+                'order' => 'A dispute is already open or was already upheld for this placement.',
             ]);
         }
+    }
+
+    private function everyItemHasBeenClawedBack(Order $order): bool
+    {
+        $itemIds = OrderItem::query()
+            ->where('order_id', $order->id)
+            ->pluck('id');
+
+        if ($itemIds->isEmpty()) {
+            return false;
+        }
+
+        $upheldItemIds = OrderItemDispute::query()
+            ->where('order_id', $order->id)
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->pluck('order_item_id')
+            ->unique();
+
+        return $itemIds->every(fn ($id) => $upheldItemIds->contains($id));
     }
 }

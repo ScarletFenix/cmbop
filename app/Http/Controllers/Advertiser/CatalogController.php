@@ -3897,10 +3897,13 @@ class CatalogController extends Controller
         try {
             $data = $request->validate([
                 'reason' => 'required|string|min:10|max:1000',
+                'order_item_id' => 'nullable|integer',
             ]);
 
             $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-            $item = $order->items->first();
+            $item = ! empty($data['order_item_id'])
+                ? $order->items->firstWhere('id', (int) $data['order_item_id'])
+                : $order->items->first();
             if (! $item) {
                 return response()->json([
                     'success' => false,
