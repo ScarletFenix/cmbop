@@ -338,6 +338,10 @@ class Wallet extends Model
     /**
      * Repair wallets where welcome credit landed in balance but bonus_balance was left at 0
      * (e.g. bonus columns added after registration without a backfill).
+     *
+     * Uses remaining promotional credit (received − spent − reserved), not lifetime
+     * bonus_credit. Lifetime credits re-tagged deposited cash after the welcome
+     * bonus had already been spent.
      */
     public function repairOrphanedWelcomeBonus(): bool
     {
@@ -351,25 +355,12 @@ class Wallet extends Model
             return false;
         }
 
-        $ledgerBonus = 0.0;
-        if (Schema::hasTable('wallet_transactions')) {
-            $ledgerBonus = (float) DB::table('wallet_transactions')
-                ->where('wallet_id', $this->id)
-                ->where('type', 'bonus_credit')
-                ->sum('bonus_amount');
-            if ($ledgerBonus <= 0) {
-                $ledgerBonus = (float) DB::table('wallet_transactions')
-                    ->where('wallet_id', $this->id)
-                    ->where('type', 'bonus_credit')
-                    ->sum('amount');
-            }
-        }
-
-        if ($ledgerBonus <= 0) {
+        $remaining = $this->remainingPromotionalCredit();
+        if ($remaining === null || $remaining <= 0) {
             return false;
         }
 
-        $this->bonus_balance = round(min($balance, $ledgerBonus), 2);
+        $this->bonus_balance = round(min($balance, $remaining), 2);
         $this->save();
 
         return true;
@@ -385,8 +376,35 @@ class Wallet extends Model
             return false;
         }
 
-        if (! Schema::hasTable('wallet_transactions')) {
+        $remaining = $this->remainingPromotionalCredit();
+        if ($remaining === null) {
             return false;
+        }
+
+        $balance = round((float) $this->balance, 2);
+        $current = round((float) $this->bonus_balance, 2);
+        $target = round(min($balance, $remaining), 2);
+
+        if ($current <= $target + 0.001) {
+            return false;
+        }
+
+        $this->bonus_balance = $target;
+        $this->save();
+
+        return true;
+    }
+
+    /**
+     * Promotional credit still available to tag as bonus_balance.
+     * received bonus_credit − spent debit bonus_amount − currently reserved promo.
+     *
+     * @return float|null null when the ledger has no promotional credits (or no table)
+     */
+    public function remainingPromotionalCredit(): ?float
+    {
+        if (! Schema::hasTable('wallet_transactions')) {
+            return null;
         }
 
         $received = (float) DB::table('wallet_transactions')
@@ -400,7 +418,7 @@ class Wallet extends Model
                 ->sum('amount');
         }
         if ($received <= 0) {
-            return false;
+            return null;
         }
 
         $spent = (float) DB::table('wallet_transactions')
@@ -409,20 +427,8 @@ class Wallet extends Model
             ->sum('bonus_amount');
 
         $reserved = round((float) $this->bonus_reserved, 2);
-        $allowedRemaining = max(0, round($received - $spent, 2));
-        $allowedAvailable = max(0, round($allowedRemaining - $reserved, 2));
-        $balance = round((float) $this->balance, 2);
-        $current = round((float) $this->bonus_balance, 2);
-        $target = round(min($balance, $allowedAvailable), 2);
 
-        if ($current <= $target + 0.001) {
-            return false;
-        }
-
-        $this->bonus_balance = $target;
-        $this->save();
-
-        return true;
+        return max(0, round($received - $spent - $reserved, 2));
     }
 
     /**
