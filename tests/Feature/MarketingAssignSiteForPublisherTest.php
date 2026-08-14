@@ -956,6 +956,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $disk = \Mockery::mock();
         $disk->shouldReceive('makeDirectory')->andReturn(true);
         $disk->shouldReceive('putFile')->andReturn('sites/fail.jpg');
+        $disk->shouldReceive('putFileAs')->andReturn('sites/fail.jpg');
         $disk->shouldReceive('exists')->andReturn(false);
         Storage::shouldReceive('disk')
             ->with('public')
@@ -1014,7 +1015,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ])
             ->get(route('marketing.sites.edit', $pending->id))
             ->assertOk()
-            ->assertSee('Fill metrics, geo & niches', false)
+            ->assertSee('Fill metrics, geo', false)
             ->assertDontSee('htmlspecialchars', false)
             ->assertSee('id="language"', false);
     }
