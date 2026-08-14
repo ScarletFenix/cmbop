@@ -146,12 +146,16 @@ class WelcomeBonusGrantTest extends TestCase
     {
         app(WelcomeBonusService::class)->setEnabled(false);
 
-        $this->get(route('register'))
+        $html = $this->get(route('register'))
             ->assertOk()
             ->assertDontSee('Spend on your first orders — not withdrawable', false)
             ->assertDontSee('Welcome bonus for first orders', false)
             ->assertDontSee('Start with €20 free credit', false)
-            ->assertSee('Free to start — no card required', false);
+            ->assertSee('Free to start — no card required', false)
+            ->assertSee('const welcomeBonusEnabled = false', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('<strong>€20 welcome credit</strong>', $html);
     }
 
     private function registerPayload(string $email, string $role = 'advertiser'): array

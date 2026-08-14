@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Services\Wallet\WelcomeBonusService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminWelcomeBonusToggleTest extends TestCase
@@ -81,6 +82,36 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertOk()
             ->assertSee('€20 welcome credit', false)
             ->assertSee('Enabled', false)
-            ->assertSee('Disable', false);
+            ->assertSee('Disable', false)
+            ->assertSee(route('admin.promotions.welcome-bonus.toggle'), false);
+    }
+
+    public function test_promotions_hub_shows_enable_when_bonus_is_disabled(): void
+    {
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('€20 welcome credit', false)
+            ->assertSee('Disabled', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/btn-primary[^>]*>\s*Enable\s*</', $html);
+        $this->assertDoesNotMatchRegularExpression('/btn-outline-danger[^>]*>\s*Disable\s*</', $html);
+    }
+
+    public function test_toggle_fails_gracefully_when_settings_table_is_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_settings');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_settings'));
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.promotions.index'))
+            ->post(route('admin.promotions.welcome-bonus.toggle'))
+            ->assertRedirect(route('admin.promotions.index'))
+            ->assertSessionHas('error');
+
+        $this->assertTrue(app(WelcomeBonusService::class)->isEnabled());
     }
 }

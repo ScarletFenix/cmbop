@@ -30,7 +30,11 @@ class RegisterPageTest extends TestCase
             ->assertSee('Create your account', false)
             ->assertSee('Create Account', false)
             ->assertDontSee('Continue with Apple', false)
-            ->assertSee('Continue with Google', false);
+            ->assertSee('Continue with Google', false)
+            ->assertSee('€20 welcome credit', false)
+            ->assertSee('Start with €20 free credit', false)
+            ->assertSee('Welcome bonus for first orders', false)
+            ->assertSee('const welcomeBonusEnabled = true', false);
     }
 
     public function test_register_page_defines_role_benefits_helper_before_use(): void
