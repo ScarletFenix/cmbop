@@ -410,7 +410,7 @@ class MarketingPanelHistoryTest extends TestCase
         $html = $this->actingAs($this->marketer)
             ->get(route('marketing.history'))
             ->assertOk()
-            ->assertSee('Seed, edit, activate, deactivate, assign, image, metrics, and bulk updates.', false)
+            ->assertSee('Seed, edit, activate, deactivate, assign, delete, image, metrics, and bulk updates.', false)
             ->assertSee('data-history-filters', false)
             ->assertSee('for="history-q"', false)
             ->assertSee('for="history-action"', false)
@@ -427,11 +427,29 @@ class MarketingPanelHistoryTest extends TestCase
             $this->assertStringContainsString('value="'.$action.'"', $html);
         }
 
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.activated',
+            'description' => 'Staff made the listing live',
+            'subject_label' => 'Live Filter Site',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'Only an edit']))
+            ->assertOk()
+            ->assertSee('Edited site (1)', false)
+            ->assertSee('Activated site (0)', false)
+            ->assertSee('Filter Bar Site', false)
+            ->assertDontSee('Live Filter Site', false);
+
         $this->actingAs($this->marketer)
             ->get(route('marketing.history', ['action' => 'not-a-tracked-action']))
             ->assertOk()
             ->assertSee('Filter Bar Site', false)
-            ->assertSee('Showing 1–1 of 1 task', false)
+            ->assertSee('Live Filter Site', false)
             ->assertDontSee('0 tasks match these filters', false);
     }
 

@@ -92,16 +92,12 @@ class PanelController extends Controller
     public function history(Request $request)
     {
         $userId = (int) auth()->id();
-        $query = $this->marketerHistoryQuery($userId)->latest('id');
+        $query = $this->marketerHistoryQuery($userId);
         $dateErrors = [];
 
         $selectedAction = $request->string('action')->toString();
         if ($selectedAction !== '' && ! in_array($selectedAction, self::TRACKED_ACTIONS, true)) {
             $selectedAction = '';
-        }
-
-        if ($selectedAction !== '') {
-            $query->where('action', $selectedAction);
         }
 
         $fromBound = null;
@@ -152,12 +148,16 @@ class PanelController extends Controller
             });
         }
 
-        $logs = $query->paginate(30)->withQueryString();
-
-        $actionCounts = $this->marketerHistoryQuery($userId)
+        $actionCounts = (clone $query)
             ->selectRaw('action, COUNT(*) as aggregate')
             ->groupBy('action')
             ->pluck('aggregate', 'action');
+
+        if ($selectedAction !== '') {
+            $query->where('action', $selectedAction);
+        }
+
+        $logs = $query->latest('id')->paginate(30)->withQueryString();
 
         $actions = self::TRACKED_ACTIONS;
 
