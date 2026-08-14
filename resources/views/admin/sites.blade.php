@@ -711,22 +711,7 @@ document.addEventListener('click', function(e){
         const id = e.target.closest('[data-id]').dataset.id;
         const row = document.getElementById('details-' + id);
         if(!row) return;
-        const opening = !row.classList.contains('is-open');
-        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
-            if (openRow !== row) {
-                openRow.classList.remove('is-open');
-            }
-        });
-        row.classList.toggle('is-open', opening);
-        if (opening) {
-            hydrateSiteDetailImages(row);
-        }
-        const label = e.target.closest('.toggle-site-details');
-        if (label) {
-            label.innerHTML = opening
-                ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
-                : '<i class="fa fa-chevron-down me-2"></i>Details';
-        }
+        setSiteDetailsOpen(id, !row.classList.contains('is-open'));
         return;
     }
 
@@ -1152,6 +1137,35 @@ function sitePreviewHtml(site) {
     `;
 }
 
+function syncSiteDetailsLabel(id, opening) {
+    const label = document.querySelector(`#sitesTable .toggle-site-details[data-id="${id}"]`);
+    if (!label) return;
+    label.innerHTML = opening
+        ? '<i class="fa fa-chevron-up me-2"></i>Hide details'
+        : '<i class="fa fa-chevron-down me-2"></i>Details';
+}
+
+function setSiteDetailsOpen(id, opening) {
+    const row = document.getElementById('details-' + id);
+    if (!row) return false;
+    if (opening) {
+        document.querySelectorAll('#sitesTable .admin-expand-row.is-open').forEach(function (openRow) {
+            if (openRow === row) return;
+            openRow.classList.remove('is-open');
+            const otherId = String(openRow.id || '').replace(/^details-/, '');
+            if (otherId) {
+                syncSiteDetailsLabel(otherId, false);
+            }
+        });
+        row.classList.add('is-open');
+        hydrateSiteDetailImages(row);
+    } else {
+        row.classList.remove('is-open');
+    }
+    syncSiteDetailsLabel(id, opening);
+    return true;
+}
+
 function hydrateSiteDetailImages(scope) {
     (scope || document).querySelectorAll('img[data-detail-src]').forEach(function (img) {
         const src = img.getAttribute('data-detail-src');
@@ -1420,10 +1434,8 @@ function renderSites(data){
         if (row) {
             row.classList.add('site-highlight-row');
             row.scrollIntoView({ block: 'center', behavior: 'smooth' });
-            const details = document.getElementById(`details-${highlightId}`);
-            if (details) {
-                details.classList.remove('d-none');
-            }
+            // CSS reveals the panel via .is-open, not .d-none.
+            setSiteDetailsOpen(highlightId, true);
         }
     }
 }

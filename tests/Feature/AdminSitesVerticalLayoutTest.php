@@ -73,6 +73,10 @@ class AdminSitesVerticalLayoutTest extends TestCase
         $this->assertStringContainsString('admin-manage-menu', $blade);
         $this->assertStringContainsString('toggle-site-details', $blade);
         $this->assertStringContainsString('admin-expand-row', $blade);
+        $this->assertStringContainsString('setSiteDetailsOpen', $blade);
+        $this->assertStringContainsString('setSiteDetailsOpen(highlightId, true)', $blade);
+        $this->assertStringNotContainsString("details.classList.remove('d-none')", $blade);
+        $this->assertStringContainsString('.admin-expand-row.is-open', $css);
         $this->assertStringContainsString('admin-site-info-stack', $blade);
         $this->assertStringContainsString('Manage', $blade);
         $this->assertStringContainsString('revealAllPublisherSites', $blade);
