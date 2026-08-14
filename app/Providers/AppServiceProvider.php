@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\EmailNotificationService;
+use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PublicStorageLink;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
@@ -203,6 +204,23 @@ class AppServiceProvider extends ServiceProvider
             }
 
             $view->with('footerRecentBlogs', $posts);
+        });
+
+        View::composer('marketing.layouts.app', function ($view) {
+            $ready = 0;
+            $bulk = 0;
+
+            try {
+                $ready = MarketingOpsQueues::sitesReadyForStaff()->count();
+                $bulk = MarketingOpsQueues::bulkWaitingOnMarketer()->count();
+            } catch (\Throwable $e) {
+                Log::warning('Marketing sidebar queue badges failed', ['error' => $e->getMessage()]);
+            }
+
+            $view->with([
+                'mktReadySiteCount' => $ready,
+                'mktBulkWaitingCount' => $bulk,
+            ]);
         });
     }
 

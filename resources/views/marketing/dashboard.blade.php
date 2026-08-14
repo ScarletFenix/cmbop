@@ -11,7 +11,10 @@
             <p class="text-muted mb-0">Add and edit sites, manage bulk onboarding, and track every task you’ve completed.</p>
         </div>
         <div class="d-flex gap-2 flex-wrap">
-            <a href="{{ route('marketing.sites.index') }}" class="btn btn-sm btn-primary">
+            <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-primary">
+                <i class="fa fa-plus me-1"></i> Add site for publisher
+            </a>
+            <a href="{{ route('marketing.sites.index') }}" class="btn btn-sm btn-outline-primary">
                 <i class="fa fa-globe me-1"></i> Sites
             </a>
             <a href="{{ route('marketing.bulk-site-requests.index') }}" class="btn btn-sm btn-outline-primary">
@@ -35,7 +38,7 @@
             </a>
         </div>
         <div class="col-6 col-md-3">
-            <a href="{{ route('marketing.bulk-site-requests.index') }}" class="text-decoration-none text-reset" data-stat="bulk-waiting-on-you">
+            <a href="{{ route('marketing.bulk-site-requests.index', ['status' => \App\Support\MarketingOpsQueues::FILTER_NEEDS_MARKETER]) }}" class="text-decoration-none text-reset" data-stat="bulk-waiting-on-you">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
                         <div class="text-muted small">Waiting on you (bulk)</div>
@@ -119,7 +122,7 @@
             <div class="card border-0 shadow-sm h-100" data-queue="open-bulk">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-layer-group me-2 text-primary"></i>Waiting on you</strong>
-                    <a href="{{ route('marketing.bulk-site-requests.index') }}" class="small">View all</a>
+                    <a href="{{ route('marketing.bulk-site-requests.index', ['status' => \App\Support\MarketingOpsQueues::FILTER_NEEDS_MARKETER]) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">

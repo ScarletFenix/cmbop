@@ -111,6 +111,8 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringNotContainsString('Archived Ready Site', $waitingTable);
 
         $this->assertStringContainsString(route('marketing.sites.index', ['needs_review' => 1], false), $html);
+        $this->assertStringContainsString(route('marketing.sites.create', [], false), $html);
+        $this->assertSame('1', $this->node($html, 'data-nav-badge', 'sites')->attributes->getNamedItem('data-count')?->nodeValue);
     }
 
     public function test_dashboard_open_bulk_includes_completed_rows_still_needing_done(): void
@@ -193,6 +195,49 @@ class MarketingDashboardQueuesTest extends TestCase
             route('marketing.bulk-site-requests.index', ['status' => 'awaiting_publisher'], false),
             $waitingCard
         );
+        $this->assertStringContainsString(
+            route('marketing.bulk-site-requests.index', ['status' => MarketingOpsQueues::FILTER_NEEDS_MARKETER], false),
+            $html
+        );
+        $this->assertSame('2', $this->node($html, 'data-nav-badge', 'bulk')->attributes->getNamedItem('data-count')?->nodeValue);
+
+        $filtered = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.index', [
+                'status' => MarketingOpsQueues::FILTER_NEEDS_MARKETER,
+            ]))
+            ->assertOk()
+            ->assertSee('Waiting on you', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $requested), $filtered);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $leftover), $filtered);
+        $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', $awaitingPublisher), $filtered);
+        $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', $trulyDone), $filtered);
+
+        $requestedOnly = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.index', ['status' => BulkSiteRequest::STATUS_REQUESTED]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $requested), $requestedOnly);
+        $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', $leftover), $requestedOnly);
+    }
+
+    public function test_marketer_notification_inbox_uses_marketing_shell(): void
+    {
+        $html = $this->actingAs($this->marketer)
+            ->get(route('notifications.all'))
+            ->assertOk()
+            ->assertSee('All notifications', false)
+            ->getContent();
+
+        $this->assertStringContainsString('role-shell-marketing', $html);
+        $this->assertStringContainsString(route('marketing.history'), $html);
+        $this->assertStringNotContainsString(route('admin.payments', [], false), $html);
+        $this->assertStringNotContainsString(route('admin.deposits', [], false), $html);
+        $this->assertStringNotContainsString('>Deposits</span>', $html);
+        $this->assertStringNotContainsString(route('marketing.site-enrichment.index'), $html);
+        $this->assertStringNotContainsString('>Enrichment</span>', $html);
     }
 
     /**

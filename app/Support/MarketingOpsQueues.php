@@ -14,6 +14,9 @@ use Illuminate\Database\Eloquent\Builder;
  */
 class MarketingOpsQueues
 {
+    /** Bulk index `?status=` value for marketer-actionable rows (not a DB enum). */
+    public const FILTER_NEEDS_MARKETER = 'needs_marketer';
+
     /**
      * Sites ready for staff activate / review (not publisher drafts or invites).
      *
@@ -63,15 +66,7 @@ class MarketingOpsQueues
      */
     public static function openBulkForMarketer(): Builder
     {
-        return BulkSiteRequest::query()->where(function ($q) {
-            $q->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
-            ])->orWhere(function ($inner) {
-                $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
-                    ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
-            });
-        });
+        return BulkSiteRequest::query()->where(fn ($q) => self::constrainOpenBulk($q));
     }
 
     /**
@@ -81,15 +76,48 @@ class MarketingOpsQueues
      */
     public static function bulkWaitingOnMarketer(): Builder
     {
-        return BulkSiteRequest::query()->where(function ($q) {
-            $q->whereIn('status', [
-                BulkSiteRequest::STATUS_REQUESTED,
-                BulkSiteRequest::STATUS_SHEET_SENT,
-                BulkSiteRequest::STATUS_SEEDED,
-            ])->orWhere(function ($inner) {
-                $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
-                    ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
-            });
+        return BulkSiteRequest::query()->where(fn ($q) => self::constrainWaitingOnMarketer($q));
+    }
+
+    /**
+     * @param  Builder<BulkSiteRequest>  $query
+     * @return Builder<BulkSiteRequest>
+     */
+    public static function applyBulkIndexStatus(Builder $query, string $status): Builder
+    {
+        return match ($status) {
+            '', 'all' => $query,
+            self::FILTER_NEEDS_MARKETER => $query->where(fn ($q) => self::constrainWaitingOnMarketer($q)),
+            default => $query->where('status', $status),
+        };
+    }
+
+    /**
+     * @param  Builder<BulkSiteRequest>  $q
+     */
+    public static function constrainOpenBulk(Builder $q): void
+    {
+        $q->whereNotIn('status', [
+            BulkSiteRequest::STATUS_COMPLETED,
+            BulkSiteRequest::STATUS_CANCELLED,
+        ])->orWhere(function ($inner) {
+            $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
+                ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
+        });
+    }
+
+    /**
+     * @param  Builder<BulkSiteRequest>  $q
+     */
+    public static function constrainWaitingOnMarketer(Builder $q): void
+    {
+        $q->whereIn('status', [
+            BulkSiteRequest::STATUS_REQUESTED,
+            BulkSiteRequest::STATUS_SHEET_SENT,
+            BulkSiteRequest::STATUS_SEEDED,
+        ])->orWhere(function ($inner) {
+            $inner->where('status', BulkSiteRequest::STATUS_COMPLETED)
+                ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
         });
     }
 

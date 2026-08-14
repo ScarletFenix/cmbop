@@ -22,7 +22,8 @@ class NotificationController extends Controller
 
         $layout = match ($role) {
             'publisher' => 'publisher.layouts.app',
-            'admin', 'marketing' => 'admin.layouts.app',
+            'marketing' => 'marketing.layouts.app',
+            'admin' => 'admin.layouts.app',
             default => 'advertiser.layouts.app',
         };
 
