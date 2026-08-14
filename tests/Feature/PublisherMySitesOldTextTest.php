@@ -37,4 +37,39 @@ class PublisherMySitesOldTextTest extends TestCase
             ->assertSee('name="siteName"', false)
             ->assertDontSee('Call to undefined function old_text', false);
     }
+
+    public function test_my_sites_survives_array_old_input(): void
+    {
+        $role = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $this->actingAs($user)
+            ->withSession([
+                '_old_input' => [
+                    'siteName' => ['Poisoned Name'],
+                    'siteUrl' => ['https://poisoned-url.example'],
+                    'exampleUrl' => ['https://poisoned-url.example/post'],
+                    'da' => ['40'],
+                    'dr' => ['41'],
+                    'traffic' => ['15000'],
+                    'price' => [['99']],
+                    'country' => ['de'],
+                    'language' => ['de'],
+                    'categories' => [1, ['News']],
+                    'siteDescription' => ['<p>Poisoned description</p>'],
+                    'price_homepage' => ['7' => ['25']],
+                    'price_sensitive' => ['crypto' => ['15']],
+                ],
+            ])
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->assertSee('value="Poisoned Name"', false)
+            ->assertSee('value="https://poisoned-url.example"', false)
+            ->assertDontSee('htmlspecialchars(): Argument #1', false)
+            ->assertDontSee('TypeError', false);
+    }
 }

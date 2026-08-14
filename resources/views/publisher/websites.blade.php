@@ -1031,15 +1031,15 @@
                         <div class="row g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Site Name <span class="req" aria-hidden="true">*</span></label>
-                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old('siteName') }}" required>
+                                <input type="text" name="siteName" id="siteName" class="form-control" placeholder="Enter site name" value="{{ old_text('siteName') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Site URL <span class="req" aria-hidden="true">*</span></label>
-                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old('siteUrl') }}" required>
+                                <input type="url" name="siteUrl" id="siteUrl" class="form-control" placeholder="eg:https://example.com" value="{{ old_text('siteUrl') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Example URL <span class="req" aria-hidden="true">*</span></label>
-                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old('exampleUrl') }}" required>
+                                <input type="url" name="exampleUrl" id="exampleUrl" class="form-control" placeholder="https://example.com/example" value="{{ old_text('exampleUrl') }}" required>
                             </div>
                         </div>
                     </div>
@@ -1052,18 +1052,18 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                     (Domain Authority) <span class="req" aria-hidden="true">*</span>
                                 </label>
-                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('da') }}" required>
+                                <input type="number" name="da" id="da" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('da') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                     (Domain Rating) <span class="req" aria-hidden="true">*</span>
                                 </label>
-                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old('dr') }}" required>
+                                <input type="number" name="dr" id="dr" class="form-control" placeholder="0-100" min="0" max="100" value="{{ old_text('dr') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Traffic <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old('traffic') }}" required>
+                                <input type="number" name="traffic" id="traffic" class="form-control" placeholder="Visitors/month" value="{{ old_text('traffic') }}" required>
                             </div>
                             <div class="col-md-3">
                                 <label class="form-label">Turnaround Time <span class="req" aria-hidden="true">*</span></label>
@@ -1085,7 +1085,7 @@
                         <div class="row">
                             <div class="col-12">
                                 <label class="form-label">Site Description (500 words max) <span class="req" aria-hidden="true">*</span></label>
-                                <div id="quillEditor" class="border rounded" style="height: 200px;">{!! old('siteDescription') !!}</div>
+                                <div id="quillEditor" class="border rounded" style="height: 200px;">{!! old_text('siteDescription') !!}</div>
                                 <input type="hidden" name="siteDescription" id="siteDescription" required>
                             </div>
                         </div>
@@ -1099,7 +1099,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Country / Market <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="country" id="selectedCountry" value="{{ old('country', is_array(old('countries')) ? (old('countries')[0] ?? '') : old('countries')) }}">
+                                <input type="hidden" name="country" id="selectedCountry" value="{{ old_text('country', old_text('countries')) }}">
                                 <div class="single-select-wrapper" id="countryWrapper">
                                     <div class="single-select-input" id="countryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select country or market">
                                         <span class="single-select-value" id="countryValue"><span class="single-select-placeholder">Select country...</span></span>
@@ -1127,7 +1127,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Language <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old('language', is_array(old('languages')) ? (old('languages')[0] ?? '') : old('languages')) }}">
+                                <input type="hidden" name="language" id="selectedLanguage" value="{{ old_text('language', old_text('languages')) }}">
                                 <div class="single-select-wrapper" id="languageWrapper">
                                     <div class="single-select-input" id="languageInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select language">
                                         <span class="single-select-value" id="languageValue"><span class="single-select-placeholder">Select country first...</span></span>
@@ -1156,7 +1156,7 @@
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Categories <span class="req" aria-hidden="true">*</span></label>
-                                <input type="hidden" name="categories" id="selectedCategories" value="{{ is_array(old('categories')) ? implode('|', old('categories')) : old('categories') }}">
+                                <input type="hidden" name="categories" id="selectedCategories" value="{{ implode('|', \App\Models\Category::normalizeNicheInputs(old('categories', []))) }}">
                                 <div class="multi-select-wrapper" id="categoryWrapper" data-multi-select="category">
                                     <div class="multi-select-input" id="categoryInput" role="button" tabindex="0" aria-haspopup="listbox" aria-expanded="false" aria-label="Select categories">
                                         <span class="multi-select-placeholder">Select categories (max 7)...</span>
@@ -1193,7 +1193,7 @@
                         <div class="row bg-light p-3 rounded g-3 g-form">
                             <div class="col-md-4">
                                 <label class="form-label">Price (€) <span class="req" aria-hidden="true">*</span></label>
-                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old('price') }}" required>
+                                <input type="number" name="price" id="price" class="form-control" placeholder="Enter price" min="0" step="0.01" value="{{ old_text('price') }}" required>
                             </div>
                             <div class="col-md-4">
                                 <label class="form-label">Publication Duration <span class="req" aria-hidden="true">*</span></label>
@@ -1279,7 +1279,7 @@
                                                 <input type="checkbox" name="sensitive[{{ $topic }}]" value="1" class="form-check-input sensitive-checkbox" id="sensitive{{ $topic }}" {{ old("sensitive.$topic") ? 'checked' : '' }}>
                                                 <label class="form-check-label" for="sensitive{{ $topic }}">{{ ucfirst($topic) }}</label>
                                             </div>
-                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old("price_sensitive.$topic") }}" min="0" step="0.01">
+                                            <input type="number" name="price_sensitive[{{ $topic }}]" class="form-control mt-1 sensitive-price" placeholder="Extra price (€)" value="{{ old_text("price_sensitive.$topic") }}" min="0" step="0.01">
                                         </div>
                                         @endforeach
                                     </div>
@@ -1325,7 +1325,7 @@
                                                        name="price_homepage[{{ $days }}]"
                                                        class="form-control mt-1 homepage-price"
                                                        placeholder="Fee (€) — 0 = Free"
-                                                       value="{{ old("price_homepage.$days") }}"
+                                                       value="{{ old_text("price_homepage.$days") }}"
                                                        min="0"
                                                        step="0.01"
                                                        inputmode="decimal">
@@ -1449,9 +1449,9 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 @php
-    $pwOldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
-    $pwOldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
-    $pwOldCategories = old('categories', []);
+    $pwOldLanguage = old_text('language', old_text('languages'));
+    $pwOldCountry = old_text('country', old_text('countries'));
+    $pwOldCategories = \App\Models\Category::normalizeNicheInputs(old('categories', []));
 @endphp
 <script>
 window.__publisherWebsitesInlineLoaded = true;
@@ -2042,9 +2042,9 @@ $('#selectedCountry').on('change', function() {
 applyCountryLanguageFilter('', { clearLanguage: false });
 
 @php
-    $pwOldLanguage = old('language', is_array(old('languages')) ? (old('languages')[0] ?? null) : old('languages'));
-    $pwOldCountry = old('country', is_array(old('countries')) ? (old('countries')[0] ?? null) : old('countries'));
-    $pwOldCategories = old('categories', []);
+    $pwOldLanguage = old_text('language', old_text('languages'));
+    $pwOldCountry = old_text('country', old_text('countries'));
+    $pwOldCategories = \App\Models\Category::normalizeNicheInputs(old('categories', []));
 @endphp
 @if($pwOldCountry)
     (function() {
@@ -2069,8 +2069,8 @@ applyCountryLanguageFilter('', { clearLanguage: false });
 
 // Initialize Category Multi Select (max 7)
 let categoryMultiSelect = initMultiSelect('categoryWrapper', 'categoryInput', 'categoryDropdown', 'categoryOptions', 'selectedCategories', 'categorySearch', 7, 'Select categories (max 7)...');
-@if(old('categories'))
-    let oldCategories = @json(old('categories', []));
+@if($pwOldCategories !== [])
+    let oldCategories = @json($pwOldCategories);
     if (typeof oldCategories === 'string') {
         oldCategories = String(oldCategories).split(/[|,]/).map(v => v.trim()).filter(Boolean);
     }
