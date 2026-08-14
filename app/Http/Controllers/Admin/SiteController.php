@@ -848,7 +848,13 @@ class SiteController extends Controller
 
         $imagePath = null;
         if ($request->hasFile('site_image')) {
-            $stored = $this->storeStaffSiteImage($request->file('site_image'));
+            $upload = $request->file('site_image');
+            if ($upload && ! $upload->isValid()) {
+                throw ValidationException::withMessages([
+                    'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                ]);
+            }
+            $stored = $this->storeStaffSiteImage($upload);
             if ($stored === null) {
                 throw ValidationException::withMessages([
                     'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
@@ -856,10 +862,11 @@ class SiteController extends Controller
             }
             PublicStorageLink::ensure();
             $imagePath = $stored;
+            $storedImagePath = $stored;
         }
 
         try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site, &$storedImagePath) {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
                     throw ValidationException::withMessages([
@@ -868,27 +875,6 @@ class SiteController extends Controller
                 }
 
                 $site = new Site;
-
-                $imagePath = null;
-                if ($request->hasFile('site_image')) {
-                    $upload = $request->file('site_image');
-                    if ($upload && ! $upload->isValid()) {
-                        throw ValidationException::withMessages([
-                            'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
-                        ]);
-                    }
-                    $disk = Storage::disk('public');
-                    $disk->makeDirectory('sites');
-                    $stored = $upload->store('sites', 'public');
-                    if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
-                        throw ValidationException::withMessages([
-                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
-                        ]);
-                    }
-                    $storedImagePath = $stored;
-                    PublicStorageLink::ensure();
-                    $imagePath = $stored;
-                }
 
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
