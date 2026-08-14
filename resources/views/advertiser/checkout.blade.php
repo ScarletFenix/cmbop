@@ -237,10 +237,72 @@
                         </div>
                     </div>
 
-                    <!-- 2. Payment Methods -->
+                    @if(!empty($schedulingEnabled))
+                        @php
+                            $scheduleMode = (($checkoutSchedule['mode'] ?? 'immediate') === 'scheduled') ? 'scheduled' : 'immediate';
+                            $scheduleDate = $checkoutSchedule['date'] ?? '';
+                            $scheduleTime = $checkoutSchedule['time'] ?? '09:00';
+                            $scheduleTz = $checkoutSchedule['timezone'] ?? ($scheduleDefaultTimezone ?? 'UTC');
+                            $scheduleMonths = (int) ($maxScheduleMonths ?? 3);
+                            $scheduleMin = $scheduleMinDate ?? now()->toDateString();
+                            $scheduleMax = $maxScheduleDate ?? now()->addMonthsNoOverflow($scheduleMonths)->toDateString();
+                            $scheduleZones = is_array($scheduleTimezones ?? null) ? $scheduleTimezones : ['UTC'];
+                            if (! in_array($scheduleTz, $scheduleZones, true)) {
+                                $scheduleZones[] = $scheduleTz;
+                            }
+                        @endphp
+                        <div class="card border-0 shadow-sm mb-4" id="checkoutScheduleCard">
+                            <div class="card-header bg-white fw-semibold">
+                                <i class="fa fa-calendar-alt me-2"></i> 2. Publication
+                            </div>
+                            <div class="card-body">
+                                <p class="text-muted small mb-3">
+                                    You pay now and the publisher is notified now.
+                                    Choose when they must publish — up to {{ $scheduleMonths }} {{ $scheduleMonths === 1 ? 'month' : 'months' }} ahead.
+                                </p>
+                                <div class="checkout-schedule-modes mb-3" role="radiogroup" aria-label="Publication timing">
+                                    <label class="checkout-schedule-mode">
+                                        <input type="radio" name="publication_mode" value="immediate" {{ $scheduleMode === 'immediate' ? 'checked' : '' }}>
+                                        <span>
+                                            <strong>Publish as soon as the publisher accepts</strong>
+                                            <span class="d-block small text-muted">Normal queue — no live date to wait for.</span>
+                                        </span>
+                                    </label>
+                                    <label class="checkout-schedule-mode">
+                                        <input type="radio" name="publication_mode" value="scheduled" {{ $scheduleMode === 'scheduled' ? 'checked' : '' }}>
+                                        <span>
+                                            <strong>Schedule publication</strong>
+                                            <span class="d-block small text-muted">Publisher must go live on the date you pick.</span>
+                                        </span>
+                                    </label>
+                                </div>
+                                <div id="checkoutScheduleFields" class="row g-3 {{ $scheduleMode === 'scheduled' ? '' : 'd-none' }}">
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="checkoutScheduledDate">Date</label>
+                                        <input type="date" class="form-control" id="checkoutScheduledDate" name="scheduled_date"
+                                               value="{{ $scheduleDate }}" min="{{ $scheduleMin }}" max="{{ $scheduleMax }}">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="checkoutScheduledTime">Time</label>
+                                        <input type="time" class="form-control" id="checkoutScheduledTime" name="scheduled_time" value="{{ $scheduleTime }}">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label" for="checkoutScheduleTimezone">Timezone</label>
+                                        <select class="form-select" id="checkoutScheduleTimezone" name="timezone">
+                                            @foreach($scheduleZones as $zone)
+                                                <option value="{{ $zone }}" @selected($zone === $scheduleTz)>{{ $zone }}</option>
+                                            @endforeach
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    @endif
+
+                    <!-- 3. Payment Methods -->
                     <div class="card border-0 shadow-sm mb-4" id="paymentSectionCard">
                         <div class="card-header bg-white fw-semibold">
-                            <i class="fa fa-credit-card me-2"></i> 2. Payment
+                            <i class="fa fa-credit-card me-2"></i> {{ !empty($schedulingEnabled) ? '3' : '2' }}. Payment
                         </div>
                         <div class="card-body">
                             <p class="text-muted small mb-3">Pay from your wallet, or by card. Bank, Wise, and crypto fund your wallet via invoice first.</p>
@@ -748,6 +810,31 @@
 
 .payment-option {
     cursor: pointer;
+}
+
+.checkout-schedule-modes {
+    display: grid;
+    gap: 10px;
+}
+
+.checkout-schedule-mode {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin: 0;
+    padding: 12px 14px;
+    border: 1px solid var(--border-default, #e2e8f0);
+    border-radius: var(--radius-lg, 12px);
+    cursor: pointer;
+}
+
+.checkout-schedule-mode:has(input:checked) {
+    border-color: var(--brand-primary-soft, #3faeb2);
+    background: var(--brand-primary-tint, #eef8f8);
+}
+
+.checkout-schedule-mode input {
+    margin-top: 4px;
 }
 
 .other-payments-grid {
@@ -1356,8 +1443,59 @@ document.addEventListener('DOMContentLoaded', function() {
         }).then(response => response.json());
     }
 
+    function checkoutSchedulePayload() {
+        const card = document.getElementById('checkoutScheduleCard');
+        if (!card) {
+            return { publication_mode: 'immediate' };
+        }
+        const mode = document.querySelector('input[name="publication_mode"]:checked')?.value || 'immediate';
+        if (mode !== 'scheduled') {
+            return { publication_mode: 'immediate' };
+        }
+        return {
+            publication_mode: 'scheduled',
+            scheduled_date: document.getElementById('checkoutScheduledDate')?.value || '',
+            scheduled_time: document.getElementById('checkoutScheduledTime')?.value || '09:00',
+            timezone: document.getElementById('checkoutScheduleTimezone')?.value || 'UTC',
+        };
+    }
+
+    function syncCheckoutScheduleFields() {
+        const fields = document.getElementById('checkoutScheduleFields');
+        if (!fields) return;
+        const mode = document.querySelector('input[name="publication_mode"]:checked')?.value || 'immediate';
+        fields.classList.toggle('d-none', mode !== 'scheduled');
+    }
+
+    function persistCheckoutSchedule() {
+        const card = document.getElementById('checkoutScheduleCard');
+        if (!card) return;
+        const payload = checkoutSchedulePayload();
+        fetch('{{ route("advertiser.checkout.schedule") }}', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': '{{ csrf_token() }}'
+            },
+            body: JSON.stringify(payload)
+        }).catch(function () {});
+    }
+
+    document.querySelectorAll('input[name="publication_mode"]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            syncCheckoutScheduleFields();
+            persistCheckoutSchedule();
+        });
+    });
+    ['checkoutScheduledDate', 'checkoutScheduledTime', 'checkoutScheduleTimezone'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('change', persistCheckoutSchedule);
+    });
+    syncCheckoutScheduleFields();
+
     // Submit order function
     function submitOrder() {
+        const schedule = checkoutSchedulePayload();
         fetch('{{ route("advertiser.checkout.process") }}', {
             method: 'POST',
             headers: {
@@ -1369,7 +1507,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 payment_method: selectedMethod,
                 reference_code: referenceCode,
                 use_bonus: !!(useBonusEl && useBonusEl.checked),
-                publication_mode: 'immediate',
+                publication_mode: schedule.publication_mode,
+                scheduled_date: schedule.scheduled_date || null,
+                scheduled_time: schedule.scheduled_time || null,
+                timezone: schedule.timezone || null,
                 payment_method_id: (function () {
                     const picked = document.querySelector('input[name="saved_card_choice"]:checked');
                     if (selectedMethod !== 'card') return null;
@@ -1413,8 +1554,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (data.requires_payment && data.checkout_url) {
                     window.location.href = data.checkout_url;
                 } else if (data.message) {
-                    Swal.fire('Success', data.message, 'success').then(() => {
-                        window.location.href = '{{ route("advertiser.orders") }}';
+                    const next = data.scheduled && data.scheduled_orders_url
+                        ? data.scheduled_orders_url
+                        : '{{ route("advertiser.orders") }}';
+                    const extra = data.scheduled && data.scheduled_orders_url
+                        ? '<p class="mt-3 mb-0"><a href="' + data.scheduled_orders_url + '">View scheduled orders</a></p>'
+                        : '';
+                    Swal.fire({
+                        icon: 'success',
+                        title: data.scheduled ? 'Publication scheduled' : 'Success',
+                        html: '<div style="text-align:left;">' + escapeHtml(data.message) + extra + '</div>'
+                    }).then(() => {
+                        window.location.href = next;
                     });
                 } else {
                     Swal.fire('Success', 'Order placed successfully!', 'success').then(() => {
@@ -1480,6 +1631,13 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        const schedule = checkoutSchedulePayload();
+        if (schedule.publication_mode === 'scheduled' && !schedule.scheduled_date) {
+            Swal.fire('Schedule', 'Choose a publication date.', 'warning');
+            document.getElementById('checkoutScheduledDate')?.focus();
+            return;
+        }
+
         if (!['wallet', 'card'].includes(selectedMethod)) {
             Swal.fire({
                 icon: 'info',

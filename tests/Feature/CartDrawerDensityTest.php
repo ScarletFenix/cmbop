@@ -29,6 +29,8 @@ class CartDrawerDensityTest extends TestCase
 
         $this->assertStringContainsString('id="cartChecklist"', $layout);
         $this->assertStringContainsString('id="cartProceedHint"', $layout);
+        $this->assertStringContainsString('id="cartScheduleHint"', $layout);
+        $this->assertStringContainsString('cartSchedule', $layout);
         $this->assertStringContainsString('class="cart-totals d-none"', $layout);
         $this->assertMatchesRegularExpression(
             '/id="checkoutFromCart"[^>]*\bdisabled\b/',
@@ -70,6 +72,7 @@ class CartDrawerDensityTest extends TestCase
         $this->assertStringContainsString('padding: 12px 16px', $css);
         $this->assertStringContainsString('.cart-keep-browsing', $css);
         $this->assertStringContainsString('.cart-totals__held', $css);
+        $this->assertStringContainsString('.cart-schedule-hint', $css);
         $this->assertStringContainsString('width: min(420px, 94vw)', $css);
 
         $this->assertStringNotContainsString('.cart-checklist', $stepper);

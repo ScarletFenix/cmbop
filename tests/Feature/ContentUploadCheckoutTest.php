@@ -135,7 +135,12 @@ class ContentUploadCheckoutTest extends TestCase
                 ],
             ]);
 
-        $response->assertOk()->assertJson(['success' => true]);
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'scheduled' => true,
+        ]);
+        $this->assertNotEmpty($response->json('scheduled_orders_url'));
+        $this->assertStringContainsString('scheduled-orders', (string) $response->json('scheduled_orders_url'));
 
         $order = Order::where('reference_code', 'SCH1')->first();
         $this->assertNotNull($order);
@@ -261,5 +266,95 @@ class ContentUploadCheckoutTest extends TestCase
             strtolower((string) $response->json('message'))
         );
         $this->assertSame(0, Order::where('reference_code', 'NONE')->count());
+    }
+
+    public function test_checkout_page_shows_publication_schedule_picker(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'sched-ui', 40);
+
+        $html = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="checkoutScheduleCard"', $html);
+        $this->assertStringContainsString('name="publication_mode"', $html);
+        $this->assertStringContainsString('id="checkoutScheduledDate"', $html);
+        $this->assertStringContainsString('function checkoutSchedulePayload', $html);
+        $this->assertStringContainsString('checkout/schedule', $html);
+        $this->assertStringNotContainsString("publication_mode: 'immediate',", $html);
+    }
+
+    public function test_checkout_page_hides_schedule_picker_when_disabled(): void
+    {
+        config(['content_upload.scheduling.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'sched-off', 40);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->assertDontSee('id="checkoutScheduleCard"', false)
+            ->assertSee("publication_mode: 'immediate'", false);
+    }
+
+    public function test_checkout_schedule_persists_in_session_and_cart_hint(): void
+    {
+        $advertiser = $this->advertiser();
+        $date = now()->addDays(12)->toDateString();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.checkout.schedule'), [
+                'publication_mode' => 'scheduled',
+                'scheduled_date' => $date,
+                'scheduled_time' => '10:30',
+                'timezone' => 'Europe/Berlin',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('schedule.mode', 'scheduled')
+            ->assertJsonPath('schedule.date', $date);
+
+        $this->assertSame('scheduled', session('checkout_schedule.mode'));
+        $this->assertSame($date, session('checkout_schedule.date'));
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->assertJsonPath('schedule.mode', 'scheduled')
+            ->assertJsonPath('schedule.date', $date);
+    }
+
+    public function test_library_order_keeps_checkout_schedule(): void
+    {
+        $advertiser = $this->advertiser();
+        $sub = $this->createApprovedSubmission($advertiser, null);
+        $date = now()->addDays(8)->toDateString();
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'checkout_schedule' => [
+                    'mode' => 'scheduled',
+                    'date' => $date,
+                    'time' => '09:00',
+                    'timezone' => 'UTC',
+                ],
+            ])
+            ->get(route('advertiser.content-library.order', $sub))
+            ->assertRedirect();
+
+        $this->assertSame('scheduled', session('checkout_schedule.mode'));
+        $this->assertSame($date, session('checkout_schedule.date'));
+        $this->assertSame($sub->id, session('checkout_content_submission_id'));
     }
 }

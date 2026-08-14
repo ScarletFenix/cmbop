@@ -274,6 +274,7 @@
             </div>
             <div id="cartHeldNote" class="cart-totals__held d-none"></div>
         </div>
+        <div id="cartScheduleHint" class="cart-schedule-hint d-none" hidden></div>
         <button id="checkoutFromCart" class="btn btn-primary w-100 d-none" type="button" disabled>
             <i class="fa fa-credit-card"></i> Proceed to Checkout
         </button>
@@ -416,6 +417,7 @@
     
     let approvedArticles = [];
     let requireSameLanguage = false;
+    let cartSchedule = null;
     let contentLibraryUploadUrl = @json(route('advertiser.content-library', ['upload' => 1]));
     let catalogUrl = @json(route('advertiser.catalog'));
 
@@ -427,6 +429,7 @@
         cart = Array.isArray(data?.cart) ? data.cart : [];
         approvedArticles = Array.isArray(data?.approved_articles) ? data.approved_articles : [];
         requireSameLanguage = !!data?.require_same_language;
+        cartSchedule = data?.schedule && data.schedule.mode === 'scheduled' ? data.schedule : null;
         if (data?.content_library_url) {
             contentLibraryUploadUrl = data.content_library_url;
         }
@@ -631,6 +634,7 @@
         const totalLabel = document.getElementById('cartTotalLabel');
         const heldNote = document.getElementById('cartHeldNote');
         const totalsEl = document.getElementById('cartTotals');
+        const scheduleHint = document.getElementById('cartScheduleHint');
         if (cart.length === 0) {
             container.innerHTML = `
                 <div class="text-center text-muted px-2">
@@ -667,6 +671,11 @@
             }
             if (totalsEl) {
                 totalsEl.classList.add('d-none');
+            }
+            if (scheduleHint) {
+                scheduleHint.classList.add('d-none');
+                scheduleHint.hidden = true;
+                scheduleHint.textContent = '';
             }
         } else {
             let html = '';
@@ -724,6 +733,21 @@
             }
             if (totalLabel) {
                 totalLabel.textContent = readyCount > 0 && missing === 0 ? 'Total' : 'Pay now';
+            }
+            if (scheduleHint) {
+                if (cartSchedule && cartSchedule.label) {
+                    const href = cartSchedule.checkout_url || @json(route('advertiser.checkout'));
+                    scheduleHint.innerHTML = escapeHtml(cartSchedule.label).replace(
+                        'change at checkout',
+                        '<a href="' + href + '">change at checkout</a>'
+                    );
+                    scheduleHint.classList.remove('d-none');
+                    scheduleHint.hidden = false;
+                } else {
+                    scheduleHint.classList.add('d-none');
+                    scheduleHint.hidden = true;
+                    scheduleHint.textContent = '';
+                }
             }
             if (heldNote) {
                 if (readyCount === 0) {
