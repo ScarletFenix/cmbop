@@ -9,6 +9,7 @@ use App\Models\UserConsent;
 use App\Models\Wallet;
 use App\Services\EmailNotificationService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -137,7 +138,13 @@ class SocialiteController extends Controller
 
             $user->roles()->sync([$advertiserRole->id, $publisherRole->id]);
 
-            $welcomeBonus = 20.00;
+            $request = request();
+            $bonusService = app(WelcomeBonusService::class);
+            $welcomeBonus = $bonusService->amountFor($request, 'advertiser');
+            if ($welcomeBonus > 0 && ! $bonusService->recordClaim($user, $request, $welcomeBonus, 'socialite')) {
+                $welcomeBonus = 0.0;
+            }
+
             Wallet::insertRegistrationPair(
                 $user->id,
                 $advertiserRole->id,
@@ -158,6 +165,10 @@ class SocialiteController extends Controller
             }
 
             DB::commit();
+
+            if ($welcomeBonus > 0) {
+                $bonusService->queueClaimCookie();
+            }
 
             try {
                 $advertiserWallet = Wallet::where('user_id', $user->id)

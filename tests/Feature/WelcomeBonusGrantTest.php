@@ -1,0 +1,212 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Models\Role;
+use App\Models\User;
+use App\Models\Wallet;
+use App\Models\WelcomeBonusClaim;
+use App\Services\Wallet\WelcomeBonusService;
+use Database\Seeders\RolesTableSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
+use Illuminate\Support\Facades\RateLimiter;
+use Laravel\Socialite\Contracts\Provider;
+use Laravel\Socialite\Facades\Socialite;
+use Laravel\Socialite\Two\User as SocialiteUser;
+use Mockery;
+use Tests\TestCase;
+
+class WelcomeBonusGrantTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RolesTableSeeder::class);
+        RateLimiter::clear('register:1.2.3.4');
+        RateLimiter::clear('register:9.9.9.9');
+        RateLimiter::clear('register:10.0.0.2');
+        RateLimiter::clear('register:127.0.0.1');
+    }
+
+    public function test_first_advertiser_from_ip_receives_bonus_and_claim(): void
+    {
+        Notification::fake();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->postJson('/register', $this->registerPayload('first-bonus@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $user = User::where('email', 'first-bonus@example.com')->first();
+        $this->assertNotNull($user);
+        $this->assertAdvertiserBonus($user, 20.0);
+        $this->assertSame(1, WelcomeBonusClaim::query()->where('user_id', $user->id)->count());
+        $this->assertSame('1.2.3.4', WelcomeBonusClaim::query()->where('user_id', $user->id)->value('ip_address'));
+    }
+
+    public function test_second_advertiser_from_same_ip_gets_no_bonus(): void
+    {
+        Notification::fake();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->postJson('/register', $this->registerPayload('first-ip@example.com'))
+            ->assertOk();
+
+        RateLimiter::clear('register:1.2.3.4');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->postJson('/register', $this->registerPayload('second-ip@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $second = User::where('email', 'second-ip@example.com')->first();
+        $this->assertNotNull($second);
+        $this->assertAdvertiserBonus($second, 0.0);
+        $this->assertSame(0, WelcomeBonusClaim::query()->where('user_id', $second->id)->count());
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_disabled_bonus_skips_credit_on_new_ip(): void
+    {
+        Notification::fake();
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '9.9.9.9'])
+            ->postJson('/register', $this->registerPayload('disabled-bonus@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $user = User::where('email', 'disabled-bonus@example.com')->first();
+        $this->assertNotNull($user);
+        $this->assertAdvertiserBonus($user, 0.0);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_reenabled_bonus_grants_on_new_ip(): void
+    {
+        Notification::fake();
+        $service = app(WelcomeBonusService::class);
+        $service->setEnabled(false);
+        $service->setEnabled(true);
+
+        $this->withServerVariables(['REMOTE_ADDR' => '10.0.0.2'])
+            ->postJson('/register', $this->registerPayload('reenabled@example.com'))
+            ->assertOk();
+
+        $user = User::where('email', 'reenabled@example.com')->first();
+        $this->assertAdvertiserBonus($user, 20.0);
+    }
+
+    public function test_publisher_register_never_receives_bonus(): void
+    {
+        Notification::fake();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->postJson('/register', $this->registerPayload('pub-bonus@example.com', 'publisher'))
+            ->assertOk();
+
+        $user = User::where('email', 'pub-bonus@example.com')->first();
+        $this->assertAdvertiserBonus($user, 0.0);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_google_signup_respects_ip_claim(): void
+    {
+        Mail::fake();
+        $this->configureGoogle();
+
+        $this->mockGoogleCallback('google-first', 'google-first@example.com');
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->get(route('auth.google.callback'))
+            ->assertRedirect('/advertiser/dashboard');
+
+        $first = User::where('email', 'google-first@example.com')->first();
+        $this->assertAdvertiserBonus($first, 20.0);
+
+        Auth::logout();
+        $this->flushSession();
+
+        $this->mockGoogleCallback('google-second', 'google-second@example.com');
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->get(route('auth.google.callback'))
+            ->assertRedirect('/advertiser/dashboard');
+
+        $second = User::where('email', 'google-second@example.com')->first();
+        $this->assertNotNull($second);
+        $this->assertAdvertiserBonus($second, 0.0);
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_register_page_hides_bonus_copy_when_disabled(): void
+    {
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $html = $this->get(route('register'))
+            ->assertOk()
+            ->assertDontSee('Spend on your first orders — not withdrawable', false)
+            ->assertDontSee('Welcome bonus for first orders', false)
+            ->assertDontSee('Start with €20 free credit', false)
+            ->assertDontSee('€20 Welcome Credit', false)
+            ->assertDontSee('New advertisers get €20 welcome credit', false)
+            ->assertSee('Create Account | SEOLinkBuildings', false)
+            ->assertSee('Free to start — no card required', false)
+            ->assertSee('const welcomeBonusEnabled = false', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('<strong>€20 welcome credit</strong>', $html);
+    }
+
+    private function registerPayload(string $email, string $role = 'advertiser'): array
+    {
+        return [
+            'name' => 'Test User',
+            'email' => $email,
+            'password' => 'password123',
+            'password_confirmation' => 'password123',
+            'role' => $role,
+            'terms' => '1',
+        ];
+    }
+
+    private function assertAdvertiserBonus(?User $user, float $expected): void
+    {
+        $this->assertNotNull($user);
+        $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
+        $wallet = Wallet::where('user_id', $user->id)->where('role_id', $advertiserRoleId)->first();
+        $this->assertNotNull($wallet);
+        $this->assertEquals($expected, (float) $wallet->bonus_balance);
+        $this->assertEquals($expected, (float) $wallet->balance);
+    }
+
+    private function configureGoogle(): void
+    {
+        config([
+            'services.google.client_id' => 'test-google-client-id',
+            'services.google.client_secret' => 'test-google-client-secret',
+            'services.google.redirect' => 'http://127.0.0.1:8000/auth/google/callback',
+        ]);
+    }
+
+    private function mockGoogleCallback(string $id, string $email): void
+    {
+        $socialUser = Mockery::mock(SocialiteUser::class);
+        $socialUser->shouldReceive('getId')->andReturn($id);
+        $socialUser->shouldReceive('getEmail')->andReturn($email);
+        $socialUser->shouldReceive('getName')->andReturn('Google User');
+        $socialUser->shouldReceive('getAvatar')->andReturn(null);
+        $socialUser->token = 'access-token';
+        $socialUser->refreshToken = 'refresh-token';
+
+        $provider = Mockery::mock(Provider::class);
+        $provider->shouldReceive('scopes')->andReturnSelf();
+        $provider->shouldReceive('redirectUrl')->andReturnSelf();
+        $provider->shouldReceive('user')->once()->andReturn($socialUser);
+
+        Socialite::shouldReceive('driver')->with('google')->once()->andReturn($provider);
+    }
+}

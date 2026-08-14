@@ -17,6 +17,42 @@
         </div>
     </div>
 
+    @php
+        $welcomeBonusEnabled = $welcomeBonusEnabled ?? true;
+        $welcomeBonusAmount = isset($welcomeBonusAmount) ? (float) $welcomeBonusAmount : 20.0;
+        $welcomeBonusEuro = '€'.rtrim(rtrim(number_format($welcomeBonusAmount, 2, '.', ''), '0'), '.');
+    @endphp
+    <div class="card border-0 shadow-sm mb-4">
+        <div class="card-body d-flex flex-wrap justify-content-between align-items-start gap-3">
+            <div>
+                <div class="d-flex align-items-center gap-2 mb-1">
+                    <h2 class="h5 mb-0">{{ $welcomeBonusEuro }} welcome credit</h2>
+                    @if($welcomeBonusEnabled)
+                        <span class="badge bg-success">Enabled</span>
+                    @else
+                        <span class="badge bg-secondary">Disabled</span>
+                    @endif
+                </div>
+                <p class="text-muted small mb-0">
+                    New advertisers receive this spend-only credit once per place (signup IP).
+                    Existing bonuses are never removed. Publishers never receive it.
+                </p>
+            </div>
+            <form method="POST" action="{{ route('admin.promotions.welcome-bonus.toggle') }}"
+                  @if($welcomeBonusEnabled)
+                      data-slb-confirm="Disable the {{ $welcomeBonusEuro }} welcome credit? New advertisers will no longer receive it. Existing bonuses stay."
+                      data-slb-confirm-title="Disable welcome bonus?"
+                      data-slb-confirm-text="Disable"
+                      data-slb-confirm-danger="1"
+                  @endif
+            >
+                @csrf
+                <button type="submit" class="btn btn-sm {{ $welcomeBonusEnabled ? 'btn-outline-danger' : 'btn-primary' }}">
+                    {{ $welcomeBonusEnabled ? 'Disable' : 'Enable' }}
+                </button>
+            </form>
+        </div>
+    </div>
 
     <div class="row g-3 mb-4">
         @foreach($featuredNotices as $key => $notice)
