@@ -516,6 +516,30 @@ if (! function_exists('marketing_task_label')) {
     }
 }
 
+if (! function_exists('marketing_task_actions_matching')) {
+    /**
+     * Action codes whose friendly label or raw code contains the search needle.
+     *
+     * @return list<string>
+     */
+    function marketing_task_actions_matching(?string $q): array
+    {
+        $needle = strtolower(trim((string) $q));
+        if ($needle === '') {
+            return [];
+        }
+
+        $matched = [];
+        foreach (marketing_task_labels() as $code => $label) {
+            if (str_contains(strtolower($label), $needle) || str_contains(strtolower((string) $code), $needle)) {
+                $matched[] = $code;
+            }
+        }
+
+        return $matched;
+    }
+}
+
 if (! function_exists('marketing_history_subject_url')) {
     /**
      * Deep link for a marketing history row subject, or null when it should stay plain text.
@@ -530,18 +554,18 @@ if (! function_exists('marketing_history_subject_url')) {
         $id = (int) $log->subject_id;
 
         if ($id > 0) {
-            if ($type === Site::class) {
+            if ($type === Site::class && Site::query()->whereKey($id)->exists()) {
                 return route('marketing.sites.edit', $id);
             }
 
-            if ($type === BulkSiteRequest::class) {
+            if ($type === BulkSiteRequest::class && BulkSiteRequest::query()->whereKey($id)->exists()) {
                 return route('marketing.bulk-site-requests.show', $id);
             }
         }
 
         $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
 
-        return $bulkId > 0
+        return $bulkId > 0 && BulkSiteRequest::query()->whereKey($bulkId)->exists()
             ? route('marketing.bulk-site-requests.show', $bulkId)
             : null;
     }
@@ -558,7 +582,7 @@ if (! function_exists('marketing_history_bulk_url')) {
         }
 
         $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
-        if ($bulkId <= 0) {
+        if ($bulkId <= 0 || ! BulkSiteRequest::query()->whereKey($bulkId)->exists()) {
             return null;
         }
 

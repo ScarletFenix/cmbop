@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -134,6 +135,12 @@ class MarketingPanelHistoryTest extends TestCase
         ]);
         $publisher->roles()->attach($publisherRole->id);
 
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+
         $site = Site::create([
             'publisher_id' => $publisher->id,
             'site_name' => 'Activate Link Site',
@@ -163,7 +170,7 @@ class MarketingPanelHistoryTest extends TestCase
             'subject_type' => Site::class,
             'subject_id' => $site->id,
             'subject_label' => 'Activate Link Site',
-            'properties' => ['bulk_site_request_id' => 17],
+            'properties' => ['bulk_site_request_id' => $bulk->id],
         ]);
         ActivityLog::create([
             'user_id' => $this->marketer->id,
@@ -208,7 +215,7 @@ class MarketingPanelHistoryTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString(route('marketing.sites.edit', $site->id), $dashboard);
-        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', 17), $dashboard);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $bulk->id), $dashboard);
         $this->assertStringContainsString('Bulk request', $dashboard);
 
         $history = $this->actingAs($this->marketer)
@@ -229,6 +236,28 @@ class MarketingPanelHistoryTest extends TestCase
             'href="'.route('marketing.sites.edit', $site->id).'">Deleted Leftover<',
             $history
         );
+
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Edited a site that was later removed',
+            'subject_type' => Site::class,
+            'subject_id' => 999999,
+            'subject_label' => 'Gone Site',
+            'properties' => ['bulk_site_request_id' => 888888],
+        ]);
+
+        $stale = $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Gone Site', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString(route('marketing.sites.edit', 999999), $stale);
+        $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', 888888), $stale);
     }
 
     public function test_my_tasks_today_uses_app_timezone_window(): void
@@ -271,12 +300,98 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertSame('1', $this->dashboardStat($html, 'my-tasks-today'));
         $this->assertSame('2', $this->dashboardStatTotal($html, 'my-tasks-today'));
+        $this->assertStringContainsString('/marketing/history?from=2026-08-15&amp;to=2026-08-15', $html);
 
         $this->actingAs($this->marketer)
             ->get(route('marketing.history', ['from' => '2026-08-15', 'to' => '2026-08-15']))
             ->assertOk()
             ->assertSee('Today in Berlin', false)
             ->assertDontSee('Yesterday in Berlin', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['from' => 'not-a-date', 'to' => 'also-bad']))
+            ->assertOk()
+            ->assertSee('Use a valid From date.', false)
+            ->assertSee('Use a valid To date.', false)
+            ->assertSee('Today in Berlin', false)
+            ->assertSee('Yesterday in Berlin', false);
+    }
+
+    public function test_history_empty_states_distinguish_filters_from_first_run(): void
+    {
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('No marketing tasks recorded yet.', false)
+            ->assertSee('Add site for publisher', false)
+            ->assertDontSee('No tasks match these filters.', false);
+
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Only an edit',
+            'subject_label' => 'Edit Only Site',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['action' => 'site.activated']))
+            ->assertOk()
+            ->assertSee('No tasks match these filters.', false)
+            ->assertSee('Reset filters', false)
+            ->assertDontSee('No marketing tasks recorded yet.', false)
+            ->assertDontSee('Only an edit', false);
+    }
+
+    public function test_history_rejects_inverted_date_range(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Kept when dates are inverted',
+            'subject_label' => 'Range Site',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['from' => '2026-08-16', 'to' => '2026-08-15']))
+            ->assertOk()
+            ->assertSee('From date must be on or before To date.', false)
+            ->assertSee('Kept when dates are inverted', false);
+    }
+
+    public function test_history_search_matches_friendly_task_label(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.activated',
+            'description' => 'Staff made the listing live',
+            'subject_label' => 'Live Target',
+        ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Staff changed niches',
+            'subject_label' => 'Edit Target',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'Activated']))
+            ->assertOk()
+            ->assertSee('Live Target', false)
+            ->assertSee('Activated site', false)
+            ->assertDontSee('Edit Target', false)
+            ->assertDontSee('Staff changed niches', false);
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void

@@ -39,8 +39,13 @@
             @empty
                 <tr>
                     <td colspan="4" class="text-center text-muted py-4">
-                        <div class="mb-2">No marketing tasks recorded yet. Seed sites or edit listings to build your history.</div>
-                        <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-outline-primary">Add site for publisher</a>
+                        @if(!empty($filtersActive))
+                            <div class="mb-2">No tasks match these filters.</div>
+                            <a href="{{ route('marketing.history') }}" class="btn btn-sm btn-outline-secondary">Reset filters</a>
+                        @else
+                            <div class="mb-2">No marketing tasks recorded yet. Seed sites or edit listings to build your history.</div>
+                            <a href="{{ route('marketing.sites.create') }}" class="btn btn-sm btn-outline-primary">Add site for publisher</a>
+                        @endif
                     </td>
                 </tr>
             @endforelse
