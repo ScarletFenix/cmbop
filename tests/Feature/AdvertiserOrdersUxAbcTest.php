@@ -149,6 +149,7 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringContainsString('payment-refunded', $js);
         $this->assertStringContainsString('paginationPageWindow', $js);
         $this->assertStringContainsString('ordersPageHref', $js);
+        $this->assertStringContainsString('if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;', $js);
         $this->assertStringContainsString('catalog-pagination__meta', $js);
         $this->assertStringContainsString('catalog-pagination__links', $js);
         $this->assertStringContainsString('if (!pagination || !pagination.total)', $js);

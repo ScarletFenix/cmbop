@@ -127,6 +127,9 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString('syncLibraryFiltersFromParams', $libraryJs);
         $this->assertStringContainsString('libraryUploadUrl', $libraryJs);
         $this->assertStringContainsString('normalizeLibraryFilters', $libraryJs);
+        $this->assertStringContainsString('libraryModifiedClick', $libraryJs);
+        $this->assertStringContainsString("if (availability === 'published') availability = 'completed';", $libraryJs);
+        $this->assertStringNotContainsString("if (availability === 'completed') availability = 'published';", $libraryJs);
         $this->assertStringContainsString('refreshLibraryListAfterRowChange', $libraryJs);
         $this->assertStringContainsString('libraryCountryFilter', $libraryJs);
         $this->assertStringContainsString("route('advertiser.content-library.results', absolute: false)", $library);

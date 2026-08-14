@@ -474,7 +474,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->get(route('advertiser.content-library'))
             ->assertOk()
             ->assertSee('Order')
-            ->assertSee(route('advertiser.content-library.order', $submission), false)
+            ->assertSee(route('advertiser.content-library.order', $submission, false), false)
             ->assertDontSee('id="orderContentModal"', false);
     }
 

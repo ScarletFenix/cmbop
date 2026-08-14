@@ -1768,6 +1768,10 @@ function syncLibrarySearchInputFromParams(params) {
     if (input.value !== next) input.value = next;
 }
 
+function libraryModifiedClick(e) {
+    return !!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey));
+}
+
 function normalizeLibraryFilters(params) {
     const hasStatus = params.has('status');
     const hasAvailability = params.has('availability');
@@ -1783,7 +1787,9 @@ function normalizeLibraryFilters(params) {
         availability = 'available';
     }
     if (availability === 'ordered') availability = 'in_progress';
-    if (availability === 'completed') availability = 'published';
+    // Form / chips / history use the UI key "completed". The controller maps
+    // that to internal "published"; do not write "published" back into the form.
+    if (availability === 'published') availability = 'completed';
     if (status === 'needs_improvement') {
         status = 'all';
         if (!hasAvailability) availability = 'needs_fix';
@@ -1794,7 +1800,7 @@ function normalizeLibraryFilters(params) {
     if (status === 'approved' && availability === 'all') {
         availability = 'available';
     }
-    if (!hasStatus && ['needs_fix', 'expired', 'archived', 'in_progress', 'published', 'evaluating'].indexOf(availability) !== -1) {
+    if (!hasStatus && ['needs_fix', 'expired', 'archived', 'in_progress', 'completed', 'evaluating'].indexOf(availability) !== -1) {
         status = 'all';
     }
 
@@ -1899,7 +1905,10 @@ function bootLibraryLiveSearch() {
 
     const runFetch = function (detail) {
         const params = librarySearchParamsFromForm();
-        const keepFocus = !detail || detail.reason !== 'pager';
+        const keepFocus = !detail
+            || detail.reason === 'input'
+            || detail.reason === 'enter'
+            || detail.reason === 'clear';
         fetchLibraryResults(params, {
             historyMode: (detail && detail.historyMode) || 'replace',
             resetPage: !detail || detail.reason !== 'pager',
@@ -1947,6 +1956,7 @@ function bootLibraryLiveSearch() {
     document.getElementById('libraryFilterReset')?.addEventListener('click', function (e) {
         const link = e.target.closest('a');
         if (!link) return;
+        if (libraryModifiedClick(e)) return;
         e.preventDefault();
         syncLibraryFiltersFromParams(new URLSearchParams());
         fetchLibraryResults(librarySearchParamsFromForm(), {
@@ -1961,6 +1971,7 @@ function bootLibraryLiveSearch() {
         const pageLink = e.target.closest('.pagination a');
         const link = chip || pageLink;
         if (!link || !this.contains(link)) return;
+        if (libraryModifiedClick(e)) return;
         e.preventDefault();
         let params;
         try {
