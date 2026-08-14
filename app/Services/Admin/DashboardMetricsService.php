@@ -105,8 +105,9 @@ class DashboardMetricsService
             ->groupBy('day')
             ->pluck('total', 'day');
 
-        $orderRows = Order::where('created_at', '>=', $start)
-            ->selectRaw('DATE(created_at) as day, COUNT(*) as total')
+        $orderRows = Order::where('payment_status', 'paid')
+            ->whereRaw($paidAt.' >= ?', [$start])
+            ->selectRaw('DATE('.$paidAt.') as day, COUNT(*) as total')
             ->groupBy('day')
             ->pluck('total', 'day');
 
@@ -256,7 +257,7 @@ class DashboardMetricsService
                 'status' => $w->status,
                 'date' => optional($w->created_at)->format('d M Y H:i'),
                 // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.withdrawals'),
+                'url' => route('admin.withdrawals', ['queue' => 'open']),
             ]);
 
         $sites = Site::with('publisher:id,name,email')
@@ -289,10 +290,7 @@ class DashboardMetricsService
      */
     private function unpaidOrdersQuery()
     {
-        return Order::where(function ($q) {
-            $q->whereNull('payment_status')
-                ->orWhereNotIn('payment_status', ['paid', 'refunded']);
-        })->whereIn('status', ['pending', 'processing', 'review']);
+        return Order::query()->unpaidOps();
     }
 
     private function unpaidOrdersCount(): int

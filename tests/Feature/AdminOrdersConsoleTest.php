@@ -157,4 +157,15 @@ class AdminOrdersConsoleTest extends TestCase
         $this->actingAs($admin)->get('/admin/reports')->assertNotFound();
         $this->actingAs($admin)->get('/admin/settings')->assertNotFound();
     }
+
+    public function test_orders_index_reads_open_dispute_filter(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.index', ['dispute' => 'open']))
+            ->assertOk()
+            ->assertSee('id="disputeFilter"', false)
+            ->assertSee("boot.get('dispute')", false);
+    }
 }

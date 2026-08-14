@@ -52,6 +52,17 @@ class Order extends Model
         return $this->status === 'scheduled' || $this->publication_mode === 'scheduled';
     }
 
+    /**
+     * Ops unpaid queue: not paid/refunded, and still an open order.
+     */
+    public function scopeUnpaidOps($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('payment_status')
+                ->orWhereNotIn('payment_status', ['paid', 'refunded']);
+        })->whereIn('status', ['pending', 'processing', 'review']);
+    }
+
     public function user()
     {
         return $this->belongsTo(User::class);

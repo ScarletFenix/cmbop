@@ -43,6 +43,10 @@ class OrderController extends Controller
             $query->where('payment_status', $request->string('payment_status')->toString());
         }
 
+        if ($request->input('dispute') === 'open' && OrderItemDispute::tableAvailable()) {
+            $query->whereHas('disputes', fn ($q) => $q->where('status', OrderItemDispute::STATUS_OPEN));
+        }
+
         if ($request->filled('date_from')) {
             $query->whereDate('created_at', '>=', $request->string('date_from')->toString());
         }

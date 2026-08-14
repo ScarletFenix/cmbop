@@ -52,8 +52,9 @@ class AdminDashboardTest extends TestCase
             ->assertSee('Remind the publisher, or open the order to refund.')
             ->assertDontSee('Chase again or refund the advertiser.')
             ->assertSee(route('admin.deposits', ['status' => 'pending']), false)
-            ->assertSee(route('admin.withdrawals'), false)
+            ->assertSee(route('admin.withdrawals', ['queue' => 'open']), false)
             ->assertSee(route('admin.sites.index', ['needs_review' => 1]), false)
+            ->assertSee(route('admin.sites.records'), false)
             ->assertSee('dashboardFetch')
             ->assertSee('js-dashboard-retry')
             ->assertSee('kpiRetry')
@@ -70,7 +71,8 @@ class AdminDashboardTest extends TestCase
             ->assertSee('Open disputes')
             ->assertSee('Community inbox')
             ->assertSee('Enrichment failed')
-            ->assertSee(route('admin.payments', ['payment_status' => 'pending']), false)
+            ->assertSee(route('admin.payments', ['payment_status' => 'unpaid']), false)
+            ->assertSee(route('admin.orders.index', ['dispute' => 'open']), false)
             ->assertSee('unpaid ·')
             ->assertSee('community ·')
             ->assertSee('disputes')
@@ -85,7 +87,7 @@ class AdminDashboardTest extends TestCase
             ->assertSee('js-chart-range-label')
             ->assertSee('id="dashboardActionQueues"', false)
             ->assertSee(route('admin.users.index'), false)
-            ->assertSee(route('admin.sites.index'), false)
+            ->assertSee(route('admin.sites.records'), false)
             ->assertSee(route('admin.finance'), false)
             ->assertSee('js/chart.umd.min.js')
             ->assertDontSee('cdn.jsdelivr.net/npm/chart.js', false)
@@ -306,6 +308,8 @@ class AdminDashboardTest extends TestCase
         // 30-day window: index 0 is 29 days ago, 19 is created_at (10d ago), 28 is paid_at (yesterday).
         $this->assertSame(0.0, (float) $trends['revenue'][19]);
         $this->assertSame(80.0, (float) $trends['revenue'][28]);
+        $this->assertSame(0, (int) $trends['orders'][19]);
+        $this->assertSame(1, (int) $trends['orders'][28]);
     }
 
     public function test_sites_card_separates_live_catalog_from_verified_only(): void
@@ -397,7 +401,7 @@ class AdminDashboardTest extends TestCase
             ->getJson(route('admin.dashboard.action-queue'))
             ->assertOk()
             ->assertJsonPath('deposits.0.url', route('admin.deposits', ['status' => 'pending']))
-            ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals'))
+            ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals', ['queue' => 'open']))
             ->assertJsonPath('withdrawals.0.id', $withdrawal->id)
             ->assertJsonPath('sites.0.url', route('admin.sites.edit', $site->id));
     }
@@ -567,6 +571,20 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems']))
             ->assertJsonPath('enrichment.0.site_name', 'Failed enrich')
             ->assertJsonPath('enrichment.0.url', route('admin.sites.edit', $site->id));
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['payment_status' => 'unpaid']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => 'ORD-UNPAID-1'])
+            ->assertJsonMissing(['order_number' => 'ORD-DSP-1']);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['dispute' => 'open']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => 'ORD-DSP-1'])
+            ->assertJsonMissing(['order_number' => 'ORD-UNPAID-1']);
     }
 
     public function test_metrics_cache_is_off_by_default_and_can_be_enabled(): void

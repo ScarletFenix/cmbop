@@ -63,7 +63,7 @@
             </div>
         </div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.sites.index') }}">
+            <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.sites.records') }}">
                 <div class="card-body">
                     <div class="text-muted small">Sites</div>
                     <div class="d-flex align-items-end justify-content-between">
@@ -105,11 +105,11 @@
         </div>
         <div class="col-12 d-none" id="financeRetry"></div>
         <div class="col-6 col-xl-3">
-            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.withdrawals') }}">
+            <div class="card border-0 shadow-sm h-100 border-start border-4 border-danger cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.withdrawals', ['queue' => 'open']) }}">
                 <div class="card-body py-3">
                     <div class="text-muted small">Due to pay now</div>
                     <div class="fs-4 fw-semibold text-danger" id="financeDueNow">—</div>
-                    <div class="small text-muted">Open withdrawal requests · <a href="{{ route('admin.withdrawals') }}" class="link-secondary">Payout queue</a></div>
+                    <div class="small text-muted">Open withdrawal requests · <a href="{{ route('admin.withdrawals', ['queue' => 'open']) }}" class="link-secondary">Payout queue</a></div>
                 </div>
             </div>
         </div>
@@ -169,7 +169,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-money-bill-wave me-2 text-warning"></i>Pending Withdrawals</strong>
-                    <a href="{{ route('admin.withdrawals') }}" class="small">View all</a>
+                    <a href="{{ route('admin.withdrawals', ['queue' => 'open']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -212,7 +212,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-money-bill me-2 text-info"></i>Unpaid orders</strong>
-                    <a href="{{ route('admin.payments', ['payment_status' => 'pending']) }}" class="small">View all</a>
+                    <a href="{{ route('admin.payments', ['payment_status' => 'unpaid']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -232,7 +232,7 @@
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center">
                     <strong><i class="fa fa-gavel me-2 text-danger"></i>Open disputes</strong>
-                    <a href="{{ route('admin.orders.index') }}" class="small">View all</a>
+                    <a href="{{ route('admin.orders.index', ['dispute' => 'open']) }}" class="small">View all</a>
                 </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
@@ -331,7 +331,7 @@
                 <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
                     <strong><i class="fa fa-chart-line me-2 text-primary"></i>Revenue &amp; Orders (<span class="js-chart-range-label">30 days</span>)</strong>
                     <div class="d-flex align-items-center gap-2">
-                        <span class="text-muted small">Paid revenue vs order volume</span>
+                        <span class="text-muted small">Paid revenue vs paid order volume</span>
                         <div class="btn-group btn-group-sm js-chart-range" role="group" aria-label="Chart range">
                             <button type="button" class="btn btn-outline-secondary" data-days="7">7</button>
                             <button type="button" class="btn btn-primary" data-days="30">30</button>
@@ -576,7 +576,7 @@ async function loadTrends() {
                         yAxisID: 'y'
                     },
                     {
-                        label: 'Orders',
+                        label: 'Paid orders',
                         data: json.orders,
                         borderColor: '#0ea5e9',
                         backgroundColor: 'rgba(14, 165, 233, 0.08)',
@@ -590,7 +590,7 @@ async function loadTrends() {
                 ...commonOpts,
                 scales: {
                     y:  { beginAtZero: true, position: 'left', title: { display: true, text: 'Revenue (€)' } },
-                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Orders' } }
+                    y1: { beginAtZero: true, position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Paid orders' } }
                 }
             }
         });
