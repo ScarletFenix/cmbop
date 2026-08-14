@@ -401,6 +401,7 @@ class CartPricingService
     {
         $expanded = [];
         $unavailable = [];
+        $owned = [];
 
         foreach ($cart as $item) {
             $siteId = $item['id'] ?? null;
@@ -413,7 +414,7 @@ class CartPricingService
             }
 
             if ($this->buyerOwnsSite($site, $buyerId)) {
-                $unavailable[] = (string) ($item['name'] ?? $site->site_name);
+                $owned[] = (string) ($item['name'] ?? $site->site_name);
 
                 continue;
             }
@@ -454,6 +455,10 @@ class CartPricingService
         }
 
         if ($expanded === []) {
+            if ($owned !== [] && $unavailable === []) {
+                throw new \Exception('You cannot order placements on your own websites.');
+            }
+
             if ($unavailable !== []) {
                 throw new \Exception(
                     'Site not found or inactive: '.implode(', ', array_unique($unavailable))

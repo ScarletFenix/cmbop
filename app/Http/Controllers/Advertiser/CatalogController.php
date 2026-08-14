@@ -3962,7 +3962,10 @@ class CatalogController extends Controller
         try {
             $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.')]);
+            $message = UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.');
+            $status = str_contains($e->getMessage(), 'own websites') ? 422 : 200;
+
+            return response()->json(['success' => false, 'message' => $message], $status);
         }
 
         if ($expandedOrders === []) {
