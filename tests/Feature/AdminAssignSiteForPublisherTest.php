@@ -377,6 +377,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertSee('name="price_homepage[7]"', false)
             ->assertSee('name="sensitive[crypto]"', false)
             ->assertSee('optional homepage, social, and sensitive-topic prices', false)
+            ->assertSee('Must be on the same domain as the site URL.', false)
             ->getContent();
 
         $this->assertStringNotContainsString('required disabled', $html);

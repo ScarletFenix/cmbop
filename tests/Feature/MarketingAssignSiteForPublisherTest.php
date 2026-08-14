@@ -112,6 +112,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertSee('name="sensitive[crypto]"', false)
             ->assertSee('name="price_sensitive[crypto]"', false)
             ->assertSee('optional homepage, social, and sensitive-topic prices', false)
+            ->assertSee('Must be on the same domain as the site URL.', false)
             ->getContent();
 
         $this->assertStringContainsString('data-min-da="'.Site::GOOD_MIN_DA.'"', $html);
@@ -1400,5 +1401,101 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         );
         $this->assertSame(1, Site::where('domain', $ascii)->count());
         $this->assertNull(Site::where('domain', 'münchen-idn.example')->first());
+    }
+
+    public function test_store_rejects_example_url_on_other_domain(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://same-host.example',
+                'example_url' => 'https://other-host.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('example_url');
+
+        $this->assertSame(
+            'Example URL must be on the same website domain.',
+            (string) session('errors')->first('example_url')
+        );
+        $this->assertNull(Site::where('domain', 'same-host.example')->first());
+    }
+
+    public function test_store_accepts_www_example_url_for_apex_site(): void
+    {
+        Mail::fake();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://apex-host.example',
+                'example_url' => 'https://www.apex-host.example/sample',
+            ]))
+            ->assertRedirect();
+
+        $site = Site::where('domain', 'apex-host.example')->first();
+        $this->assertNotNull($site);
+        $this->assertSame('https://www.apex-host.example/sample', $site->example_url);
+    }
+
+    public function test_store_rejects_zero_width_only_site_name(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_name' => "\u{200B}\u{200B}",
+                'site_url' => 'https://zwsp-name.example',
+                'example_url' => 'https://zwsp-name.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_name');
+
+        $this->assertNull(Site::where('domain', 'zwsp-name.example')->first());
+    }
+
+    public function test_marketing_update_coerces_decimal_and_grouped_metrics(): void
+    {
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Metrics Coerce',
+            'site_url' => 'https://pending-metrics-coerce.example',
+            'domain' => 'pending-metrics-coerce.example',
+            'example_url' => 'https://pending-metrics-coerce.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending metrics coerce description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Metrics Coerce',
+                'site_url' => 'https://pending-metrics-coerce.example',
+                'example_url' => 'https://pending-metrics-coerce.example/sample',
+                'price' => 50,
+                'da' => '40.0',
+                'dr' => '41.0',
+                'traffic' => '15,000',
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => 'News',
+            ])
+            ->assertRedirect();
+
+        $pending->refresh();
+        $this->assertSame(40, (int) $pending->da);
+        $this->assertSame(41, (int) $pending->dr);
+        $this->assertSame(15000, (int) $pending->traffic);
     }
 }

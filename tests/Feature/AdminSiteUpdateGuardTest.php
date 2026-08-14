@@ -551,4 +551,21 @@ class AdminSiteUpdateGuardTest extends TestCase
 
         $this->assertSame('https://guard-site.example', $site->fresh()->site_url);
     }
+
+    public function test_update_rejects_example_url_on_other_domain(): void
+    {
+        $site = $this->site([
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://guard-site.example/path',
+                'example_url' => 'https://other-host.example/sample',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['example_url']);
+
+        $this->assertSame('https://guard-site.example/sample', $site->fresh()->example_url);
+    }
 }

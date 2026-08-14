@@ -809,6 +809,10 @@ class SiteController extends Controller
                 $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
             }
 
+            if ($this->exampleUrlHostDiffers($request->input('site_url'), $request->input('example_url'))) {
+                $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
+            }
+
             $country = $countryCodes[0] ?? null;
             $language = $languageCodes[0] ?? null;
             if ($country && $language && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
@@ -1565,6 +1569,14 @@ class SiteController extends Controller
                     $validator->errors()->add('description', $message);
                 }
             }
+
+            if ($request->filled('site_url') || $request->exists('example_url')) {
+                $siteUrl = $request->filled('site_url') ? $request->input('site_url') : $site->site_url;
+                $exampleUrl = $request->exists('example_url') ? $request->input('example_url') : $site->example_url;
+                if ($this->exampleUrlHostDiffers($siteUrl, $exampleUrl)) {
+                    $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
+                }
+            }
         });
 
         if ($validator->fails()) {
@@ -1709,6 +1721,16 @@ class SiteController extends Controller
             $this->mergeNormalizedUrlOrFail($request, 'example_url', 'exampleUrl', nullable: true);
         }
 
+        $metricMerge = [];
+        foreach (['da', 'dr', 'traffic'] as $field) {
+            if ($request->exists($field)) {
+                $metricMerge[$field] = $this->normalizeMetricInt($request->input($field));
+            }
+        }
+        if ($metricMerge !== []) {
+            $request->merge($metricMerge);
+        }
+
         // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
         // Also recovers from urlencoded truncation of "Technology & Gadgets" → "Technology".
         $resolved = Category::resolveNicheNames($this->nicheNamesInput($request->input('categories', [])));
@@ -1790,6 +1812,14 @@ class SiteController extends Controller
                     : '';
                 if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
                     $validator->errors()->add('example_url', 'Invalid URL');
+                }
+            }
+
+            if ($canFixListing && ($request->filled('site_url') || $request->exists('example_url'))) {
+                $siteUrl = $request->filled('site_url') ? $request->input('site_url') : $site->site_url;
+                $exampleUrl = $request->exists('example_url') ? $request->input('example_url') : $site->example_url;
+                if ($this->exampleUrlHostDiffers($siteUrl, $exampleUrl)) {
+                    $validator->errors()->add('example_url', 'Example URL must be on the same website domain.');
                 }
             }
         });
@@ -2241,9 +2271,28 @@ class SiteController extends Controller
 
     private function normalizeSiteName(string $raw): string
     {
-        $name = preg_replace('/\s+/u', ' ', $raw) ?? $raw;
+        $name = preg_replace('/[\p{Cc}\p{Cf}]+/u', '', $raw) ?? $raw;
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
 
         return trim($name);
+    }
+
+    private function urlHost(mixed $url): string
+    {
+        if (! is_string($url) || $url === '') {
+            return '';
+        }
+        $host = parse_url($url, PHP_URL_HOST);
+
+        return is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
+    }
+
+    private function exampleUrlHostDiffers(mixed $siteUrl, mixed $exampleUrl): bool
+    {
+        $siteHost = $this->urlHost($siteUrl);
+        $exampleHost = $this->urlHost($exampleUrl);
+
+        return $siteHost !== '' && $exampleHost !== '' && $siteHost !== $exampleHost;
     }
 
     /**

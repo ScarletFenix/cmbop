@@ -148,7 +148,7 @@
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
                             <input type="url" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror"
                                    value="{{ old_text('example_url', $site->example_url) }}">
-                            <div class="form-text">Optional sample article or placement URL.</div>
+                            <div class="form-text">Optional. If set, must be on the same domain as the site URL.</div>
                             @error('example_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">

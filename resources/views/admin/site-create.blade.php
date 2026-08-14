@@ -105,6 +105,7 @@
                         <label class="form-label fw-semibold" for="example_url">Example post URL <span class="text-danger">*</span></label>
                         <input type="text" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror"
                                value="{{ old_text('example_url') }}" required placeholder="https://example.com/sample-post">
+                        <div class="form-text">Must be on the same domain as the site URL.</div>
                         @error('example_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
                     <div class="col-md-6">
