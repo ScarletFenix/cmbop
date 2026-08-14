@@ -4,6 +4,8 @@ namespace Tests\Unit;
 
 use App\Services\ContentUpload\ContentUploadService;
 use App\Support\PhpIniSize;
+use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Tests\TestCase;
 
 class PhpIniSizeTest extends TestCase
@@ -38,6 +40,9 @@ class PhpIniSizeTest extends TestCase
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
         $this->assertStringContainsString('JPG', $service->phpImageRejectedMessage());
         $this->assertStringNotContainsString('.docx', $service->phpImageRejectedMessage());
+        $uploaded = $service->uploadValidationMessages($cfg)['file.uploaded'] ?? '';
+        $this->assertStringContainsString('Please try again', $uploaded);
+        $this->assertStringNotContainsString('under 10 MB', $uploaded);
 
         if ($phpKb < $appKb) {
             $this->assertTrue($service->phpLimitBlocksArticleCap($cfg));
@@ -72,5 +77,51 @@ class PhpIniSizeTest extends TestCase
 
         $overCap = $service->rejectedUploadMessage(null, $cfg, null, 12 * 1024 * 1024);
         $this->assertStringContainsString('That file is over the 10 MB limit', $overCap);
+    }
+
+    public function test_upload_byte_hints_use_query_when_header_is_zero_or_junk(): void
+    {
+        $service = app(ContentUploadService::class);
+
+        $zeroHeader = Request::create('/advertiser/content-library/upload?client_bytes=5400000', 'POST', [], [], [], [
+            'HTTP_X_UPLOAD_BYTES' => '0',
+            'CONTENT_LENGTH' => '0',
+        ]);
+        [, $fromZero] = $service->uploadByteHints($zeroHeader);
+        $this->assertSame(5400000, $fromZero);
+
+        $junkHeader = Request::create('/advertiser/content-library/upload?client_bytes=5400000', 'POST', [], [], [], [
+            'HTTP_X_UPLOAD_BYTES' => 'not-a-number',
+        ]);
+        [, $fromJunk] = $service->uploadByteHints($junkHeader);
+        $this->assertSame(5400000, $fromJunk);
+
+        $both = Request::create('/advertiser/content-library/upload?client_bytes=1000', 'POST', [], [], [], [
+            'HTTP_X_UPLOAD_BYTES' => '5400000',
+        ]);
+        [, $fromMax] = $service->uploadByteHints($both);
+        $this->assertSame(5400000, $fromMax);
+    }
+
+    public function test_unknown_php_upload_error_is_not_labeled_as_size(): void
+    {
+        $service = app(ContentUploadService::class);
+        $path = sys_get_temp_dir().'/ext-'.uniqid('', true).'.docx';
+        file_put_contents($path, 'x');
+        $file = new UploadedFile(
+            $path,
+            'article.docx',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            UPLOAD_ERR_EXTENSION,
+            true
+        );
+
+        $message = $service->rejectedUploadMessage($file, ['max_kilobytes' => 10240]);
+        @unlink($path);
+
+        $this->assertIsString($message);
+        $this->assertStringContainsString('Please try again', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 }
