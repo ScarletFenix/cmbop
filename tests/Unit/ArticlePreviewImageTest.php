@@ -50,6 +50,16 @@ class ArticlePreviewImageTest extends TestCase
         $this->assertSame($gif, $out);
     }
 
+    public function test_huge_embed_skips_gd_compress(): void
+    {
+        $binary = str_repeat('X', ArticlePreviewImage::SKIP_OVER_BYTES + 1);
+
+        [$out, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, 'jpg');
+
+        $this->assertSame('jpg', $ext);
+        $this->assertSame($binary, $out);
+    }
+
     public function test_missing_gd_keeps_original_bytes(): void
     {
         $png = str_repeat('PNG-BYTES', 2000);

@@ -348,7 +348,14 @@ class ContentUploadService
      */
     public function storeArticleImage(string $binary, string $ext, string $originalName, User $user): ?string
     {
-        [$binary, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, $ext);
+        try {
+            [$binary, $ext] = app(ArticlePreviewImage::class)->compressForPreview($binary, $ext);
+        } catch (\Throwable $e) {
+            Log::notice('Article preview image compress skipped', [
+                'error' => $e->getMessage(),
+                'user_id' => $user->id,
+            ]);
+        }
 
         $dir = 'content-articles/'.$user->id;
         $filename = Str::uuid()->toString().'.'.$ext;
@@ -593,7 +600,7 @@ class ContentUploadService
         $mb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
 
         return [
-            'file.uploaded' => 'The article could not be uploaded. Use a Word .docx under '.$mb.' MB and try again.',
+            'file.uploaded' => 'The article could not be uploaded. Please try again.',
             'file.extensions' => 'Word .docx only — not PDF, Google Doc, or pasted text.',
             'file.mimes' => 'Word .docx only — not PDF, Google Doc, or pasted text.',
             'file.max' => 'That file is over the '.$mb.' MB limit.',

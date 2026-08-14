@@ -128,4 +128,37 @@ class DocumentTextExtractorTest extends TestCase
         $this->assertStringContainsString('<img src="https://cdn.example.test/articles/image1.png"', (string) $result['html']);
         $this->assertStringContainsString('Intro paragraph', (string) $result['text']);
     }
+
+    public function test_a_failing_image_store_does_not_reject_the_docx(): void
+    {
+        $path = sys_get_temp_dir().'/cmbop-image-throw-'.uniqid('', true).'.docx';
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            .'Target="media/image1.png"/>'
+            .'</Relationships>');
+        $zip->addFromString('word/media/image1.png', $png);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">'
+            .'<w:body><w:p><w:r><w:t>Useful editorial content about productivity software for busy teams.</w:t></w:r></w:p>'
+            .'</w:body></w:document>');
+        $zip->close();
+
+        $result = (new DocumentTextExtractor)->extract(
+            $path,
+            'docx',
+            function (): string {
+                throw new \RuntimeException('preview image store failed');
+            }
+        );
+        @unlink($path);
+
+        $this->assertTrue($result['ok']);
+        $this->assertStringContainsString('Useful editorial content', (string) $result['text']);
+        $this->assertSame([], $result['images']);
+    }
 }

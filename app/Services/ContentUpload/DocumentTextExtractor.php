@@ -61,21 +61,22 @@ class DocumentTextExtractor
             return $this->fail('corrupted_file', 'Unable to open the Word document. Please re-save as .docx and upload again.');
         }
 
-        $xml = $zip->getFromName('word/document.xml');
-        $relsXml = $zip->getFromName('word/_rels/document.xml.rels') ?: '';
+        try {
+            $xml = $zip->getFromName('word/document.xml');
+            $relsXml = $zip->getFromName('word/_rels/document.xml.rels') ?: '';
 
-        if ($xml === false || trim((string) $xml) === '') {
+            if ($xml === false || trim((string) $xml) === '') {
+                return $this->fail('empty_document', 'This document appears empty. Please upload an article with content.');
+            }
+
+            $xml = (string) $xml;
+            $relsXml = (string) $relsXml;
+
+            $links = $this->extractDocxHyperlinks($xml, $relsXml);
+            $imageUrlsByRid = $this->extractAndStoreDocxImages($zip, $relsXml, $storeImage);
+        } finally {
             $zip->close();
-
-            return $this->fail('empty_document', 'This document appears empty. Please upload an article with content.');
         }
-
-        $xml = (string) $xml;
-        $relsXml = (string) $relsXml;
-
-        $links = $this->extractDocxHyperlinks($xml, $relsXml);
-        $imageUrlsByRid = $this->extractAndStoreDocxImages($zip, $relsXml, $storeImage);
-        $zip->close();
 
         // Replace drawings / pictures with stable markers before text extraction
         $xml = preg_replace_callback(
@@ -188,7 +189,11 @@ class DocumentTextExtractor
                 $ext = 'png';
             }
 
-            $url = $storeImage($binary, $ext, $basename);
+            try {
+                $url = $storeImage($binary, $ext, $basename);
+            } catch (\Throwable) {
+                continue;
+            }
             if (is_string($url) && $url !== '') {
                 $urls[$rid] = $url;
             }

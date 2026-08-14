@@ -40,6 +40,9 @@ class PhpIniSizeTest extends TestCase
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
         $this->assertStringContainsString('JPG', $service->phpImageRejectedMessage());
         $this->assertStringNotContainsString('.docx', $service->phpImageRejectedMessage());
+        $uploaded = $service->uploadValidationMessages($cfg)['file.uploaded'] ?? '';
+        $this->assertStringContainsString('Please try again', $uploaded);
+        $this->assertStringNotContainsString('under 10 MB', $uploaded);
 
         if ($phpKb < $appKb) {
             $this->assertTrue($service->phpLimitBlocksArticleCap($cfg));
