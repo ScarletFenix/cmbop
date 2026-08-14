@@ -1218,6 +1218,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
         $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
+        $this->assertStringContainsString('php_value max_input_time 120', $htaccess);
+        $this->assertStringNotContainsString('memory_limit', $htaccess);
+        $this->assertStringNotContainsString('max_execution_time', $htaccess);
         $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
         $this->assertDoesNotMatchRegularExpression(
             '/^php_value /m',
@@ -1232,8 +1235,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $userIni = (string) file_get_contents(public_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
         $this->assertStringContainsString('post_max_size = 64M', $userIni);
-        $this->assertStringContainsString('max_execution_time = 120', $userIni);
-        $this->assertStringContainsString('memory_limit = 256M', $userIni);
+        $this->assertStringContainsString('max_input_time = 120', $userIni);
+        $this->assertStringContainsString('pcre.backtrack_limit = 10000000', $userIni);
+        $this->assertStringNotContainsString('memory_limit =', $userIni);
+        $this->assertStringNotContainsString('max_execution_time =', $userIni);
         $rootIni = (string) file_get_contents(base_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $rootIni);
         $publicPhpIni = (string) file_get_contents(public_path('php.ini'));
@@ -1244,6 +1249,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
         $this->assertStringContainsString('X-Upload-Bytes', $js);
+        $this->assertStringContainsString('X-Requested-With', $js);
         $this->assertStringContainsString('Your session expired', $js);
         $this->assertStringContainsString('Too many upload attempts', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);

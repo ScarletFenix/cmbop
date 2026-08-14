@@ -18,24 +18,18 @@ LimitRequestBody 67108864
     php_value post_max_size 64M
     php_value upload_max_filesize 64M
     php_value max_input_time 120
-    php_value max_execution_time 120
-    php_value memory_limit 256M
 </IfModule>
 <IfModule mod_php.c>
     php_value max_input_vars 10000
     php_value post_max_size 64M
     php_value upload_max_filesize 64M
     php_value max_input_time 120
-    php_value max_execution_time 120
-    php_value memory_limit 256M
 </IfModule>
 <IfModule mod_php8.c>
     php_value max_input_vars 10000
     php_value post_max_size 64M
     php_value upload_max_filesize 64M
     php_value max_input_time 120
-    php_value max_execution_time 120
-    php_value memory_limit 256M
 </IfModule>
 
 <IfModule mod_rewrite.c>
