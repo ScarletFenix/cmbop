@@ -17,8 +17,13 @@
         <div class="card-body py-3">
             <div class="row g-3 align-items-end">
                 <div class="col-12 col-lg-4">
-                    <label class="form-label small mb-1" for="history-q">Search</label>
-                    <input id="history-q" type="search" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Search subject, details, or task type" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                    <x-slb-search-field
+                        name="q"
+                        id="history-q"
+                        :value="request('q')"
+                        placeholder="Search subject, details, or task type"
+                        label-class="form-label small mb-1"
+                    />
                 </div>
                 <div class="col-12 col-md-6 col-lg-3">
                     <label class="form-label small mb-1" for="history-action">Task type</label>
