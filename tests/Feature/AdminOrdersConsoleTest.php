@@ -168,4 +168,51 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertSee('id="disputeFilter"', false)
             ->assertSee("boot.get('dispute')", false);
     }
+
+    public function test_orders_index_syncs_filters_to_the_url_and_reset_clears_them(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.index', [
+                'dispute' => 'open',
+                'date_from' => '2026-01-01',
+                'date_to' => '2026-01-31',
+                'page' => 2,
+            ]))
+            ->assertOk()
+            ->assertSee('function syncOrdersUrl', false)
+            ->assertSee('history.replaceState', false)
+            ->assertSee("boot.get('date_from')", false)
+            ->assertSee("boot.get('date_to')", false)
+            ->assertSee("boot.get('page')", false)
+            ->assertSee('type="button" id="resetFiltersBtn"', false)
+            ->assertDontSee('setTimeout(() => loadOrders(1), 0)', false);
+    }
+
+    public function test_orders_data_filters_by_created_date_range(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        $old = $this->orderFor($advertiser, $site);
+        $old->created_at = now()->subDays(10);
+        $old->save();
+
+        $recent = $this->orderFor($advertiser, $site);
+        $recent->created_at = now()->subDay();
+        $recent->save();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', [
+                'date_from' => now()->subDays(2)->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => $recent->order_number])
+            ->assertJsonMissing(['order_number' => $old->order_number]);
+    }
 }

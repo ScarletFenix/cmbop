@@ -68,7 +68,7 @@
                 </div>
                 <div class="col-md-2 d-flex align-items-end gap-2">
                     <button type="submit" class="btn btn-primary btn-sm">Filter</button>
-                    <button type="reset" id="resetFiltersBtn" class="btn btn-outline-secondary btn-sm">Reset</button>
+                    <button type="button" id="resetFiltersBtn" class="btn btn-outline-secondary btn-sm">Reset</button>
                 </div>
             </form>
         </div>
@@ -108,8 +108,33 @@
 <script>
 (function () {
     const ordersDataUrl = @json(route('admin.orders.data'));
+    const ordersIndexUrl = @json(route('admin.orders.index'));
     const money = (n) => '€' + Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     let currentPage = 1;
+
+    function readFilters() {
+        return {
+            search: document.getElementById('searchInput').value.trim(),
+            status: document.getElementById('statusFilter').value,
+            payment_status: document.getElementById('paymentStatusFilter').value,
+            dispute: document.getElementById('disputeFilter').value,
+            date_from: document.getElementById('dateFrom').value,
+            date_to: document.getElementById('dateTo').value,
+        };
+    }
+
+    function syncOrdersUrl(page) {
+        const params = new URLSearchParams();
+        const filters = readFilters();
+        Object.keys(filters).forEach((key) => {
+            if (filters[key]) params.set(key, filters[key]);
+        });
+        if (page > 1) params.set('page', String(page));
+        const next = params.toString() ? (ordersIndexUrl + '?' + params.toString()) : ordersIndexUrl;
+        if (history.replaceState) {
+            history.replaceState({}, '', next);
+        }
+    }
 
     function statusBadge(status) {
         const map = {
@@ -142,22 +167,15 @@
 
     function loadOrders(page) {
         currentPage = page || 1;
+        const filters = readFilters();
         const params = new URLSearchParams({
             page: String(currentPage),
             per_page: '20',
         });
-        const search = document.getElementById('searchInput').value.trim();
-        const status = document.getElementById('statusFilter').value;
-        const paymentStatus = document.getElementById('paymentStatusFilter').value;
-        const dispute = document.getElementById('disputeFilter').value;
-        const dateFrom = document.getElementById('dateFrom').value;
-        const dateTo = document.getElementById('dateTo').value;
-        if (search) params.set('search', search);
-        if (status) params.set('status', status);
-        if (paymentStatus) params.set('payment_status', paymentStatus);
-        if (dispute) params.set('dispute', dispute);
-        if (dateFrom) params.set('date_from', dateFrom);
-        if (dateTo) params.set('date_to', dateTo);
+        Object.keys(filters).forEach((key) => {
+            if (filters[key]) params.set(key, filters[key]);
+        });
+        syncOrdersUrl(currentPage);
 
         const body = document.getElementById('ordersTableBody');
         body.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">Loading…</td></tr>';
@@ -215,7 +233,14 @@
         loadOrders(1);
     });
     document.getElementById('resetFiltersBtn').addEventListener('click', function () {
-        setTimeout(() => loadOrders(1), 0);
+        document.getElementById('orderFilterForm').reset();
+        document.getElementById('searchInput').value = '';
+        document.getElementById('statusFilter').value = '';
+        document.getElementById('paymentStatusFilter').value = '';
+        document.getElementById('disputeFilter').value = '';
+        document.getElementById('dateFrom').value = '';
+        document.getElementById('dateTo').value = '';
+        loadOrders(1);
     });
     {{-- Page clicks are handled by renderAdminPagination's delegated listener. --}}
 
@@ -233,8 +258,11 @@
     if (boot.get('payment_status')) document.getElementById('paymentStatusFilter').value = boot.get('payment_status');
     if (boot.get('dispute')) document.getElementById('disputeFilter').value = boot.get('dispute');
     if (boot.get('search')) document.getElementById('searchInput').value = boot.get('search');
+    if (boot.get('date_from')) document.getElementById('dateFrom').value = boot.get('date_from');
+    if (boot.get('date_to')) document.getElementById('dateTo').value = boot.get('date_to');
+    const bootPage = parseInt(boot.get('page') || '1', 10);
 
-    loadOrders(1);
+    loadOrders(Number.isFinite(bootPage) && bootPage > 0 ? bootPage : 1);
 })();
 </script>
 @endsection
