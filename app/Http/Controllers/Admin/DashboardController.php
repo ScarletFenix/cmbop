@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Services\Admin\DashboardMetricsService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class DashboardController extends Controller
@@ -25,7 +26,14 @@ class DashboardController extends Controller
     public function getStatistics()
     {
         try {
-            return response()->json(['success' => true, 'data' => $this->metrics->statistics()]);
+            $data = $this->remember('statistics', fn () => $this->metrics->statistics());
+            // Queue fields are also the nav badges (live). Overlay so a cached
+            // KPI payload cannot disagree with pending_deposits / needs_attention.
+            if ($this->cacheTtl() > 0) {
+                $data = array_merge($data, $this->metrics->queueCounts());
+            }
+
+            return response()->json(['success' => true, 'data' => $data]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard statistics error: '.$e->getMessage());
 
@@ -39,9 +47,11 @@ class DashboardController extends Controller
     public function getTrends(Request $request)
     {
         try {
+            $days = min(90, max(7, (int) $request->get('days', 30)));
+
             return response()->json([
                 'success' => true,
-                ...$this->metrics->trends((int) $request->get('days', 30)),
+                ...$this->remember('trends.'.$days, fn () => $this->metrics->trends($days)),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard trends error: '.$e->getMessage());
@@ -58,7 +68,7 @@ class DashboardController extends Controller
         try {
             return response()->json([
                 'success' => true,
-                ...$this->metrics->distributions(),
+                ...$this->remember('distributions', fn () => $this->metrics->distributions()),
             ]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard distributions error: '.$e->getMessage());
@@ -73,6 +83,7 @@ class DashboardController extends Controller
     public function getQueueCounts()
     {
         try {
+            // Nav badges poll this every 60s — do not put it behind the metrics cache.
             return response()->json([
                 'success' => true,
                 ...$this->metrics->queueCounts(),
@@ -90,6 +101,7 @@ class DashboardController extends Controller
     public function getFinanceStrip()
     {
         try {
+            // Due to pay now sits next to the live withdrawal queue — do not cache it.
             return response()->json(['success' => true, 'data' => $this->metrics->financeStrip()]);
         } catch (\Exception $e) {
             Log::error('Admin dashboard finance strip error: '.$e->getMessage());
@@ -104,6 +116,7 @@ class DashboardController extends Controller
     public function getActionQueue()
     {
         try {
+            // Work list — same reason as queue-counts: do not freeze pending rows.
             return response()->json([
                 'success' => true,
                 ...$this->metrics->actionQueue(),
@@ -113,5 +126,23 @@ class DashboardController extends Controller
 
             return response()->json(['success' => false, 'message' => 'Failed to load action queue'], 500);
         }
+    }
+
+    /**
+     * Optional short-lived cache. TTL 0 (default) skips the store.
+     */
+    private function remember(string $key, callable $callback): mixed
+    {
+        $ttl = $this->cacheTtl();
+        if ($ttl <= 0) {
+            return $callback();
+        }
+
+        return Cache::remember('admin.dashboard.'.$key, $ttl, $callback);
+    }
+
+    private function cacheTtl(): int
+    {
+        return (int) config('dashboard.metrics_cache_seconds', 0);
     }
 }

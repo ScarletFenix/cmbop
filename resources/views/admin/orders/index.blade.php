@@ -52,7 +52,14 @@
                         <option value="refunded">Refunded</option>
                     </select>
                 </div>
-                <div class="col-md-3">
+                <div class="col-md-2">
+                    <label class="form-label fw-semibold small text-muted">Disputes</label>
+                    <select id="disputeFilter" class="form-select form-select-sm">
+                        <option value="">All</option>
+                        <option value="open">Open</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted">Date range</label>
                     <div class="input-group input-group-sm">
                         <input type="date" id="dateFrom" class="form-control">
@@ -142,11 +149,13 @@
         const search = document.getElementById('searchInput').value.trim();
         const status = document.getElementById('statusFilter').value;
         const paymentStatus = document.getElementById('paymentStatusFilter').value;
+        const dispute = document.getElementById('disputeFilter').value;
         const dateFrom = document.getElementById('dateFrom').value;
         const dateTo = document.getElementById('dateTo').value;
         if (search) params.set('search', search);
         if (status) params.set('status', status);
         if (paymentStatus) params.set('payment_status', paymentStatus);
+        if (dispute) params.set('dispute', dispute);
         if (dateFrom) params.set('date_from', dateFrom);
         if (dateTo) params.set('date_to', dateTo);
 
@@ -218,6 +227,12 @@
             onSearch: function () { loadOrders(1); },
         });
     }
+
+    const boot = new URLSearchParams(window.location.search);
+    if (boot.get('status')) document.getElementById('statusFilter').value = boot.get('status');
+    if (boot.get('payment_status')) document.getElementById('paymentStatusFilter').value = boot.get('payment_status');
+    if (boot.get('dispute')) document.getElementById('disputeFilter').value = boot.get('dispute');
+    if (boot.get('search')) document.getElementById('searchInput').value = boot.get('search');
 
     loadOrders(1);
 })();

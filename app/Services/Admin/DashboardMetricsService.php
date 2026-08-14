@@ -14,6 +14,7 @@ use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
+use App\Services\Reminders\StalledOrderQueue;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -29,7 +30,10 @@ use Illuminate\Support\Str;
  */
 class DashboardMetricsService
 {
-    public function __construct(private FinanceOverviewService $finance) {}
+    public function __construct(
+        private FinanceOverviewService $finance,
+        private StalledOrderQueue $stalled,
+    ) {}
 
     /**
      * Top-level KPI cards + action counts.
@@ -41,6 +45,7 @@ class DashboardMetricsService
         $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
         $publisherRoleId = Role::where('name', 'publisher')->value('id');
         $adminRoleId = Role::where('name', 'admin')->value('id');
+        $marketingRoleId = Role::where('name', 'marketing')->value('id');
         $queues = $this->queueCounts();
 
         return [
@@ -54,6 +59,9 @@ class DashboardMetricsService
             'admins' => $adminRoleId
                 ? (int) DB::table('role_user')->where('role_id', $adminRoleId)->distinct()->count('user_id')
                 : 0,
+            'marketers' => $marketingRoleId
+                ? (int) DB::table('role_user')->where('role_id', $marketingRoleId)->distinct()->count('user_id')
+                : 0,
             'total_sites' => Site::count(),
             'verified_sites' => Site::where('verified', 1)->count(),
             'live_sites' => Site::where('verified', 1)->where('active', 1)->count(),
@@ -66,9 +74,12 @@ class DashboardMetricsService
             'pending_payments' => $queues['pending_payments'],
             'pending_community' => $queues['pending_community'],
             'open_disputes' => $queues['open_disputes'],
+            'stalled_orders' => $queues['stalled_orders'],
             'needs_attention' => $queues['needs_attention'],
             'new_users_7d' => User::where('created_at', '>=', now()->subDays(7))->count(),
-            'orders_7d' => Order::where('created_at', '>=', now()->subDays(7))->count(),
+            'orders_7d' => Order::where('payment_status', 'paid')
+                ->whereRaw($this->paidAtSql().' >= ?', [now()->subDays(7)])
+                ->count(),
             'revenue_7d' => (float) Order::where('payment_status', 'paid')
                 ->whereRaw($this->paidAtSql().' >= ?', [now()->subDays(7)])
                 ->sum('total_amount'),
@@ -105,8 +116,9 @@ class DashboardMetricsService
             ->groupBy('day')
             ->pluck('total', 'day');
 
-        $orderRows = Order::where('created_at', '>=', $start)
-            ->selectRaw('DATE(created_at) as day, COUNT(*) as total')
+        $orderRows = Order::where('payment_status', 'paid')
+            ->whereRaw($paidAt.' >= ?', [$start])
+            ->selectRaw('DATE('.$paidAt.') as day, COUNT(*) as total')
             ->groupBy('day')
             ->pluck('total', 'day');
 
@@ -178,12 +190,14 @@ class DashboardMetricsService
         $pendingWebsites = $this->pendingCount(WebsiteSuggestion::class, 'website_suggestions');
         $pendingCommunity = $pendingClaims + $pendingProblems + $pendingSuggestions + $pendingWebsites;
         $openDisputes = $this->openDisputesCount();
+        $stalledOrders = $this->stalled->count();
         $needsAttention = $pendingDeposits
             + $pendingWithdrawals
             + $unverifiedSites
             + $pendingPayments
             + $pendingCommunity
-            + $openDisputes;
+            + $openDisputes
+            + $stalledOrders;
 
         return [
             'pending_deposits' => $pendingDeposits,
@@ -196,6 +210,7 @@ class DashboardMetricsService
             'pending_websites' => $pendingWebsites,
             'pending_community' => $pendingCommunity,
             'open_disputes' => $openDisputes,
+            'stalled_orders' => $stalledOrders,
             'needs_attention' => $needsAttention,
         ];
     }
@@ -239,7 +254,7 @@ class DashboardMetricsService
                 'method' => $d->payment_method,
                 'date' => optional($d->created_at)->format('d M Y H:i'),
                 // deposits.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.deposits'),
+                'url' => route('admin.deposits', ['status' => 'pending']),
             ]);
 
         $withdrawals = Withdrawal::with('user:id,name,email')
@@ -256,7 +271,7 @@ class DashboardMetricsService
                 'status' => $w->status,
                 'date' => optional($w->created_at)->format('d M Y H:i'),
                 // withdrawals.show is JSON for the list-page modal; the HTML queue is the working page.
-                'url' => route('admin.withdrawals'),
+                'url' => route('admin.withdrawals', ['queue' => 'open']),
             ]);
 
         $sites = Site::with('publisher:id,name,email')
@@ -289,10 +304,7 @@ class DashboardMetricsService
      */
     private function unpaidOrdersQuery()
     {
-        return Order::where(function ($q) {
-            $q->whereNull('payment_status')
-                ->orWhereNotIn('payment_status', ['paid', 'refunded']);
-        })->whereIn('status', ['pending', 'processing', 'review']);
+        return Order::query()->unpaidOps();
     }
 
     private function unpaidOrdersCount(): int
@@ -362,7 +374,7 @@ class DashboardMetricsService
                     'from' => $r->name ?: ($r->email ?: 'Unknown'),
                     'date' => optional($r->created_at)->format('d M Y'),
                     'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'problems']),
+                    'url' => route('admin.community.index', ['tab' => 'problems', 'status' => 'pending']),
                 ])
             );
         }
@@ -375,7 +387,7 @@ class DashboardMetricsService
                     'from' => $r->name ?: ($r->email ?: 'Unknown'),
                     'date' => optional($r->created_at)->format('d M Y'),
                     'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'suggestions']),
+                    'url' => route('admin.community.index', ['tab' => 'suggestions', 'status' => 'pending']),
                 ])
             );
         }
@@ -388,7 +400,7 @@ class DashboardMetricsService
                     'from' => $r->website_url ?: 'Unknown',
                     'date' => optional($r->created_at)->format('d M Y'),
                     'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'websites']),
+                    'url' => route('admin.community.index', ['tab' => 'websites', 'status' => 'pending']),
                 ])
             );
         }
@@ -401,7 +413,7 @@ class DashboardMetricsService
                     'from' => $r->contact_email ?: 'Unknown',
                     'date' => optional($r->created_at)->format('d M Y'),
                     'sort_at' => optional($r->created_at)?->timestamp ?? 0,
-                    'url' => route('admin.community.index', ['tab' => 'claims']),
+                    'url' => route('admin.community.index', ['tab' => 'claims', 'status' => 'pending']),
                 ])
             );
         }

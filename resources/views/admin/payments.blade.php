@@ -37,6 +37,7 @@
                     <label class="form-label fw-semibold small text-muted" for="paymentStatusFilter">Payment Status</label>
                     <select id="paymentStatusFilter" class="form-select form-select-sm">
                         <option value="">All</option>
+                        <option value="unpaid">Unpaid (ops queue)</option>
                         <option value="pending">Pending</option>
                         <option value="paid">Paid</option>
                         <option value="failed">Failed</option>
@@ -213,7 +214,7 @@ function escapeHtml(value) {
 }
 
 $(document).ready(function() {
-    // Support deep-links from ops dashboard, e.g. ?payment_status=pending&search=ORD-123
+    // Support deep-links from ops dashboard, e.g. ?payment_status=unpaid&search=ORD-123
     const params = new URLSearchParams(window.location.search);
     if (params.get('payment_status')) {
         $('#paymentStatusFilter').val(params.get('payment_status'));

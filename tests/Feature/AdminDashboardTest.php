@@ -51,9 +51,10 @@ class AdminDashboardTest extends TestCase
             ->assertSee('pending_community')
             ->assertSee('Remind the publisher, or open the order to refund.')
             ->assertDontSee('Chase again or refund the advertiser.')
-            ->assertSee(route('admin.deposits'), false)
-            ->assertSee(route('admin.withdrawals'), false)
+            ->assertSee(route('admin.deposits', ['status' => 'pending']), false)
+            ->assertSee(route('admin.withdrawals', ['queue' => 'open']), false)
             ->assertSee(route('admin.sites.index', ['needs_review' => 1]), false)
+            ->assertSee(route('admin.sites.records'), false)
             ->assertSee('dashboardFetch')
             ->assertSee('js-dashboard-retry')
             ->assertSee('kpiRetry')
@@ -63,17 +64,39 @@ class AdminDashboardTest extends TestCase
             ->assertSee('Total publisher liability')
             ->assertSee('Margin (this month)')
             ->assertSee('Open finance')
+            ->assertSee('id="financePeriod"', false)
+            ->assertDontSee('id="financePeriod" class="fw-normal text-capitalize"', false)
+            ->assertDontSee('text-uppercase small">Finance', false)
             ->assertSee('Unpaid orders')
             ->assertSee('Open disputes')
             ->assertSee('Community inbox')
             ->assertSee('Enrichment failed')
-            ->assertSee(route('admin.payments', ['payment_status' => 'pending']), false)
+            ->assertSee(route('admin.payments', ['payment_status' => 'unpaid']), false)
+            ->assertSee(route('admin.orders.index', ['dispute' => 'open']), false)
             ->assertSee('unpaid ·')
             ->assertSee('community ·')
             ->assertSee('disputes')
-            ->assertSee(route('admin.community.index'), false)
+            ->assertSee(route('admin.community.index', ['status' => 'pending']), false)
             ->assertSee(route('admin.site-enrichment.index'), false)
-            ->assertSee('loadFinanceStrip');
+            ->assertSee('loadFinanceStrip')
+            ->assertSee('js-kpi-link')
+            ->assertSee('js-kpi-users-caption')
+            ->assertSee('All accounts. Role counts can overlap.')
+            ->assertSee('kpiAdmins')
+            ->assertSee('kpiMarketers')
+            ->assertSee('kpiStalled')
+            ->assertSee("row.classList.add('d-none')", false)
+            ->assertSee('js-chart-range')
+            ->assertSee('js-chart-range-label')
+            ->assertSee('id="dashboardActionQueues"', false)
+            ->assertSee(route('admin.users.index'), false)
+            ->assertSee(route('admin.sites.records'), false)
+            ->assertSee(route('admin.finance'), false)
+            ->assertSee('js/chart.umd.min.js')
+            ->assertDontSee('cdn.jsdelivr.net/npm/chart.js', false)
+            ->assertSee('scrollIntoView')
+            ->assertSee('backgroundColor: palette')
+            ->assertDontSee("backgroundColor: ['#1a585e', '#0ea5e9', '#75787B']", false);
     }
 
     public function test_admin_queue_counts_endpoint(): void
@@ -92,6 +115,7 @@ class AdminDashboardTest extends TestCase
                 'pending_claims' => 0,
                 'pending_community' => 0,
                 'open_disputes' => 0,
+                'stalled_orders' => 0,
                 'needs_attention' => 0,
             ]);
     }
@@ -106,6 +130,8 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('data.total_users', 1)
             ->assertJsonPath('data.admins', 1)
+            ->assertJsonPath('data.marketers', 0)
+            ->assertJsonPath('data.stalled_orders', 0)
             ->assertJsonPath('data.advertisers', 0)
             ->assertJsonPath('data.pending_deposits', 0)
             ->assertJsonPath('data.needs_attention', 0)
@@ -122,6 +148,23 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonCount(30, 'labels')
             ->assertJsonCount(30, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends', ['days' => 7]))
+            ->assertOk()
+            ->assertJsonCount(7, 'labels')
+            ->assertJsonCount(7, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends', ['days' => 90]))
+            ->assertOk()
+            ->assertJsonCount(90, 'labels')
+            ->assertJsonCount(90, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends', ['days' => 3]))
+            ->assertOk()
+            ->assertJsonCount(7, 'labels');
 
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.distributions'))
@@ -261,7 +304,8 @@ class AdminDashboardTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.statistics'))
             ->assertOk()
-            ->assertJsonPath('data.revenue_7d', 80);
+            ->assertJsonPath('data.revenue_7d', 80)
+            ->assertJsonPath('data.orders_7d', 1);
 
         $trends = $this->actingAs($admin)
             ->getJson(route('admin.dashboard.trends'))
@@ -271,6 +315,8 @@ class AdminDashboardTest extends TestCase
         // 30-day window: index 0 is 29 days ago, 19 is created_at (10d ago), 28 is paid_at (yesterday).
         $this->assertSame(0.0, (float) $trends['revenue'][19]);
         $this->assertSame(80.0, (float) $trends['revenue'][28]);
+        $this->assertSame(0, (int) $trends['orders'][19]);
+        $this->assertSame(1, (int) $trends['orders'][28]);
     }
 
     public function test_sites_card_separates_live_catalog_from_verified_only(): void
@@ -361,8 +407,8 @@ class AdminDashboardTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.dashboard.action-queue'))
             ->assertOk()
-            ->assertJsonPath('deposits.0.url', route('admin.deposits'))
-            ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals'))
+            ->assertJsonPath('deposits.0.url', route('admin.deposits', ['status' => 'pending']))
+            ->assertJsonPath('withdrawals.0.url', route('admin.withdrawals', ['queue' => 'open']))
             ->assertJsonPath('withdrawals.0.id', $withdrawal->id)
             ->assertJsonPath('sites.0.url', route('admin.sites.edit', $site->id));
     }
@@ -529,8 +575,103 @@ class AdminDashboardTest extends TestCase
             ->assertJsonPath('disputes.0.url', route('admin.orders.show', $paid->id))
             ->assertJsonPath('community.0.type', 'problem')
             ->assertJsonPath('community.0.label', 'Broken checkout')
-            ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems']))
+            ->assertJsonPath('community.0.url', route('admin.community.index', ['tab' => 'problems', 'status' => 'pending']))
             ->assertJsonPath('enrichment.0.site_name', 'Failed enrich')
             ->assertJsonPath('enrichment.0.url', route('admin.sites.edit', $site->id));
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['payment_status' => 'unpaid']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => 'ORD-UNPAID-1'])
+            ->assertJsonMissing(['order_number' => 'ORD-DSP-1']);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['dispute' => 'open']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => 'ORD-DSP-1'])
+            ->assertJsonMissing(['order_number' => 'ORD-UNPAID-1']);
+    }
+
+    public function test_metrics_cache_is_off_by_default_and_can_be_enabled(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 1);
+
+        User::factory()->create(['email_verified_at' => now()]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2);
+
+        config(['dashboard.metrics_cache_seconds' => 60]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2);
+
+        User::factory()->create(['email_verified_at' => now()]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('pending_deposits', 0);
+
+        DepositRequest::create([
+            'user_id' => $admin->id,
+            'reference_code' => '555333',
+            'amount' => 10,
+            'payment_method' => 'wise',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('pending_deposits', 1);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_users', 2)
+            ->assertJsonPath('data.pending_deposits', 1)
+            ->assertJsonPath('data.needs_attention', 1);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJsonPath('deposits.0.amount', 10);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.finance'))
+            ->assertOk()
+            ->assertJsonPath('data.due_to_pay_now', 0);
+
+        Withdrawal::create([
+            'user_id' => $admin->id,
+            'amount' => 20,
+            'fee' => 5,
+            'net_amount' => 15,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'a@b.com'],
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.finance'))
+            ->assertOk()
+            ->assertJsonPath('data.due_to_pay_now', 15);
     }
 }
