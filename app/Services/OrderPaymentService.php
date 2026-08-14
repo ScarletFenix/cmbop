@@ -467,37 +467,30 @@ class OrderPaymentService
                 }
 
                 $lineKey = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
-                $orderNumber = str_pad((string) mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+                $order = $this->createPaidCardOrderRow($schema, [
+                    'user_id' => $userId,
+                    'reference_code' => $referenceCode,
+                    'checkout_line_key' => $lineKey,
+                    'subtotal' => $line['price'] ?? 0,
+                    'tax' => 0,
+                    'total_amount' => $line['price'] ?? 0,
+                    'payment_method' => 'card',
+                    'payment_status' => 'paid',
+                    'status' => 'pending',
+                    'sensitive_type' => $line['sensitive_type'] ?? null,
+                    'additional_price' => $line['additional_price'] ?? 0,
+                    'publication_mode' => $schedule['mode'] ?? 'immediate',
+                    'scheduled_publish_at' => $schedule['at'] ?? null,
+                    'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
+                    'stripe_session_id' => $stripeSessionId,
+                    'stripe_payment_intent_id' => $stripePaymentIntentId,
+                    'stripe_response' => method_exists($session, 'toArray')
+                        ? json_encode($session->toArray())
+                        : json_encode($session),
+                    'paid_at' => now(),
+                ]);
 
-                try {
-                    $order = Order::create($schema->filterExistingColumns('orders', [
-                        'user_id' => $userId,
-                        'order_number' => $orderNumber,
-                        'reference_code' => $referenceCode,
-                        'checkout_line_key' => $lineKey,
-                        'subtotal' => $line['price'] ?? 0,
-                        'tax' => 0,
-                        'total_amount' => $line['price'] ?? 0,
-                        'payment_method' => 'card',
-                        'payment_status' => 'paid',
-                        'status' => 'pending',
-                        'sensitive_type' => $line['sensitive_type'] ?? null,
-                        'additional_price' => $line['additional_price'] ?? 0,
-                        'publication_mode' => $schedule['mode'] ?? 'immediate',
-                        'scheduled_publish_at' => $schedule['at'] ?? null,
-                        'schedule_timezone' => $schedule['timezone'] ?? 'UTC',
-                        'stripe_session_id' => $stripeSessionId,
-                        'stripe_payment_intent_id' => $stripePaymentIntentId,
-                        'stripe_response' => method_exists($session, 'toArray')
-                            ? json_encode($session->toArray())
-                            : json_encode($session),
-                        'paid_at' => now(),
-                    ]));
-                } catch (QueryException $e) {
-                    if (! $this->isUniqueConstraintFailure($e)) {
-                        throw $e;
-                    }
-
+                if ($order === null) {
                     continue;
                 }
 
@@ -623,6 +616,42 @@ class OrderPaymentService
         return array_fill_keys($ids, true);
     }
 
+    /**
+     * Insert a paid card order, retrying order_number collisions.
+     * Returns null only when this checkout line was already inserted (line-key race).
+     *
+     * @param  array<string, mixed>  $attrs
+     */
+    private function createPaidCardOrderRow(CheckoutSchemaService $schema, array $attrs): ?Order
+    {
+        $lineKey = (string) ($attrs['checkout_line_key'] ?? '');
+
+        for ($attempt = 0; $attempt < 8; $attempt++) {
+            $attrs['order_number'] = $this->freshOrderNumber();
+
+            try {
+                return Order::create($schema->filterExistingColumns('orders', $attrs));
+            } catch (QueryException $e) {
+                if (! $this->isUniqueConstraintFailure($e)) {
+                    throw $e;
+                }
+
+                if ($lineKey !== '' && Order::query()->where('checkout_line_key', $lineKey)->exists()) {
+                    return null;
+                }
+            }
+        }
+
+        throw new \RuntimeException(
+            'Unable to allocate a unique order number for checkout line '.$lineKey
+        );
+    }
+
+    protected function freshOrderNumber(): string
+    {
+        return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+    }
+
     private function checkoutLineKey(string $referenceCode, int $siteId, int $index): string
     {
         return $siteId > 0
@@ -669,12 +698,14 @@ class OrderPaymentService
         }
 
         if ($stripeCents === null) {
-            Log::warning('Stripe session missing amount fields; skipping amount check', [
+            Log::error('Stripe session missing amount fields; refusing to finalize', [
                 'reference_code' => $referenceCode,
                 'session_id' => $session->id ?? null,
             ]);
 
-            return;
+            throw new \RuntimeException(
+                'Stripe charged amount is missing for ref '.$referenceCode
+            );
         }
 
         $stripeEuros = StripePaymentService::fromCents($stripeCents);
