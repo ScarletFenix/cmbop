@@ -231,4 +231,49 @@ class DepositEmailParityTest extends TestCase
         $this->assertStringNotContainsString('card payment succeeded', $html);
         $this->assertStringNotContainsString('Wallet topped up', $html);
     }
+
+    public function test_deposit_email_shows_advertiser_wallet_not_active_role_wallet(): void
+    {
+        $advertiserRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $user->roles()->syncWithoutDetaching([$advertiserRole->id, $publisherRole->id]);
+
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $advertiserRole->id,
+            'balance' => 125.50,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        Wallet::create([
+            'user_id' => $user->id,
+            'role_id' => $publisherRole->id,
+            'balance' => 3.00,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $deposit = DepositRequest::create([
+            'user_id' => $user->id,
+            'reference_code' => 'DEP-ROLE-BAL',
+            'amount' => 40,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+            'approved_at' => now(),
+            'paid_at' => now(),
+        ]);
+
+        $html = (new DepositApproved($deposit->fresh(['user'])))->render();
+
+        $this->assertStringContainsString('€125.50', $html);
+        $this->assertStringNotContainsString('€3.00', $html);
+    }
 }

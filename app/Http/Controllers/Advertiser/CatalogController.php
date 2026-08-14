@@ -1953,6 +1953,12 @@ class CatalogController extends Controller
 
         $scheduleContext = $this->checkoutScheduleContext();
 
+        $checkoutReferenceCode = session('checkout_reference_code');
+        if (! is_string($checkoutReferenceCode) || ! preg_match('/^\d{6}$/', $checkoutReferenceCode)) {
+            $checkoutReferenceCode = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            session(['checkout_reference_code' => $checkoutReferenceCode]);
+        }
+
         return view('advertiser.checkout', array_merge(compact(
             'cartItems',
             'deferredItems',
@@ -1969,6 +1975,7 @@ class CatalogController extends Controller
             'checkoutArticles',
             'savedCards',
             'stripeConfigured',
+            'checkoutReferenceCode',
         ), $scheduleContext));
     }
 
