@@ -10,6 +10,10 @@
         </thead>
         <tbody>
             @forelse($logs as $log)
+                @php
+                    $subjectUrl = marketing_history_subject_url($log);
+                    $bulkUrl = marketing_history_bulk_url($log);
+                @endphp
                 <tr>
                     <td class="small text-nowrap">
                         {{ $log->created_at?->format('d M Y') }}<br>
@@ -18,7 +22,18 @@
                     <td>
                         <div class="fw-semibold">{{ marketing_task_label($log->action) }}</div>
                     </td>
-                    <td class="small">{{ $log->subject_label ?: '—' }}</td>
+                    <td class="small">
+                        @if($subjectUrl)
+                            <a href="{{ $subjectUrl }}">{{ $log->subject_label ?: 'Open' }}</a>
+                        @else
+                            {{ $log->subject_label ?: '—' }}
+                        @endif
+                        @if($bulkUrl)
+                            <div>
+                                <a href="{{ $bulkUrl }}">Bulk request</a>
+                            </div>
+                        @endif
+                    </td>
                     <td class="small">{{ $log->description }}</td>
                 </tr>
             @empty

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\ActivityLog;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -106,6 +107,119 @@ class MarketingPanelHistoryTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('role-shell-marketing', $html);
+    }
+
+    public function test_history_includes_activate_and_assign_with_subject_links(): void
+    {
+        $otherRole = Role::where('name', 'marketing')->firstOrFail();
+        $other = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $otherRole->id,
+        ]);
+        $other->roles()->attach($otherRole->id);
+
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $publisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Activate Link Site',
+            'site_url' => 'https://activate-link.example',
+            'domain' => 'activate-link.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'News',
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'description' => 'History link site',
+            'link_type' => 'dofollow',
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.activated',
+            'description' => 'Activated Activate Link Site',
+            'subject_type' => Site::class,
+            'subject_id' => $site->id,
+            'subject_label' => 'Activate Link Site',
+            'properties' => ['bulk_site_request_id' => 17],
+        ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.assigned_for_acceptance',
+            'description' => 'Assigned Activate Link Site to publisher',
+            'subject_type' => Site::class,
+            'subject_id' => $site->id,
+            'subject_label' => 'Activate Link Site',
+        ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.deleted_by_marketing',
+            'description' => 'Deleted pending leftover',
+            'subject_label' => 'Deleted Leftover',
+        ]);
+        ActivityLog::create([
+            'user_id' => $other->id,
+            'user_name' => $other->name,
+            'user_email' => $other->email,
+            'role' => 'marketing',
+            'action' => 'site.activated',
+            'description' => 'Other marketer activated',
+            'subject_type' => Site::class,
+            'subject_id' => $site->id,
+            'subject_label' => 'Someone Else Site',
+        ]);
+
+        $dashboard = $this->actingAs($this->marketer)
+            ->get(route('marketing.dashboard'))
+            ->assertOk()
+            ->assertSee('Activated site', false)
+            ->assertSee('Assigned site to publisher', false)
+            ->assertSee('Activated Activate Link Site', false)
+            ->assertDontSee('Other marketer activated', false)
+            ->assertDontSee('>site.activated<', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.sites.edit', $site->id), $dashboard);
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', 17), $dashboard);
+        $this->assertStringContainsString('Bulk request', $dashboard);
+
+        $history = $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Activated site', false)
+            ->assertSee('Assigned site to publisher', false)
+            ->assertSee('Deleted pending leftover', false)
+            ->assertDontSee('Other marketer activated', false)
+            ->assertDontSee('>site.activated<', false)
+            ->getContent();
+
+        $this->assertStringContainsString('value="site.activated"', $history);
+        $this->assertStringContainsString('value="site.assigned_for_acceptance"', $history);
+        $this->assertStringContainsString(route('marketing.sites.edit', $site->id), $history);
+        $this->assertStringContainsString('Deleted Leftover', $history);
+        $this->assertStringNotContainsString(
+            'href="'.route('marketing.sites.edit', $site->id).'">Deleted Leftover<',
+            $history
+        );
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void

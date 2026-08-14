@@ -1,5 +1,8 @@
 <?php
 
+use App\Models\ActivityLog;
+use App\Models\BulkSiteRequest;
+use App\Models\Site;
 use App\Models\User;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\App;
@@ -489,6 +492,9 @@ if (! function_exists('marketing_task_labels')) {
             'bulk_request.notes_updated' => 'Updated bulk notes',
             'site.deleted_by_marketing' => 'Deleted pending site',
             'site.updated' => 'Edited site',
+            'site.activated' => 'Activated site',
+            'site.deactivated' => 'Deactivated site',
+            'site.assigned_for_acceptance' => 'Assigned site to publisher',
             'site.image_uploaded' => 'Uploaded site image',
             'site.metrics_refreshed' => 'Refreshed metrics',
             'site.screenshot_refreshed' => 'Refreshed screenshot',
@@ -507,5 +513,58 @@ if (! function_exists('marketing_task_label')) {
         $labels = marketing_task_labels();
 
         return $labels[$action] ?? $action;
+    }
+}
+
+if (! function_exists('marketing_history_subject_url')) {
+    /**
+     * Deep link for a marketing history row subject, or null when it should stay plain text.
+     */
+    function marketing_history_subject_url(?ActivityLog $log): ?string
+    {
+        if (! $log || $log->action === 'site.deleted_by_marketing') {
+            return null;
+        }
+
+        $type = (string) $log->subject_type;
+        $id = (int) $log->subject_id;
+
+        if ($id > 0) {
+            if ($type === Site::class) {
+                return route('marketing.sites.edit', $id);
+            }
+
+            if ($type === BulkSiteRequest::class) {
+                return route('marketing.bulk-site-requests.show', $id);
+            }
+        }
+
+        $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
+
+        return $bulkId > 0
+            ? route('marketing.bulk-site-requests.show', $bulkId)
+            : null;
+    }
+}
+
+if (! function_exists('marketing_history_bulk_url')) {
+    /**
+     * Extra bulk-request link when the primary subject is a site on a bulk batch.
+     */
+    function marketing_history_bulk_url(?ActivityLog $log): ?string
+    {
+        if (! $log) {
+            return null;
+        }
+
+        $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
+        if ($bulkId <= 0) {
+            return null;
+        }
+
+        $primary = marketing_history_subject_url($log);
+        $bulk = route('marketing.bulk-site-requests.show', $bulkId);
+
+        return $primary !== $bulk ? $bulk : null;
     }
 }
