@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Marketing\PanelController;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\Role;
@@ -392,6 +393,46 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Activated site', false)
             ->assertDontSee('Edit Target', false)
             ->assertDontSee('Staff changed niches', false);
+    }
+
+    public function test_history_filter_bar_lists_every_task_type_with_counts(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Only an edit for the type list',
+            'subject_label' => 'Filter Bar Site',
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Seed, edit, activate, deactivate, assign, image, metrics, and bulk updates.', false)
+            ->assertSee('data-history-filters', false)
+            ->assertSee('for="history-q"', false)
+            ->assertSee('for="history-action"', false)
+            ->assertSee('for="history-from"', false)
+            ->assertSee('for="history-to"', false)
+            ->assertSee('Apply filters', false)
+            ->assertSee('Showing 1–1 of 1 task', false)
+            ->assertSee('Edited site (1)', false)
+            ->assertSee('Activated site (0)', false)
+            ->assertDontSee('seeding, edits, activations, assigns, and bulk updates', false)
+            ->getContent();
+
+        foreach (PanelController::TRACKED_ACTIONS as $action) {
+            $this->assertStringContainsString('value="'.$action.'"', $html);
+        }
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['action' => 'not-a-tracked-action']))
+            ->assertOk()
+            ->assertSee('Filter Bar Site', false)
+            ->assertSee('Showing 1–1 of 1 task', false)
+            ->assertDontSee('0 tasks match these filters', false);
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void

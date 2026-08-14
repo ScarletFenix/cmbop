@@ -95,8 +95,13 @@ class PanelController extends Controller
         $query = $this->marketerHistoryQuery($userId)->latest('id');
         $dateErrors = [];
 
-        if ($request->filled('action')) {
-            $query->where('action', $request->string('action')->toString());
+        $selectedAction = $request->string('action')->toString();
+        if ($selectedAction !== '' && ! in_array($selectedAction, self::TRACKED_ACTIONS, true)) {
+            $selectedAction = '';
+        }
+
+        if ($selectedAction !== '') {
+            $query->where('action', $selectedAction);
         }
 
         $fromBound = null;
@@ -149,21 +154,26 @@ class PanelController extends Controller
 
         $logs = $query->paginate(30)->withQueryString();
 
-        $actions = ActivityLog::query()
-            ->where('user_id', $userId)
-            ->where('role', 'marketing')
-            ->whereIn('action', self::TRACKED_ACTIONS)
-            ->select('action')
-            ->distinct()
-            ->orderBy('action')
-            ->pluck('action');
+        $actionCounts = $this->marketerHistoryQuery($userId)
+            ->selectRaw('action, COUNT(*) as aggregate')
+            ->groupBy('action')
+            ->pluck('aggregate', 'action');
+
+        $actions = self::TRACKED_ACTIONS;
 
         $filtersActive = $request->filled('q')
-            || $request->filled('action')
+            || $selectedAction !== ''
             || $request->filled('from')
             || $request->filled('to');
 
-        return view('marketing.history', compact('logs', 'actions', 'dateErrors', 'filtersActive'));
+        return view('marketing.history', compact(
+            'logs',
+            'actions',
+            'actionCounts',
+            'selectedAction',
+            'dateErrors',
+            'filtersActive'
+        ));
     }
 
     /**
