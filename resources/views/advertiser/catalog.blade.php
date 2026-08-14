@@ -120,7 +120,10 @@
                     <strong>{{ $cartRemovedInactive[0] }}</strong> is no longer available and was removed from your cart.
                 @else
                     {{ count($cartRemovedInactive) }} websites are no longer available and were removed from your cart:
-                    <strong>{{ implode(', ', array_slice($cartRemovedInactive, 0, 3)) }}</strong>@if(count($cartRemovedInactive) > 3) and {{ count($cartRemovedInactive) - 3 }} more@endif.
+                    <strong>{{ implode(', ', array_slice($cartRemovedInactive, 0, 3)) }}</strong>
+                    @if(count($cartRemovedInactive) > 3)
+                        and {{ count($cartRemovedInactive) - 3 }} more
+                    @endif.
                 @endif
             </div>
         </div>
