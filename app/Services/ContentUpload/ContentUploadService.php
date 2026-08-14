@@ -32,13 +32,13 @@ class ContentUploadService
         $override = ContentModerationSetting::getValue('upload_config', []) ?: [];
 
         if (! is_array($override) || $override === []) {
-            $base['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($base['max_kilobytes'] ?? self::MAX_KILOBYTES));
+            $base['max_kilobytes'] = self::MAX_KILOBYTES;
 
             return $base;
         }
 
         $merged = array_replace_recursive($base, $override);
-        $merged['max_kilobytes'] = max(self::MAX_KILOBYTES, (int) ($merged['max_kilobytes'] ?? self::MAX_KILOBYTES));
+        $merged['max_kilobytes'] = self::MAX_KILOBYTES;
 
         return $merged;
     }
@@ -528,13 +528,12 @@ class ContentUploadService
     }
 
     /**
-     * Article cap is 10 MB. Never advertise less than that (old admin/PHP 2–5 MB clamps).
+     * Hard article cap: 10 MB. Files at or under this size are allowed;
+     * anything larger is rejected. Admin / env cannot raise this.
      */
     public function effectiveMaxKilobytes(?array $cfg = null): int
     {
-        $cfg = $cfg ?? $this->effectiveConfig();
-
-        return max(self::MAX_KILOBYTES, (int) ($cfg['max_kilobytes'] ?? self::MAX_KILOBYTES));
+        return self::MAX_KILOBYTES;
     }
 
     public function phpUploadMaxKilobytes(): int
