@@ -194,6 +194,13 @@ function libraryFileTooLargeMessage(file) {
     return '';
 }
 
+function libraryUploadTransportMessage(status) {
+    if (status === 413 || status === 422) {
+        return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
+    }
+    return 'Upload failed. Please try again.';
+}
+
 function assignLibraryFile(file, feedback) {
     const input = document.getElementById('libraryFileInput');
     if (!file || !input) return false;
@@ -1695,7 +1702,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         try {
             data = await res.json();
         } catch (parseErr) {
-            setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
+            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
             return;
         }
         if (!data.success) {

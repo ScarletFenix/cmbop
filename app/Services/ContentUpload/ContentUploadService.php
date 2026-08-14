@@ -562,17 +562,23 @@ class ContentUploadService
 
     /**
      * PHP rejected the file before Laravel saw the bytes (UPLOAD_ERR_INI_SIZE /
-     * FORM_SIZE). Advertisers only see the 10 MB product rule — never hosting
-     * PHP instructions. Admin Content Moderation still shows the PHP-too-low warning.
+     * FORM_SIZE / empty body after post_max_size).
+     *
+     * Never blame the 10 MB article cap here. ini_get() can already read 64M
+     * from .user.ini while LiteSpeed still enforces 2M, and a 5 MB .docx then
+     * looks "over the 10 MB limit". The cap message is only for a measured
+     * file that is actually larger than 10 MB (JS + file.max + validateUpload).
      */
     public function phpSizeRejectedMessage(?array $cfg = null): string
     {
         $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
-        if ($this->phpLimitBlocksArticleCap($cfg)) {
-            return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
-        }
 
-        return 'That file is over the '.$appMb.' MB limit. Save as a smaller .docx and try again.';
+        return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
+    }
+
+    public function phpImageRejectedMessage(): string
+    {
+        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
     }
 
     /**

@@ -236,17 +236,14 @@ class ContentSubmissionController extends Controller
         if ($image instanceof UploadedFile && ! $image->isValid()) {
             return response()->json([
                 'success' => false,
-                'message' => $this->uploads->phpSizeRejectedMessage(),
+                'message' => $this->uploads->phpImageRejectedMessage(),
             ], 422);
         }
-        if ($message = $this->uploads->rejectedUploadMessage(
-            null,
-            null,
-            $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null,
-        )) {
+        $contentLength = $request->header('Content-Length') !== null ? (int) $request->header('Content-Length') : null;
+        if (! $image && $contentLength !== null && $contentLength > ($this->uploads->phpUploadMaxKilobytes() * 1024)) {
             return response()->json([
                 'success' => false,
-                'message' => $message,
+                'message' => $this->uploads->phpImageRejectedMessage(),
             ], 422);
         }
 

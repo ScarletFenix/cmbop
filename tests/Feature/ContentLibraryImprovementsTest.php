@@ -877,6 +877,26 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringStartsWith('/storage/content-articles/', $url);
     }
 
+    public function test_editor_image_php_reject_does_not_blame_article_docx_cap(): void
+    {
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/editor-img-'.uniqid('', true).'.png';
+        file_put_contents($path, 'fake-png');
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-submissions.editor-image'), [
+            'image' => new UploadedFile($path, 'figure.png', 'image/png', UPLOAD_ERR_INI_SIZE, true),
+        ]);
+
+        @unlink($path);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('image could not be uploaded', $message);
+        $this->assertStringNotContainsString('.docx', $message);
+        $this->assertStringNotContainsString('over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('upload_max_filesize', $message);
+    }
+
     public function test_content_library_preview_modal_exposes_external_link_rows(): void
     {
         $advertiser = $this->advertiser();
@@ -1090,15 +1110,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('The file failed to upload', $message);
         $this->assertStringContainsString('MB', $message);
-        $phpKb = app(ContentUploadService::class)->phpUploadMaxKilobytes();
         $this->assertStringNotContainsString('upload_max_filesize', $message);
         $this->assertStringNotContainsString('hosting PHP settings', $message);
-        if ($phpKb < 10240) {
-            $this->assertStringContainsString('The article could not be uploaded', $message);
-            $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
-        } else {
-            $this->assertStringContainsString('That file is over the 10 MB limit', $message);
-        }
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
     public function test_library_upload_accepts_docx_sniffed_as_zip(): void
@@ -1203,6 +1218,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $htaccess = (string) file_get_contents(public_path('.htaccess'));
         $this->assertStringContainsString('lsapi_module', $htaccess);
         $this->assertStringContainsString('php_value upload_max_filesize 64M', $htaccess);
+        $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
 
         $userIni = (string) file_get_contents(public_path('.user.ini'));
         $this->assertStringContainsString('upload_max_filesize = 64M', $userIni);
@@ -1214,6 +1230,7 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
+        $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
         $this->assertStringNotContainsString('hosting PHP settings', $js);
         $this->assertStringNotContainsString('server PHP upload limit', $js);
