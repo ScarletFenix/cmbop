@@ -215,10 +215,8 @@
         </div>
     </div>
 
-    <!-- Pagination -->
-    <div class="d-flex justify-content-center mt-4">
-        <nav id="paginationNav"></nav>
-    </div>
+    <!-- Pagination — catalog chrome is painted by renderPagination() -->
+    <div id="paginationNav"></div>
 </div>
 
 <!-- Order Details Modal -->

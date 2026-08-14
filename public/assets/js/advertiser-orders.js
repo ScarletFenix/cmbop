@@ -803,7 +803,8 @@ function bootAdvertiserOrdersPage() {
                     </tr>
                 `;
                 updateResultsCount(null);
-                document.getElementById('paginationNav').innerHTML = '';
+                const emptyNav = document.getElementById('paginationNav');
+                if (emptyNav) emptyNav.innerHTML = '';
                 updateNeedsActionBanner(0);
                 setOrdersSearchStatus(data.message || 'No orders found');
                 return;
@@ -826,7 +827,8 @@ function bootAdvertiserOrdersPage() {
                 </tr>
             `;
             updateResultsCount(null);
-            document.getElementById('paginationNav').innerHTML = '';
+            const failNav = document.getElementById('paginationNav');
+            if (failNav) failNav.innerHTML = '';
             setOrdersSearchStatus('Search failed');
             document.getElementById('retryOrdersBtn')?.addEventListener('click', () => fetchOrders(currentPage));
         })
@@ -1068,7 +1070,8 @@ function bootAdvertiserOrdersPage() {
                 });
             }
             updateResultsCount(null);
-            document.getElementById('paginationNav').innerHTML = '';
+            const emptyListNav = document.getElementById('paginationNav');
+            if (emptyListNav) emptyListNav.innerHTML = '';
             return;
         }
 
@@ -1692,9 +1695,10 @@ function bootAdvertiserOrdersPage() {
         }
     }
 
-    function paginationPageWindow(current, last, radius = 2) {
+    function paginationPageWindow(current, last, radius = 1) {
         const pages = [];
-        if (last <= 1) return pages;
+        if (last < 1) return pages;
+        if (last === 1) return [1];
         const start = Math.max(1, current - radius);
         const end = Math.min(last, current + radius);
         if (start > 1) {
@@ -1709,47 +1713,105 @@ function bootAdvertiserOrdersPage() {
         return pages;
     }
 
+    function ordersPageHref(page) {
+        const url = new URL(window.location.pathname, window.location.origin);
+        const map = {
+            search: document.getElementById('searchInput')?.value || '',
+            status: document.getElementById('statusFilter')?.value || '',
+            payment_status: document.getElementById('paymentStatusFilter')?.value || '',
+            payment_method: document.getElementById('paymentMethodFilter')?.value || '',
+            date_from: document.getElementById('dateFrom')?.value || '',
+            date_to: document.getElementById('dateTo')?.value || '',
+        };
+        Object.keys(map).forEach((key) => {
+            if (map[key]) url.searchParams.set(key, map[key]);
+        });
+        if (page > 1) url.searchParams.set('page', String(page));
+        const query = url.searchParams.toString();
+        return url.pathname + (query ? '?' + query : '');
+    }
+
+    function pagerChevron(direction, enabled, page) {
+        const icon = direction === 'prev'
+            ? '<i class="fa-solid fa-chevron-left" aria-hidden="true"></i>'
+            : '<i class="fa-solid fa-chevron-right" aria-hidden="true"></i>';
+        const label = direction === 'prev' ? 'Previous' : 'Next';
+        if (!enabled) {
+            return `<li class="page-item disabled" aria-disabled="true">`
+                + `<span class="page-link" aria-hidden="true">${icon}</span>`
+                + `<span class="visually-hidden">${label}</span>`
+                + `</li>`;
+        }
+        return `<li class="page-item">`
+            + `<a class="page-link" href="${ordersPageHref(page)}" data-page="${page}" rel="${direction === 'prev' ? 'prev' : 'next'}" aria-label="${label}">${icon}</a>`
+            + `</li>`;
+    }
+
     function renderPagination(pagination) {
-        if (!pagination || pagination.last_page <= 1) {
-            document.getElementById('paginationNav').innerHTML = '';
+        const nav = document.getElementById('paginationNav');
+        if (!nav) return;
+        if (!pagination || !pagination.total) {
+            nav.innerHTML = '';
             return;
         }
-        
-        let paginationHtml = '<ul class="pagination justify-content-center flex-wrap">';
-        
-        if (pagination.current_page > 1) {
-            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page - 1}">Previous</button></li>`;
-        } else {
-            paginationHtml += `<li class="page-item disabled"><span class="page-link">Previous</span></li>`;
-        }
 
-        paginationPageWindow(pagination.current_page, pagination.last_page, 2).forEach((entry) => {
+        const current = pagination.current_page || 1;
+        const last = pagination.last_page || 1;
+        const from = pagination.from || 0;
+        const to = pagination.to || 0;
+        const total = pagination.total;
+        const noun = total === 1 ? 'order' : 'orders';
+
+        let desktopPages = '';
+        paginationPageWindow(current, last, 1).forEach((entry) => {
             if (typeof entry === 'string') {
-                paginationHtml += `<li class="page-item disabled"><span class="page-link">…</span></li>`;
+                desktopPages += `<li class="page-item disabled" aria-disabled="true"><span class="page-link">…</span></li>`;
                 return;
             }
-            if (entry === pagination.current_page) {
-                paginationHtml += `<li class="page-item active"><span class="page-link">${entry}</span></li>`;
+            if (entry === current) {
+                desktopPages += `<li class="page-item active" aria-current="page"><span class="page-link">${entry}</span></li>`;
             } else {
-                paginationHtml += `<li class="page-item"><button class="page-link" data-page="${entry}">${entry}</button></li>`;
+                desktopPages += `<li class="page-item"><a class="page-link" href="${ordersPageHref(entry)}" data-page="${entry}" aria-label="Go to page ${entry}">${entry}</a></li>`;
             }
         });
-        
-        if (pagination.current_page < pagination.last_page) {
-            paginationHtml += `<li class="page-item"><button class="page-link" data-page="${pagination.current_page + 1}">Next</button></li>`;
-        } else {
-            paginationHtml += `<li class="page-item disabled"><span class="page-link">Next</span></li>`;
-        }
-        
-        paginationHtml += '</ul>';
-        document.getElementById('paginationNav').innerHTML = paginationHtml;
-        
-        document.querySelectorAll('.page-link[data-page]').forEach(btn => {
-            btn.addEventListener('click', function(e) {
+
+        nav.innerHTML = `
+            <div class="catalog-pagination">
+                <p class="catalog-pagination__meta">
+                    Showing
+                    <strong>${from}–${to}</strong>
+                    of <strong>${total.toLocaleString()}</strong>
+                    ${noun}
+                    <span class="catalog-pagination__page-label" aria-hidden="true">
+                        · Page ${current} of ${last}
+                    </span>
+                </p>
+                <div class="catalog-pagination__links">
+                    <nav aria-label="Orders pages">
+                        <ul class="pagination catalog-pagination__mobile d-flex d-md-none mb-0">
+                            ${pagerChevron('prev', current > 1, current - 1)}
+                            <li class="page-item disabled" aria-disabled="true">
+                                <span class="page-link catalog-pagination__pill" aria-current="page">${current} / ${last}</span>
+                            </li>
+                            ${pagerChevron('next', current < last, current + 1)}
+                        </ul>
+                        <ul class="pagination catalog-pagination__desktop d-none d-md-flex mb-0">
+                            ${pagerChevron('prev', current > 1, current - 1)}
+                            ${desktopPages}
+                            ${pagerChevron('next', current < last, current + 1)}
+                        </ul>
+                    </nav>
+                </div>
+            </div>
+        `;
+
+        nav.querySelectorAll('a.page-link[data-page]').forEach((link) => {
+            link.addEventListener('click', function (e) {
                 e.preventDefault();
-                const page = parseInt(this.dataset.page);
+                const page = parseInt(this.dataset.page, 10);
+                if (!Number.isFinite(page) || page < 1) return;
                 currentPage = page;
-                fetchOrders(page);
+                fetchOrders(page, { historyMode: 'push' });
             });
         });
     }

@@ -1435,7 +1435,9 @@
             </div>
         </div>
         <p class="small text-muted mb-2" id="sitesFilterHint">Approved and live sites on your panel.</p>
-        <input type="text" id="siteSearch" class="form-control table-search" placeholder="Search sites...">
+        <div class="mb-2" style="max-width: 22rem;">
+            <x-slb-search-field name="site_search" id="siteSearch" placeholder="Search sites..." input-class="form-control table-search" mode="" />
+        </div>
         <div id="sitesTableWrapper" class="mt-3"></div>
     </div>
 </div>

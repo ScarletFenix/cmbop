@@ -13,8 +13,7 @@
     <form method="get" class="card border-0 shadow-sm mb-3">
         <div class="card-body row g-2 align-items-end">
             <div class="col-md-4">
-                <label class="form-label small text-muted mb-1">Search</label>
-                <input type="search" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Site, user, comment…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                <x-slb-search-field name="q" id="adminSiteRatingsSearch" :value="request('q')" placeholder="Site, user, comment…" />
             </div>
             <div class="col-md-3">
                 <label class="form-label small text-muted mb-1">Site</label>

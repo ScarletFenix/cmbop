@@ -137,8 +137,13 @@
                 // IE-free app; ignore.
             }
 
+            // Form mode: Enter / Clear submit. Typing only shows the 2-char
+            // hint — a full GET on every keystroke steals focus.
             if (mode === 'form') {
-                navigateForm(input, payload.historyMode);
+                var reason = payload.reason || 'input';
+                if (reason === 'enter' || reason === 'clear') {
+                    navigateForm(input, payload.historyMode);
+                }
             }
 
             return payload;

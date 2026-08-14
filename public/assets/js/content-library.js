@@ -15,6 +15,17 @@ const libraryUploadsEnabled = !!boot.uploadsEnabled;
 const libraryOpenUpload = !!boot.openUpload;
 const libraryEditSubmission = boot.editSubmission || null;
 const libraryIndexUrl = boot.libraryIndexUrl || '';
+const libraryResultsUrl = boot.libraryResultsUrl || '';
+
+function librarySameOriginPath(url, fallback) {
+    if (!url) return fallback || '';
+    try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.pathname + (parsed.search || '');
+    } catch (err) {
+        return fallback || '';
+    }
+}
 
 let articleQuill = null;
 let articleEditorSubmissionId = null;
@@ -309,7 +320,7 @@ function libraryResultMessage(submission, fallback, ok) {
 }
 
 function libraryDestinationUrl(submission) {
-    const url = new URL(libraryIndexUrl || window.location.pathname, window.location.origin);
+    const url = new URL(librarySameOriginPath(libraryIndexUrl, window.location.pathname), window.location.origin);
     const chip = libraryChipParams(submission);
     url.search = '';
     url.searchParams.set('status', chip.status);
@@ -454,16 +465,21 @@ async function fetchSubmissionPayload(submissionId) {
     return data;
 }
 
-document.querySelectorAll('.js-open-preview').forEach(function (btn) {
-    btn.addEventListener('click', async function () {
-        const id = btn.getAttribute('data-submission-id');
-        if (!id) {
-            showLibraryFlash('Could not open preview', false);
-            return;
-        }
-        btn.disabled = true;
-        try {
-            const payload = await fetchSubmissionPayload(id);
+document.addEventListener('click', async function (e) {
+    const previewBtn = e.target.closest('.js-open-preview');
+    const editorBtn = e.target.closest('.js-open-editor');
+    const btn = previewBtn || editorBtn;
+    if (!btn) return;
+
+    const id = btn.getAttribute('data-submission-id');
+    if (!id) {
+        showLibraryFlash(previewBtn ? 'Could not open preview' : 'Could not open editor', false);
+        return;
+    }
+    btn.disabled = true;
+    try {
+        const payload = await fetchSubmissionPayload(id);
+        if (previewBtn) {
             openPreviewModal(
                 payload.title || 'Article preview',
                 payload.html || payload.preview_html || '',
@@ -471,41 +487,23 @@ document.querySelectorAll('.js-open-preview').forEach(function (btn) {
                 payload.id || parseInt(id, 10),
                 !!payload.editable
             );
-        } catch (e) {
-            console.error('Failed to open preview', e);
-            showLibraryFlash(e.message || 'Could not open preview', false);
-        } finally {
-            btn.disabled = false;
-        }
-    });
-});
-
-document.querySelectorAll('.js-open-editor').forEach(function (btn) {
-    btn.addEventListener('click', async function () {
-        const id = btn.getAttribute('data-submission-id');
-        if (!id) {
-            showLibraryFlash('Could not open editor', false);
             return;
         }
-        btn.disabled = true;
-        try {
-            const payload = await fetchSubmissionPayload(id);
-            if (!payload.editable) {
-                showLibraryFlash('Expired articles are preview only.', false);
-                return;
-            }
-            openArticleEditor(Object.assign({}, payload, {
-                id: payload.id || parseInt(id, 10),
-                preview_html: payload.preview_html || payload.html || '',
-                detected_links: payload.detected_links || payload.links || [],
-            }));
-        } catch (e) {
-            console.error('Failed to open editor', e);
-            showLibraryFlash(e.message || 'Could not open editor', false);
-        } finally {
-            btn.disabled = false;
+        if (!payload.editable) {
+            showLibraryFlash('Expired articles are preview only.', false);
+            return;
         }
-    });
+        openArticleEditor(Object.assign({}, payload, {
+            id: payload.id || parseInt(id, 10),
+            preview_html: payload.preview_html || payload.html || '',
+            detected_links: payload.detected_links || payload.links || [],
+        }));
+    } catch (err) {
+        console.error(previewBtn ? 'Failed to open preview' : 'Failed to open editor', err);
+        showLibraryFlash(err.message || (previewBtn ? 'Could not open preview' : 'Could not open editor'), false);
+    } finally {
+        btn.disabled = false;
+    }
 });
 
 document.getElementById('articleCopyHeadingBtn')?.addEventListener('click', async function () {
@@ -1726,6 +1724,192 @@ if (window.location.hash === '#upload' && libraryUploadsEnabled) {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadContentModal')).show();
     });
 }
+
+function libraryFilterForm() {
+    return document.querySelector('form.library-filter-bar');
+}
+
+function librarySearchParamsFromForm() {
+    const form = libraryFilterForm();
+    const next = new URLSearchParams();
+    if (!form) return next;
+    const fd = new FormData(form);
+    fd.forEach(function (value, key) {
+        const v = String(value == null ? '' : value).trim();
+        if (v !== '') next.append(key, String(value));
+    });
+    return next;
+}
+
+function syncLibraryResetVisibility(params) {
+    const reset = document.getElementById('libraryFilterReset');
+    if (!reset) return;
+    const q = (params.get('q') || '').trim();
+    const country = params.get('country') || 'all';
+    const language = params.get('language') || 'all';
+    const availability = params.get('availability') || 'available';
+    const show = q !== ''
+        || (country !== '' && country !== 'all')
+        || (language !== '' && language !== 'all')
+        || (availability !== '' && availability !== 'available');
+    reset.classList.toggle('d-none', !show);
+}
+
+function syncLibrarySearchInputFromParams(params) {
+    const input = document.getElementById('librarySearchInput');
+    if (!input) return;
+    const next = params.get('q') || '';
+    if (input.value !== next) input.value = next;
+}
+
+function syncLibraryFiltersFromParams(params) {
+    const form = libraryFilterForm();
+    const setNamed = function (name, value) {
+        const el = form ? form.querySelector('[name="' + name + '"]') : null;
+        if (el && el.value !== value) el.value = value;
+    };
+    syncLibrarySearchInputFromParams(params);
+    setNamed('q', params.get('q') || '');
+    setNamed('status', params.get('status') || 'approved');
+    setNamed('availability', params.get('availability') || 'available');
+    setNamed('country', params.get('country') || 'all');
+    setNamed('language', params.get('language') || 'all');
+}
+
+let libraryResultsAbort = null;
+let libraryResultsSeq = 0;
+
+function fetchLibraryResults(params, options) {
+    const opts = options || {};
+    const region = document.getElementById('libraryLiveRegion');
+    const indexPath = librarySameOriginPath(libraryIndexUrl, window.location.pathname);
+    const resultsUrl = librarySameOriginPath(libraryResultsUrl, '')
+        || (indexPath ? indexPath.replace(/\/?$/, '/') + 'results' : '');
+    if (!region || !resultsUrl) return false;
+
+    const query = new URLSearchParams(params);
+    if (opts.resetPage) query.delete('page');
+
+    const href = resultsUrl + (query.toString() ? '?' + query.toString() : '');
+    const pageHref = (indexPath || window.location.pathname)
+        + (query.toString() ? '?' + query.toString() : '');
+
+    if (libraryResultsAbort) {
+        libraryResultsAbort.abort();
+    }
+    libraryResultsAbort = new AbortController();
+    const seq = ++libraryResultsSeq;
+
+    fetch(href, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'text/html',
+        },
+        credentials: 'same-origin',
+        signal: libraryResultsAbort.signal,
+    }).then(function (res) {
+        if (!res.ok) throw new Error('Could not refresh library');
+        return res.text();
+    }).then(function (html) {
+        if (seq !== libraryResultsSeq) return;
+        region.innerHTML = html;
+        syncLibraryResetVisibility(query);
+        const historyMode = opts.historyMode || 'replace';
+        try {
+            if (historyMode === 'push') {
+                window.history.pushState({ libraryLive: 1 }, '', pageHref);
+            } else if (historyMode !== 'none') {
+                window.history.replaceState({ libraryLive: 1 }, '', pageHref);
+            }
+        } catch (err) {
+            console.error('Library history update failed', err);
+        }
+        if (opts.keepFocus) {
+            const input = document.getElementById('librarySearchInput');
+            if (input) {
+                input.focus();
+                const start = opts.selectionStart;
+                const end = opts.selectionEnd;
+                if (typeof start === 'number' && typeof end === 'number') {
+                    try { input.setSelectionRange(start, end); } catch (err) { /* ignore */ }
+                }
+            }
+        }
+    }).catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        console.error('Library live search failed', err);
+    });
+
+    return true;
+}
+
+function bootLibraryLiveSearch() {
+    const input = document.getElementById('librarySearchInput');
+    if (!input) return;
+
+    const runFetch = function (detail) {
+        const params = librarySearchParamsFromForm();
+        const keepFocus = !detail || detail.reason !== 'pager';
+        fetchLibraryResults(params, {
+            historyMode: (detail && detail.historyMode) || 'replace',
+            resetPage: !detail || detail.reason !== 'pager',
+            keepFocus: keepFocus,
+            selectionStart: input.selectionStart,
+            selectionEnd: input.selectionEnd,
+        });
+    };
+
+    if (typeof window.SlbLiveSearch !== 'undefined' && typeof window.SlbLiveSearch.init === 'function') {
+        window.SlbLiveSearch.init(input, {
+            mode: 'event',
+            statusEl: document.getElementById('librarySearchStatus'),
+            clearBtn: document.getElementById('librarySearchClear'),
+            onSearch: function (detail) {
+                runFetch(detail);
+            },
+        });
+    } else {
+        input.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            runFetch({ reason: 'enter', historyMode: 'push' });
+        });
+        document.getElementById('librarySearchClear')?.addEventListener('click', function () {
+            input.value = '';
+            runFetch({ reason: 'clear', historyMode: 'push' });
+            input.focus();
+        });
+    }
+
+    const form = libraryFilterForm();
+    form?.addEventListener('submit', function (e) {
+        if (!libraryResultsUrl) return;
+        e.preventDefault();
+        runFetch({ reason: 'enter', historyMode: 'push' });
+    });
+
+    document.getElementById('libraryLiveRegion')?.addEventListener('click', function (e) {
+        const link = e.target.closest('.pagination a');
+        if (!link || !this.contains(link)) return;
+        e.preventDefault();
+        let params;
+        try {
+            params = new URL(link.href, window.location.origin).searchParams;
+        } catch (err) {
+            return;
+        }
+        syncLibraryFiltersFromParams(params);
+        fetchLibraryResults(params, { historyMode: 'push', resetPage: false, keepFocus: false });
+    });
+
+    window.addEventListener('popstate', function () {
+        const params = new URLSearchParams(window.location.search);
+        syncLibraryFiltersFromParams(params);
+        fetchLibraryResults(params, { historyMode: 'none', resetPage: false, keepFocus: false });
+    });
+}
+
+bootLibraryLiveSearch();
 
 // Blade row actions call these from onclick="" — they must be global.
 window.toggleLibraryTitleEdit = toggleLibraryTitleEdit;

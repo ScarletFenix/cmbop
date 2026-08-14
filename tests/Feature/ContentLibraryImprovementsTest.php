@@ -287,7 +287,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="libraryCountryFilter"', $html);
         $this->assertStringContainsString('id="libraryLanguageFilter"', $html);
         $this->assertStringContainsString('class="library-filter-bar mb-3"', $html);
-        $this->assertStringContainsString('visually-hidden" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('for="librarySearchInput">Search</label>', $html);
+        $this->assertStringContainsString('id="librarySearchClear"', $html);
+        $this->assertStringContainsString('id="librarySearchStatus"', $html);
         $this->assertStringContainsString('visually-hidden">Search</button>', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryCountryFilter"', $html);
         $this->assertStringContainsString('visually-hidden" for="libraryLanguageFilter"', $html);
@@ -295,8 +297,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('All countries', $html);
         $this->assertStringContainsString('All languages', $html);
         $this->assertStringNotContainsString('>Apply<', $html);
-        $this->assertStringNotContainsString('form-label small text-muted mb-1" for="librarySearchInput"', $html);
-        $this->assertStringNotContainsString('library-filter-bar__actions', $html);
+        $this->assertStringContainsString('form-label fw-semibold small text-muted mb-1" for="librarySearchInput"', $html);
+        $this->assertStringContainsString('id="libraryFilterReset"', $html);
+        $this->assertStringContainsString('library-filter-bar__actions d-none', $html);
 
         $css = (string) file_get_contents(public_path('assets/css/content-library.css'));
         $this->assertStringContainsString('.library-status-row', $css);
@@ -312,8 +315,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('.library-status-box.is-active .mod-count {', $css);
         $this->assertStringContainsString('.library-browse-link', $css);
         $this->assertStringNotContainsString('.library-page-actions.upload-zone', $css);
-        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: center;", $css);
-        $this->assertStringNotContainsString('align-items: flex-end', $css);
+        $this->assertStringContainsString(".library-filter-bar {\n        display: flex;\n        flex-wrap: wrap;\n        align-items: flex-end;", $css);
         $boxPos = strpos($css, '.library-status-box {');
         $mediaPos = strpos($css, '@media (max-width: 575.98px)');
         $this->assertNotFalse($boxPos);
