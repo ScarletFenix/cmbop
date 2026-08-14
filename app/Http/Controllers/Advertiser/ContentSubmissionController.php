@@ -69,11 +69,12 @@ class ContentSubmissionController extends Controller
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
-        $contentLength = $request->header('Content-Length') ?? $request->server('CONTENT_LENGTH');
+        [$contentLength, $clientBytes] = $this->uploads->uploadByteHints($request);
         if ($message = $this->uploads->rejectedUploadMessage(
             $request->file('file'),
             $cfg,
-            $contentLength !== null ? (int) $contentLength : null,
+            $contentLength,
+            $clientBytes,
         )) {
             return response()->json([
                 'success' => false,
@@ -234,10 +235,11 @@ class ContentSubmissionController extends Controller
         }
 
         $image = $request->file('image');
-        $contentLength = $request->header('Content-Length') ?? $request->server('CONTENT_LENGTH');
+        [$contentLength, $clientBytes] = $this->uploads->uploadByteHints($request);
         if ($message = $this->uploads->rejectedImageUploadMessage(
             $image instanceof UploadedFile ? $image : null,
-            $contentLength !== null ? (int) $contentLength : null,
+            $contentLength,
+            $clientBytes,
         )) {
             return response()->json([
                 'success' => false,

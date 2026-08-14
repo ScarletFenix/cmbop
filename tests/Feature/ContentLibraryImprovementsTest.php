@@ -1231,6 +1231,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
         $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
+        $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
+        $this->assertStringContainsString('X-Upload-Bytes', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
         $this->assertStringNotContainsString('hosting PHP settings', $js);
@@ -1264,6 +1266,24 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('The article could not be uploaded', $message);
         $this->assertStringNotContainsString('upload_max_filesize', $message);
         $this->assertStringNotContainsString('hosting PHP settings', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+    }
+
+    public function test_missing_file_with_client_bytes_and_no_content_length_is_not_a_missing_file(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->postJson(
+            route('advertiser.content-library.upload', ['client_bytes' => 5 * 1024 * 1024]),
+            ['country' => 'us', 'language' => 'en'],
+            ['X-Upload-Bytes' => (string) (5 * 1024 * 1024)]
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('The article could not be uploaded', $message);
         $this->assertStringNotContainsString('Drop a .docx', $message);
         $this->assertStringNotContainsString('country', strtolower($message));
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);

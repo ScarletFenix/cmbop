@@ -63,5 +63,14 @@ class PhpIniSizeTest extends TestCase
         $this->assertStringContainsString('image could not be uploaded', $imageMessage);
         $this->assertStringNotContainsString('.docx', $imageMessage);
         $this->assertNull($service->rejectedImageUploadMessage(null, 1024));
+
+        $noLength = $service->rejectedUploadMessage(null, $cfg, null, 5 * 1024 * 1024);
+        $this->assertIsString($noLength);
+        $this->assertStringContainsString('The article could not be uploaded', $noLength);
+        $this->assertStringNotContainsString('That file is over the 10 MB limit', $noLength);
+        $this->assertNull($service->rejectedUploadMessage(null, $cfg, 0, null));
+
+        $overCap = $service->rejectedUploadMessage(null, $cfg, null, 12 * 1024 * 1024);
+        $this->assertStringContainsString('That file is over the 10 MB limit', $overCap);
     }
 }

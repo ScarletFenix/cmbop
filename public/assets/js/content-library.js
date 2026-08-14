@@ -195,10 +195,24 @@ function libraryFileTooLargeMessage(file) {
 }
 
 function libraryUploadTransportMessage(status) {
-    if (status === 413 || status === 422) {
+    if (status === 413 || status === 422 || status === 0) {
         return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
     }
     return 'Upload failed. Please try again.';
+}
+
+function libraryClientByteHeaders(bytes) {
+    return {
+        'X-CSRF-TOKEN': libraryCsrf,
+        'Accept': 'application/json',
+        'X-Upload-Bytes': String(bytes),
+    };
+}
+
+function libraryUrlWithClientBytes(url, bytes) {
+    if (!url) return url;
+    const join = url.indexOf('?') === -1 ? '?' : '&';
+    return url + join + 'client_bytes=' + encodeURIComponent(String(bytes));
 }
 
 function assignLibraryFile(file, feedback) {
@@ -1203,9 +1217,9 @@ function ensureArticleQuill() {
             const fd = new FormData();
             fd.append('image', file);
             try {
-                const res = await fetch(libraryImageUploadUrl, {
+                const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+                    headers: libraryClientByteHeaders(file.size),
                     body: fd,
                 });
                 const data = await parseLibraryJson(res);
@@ -1694,9 +1708,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             setFeedbackHtml(feedback, false, 'Upload URL is missing');
             return;
         }
-        const res = await fetch(libraryUploadUrl, {
+        const res = await fetch(libraryUrlWithClientBytes(libraryUploadUrl, file.size), {
             method: 'POST',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+            headers: libraryClientByteHeaders(file.size),
             body: fd,
             signal: libraryUploadAbort ? libraryUploadAbort.signal : undefined,
         });
@@ -1734,7 +1748,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             resetLibraryUploadUi();
             return;
         }
-        setFeedbackHtml(feedback, false, 'Network error while uploading.');
+        setFeedbackHtml(feedback, false, file && file.size <= 10240 * 1024
+            ? 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.'
+            : 'Network error while uploading.');
     } finally {
         if (!openedEditor && btn) btn.disabled = false;
         progress?.classList.add('d-none');

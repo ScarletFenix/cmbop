@@ -9,6 +9,7 @@ use App\Models\User;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Support\PhpIniSize;
+use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -606,30 +607,77 @@ class ContentUploadService
      * report 64M while LiteSpeed still drops a 5 MB body; comparing to the
      * reported cap then falls through to "country required" / "drop a .docx".
      */
-    public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null): ?string
+    public function rejectedUploadMessage(?UploadedFile $file, ?array $cfg = null, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
     {
         if ($file instanceof UploadedFile) {
             return $this->invalidUploadMessage($file, $cfg);
         }
 
-        if ($this->contentLengthLooksLikeStrippedUpload($contentLengthBytes)) {
+        if ($clientFileBytes !== null && $clientFileBytes > self::MAX_KILOBYTES * 1024) {
+            $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
+
+            return 'That file is over the '.$appMb.' MB limit.';
+        }
+
+        $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
+        if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
             return $this->phpSizeRejectedMessage($cfg);
         }
 
         return null;
     }
 
-    public function rejectedImageUploadMessage(?UploadedFile $file, ?int $contentLengthBytes = null): ?string
+    public function rejectedImageUploadMessage(?UploadedFile $file, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
     {
         if ($file instanceof UploadedFile && ! $file->isValid()) {
             return $this->phpImageRejectedMessage();
         }
 
-        if (! $file instanceof UploadedFile && $this->contentLengthLooksLikeStrippedUpload($contentLengthBytes)) {
+        if ($file instanceof UploadedFile) {
+            return null;
+        }
+
+        if ($clientFileBytes !== null && $clientFileBytes > 5120 * 1024) {
+            return $this->phpImageRejectedMessage();
+        }
+
+        $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
+        if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
             return $this->phpImageRejectedMessage();
         }
 
         return null;
+    }
+
+    /**
+     * Content-Length can be 0 after LiteSpeed drops the body. The browser still
+     * knows the file size — JS sends it as X-Upload-Bytes and ?client_bytes=.
+     *
+     * @return array{0:?int, 1:?int} content-length, client file bytes
+     */
+    public function uploadByteHints(Request $request): array
+    {
+        return [$this->headerByteValue($request, 'Content-Length', 'CONTENT_LENGTH'), $this->headerByteValue($request, 'X-Upload-Bytes', null, 'client_bytes')];
+    }
+
+    private function headerByteValue(Request $request, string $header, ?string $serverKey = null, ?string $queryKey = null): ?int
+    {
+        $value = $request->header($header);
+        if (($value === null || $value === '') && $serverKey) {
+            $value = $request->server($serverKey);
+        }
+        if (($value === null || $value === '') && $queryKey) {
+            $value = $request->query($queryKey);
+        }
+        if (is_array($value)) {
+            $value = $value[0] ?? null;
+        }
+        if ($value === null || $value === '') {
+            return null;
+        }
+        $bytes = (int) $value;
+
+        return $bytes > 0 ? $bytes : null;
     }
 
     /**
