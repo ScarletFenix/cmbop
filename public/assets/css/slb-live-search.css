@@ -40,3 +40,8 @@
 .slb-search-clear[hidden] {
     display: none !important;
 }
+
+.slb-search-status {
+    min-height: 1.15em;
+    margin-top: .15rem;
+}

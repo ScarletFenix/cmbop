@@ -124,6 +124,21 @@ class AdvertiserOrderStatus
         }
 
         if ($status === 'pending' && $payment === 'paid') {
+            if ($order->isAwaitingScheduledRelease()) {
+                $when = $order->scheduledPublishAtInScheduleTimezone();
+                $whenLabel = $when
+                    ? $when->format('d M Y g:i A').' '.$order->scheduleTimezoneOrUtc()
+                    : null;
+
+                return [
+                    'label' => $whenLabel ? 'Scheduled · '.$whenLabel : 'Scheduled',
+                    'next' => 'Publishes on the scheduled date. The publisher is not chased until then.',
+                    'cls' => 'status-processing',
+                    'stage' => 'scheduled',
+                    'auto_approve_hint' => null,
+                ];
+            }
+
             return [
                 'label' => 'Paid · waiting for publisher',
                 'next' => 'Publisher will accept the order and start working.',
@@ -227,6 +242,9 @@ class AdvertiserOrderStatus
         if ($status === 'pending' && ! $paid) {
             $steps[0]['current'] = true;
             $steps[0]['done'] = false;
+        } elseif ($status === 'pending' && $paid && $order->isAwaitingScheduledRelease()) {
+            $steps[1]['label'] = 'Scheduled';
+            $steps[1]['current'] = true;
         } elseif ($status === 'pending' && $paid) {
             $steps[1]['current'] = true;
         } elseif ($status === 'processing' && $modRequested) {

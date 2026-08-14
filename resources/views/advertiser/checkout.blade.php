@@ -694,7 +694,7 @@
                                 <div class="d-flex justify-content-between align-items-center">
                                     <span class="small">Reference Code:</span>
                                     <div>
-                                        <strong id="referenceCode" class="font-monospace">{{ sprintf('%06d', mt_rand(1, 999999)) }}</strong>
+                                        <strong id="referenceCode" class="font-monospace">{{ $checkoutReferenceCode }}</strong>
                                         <button type="button" class="btn btn-sm btn-link p-0 ms-2 copy-ref-btn" data-target="referenceCode">
                                             <i class="fas fa-copy"></i>
                                         </button>
@@ -704,7 +704,7 @@
 
                             <div class="alert alert-warning py-2 px-3 mb-3">
                                 <i class="fas fa-exclamation-triangle me-1"></i>
-                                <small>Please include <strong id="refCodeDisplay">REF{{ sprintf('%06d', mt_rand(1, 999999)) }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
+                                <small>Please include <strong id="refCodeDisplay">REF{{ $checkoutReferenceCode }}</strong> in your payment note for manual payments. For card payments, reference is auto-recorded.</small>
                             </div>
 
                             <button type="button" id="placeOrderBtn" class="btn btn-primary w-100 mt-3">
@@ -1181,7 +1181,7 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    let referenceCode = Math.floor(100000 + Math.random() * 900000).toString();
+    let referenceCode = @json($checkoutReferenceCode);
     
     const refCodeDisplay = document.getElementById('referenceCode');
     const refCodeDisplaySpan = document.getElementById('refCodeDisplay');

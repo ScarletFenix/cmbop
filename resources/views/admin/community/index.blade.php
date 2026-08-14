@@ -30,8 +30,7 @@
         <div class="card-body row g-2 align-items-end">
             <input type="hidden" name="tab" value="{{ $tab }}">
             <div class="col-md-5">
-                <label class="form-label small text-muted mb-1">Search</label>
-                <input type="search" name="q" value="{{ request('q') }}" class="form-control form-control-sm" placeholder="Search…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+                <x-slb-search-field name="q" id="adminCommunitySearch" :value="request('q')" placeholder="Search…" />
             </div>
             <div class="col-md-3">
                 <label class="form-label small text-muted mb-1">Status</label>

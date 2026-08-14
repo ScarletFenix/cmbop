@@ -166,8 +166,17 @@
             @if(!empty($needsReviewFilterActive) || !empty($unverifiedFilter))
                 <input type="hidden" name="needs_review" value="1">
             @endif
-            <label class="visually-hidden" for="userSearch">Search publishers</label>
-            <input type="search" id="userSearch" name="q" value="{{ $publisherSearch }}" class="form-control form-control-sm" placeholder="Search publishers…" title="Results update as you type" autocomplete="off" enterkeyhint="search" data-slb-live-search="form">
+            @if(!empty($flatQueue))
+                <input type="hidden" name="flat" value="1">
+            @endif
+            <x-slb-search-field
+                name="q"
+                id="userSearch"
+                :value="$publisherSearch"
+                placeholder="Search publishers…"
+                label="Search publishers"
+                label-class="visually-hidden"
+            />
         </form>
 
         <div class="card shadow-sm border-0 mb-3 admin-table-fit">
@@ -257,7 +266,7 @@
 
         <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
             <div style="max-width: 250px;">
-                <input type="search" id="siteSearch" class="form-control form-control-sm" placeholder="Search sites…" title="Results update as you type" autocomplete="off" enterkeyhint="search">
+                <x-slb-search-field name="site_search" id="siteSearch" placeholder="Search sites…" mode="" />
             </div>
             <div class="form-check form-check-inline m-0">
                 {{-- Default OFF: needs_review=1 filters the publishers list only.
@@ -1637,17 +1646,27 @@ document.getElementById('backBtn').addEventListener('click', function(){
 
 /* ================= SEARCH (Catalog-parity live search) ================= */
 /* Publisher search is server-side (?q=) via data-slb-live-search="form". */
+/* Site-row search stays client-side against the loaded publisher list. */
 (function initStaffSitesLiveSearch() {
-    if (typeof window.SlbLiveSearch !== 'undefined') {
-        window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
-            mode: 'client',
-            minChars: 1,
-            onSearch: function () { applySiteFilters(); },
-        });
-    } else {
+    function boot() {
+        if (typeof window.SlbLiveSearch !== 'undefined') {
+            window.SlbLiveSearch.init(document.getElementById('siteSearch'), {
+                mode: 'client',
+                statusEl: document.getElementById('siteSearchStatus'),
+                clearBtn: document.getElementById('siteSearchClear'),
+                onSearch: function () { applySiteFilters(); },
+            });
+            return;
+        }
         document.getElementById('siteSearch')?.addEventListener('keyup', function(){
             applySiteFilters();
         });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', boot);
+    } else {
+        boot();
     }
 })();
 

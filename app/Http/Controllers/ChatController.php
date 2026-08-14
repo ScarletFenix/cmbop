@@ -101,7 +101,7 @@ class ChatController extends Controller
                 }
 
                 $needsAction = (clone $publisherItems)->whereHas('order', function ($q) {
-                    $q->where('status', 'pending');
+                    $q->where('status', 'pending')->notAwaitingScheduledRelease();
                 })->count()
                 + (clone $publisherItems)->where('modification_requested', 'yes')->count()
                 + $needsActionQuery->count();

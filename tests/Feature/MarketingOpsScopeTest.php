@@ -548,6 +548,26 @@ class MarketingOpsScopeTest extends TestCase
             ->getContent();
 
         $this->assertStringNotContainsString('messages.staff_handbook_section6', $html);
+        $this->assertStringContainsString('goes to staff review', $html);
+        $this->assertStringContainsString('Catalog Activate is not automatic', $html);
+        $this->assertStringNotContainsString('Activate/Deactivate stay staff catalog controls after accept', $html);
+    }
+
+    public function test_marketing_create_page_uses_verify_first_copy(): void
+    {
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.create'))
+            ->assertOk()
+            ->assertSee('Add site for publisher', false)
+            ->assertSee('admin verifies first', false)
+            ->assertSee('You Activate only after that', false)
+            ->assertSee('DA ≥ 30', false)
+            ->assertDontSee('Activate / Deactivate as usual', false)
+            ->assertSee('id="selectedLanguage"', false)
+            ->assertSee('Site image must be under', false)
+            ->getContent();
+
+        $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
     }
 
     public function test_marketing_niche_or_metrics_save_does_not_email_publisher(): void

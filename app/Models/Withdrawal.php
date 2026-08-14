@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class Withdrawal extends Model
 {
@@ -13,6 +15,7 @@ class Withdrawal extends Model
 
     protected $fillable = [
         'user_id',
+        'wallet_id',
         'amount',
         'fee',
         'net_amount',
@@ -44,6 +47,97 @@ class Withdrawal extends Model
     public function user(): BelongsTo
     {
         return $this->belongsTo(User::class);
+    }
+
+    public function wallet(): BelongsTo
+    {
+        return $this->belongsTo(Wallet::class);
+    }
+
+    /**
+     * Attributes to persist the wallet that was debited. Empty when the column
+     * is not migrated yet (Hostinger schema drift).
+     *
+     * @return array{wallet_id?: int}
+     */
+    public static function walletIdAttributes(?Wallet $wallet): array
+    {
+        if (! $wallet || ! Schema::hasColumn((new static)->getTable(), 'wallet_id')) {
+            return [];
+        }
+
+        return ['wallet_id' => (int) $wallet->id];
+    }
+
+    /**
+     * Wallet that was actually debited. Never prefers publisher vs advertiser.
+     */
+    public function resolveDebitedWallet(bool $lockForUpdate = false): ?Wallet
+    {
+        $walletId = $this->resolveDebitedWalletId();
+        if (! $walletId) {
+            return null;
+        }
+
+        $query = Wallet::query()->whereKey($walletId);
+        if ($lockForUpdate) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    public function resolveDebitedWalletId(): ?int
+    {
+        if (Schema::hasColumn($this->getTable(), 'wallet_id') && $this->wallet_id) {
+            return (int) $this->wallet_id;
+        }
+
+        $fromLedger = $this->ledgerDebitWalletId();
+        if ($fromLedger) {
+            return $fromLedger;
+        }
+
+        $ids = Wallet::query()
+            ->where('user_id', $this->user_id)
+            ->pluck('id');
+
+        if ($ids->count() === 1) {
+            return (int) $ids->first();
+        }
+
+        if ($ids->count() > 1) {
+            Log::error('Withdrawal source wallet is ambiguous', [
+                'withdrawal_id' => $this->id,
+                'user_id' => $this->user_id,
+                'wallet_ids' => $ids->all(),
+            ]);
+        }
+
+        return null;
+    }
+
+    private function ledgerDebitWalletId(): ?int
+    {
+        if (! Schema::hasTable('wallet_transactions')) {
+            return null;
+        }
+
+        $walletId = WalletTransaction::query()
+            ->whereNotNull('wallet_id')
+            ->where('type', WalletTransaction::TYPE_WITHDRAWAL)
+            ->where('direction', 'debit')
+            ->where(function ($query) {
+                $query->where('reference', 'WD-'.$this->id)
+                    ->orWhere(function ($query) {
+                        $query->where('related_id', $this->id)
+                            ->where('related_type', $this->getMorphClass());
+                    });
+            })
+            ->orderByDesc('id')
+            ->value('wallet_id');
+
+        return $walletId ? (int) $walletId : null;
     }
 
     public function markAsProcessing(): void

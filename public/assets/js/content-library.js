@@ -2,10 +2,21 @@
 (function () {
 'use strict';
 const boot = window.ContentLibraryBoot || {};
-const libraryUpdateUrl = boot.libraryUpdateUrl;
-const libraryContentUrl = boot.libraryContentUrl;
-const libraryImageUploadUrl = boot.libraryImageUploadUrl;
-const libraryPreviewUrlBase = boot.libraryPreviewUrlBase;
+
+function librarySameOriginPath(url, fallback) {
+    if (!url) return fallback || '';
+    try {
+        const parsed = new URL(url, window.location.origin);
+        return parsed.pathname + (parsed.search || '');
+    } catch (err) {
+        return fallback || '';
+    }
+}
+
+const libraryUpdateUrl = librarySameOriginPath(boot.libraryUpdateUrl, '/advertiser/content-submissions');
+const libraryContentUrl = librarySameOriginPath(boot.libraryContentUrl, '/advertiser/content-submissions');
+const libraryImageUploadUrl = librarySameOriginPath(boot.libraryImageUploadUrl, '');
+const libraryPreviewUrlBase = librarySameOriginPath(boot.libraryPreviewUrlBase, '/advertiser/content-submissions');
 const libraryCsrf = boot.libraryCsrf;
 const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
 const libraryCountryLanguageMap = boot.libraryCountryLanguageMap || {};
@@ -14,7 +25,9 @@ const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
 const libraryUploadsEnabled = !!boot.uploadsEnabled;
 const libraryOpenUpload = !!boot.openUpload;
 const libraryEditSubmission = boot.editSubmission || null;
-const libraryIndexUrl = boot.libraryIndexUrl || '';
+const libraryIndexUrl = librarySameOriginPath(boot.libraryIndexUrl, '');
+const libraryResultsUrl = librarySameOriginPath(boot.libraryResultsUrl, '');
+const libraryUploadUrl = librarySameOriginPath(boot.uploadUrl, '');
 
 let articleQuill = null;
 let articleEditorSubmissionId = null;
@@ -173,17 +186,46 @@ function showDropzoneFile(file) {
     zone?.classList.remove('is-error', 'is-dragover');
 }
 
+function libraryFileTooLargeMessage(file) {
+    if (!file) return '';
+    if (file.size > 10240 * 1024) {
+        return 'That file is over the 10 MB limit.';
+    }
+    return '';
+}
+
+function libraryUploadTransportMessage(status) {
+    if (status === 413 || status === 422 || status === 0) {
+        return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
+    }
+    return 'Upload failed. Please try again.';
+}
+
+function libraryClientByteHeaders(bytes) {
+    return {
+        'X-CSRF-TOKEN': libraryCsrf,
+        'Accept': 'application/json',
+        'X-Upload-Bytes': String(bytes),
+    };
+}
+
+function libraryUrlWithClientBytes(url, bytes) {
+    if (!url) return url;
+    const join = url.indexOf('?') === -1 ? '?' : '&';
+    return url + join + 'client_bytes=' + encodeURIComponent(String(bytes));
+}
+
 function assignLibraryFile(file, feedback) {
     const input = document.getElementById('libraryFileInput');
-    const maxKb = Number(boot.maxKilobytes || 10240);
     if (!file || !input) return false;
     if (!/\.docx$/i.test(file.name)) {
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
-    if (file.size > maxKb * 1024) {
-        setFeedbackHtml(feedback, false, 'That file is over the ' + Math.max(1, Math.round(maxKb / 1024)) + ' MB limit.');
+    const tooLarge = libraryFileTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
         document.getElementById('libraryDropzone')?.classList.add('is-error');
         return false;
     }
@@ -309,7 +351,7 @@ function libraryResultMessage(submission, fallback, ok) {
 }
 
 function libraryDestinationUrl(submission) {
-    const url = new URL(libraryIndexUrl || window.location.pathname, window.location.origin);
+    const url = new URL(librarySameOriginPath(libraryIndexUrl, window.location.pathname), window.location.origin);
     const chip = libraryChipParams(submission);
     url.search = '';
     url.searchParams.set('status', chip.status);
@@ -454,16 +496,21 @@ async function fetchSubmissionPayload(submissionId) {
     return data;
 }
 
-document.querySelectorAll('.js-open-preview').forEach(function (btn) {
-    btn.addEventListener('click', async function () {
-        const id = btn.getAttribute('data-submission-id');
-        if (!id) {
-            showLibraryFlash('Could not open preview', false);
-            return;
-        }
-        btn.disabled = true;
-        try {
-            const payload = await fetchSubmissionPayload(id);
+document.addEventListener('click', async function (e) {
+    const previewBtn = e.target.closest('.js-open-preview');
+    const editorBtn = e.target.closest('.js-open-editor');
+    const btn = previewBtn || editorBtn;
+    if (!btn) return;
+
+    const id = btn.getAttribute('data-submission-id');
+    if (!id) {
+        showLibraryFlash(previewBtn ? 'Could not open preview' : 'Could not open editor', false);
+        return;
+    }
+    btn.disabled = true;
+    try {
+        const payload = await fetchSubmissionPayload(id);
+        if (previewBtn) {
             openPreviewModal(
                 payload.title || 'Article preview',
                 payload.html || payload.preview_html || '',
@@ -471,41 +518,23 @@ document.querySelectorAll('.js-open-preview').forEach(function (btn) {
                 payload.id || parseInt(id, 10),
                 !!payload.editable
             );
-        } catch (e) {
-            console.error('Failed to open preview', e);
-            showLibraryFlash(e.message || 'Could not open preview', false);
-        } finally {
-            btn.disabled = false;
-        }
-    });
-});
-
-document.querySelectorAll('.js-open-editor').forEach(function (btn) {
-    btn.addEventListener('click', async function () {
-        const id = btn.getAttribute('data-submission-id');
-        if (!id) {
-            showLibraryFlash('Could not open editor', false);
             return;
         }
-        btn.disabled = true;
-        try {
-            const payload = await fetchSubmissionPayload(id);
-            if (!payload.editable) {
-                showLibraryFlash('Expired articles are preview only.', false);
-                return;
-            }
-            openArticleEditor(Object.assign({}, payload, {
-                id: payload.id || parseInt(id, 10),
-                preview_html: payload.preview_html || payload.html || '',
-                detected_links: payload.detected_links || payload.links || [],
-            }));
-        } catch (e) {
-            console.error('Failed to open editor', e);
-            showLibraryFlash(e.message || 'Could not open editor', false);
-        } finally {
-            btn.disabled = false;
+        if (!payload.editable) {
+            showLibraryFlash('Expired articles are preview only.', false);
+            return;
         }
-    });
+        openArticleEditor(Object.assign({}, payload, {
+            id: payload.id || parseInt(id, 10),
+            preview_html: payload.preview_html || payload.html || '',
+            detected_links: payload.detected_links || payload.links || [],
+        }));
+    } catch (err) {
+        console.error(previewBtn ? 'Failed to open preview' : 'Failed to open editor', err);
+        showLibraryFlash(err.message || (previewBtn ? 'Could not open preview' : 'Could not open editor'), false);
+    } finally {
+        btn.disabled = false;
+    }
 });
 
 document.getElementById('articleCopyHeadingBtn')?.addEventListener('click', async function () {
@@ -1188,14 +1217,17 @@ function ensureArticleQuill() {
             const fd = new FormData();
             fd.append('image', file);
             try {
-                const res = await fetch(libraryImageUploadUrl, {
+                const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
                     method: 'POST',
-                    headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+                    headers: libraryClientByteHeaders(file.size),
                     body: fd,
                 });
                 const data = await parseLibraryJson(res);
                 if (!data || !res.ok || !data.success || !data.url) {
-                    setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Image upload failed'));
+                    const fallback = (res.status === 413 || res.status === 422)
+                        ? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
+                        : 'Image upload failed';
+                    setFeedbackHtml(feedback, false, firstErrorMessage(data, fallback));
                     return;
                 }
                 const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
@@ -1559,7 +1591,7 @@ async function deleteLibraryArticle(id, label) {
             if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not delete article.' });
             return;
         }
-        document.getElementById('library-row-' + id)?.remove();
+        refreshLibraryListAfterRowChange(id);
         showLibraryFlash('Article deleted.', true);
         if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article deleted.' });
     } catch (e) {
@@ -1589,7 +1621,7 @@ async function archiveLibraryArticle(id) {
             if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not archive article.' });
             return;
         }
-        document.getElementById('library-row-' + id)?.remove();
+        refreshLibraryListAfterRowChange(id);
         showLibraryFlash('Article archived.', true);
         if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article archived.' });
     } catch (e) {
@@ -1619,7 +1651,7 @@ async function restoreLibraryArticle(id) {
             if (window.slbAlert) await window.slbAlert({ icon: 'error', title: data.message || 'Could not restore article.' });
             return;
         }
-        document.getElementById('library-row-' + id)?.remove();
+        refreshLibraryListAfterRowChange(id);
         showLibraryFlash('Article restored.', true);
         if (window.slbAlert) await window.slbAlert({ icon: 'success', title: 'Article restored.' });
     } catch (e) {
@@ -1645,6 +1677,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         setFeedbackHtml(feedback, false, 'Word .docx only — not PDF, Google Doc, or pasted text.');
         return;
     }
+    const tooLarge = libraryFileTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
+        return;
+    }
     const langSelect = document.getElementById('libraryLanguage');
     if (!document.getElementById('libraryCountry').value || !langSelect?.value) {
         setFeedbackHtml(feedback, false, 'Please select country and language before uploading.');
@@ -1667,9 +1704,13 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
 
     let openedEditor = false;
     try {
-        const res = await fetch(boot.uploadUrl, {
+        if (!libraryUploadUrl) {
+            setFeedbackHtml(feedback, false, 'Upload URL is missing');
+            return;
+        }
+        const res = await fetch(libraryUrlWithClientBytes(libraryUploadUrl, file.size), {
             method: 'POST',
-            headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
+            headers: libraryClientByteHeaders(file.size),
             body: fd,
             signal: libraryUploadAbort ? libraryUploadAbort.signal : undefined,
         });
@@ -1678,7 +1719,7 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
         try {
             data = await res.json();
         } catch (parseErr) {
-            setFeedbackHtml(feedback, false, 'Upload failed. Please try again.');
+            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
             return;
         }
         if (!data.success) {
@@ -1707,7 +1748,9 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             resetLibraryUploadUi();
             return;
         }
-        setFeedbackHtml(feedback, false, 'Network error while uploading.');
+        setFeedbackHtml(feedback, false, file && file.size <= 10240 * 1024
+            ? 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.'
+            : 'Network error while uploading.');
     } finally {
         if (!openedEditor && btn) btn.disabled = false;
         progress?.classList.add('d-none');
@@ -1726,6 +1769,271 @@ if (window.location.hash === '#upload' && libraryUploadsEnabled) {
         bootstrap.Modal.getOrCreateInstance(document.getElementById('uploadContentModal')).show();
     });
 }
+
+function libraryFilterForm() {
+    return document.querySelector('form.library-filter-bar');
+}
+
+function librarySearchParamsFromForm() {
+    const form = libraryFilterForm();
+    const next = new URLSearchParams();
+    if (!form) return next;
+    const fd = new FormData(form);
+    fd.forEach(function (value, key) {
+        const v = String(value == null ? '' : value).trim();
+        if (v !== '') next.append(key, String(value));
+    });
+    return next;
+}
+
+function syncLibraryResetVisibility(params) {
+    const reset = document.getElementById('libraryFilterReset');
+    if (!reset) return;
+    const q = (params.get('q') || '').trim();
+    const country = params.get('country') || 'all';
+    const language = params.get('language') || 'all';
+    const availability = params.get('availability') || 'available';
+    const show = q !== ''
+        || (country !== '' && country !== 'all')
+        || (language !== '' && language !== 'all')
+        || (availability !== '' && availability !== 'available');
+    reset.classList.toggle('d-none', !show);
+}
+
+function syncLibrarySearchInputFromParams(params) {
+    const input = document.getElementById('librarySearchInput');
+    if (!input) return;
+    const next = params.get('q') || '';
+    if (input.value !== next) input.value = next;
+}
+
+function libraryModifiedClick(e) {
+    return !!(e && (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey));
+}
+
+function normalizeLibraryFilters(params) {
+    const hasStatus = params.has('status');
+    const hasAvailability = params.has('availability');
+    let status = (hasStatus ? params.get('status') : 'approved') || 'approved';
+    let availability = (hasAvailability ? params.get('availability') : 'available') || 'available';
+    status = String(status).toLowerCase().trim();
+    availability = String(availability).toLowerCase().trim();
+
+    if (['all', 'approved', 'rejected', 'needs_improvement'].indexOf(status) === -1) {
+        status = 'approved';
+    }
+    if (['all', 'available', 'evaluating', 'in_progress', 'published', 'completed', 'expired', 'archived', 'needs_fix', 'ordered'].indexOf(availability) === -1) {
+        availability = 'available';
+    }
+    if (availability === 'ordered') availability = 'in_progress';
+    // Form / chips / history use the UI key "completed". The controller maps
+    // that to internal "published"; do not write "published" back into the form.
+    if (availability === 'published') availability = 'completed';
+    if (status === 'needs_improvement') {
+        status = 'all';
+        if (!hasAvailability) availability = 'needs_fix';
+    }
+    if (status === 'rejected' && !hasAvailability) {
+        availability = 'all';
+    }
+    if (status === 'approved' && availability === 'all') {
+        availability = 'available';
+    }
+    if (!hasStatus && ['needs_fix', 'expired', 'archived', 'in_progress', 'completed', 'evaluating'].indexOf(availability) !== -1) {
+        status = 'all';
+    }
+
+    return { status: status, availability: availability };
+}
+
+function syncLibraryFiltersFromParams(params) {
+    const form = libraryFilterForm();
+    const setNamed = function (name, value) {
+        const el = form ? form.querySelector('[name="' + name + '"]') : null;
+        if (el && el.value !== value) el.value = value;
+    };
+    const normalized = normalizeLibraryFilters(params);
+    syncLibrarySearchInputFromParams(params);
+    setNamed('q', params.get('q') || '');
+    setNamed('status', normalized.status);
+    setNamed('availability', normalized.availability);
+    setNamed('country', params.get('country') || 'all');
+    setNamed('language', params.get('language') || 'all');
+}
+
+function refreshLibraryListAfterRowChange(id) {
+    document.getElementById('library-row-' + id)?.remove();
+    const remaining = document.querySelectorAll('#libraryLiveRegion tbody tr[id^="library-row-"]').length;
+    fetchLibraryResults(librarySearchParamsFromForm(), {
+        historyMode: 'replace',
+        resetPage: remaining === 0,
+        keepFocus: false,
+    });
+}
+
+let libraryResultsAbort = null;
+let libraryResultsSeq = 0;
+
+function fetchLibraryResults(params, options) {
+    const opts = options || {};
+    const region = document.getElementById('libraryLiveRegion');
+    const indexPath = librarySameOriginPath(libraryIndexUrl, window.location.pathname);
+    const resultsUrl = librarySameOriginPath(libraryResultsUrl, '')
+        || (indexPath ? indexPath.replace(/\/?$/, '/') + 'results' : '');
+    if (!region || !resultsUrl) return false;
+
+    const query = new URLSearchParams(params);
+    if (opts.resetPage) query.delete('page');
+
+    const href = resultsUrl + (query.toString() ? '?' + query.toString() : '');
+    const pageHref = (indexPath || window.location.pathname)
+        + (query.toString() ? '?' + query.toString() : '');
+
+    if (libraryResultsAbort) {
+        libraryResultsAbort.abort();
+    }
+    libraryResultsAbort = new AbortController();
+    const seq = ++libraryResultsSeq;
+
+    fetch(href, {
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'text/html',
+        },
+        credentials: 'same-origin',
+        signal: libraryResultsAbort.signal,
+    }).then(function (res) {
+        if (!res.ok) throw new Error('Could not refresh library');
+        return res.text();
+    }).then(function (html) {
+        if (seq !== libraryResultsSeq) return;
+        region.innerHTML = html;
+        syncLibraryResetVisibility(query);
+        const historyMode = opts.historyMode || 'replace';
+        try {
+            if (historyMode === 'push') {
+                window.history.pushState({ libraryLive: 1 }, '', pageHref);
+            } else if (historyMode !== 'none') {
+                window.history.replaceState({ libraryLive: 1 }, '', pageHref);
+            }
+        } catch (err) {
+            console.error('Library history update failed', err);
+        }
+        if (opts.keepFocus) {
+            const input = document.getElementById('librarySearchInput');
+            if (input) {
+                input.focus();
+                const start = opts.selectionStart;
+                const end = opts.selectionEnd;
+                if (typeof start === 'number' && typeof end === 'number') {
+                    try { input.setSelectionRange(start, end); } catch (err) { /* ignore */ }
+                }
+            }
+        }
+    }).catch(function (err) {
+        if (err && err.name === 'AbortError') return;
+        console.error('Library live search failed', err);
+    });
+
+    return true;
+}
+
+function bootLibraryLiveSearch() {
+    const input = document.getElementById('librarySearchInput');
+    if (!input) return;
+
+    const runFetch = function (detail) {
+        const params = librarySearchParamsFromForm();
+        const keepFocus = !detail
+            || detail.reason === 'input'
+            || detail.reason === 'enter'
+            || detail.reason === 'clear';
+        fetchLibraryResults(params, {
+            historyMode: (detail && detail.historyMode) || 'replace',
+            resetPage: !detail || detail.reason !== 'pager',
+            keepFocus: keepFocus,
+            selectionStart: input.selectionStart,
+            selectionEnd: input.selectionEnd,
+        });
+    };
+
+    if (typeof window.SlbLiveSearch !== 'undefined' && typeof window.SlbLiveSearch.init === 'function') {
+        window.SlbLiveSearch.init(input, {
+            mode: 'event',
+            statusEl: document.getElementById('librarySearchStatus'),
+            clearBtn: document.getElementById('librarySearchClear'),
+            onSearch: function (detail) {
+                runFetch(detail);
+            },
+        });
+    } else {
+        input.addEventListener('keydown', function (e) {
+            if (e.key !== 'Enter') return;
+            e.preventDefault();
+            runFetch({ reason: 'enter', historyMode: 'push' });
+        });
+        document.getElementById('librarySearchClear')?.addEventListener('click', function () {
+            input.value = '';
+            runFetch({ reason: 'clear', historyMode: 'push' });
+            input.focus();
+        });
+    }
+
+    const form = libraryFilterForm();
+    form?.addEventListener('submit', function (e) {
+        if (!libraryResultsUrl) return;
+        e.preventDefault();
+        runFetch({ reason: 'enter', historyMode: 'push' });
+    });
+
+    ['libraryCountryFilter', 'libraryLanguageFilter'].forEach(function (id) {
+        document.getElementById(id)?.addEventListener('change', function () {
+            runFetch({ reason: 'filter', historyMode: 'push' });
+        });
+    });
+
+    document.getElementById('libraryFilterReset')?.addEventListener('click', function (e) {
+        const link = e.target.closest('a');
+        if (!link) return;
+        if (libraryModifiedClick(e)) return;
+        e.preventDefault();
+        syncLibraryFiltersFromParams(new URLSearchParams());
+        fetchLibraryResults(librarySearchParamsFromForm(), {
+            historyMode: 'push',
+            resetPage: true,
+            keepFocus: false,
+        });
+    });
+
+    document.getElementById('libraryLiveRegion')?.addEventListener('click', function (e) {
+        const chip = e.target.closest('a.library-status-box');
+        const pageLink = e.target.closest('.pagination a');
+        const link = chip || pageLink;
+        if (!link || !this.contains(link)) return;
+        if (libraryModifiedClick(e)) return;
+        e.preventDefault();
+        let params;
+        try {
+            params = new URL(link.href, window.location.origin).searchParams;
+        } catch (err) {
+            return;
+        }
+        syncLibraryFiltersFromParams(params);
+        fetchLibraryResults(params, {
+            historyMode: 'push',
+            resetPage: !pageLink,
+            keepFocus: false,
+        });
+    });
+
+    window.addEventListener('popstate', function () {
+        const params = new URLSearchParams(window.location.search);
+        syncLibraryFiltersFromParams(params);
+        fetchLibraryResults(params, { historyMode: 'none', resetPage: false, keepFocus: false });
+    });
+}
+
+bootLibraryLiveSearch();
 
 // Blade row actions call these from onclick="" — they must be global.
 window.toggleLibraryTitleEdit = toggleLibraryTitleEdit;

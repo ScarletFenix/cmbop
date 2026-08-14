@@ -7,8 +7,8 @@ Our team added **{{ $domain }}** to your account. Please review it and **accept*
 
 After you accept:
 - The site shows under **My Sites**
-- You can verify ownership with the usual TXT file when you want the Verified badge
-- Our team can activate it for the catalog when ready
+- Staff review the listing. The Verified badge is a separate TXT step
+- Catalog Activate is not automatic
 
 @component('mail::button', ['url' => $acceptUrl])
 Review & accept site

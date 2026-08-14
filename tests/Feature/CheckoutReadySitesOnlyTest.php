@@ -167,6 +167,40 @@ class CheckoutReadySitesOnlyTest extends TestCase
         $this->assertSame($pendingSite->id, (int) session('cart')[0]['id']);
     }
 
+    public function test_checkout_drops_invalid_cart_ids_instead_of_deferring_them(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $pendingSite = $this->activeSite($publisher, 'keep-pending', 55);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    [
+                        'id' => $pendingSite->id,
+                        'name' => $pendingSite->site_name,
+                        'quantity' => 1,
+                        'language' => 'en',
+                    ],
+                    [
+                        'id' => 0,
+                        'name' => 'Broken line',
+                        'quantity' => 1,
+                        'language' => 'en',
+                    ],
+                ],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->assertSee($pendingSite->site_name, false)
+            ->assertDontSee('Broken line', false);
+
+        $this->assertCount(1, session('cart', []));
+        $this->assertSame($pendingSite->id, (int) session('cart')[0]['id']);
+    }
+
     public function test_wallet_payment_only_charges_ready_sites_and_keeps_deferred_in_cart(): void
     {
         config(['content_moderation.enabled' => false]);

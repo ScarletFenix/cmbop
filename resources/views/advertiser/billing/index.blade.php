@@ -20,11 +20,7 @@
         <div class="card-body">
             <form method="GET" action="{{ route('advertiser.billing.index') }}" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                    <input type="search" name="search" value="{{ request('search') }}" class="form-control form-control-sm"
-                           placeholder="Invoice #, order #, transaction…"
-                           title="Results update as you type" autocomplete="off" enterkeyhint="search"
-                           data-slb-live-search="form">
+                    <x-slb-search-field name="search" id="advertiserBillingSearch" :value="request('search')" placeholder="Invoice #, order #, transaction…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">Status</label>

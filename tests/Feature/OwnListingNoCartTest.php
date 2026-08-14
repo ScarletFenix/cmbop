@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\UserFavorite;
+use App\Services\CartPricingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -318,5 +319,64 @@ class OwnListingNoCartTest extends TestCase
         $this->assertStringContainsString('[data-own-listing="1"]', $js);
         $this->assertStringContainsString('catalogIsOwnListing', $js);
         $this->assertStringContainsString('catalogOwnListingMessage', $js);
+    }
+
+    public function test_save_cart_drops_own_listings(): void
+    {
+        $owner = $this->dualRoleOwner();
+        $otherPublisher = User::factory()->create();
+        $own = $this->siteFor($owner, 40);
+        $other = $this->siteFor($otherPublisher, 40, [
+            'site_name' => 'Save Other Site',
+            'site_url' => 'https://save-other.example',
+            'domain' => 'save-other.example',
+        ]);
+
+        $this->actingAs($owner)
+            ->postJson(route('advertiser.cart.save'), [
+                'cart' => [
+                    ['id' => $own->id, 'name' => $own->site_name, 'price' => 40, 'quantity' => 1],
+                    ['id' => $other->id, 'name' => $other->site_name, 'price' => 46, 'quantity' => 1],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('cart_count', 1)
+            ->assertJsonPath('removed_owned_count', 0);
+
+        $this->assertCount(1, session('cart'));
+        $this->assertSame($other->id, (int) session('cart')[0]['id']);
+    }
+
+    public function test_expand_cart_skips_owner_id_listings(): void
+    {
+        $owner = $this->dualRoleOwner();
+        $lister = User::factory()->create();
+        $otherPublisher = User::factory()->create();
+        $own = $this->siteFor($lister, 40, [
+            'owner_id' => $owner->id,
+            'site_name' => 'Expand Owner Id',
+            'site_url' => 'https://expand-owner.example',
+            'domain' => 'expand-owner.example',
+        ]);
+        $other = $this->siteFor($otherPublisher, 40, [
+            'site_name' => 'Expand Other',
+            'site_url' => 'https://expand-other.example',
+            'domain' => 'expand-other.example',
+        ]);
+
+        $pricing = app(CartPricingService::class);
+        $cart = [
+            ['id' => $own->id, 'name' => $own->site_name, 'quantity' => 1],
+            ['id' => $other->id, 'name' => $other->site_name, 'quantity' => 1],
+        ];
+
+        $expanded = $pricing->expandCart($cart, $owner->id);
+        $this->assertCount(1, $expanded);
+        $this->assertSame($other->id, (int) $expanded[0]['id']);
+
+        $checkout = $pricing->buildCheckoutItems($cart, $owner->id);
+        $this->assertCount(1, $checkout['items']);
+        $this->assertSame($other->id, (int) $checkout['items'][0]['id']);
     }
 }

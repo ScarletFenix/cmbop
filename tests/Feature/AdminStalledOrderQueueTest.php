@@ -151,6 +151,50 @@ class AdminStalledOrderQueueTest extends TestCase
             ->assertJsonPath('items.0.track', 'accept');
     }
 
+    public function test_an_upcoming_scheduled_order_is_not_in_the_stalled_queue(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $order->update([
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.stalled-orders'))
+            ->assertOk()
+            ->assertJson(['success' => true, 'count' => 0]);
+    }
+
+    public function test_a_manual_chase_is_refused_while_the_order_is_still_scheduled(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $publisher = $this->userWithRole('publisher');
+        $order = $this->order($this->userWithRole('advertiser'), $this->site($publisher), 'pending', [
+            'accept_nudge_stage' => 3,
+        ]);
+        $order->update([
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.remind-publisher', $order->items->first()->id))
+            ->assertStatus(422)
+            ->assertJson([
+                'success' => false,
+                'message' => 'This order is still scheduled. Remind the publisher after it is released.',
+            ]);
+
+        Mail::assertNotQueued(PublisherAcceptNudge::class);
+        Mail::assertNotQueued(PublisherPublishNudge::class);
+    }
+
     public function test_the_queue_is_closed_to_everyone_but_admins(): void
     {
         $publisher = $this->userWithRole('publisher');

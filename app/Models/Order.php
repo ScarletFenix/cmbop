@@ -13,6 +13,7 @@ class Order extends Model
         'user_id',
         'order_number',
         'reference_code',
+        'checkout_line_key',
         'stripe_session_id',
         'stripe_payment_intent_id',
         'stripe_response',
@@ -92,6 +93,22 @@ class Order extends Model
                 $q->where('status', 'scheduled')
                     ->orWhere('publication_mode', 'scheduled');
             });
+    }
+
+    public function scopeNotAwaitingScheduledRelease($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNotNull('schedule_released_at')
+                ->orWhereIn('status', ['cancelled', 'completed', 'processing', 'review'])
+                ->orWhere(function ($inner) {
+                    $inner->where(function ($status) {
+                        $status->whereNull('status')->orWhere('status', '!=', 'scheduled');
+                    })->where(function ($mode) {
+                        $mode->whereNull('publication_mode')
+                            ->orWhere('publication_mode', '!=', 'scheduled');
+                    });
+                });
+        });
     }
 
     /**

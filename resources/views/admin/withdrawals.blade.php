@@ -123,7 +123,7 @@
                             <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                         </button>
                     </div>
-                    <div id="adminWithdrawalsSearchStatus" class="visually-hidden" role="status" aria-live="polite"></div>
+                    <div id="adminWithdrawalsSearchStatus" class="form-text slb-search-status" role="status" aria-live="polite"></div>
                 </div>
             </div>
             <div class="mt-3 d-flex flex-wrap gap-2">
@@ -760,18 +760,20 @@ $('#queueFilter').on('change', function() {
     loadWithdrawals(1);
 });
 
-if (typeof window.SlbLiveSearch !== 'undefined') {
-    window.SlbLiveSearch.init(document.getElementById('searchInput'), {
-        mode: 'event',
-        statusEl: document.getElementById('adminWithdrawalsSearchStatus'),
-        clearBtn: document.getElementById('adminWithdrawalsSearchClear'),
-        onSearch: function () { loadWithdrawals(1); },
-    });
-} else {
+document.addEventListener('DOMContentLoaded', function () {
+    if (typeof window.SlbLiveSearch !== 'undefined') {
+        window.SlbLiveSearch.init(document.getElementById('searchInput'), {
+            mode: 'event',
+            statusEl: document.getElementById('adminWithdrawalsSearchStatus'),
+            clearBtn: document.getElementById('adminWithdrawalsSearchClear'),
+            onSearch: function () { loadWithdrawals(1); },
+        });
+        return;
+    }
     $('#searchInput').on('keypress', function(e) {
         if (e.which === 13) loadWithdrawals(1);
     });
-}
+});
 
 // Deep-link query support (?status=completed&queue=history)
 (function initFromQuery() {

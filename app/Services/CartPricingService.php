@@ -373,13 +373,23 @@ class CartPricingService
     }
 
     /**
-     * Expand a session cart into per-unit line items with server-calculated prices.
-     *
-     * @param  array<int, array<string, mixed>>  $cart
-     * @return array<int, array<string, mixed>>
-     *
-     * @throws \Exception
+     * Same ownership rule as Site::isOwnedBy() without loading the user.
      */
+    private function buyerOwnsSite(Site $site, ?int $buyerId): bool
+    {
+        if ($buyerId === null || $buyerId <= 0) {
+            return false;
+        }
+
+        if ((int) $site->publisher_id === $buyerId) {
+            return true;
+        }
+
+        $ownerId = (int) ($site->getAttribute('owner_id') ?? 0);
+
+        return $ownerId > 0 && $ownerId === $buyerId;
+    }
+
     /**
      * Expand session cart lines into per-copy order rows using live DB prices.
      *
@@ -402,7 +412,7 @@ class CartPricingService
                 continue;
             }
 
-            if ($buyerId && (int) $site->publisher_id === (int) $buyerId) {
+            if ($this->buyerOwnsSite($site, $buyerId)) {
                 $unavailable[] = (string) ($item['name'] ?? $site->site_name);
 
                 continue;
@@ -473,7 +483,7 @@ class CartPricingService
             if (! $site) {
                 continue;
             }
-            if ($buyerId && (int) $site->publisher_id === (int) $buyerId) {
+            if ($this->buyerOwnsSite($site, $buyerId)) {
                 continue;
             }
 

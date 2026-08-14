@@ -218,4 +218,16 @@ class SitePromotionTest extends TestCase
             'stripe_session_id' => 'cs_test_feature_audit_1',
         ]);
     }
+
+    public function test_feature_stripe_amount_must_match_configured_price(): void
+    {
+        config(['site_promotions.feature.price' => 10]);
+        $promotions = app(SitePromotionService::class);
+
+        $promotions->assertStripeChargeMatchesFeaturePrice((object) ['amount_total' => 1000]);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('featured placement costs');
+        $promotions->assertStripeChargeMatchesFeaturePrice((object) ['amount_total' => 100]);
+    }
 }

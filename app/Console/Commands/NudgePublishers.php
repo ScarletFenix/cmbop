@@ -85,7 +85,9 @@ class NudgePublishers extends Command
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('accept_nudge_stage', '<', count($stages))
             ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')->where('status', 'pending');
+                $q->where('payment_status', 'paid')
+                    ->where('status', 'pending')
+                    ->notAwaitingScheduledRelease();
             })
             ->with('order')
             ->limit(300)
@@ -96,7 +98,7 @@ class NudgePublishers extends Command
                 $order = $item->order;
                 $paidAt = $order?->paid_at ?? $order?->created_at;
 
-                if (! $order || ! $paidAt) {
+                if (! $order || ! $paidAt || $order->isAwaitingScheduledRelease()) {
                     continue;
                 }
 
@@ -185,7 +187,9 @@ class NudgePublishers extends Command
             ->where(fn ($q) => $q->whereNull('live_url')->orWhere('live_url', ''))
             ->where('publish_nudge_stage', '<', $maxStage)
             ->whereHas('order', function ($q) {
-                $q->where('payment_status', 'paid')->whereIn('status', ['processing', 'pending']);
+                $q->where('payment_status', 'paid')
+                    ->whereIn('status', ['processing', 'pending'])
+                    ->notAwaitingScheduledRelease();
             })
             ->with(['order', 'site'])
             ->limit(500)
@@ -198,7 +202,7 @@ class NudgePublishers extends Command
             $order = $item->order;
             $site = $item->site;
 
-            if (! $order || ! $site || ! $site->publisher_id) {
+            if (! $order || ! $site || ! $site->publisher_id || $order->isAwaitingScheduledRelease()) {
                 continue;
             }
 

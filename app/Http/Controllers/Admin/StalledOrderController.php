@@ -62,10 +62,10 @@ class StalledOrderController extends Controller
         OrderDeadline $deadlines,
     ): JsonResponse {
         try {
-            $item = OrderItem::with(['order', 'site'])->findOrFail($orderItem);
+            $item = OrderItem::with(['order', 'site.publisher'])->findOrFail($orderItem);
             $order = $item->order;
             $site = $item->site;
-            $publisher = $site?->publisher_id ? User::find($site->publisher_id) : null;
+            $publisher = $site?->publisher;
 
             if (! $order) {
                 return response()->json([
@@ -78,6 +78,15 @@ class StalledOrderController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'No publisher email on file for this order.',
+                ], 422);
+            }
+
+            if (! $item->canAdminRemindPublisher($order)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $order->isAwaitingScheduledRelease()
+                        ? 'This order is still scheduled. Remind the publisher after it is released.'
+                        : 'This publisher cannot be reminded on this order.',
                 ], 422);
             }
 

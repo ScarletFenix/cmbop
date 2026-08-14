@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Advertiser\AdvertiserDashboardService;
+use App\Support\AdvertiserOrderStatus;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
@@ -95,6 +96,67 @@ class AdvertiserDashboardTest extends TestCase
         $stats = app(AdvertiserDashboardService::class)->orderStats($user->id);
         $this->assertSame(1, $stats['in_progress']);
         $this->assertSame(1, $stats['awaiting_payment']);
+    }
+
+    public function test_upcoming_scheduled_orders_are_not_in_progress(): void
+    {
+        $user = $this->advertiser();
+        $this->makeOrder($user, [
+            'status' => 'pending',
+            'payment_status' => 'paid',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(4),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+        $this->makeOrder($user, [
+            'status' => 'processing',
+            'payment_status' => 'paid',
+        ]);
+
+        $stats = app(AdvertiserDashboardService::class)->orderStats($user->id);
+        $this->assertSame(1, $stats['in_progress']);
+        $this->assertSame(2, $stats['total']);
+
+        $scheduled = Order::query()
+            ->where('user_id', $user->id)
+            ->where('publication_mode', 'scheduled')
+            ->with('items')
+            ->first();
+        $meta = AdvertiserOrderStatus::meta($scheduled);
+        $this->assertSame('scheduled', $meta['stage']);
+        $this->assertStringContainsString('Scheduled', $meta['label']);
+
+        $steps = AdvertiserOrderStatus::timelineSteps($scheduled);
+        $this->assertSame('Scheduled', $steps[1]['label']);
+        $this->assertTrue($steps[1]['current']);
+        $this->assertFalse($steps[1]['done']);
+
+        $this->actingAs($user)
+            ->getJson(route('advertiser.orders.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.in_progress', 1);
+
+        $inProgress = $this->actingAs($user)
+            ->getJson(route('advertiser.orders.list', ['status' => 'in_progress']))
+            ->assertOk()
+            ->json('orders');
+        $this->assertCount(1, $inProgress);
+        $this->assertSame('processing', $inProgress[0]['status']);
+
+        $awaitingPublisher = $this->actingAs($user)
+            ->getJson(route('advertiser.orders.list', ['status' => 'awaiting_publisher']))
+            ->assertOk()
+            ->json('orders');
+        $this->assertCount(0, $awaitingPublisher);
+
+        $all = $this->actingAs($user)
+            ->getJson(route('advertiser.orders.list'))
+            ->assertOk()
+            ->json('orders');
+        $scheduledRow = collect($all)->firstWhere('publication_mode', 'scheduled');
+        $this->assertNotNull($scheduledRow);
+        $this->assertSame('status-processing', $scheduledRow['status_cls']);
+        $this->assertStringContainsString('Scheduled', $scheduledRow['status_label']);
     }
 
     public function test_needs_action_and_recommended_site_link(): void

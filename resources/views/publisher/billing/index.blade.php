@@ -16,11 +16,7 @@
         <div class="card-body">
             <form method="GET" action="{{ route('publisher.billing.index') }}" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <label class="form-label fw-semibold small text-muted mb-1">Search</label>
-                    <input type="search" name="search" value="{{ request('search') }}" class="form-control form-control-sm"
-                           placeholder="Statement #, WD reference…"
-                           autocomplete="off" enterkeyhint="search"
-                           data-slb-live-search="form">
+                    <x-slb-search-field name="search" id="publisherBillingSearch" :value="request('search')" placeholder="Statement #, WD reference…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label fw-semibold small text-muted mb-1">From</label>

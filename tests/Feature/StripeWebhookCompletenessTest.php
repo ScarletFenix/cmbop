@@ -301,4 +301,41 @@ class StripeWebhookCompletenessTest extends TestCase
         );
         $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', $sessionId)->count());
     }
+
+    public function test_site_feature_session_with_wrong_amount_is_rejected(): void
+    {
+        config([
+            'site_promotions.feature.price' => 25,
+            'site_promotions.feature.days' => 7,
+        ]);
+
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        $event = [
+            'id' => 'evt_feature_cheap_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_feature_cheap',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'payment_intent' => 'pi_feature_cheap',
+                    'amount_total' => 100,
+                    'metadata' => [
+                        'type' => 'site_feature',
+                        'site_id' => (string) $site->id,
+                        'user_id' => (string) $publisher->id,
+                        'price' => '25',
+                        'days' => '7',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertStatus(500);
+        $this->assertNull($site->fresh()->featured_until);
+        $this->assertSame(0, SiteFeaturePurchase::where('site_id', $site->id)->count());
+    }
 }

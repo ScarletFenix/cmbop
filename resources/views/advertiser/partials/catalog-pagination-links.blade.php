@@ -1,7 +1,11 @@
 {{-- Catalog pager: icon Prev/Next + mobile current-page pill; numbered window on md+.
-     Keep real <a class="page-link"> hrefs so live fetch and no-JS navigation both work. --}}
-@if ($paginator->hasPages())
-    <nav aria-label="Catalog pages">
+     Keep real <a class="page-link"> hrefs so live fetch and no-JS navigation both work.
+     Always render (even on a single page) so Library/Orders can show a disabled
+     Prev/Next chrome; Catalog still hides the parent footer when lastPage() <= 1. --}}
+@php
+    $ariaLabel = $ariaLabel ?? 'Catalog pages';
+@endphp
+    <nav aria-label="{{ $ariaLabel }}">
         {{-- Mobile: icon prev/next + current page pill --}}
         <ul class="pagination catalog-pagination__mobile d-flex d-md-none mb-0">
             @if ($paginator->onFirstPage())
@@ -88,4 +92,3 @@
             @endif
         </ul>
     </nav>
-@endif
