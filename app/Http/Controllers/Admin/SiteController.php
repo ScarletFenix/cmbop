@@ -739,7 +739,7 @@ class SiteController extends Controller
         );
         $categories = $resolvedNiches['resolved'];
         $unknownNiches = $resolvedNiches['unknown'];
-        $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->input('category', '');
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : $this->scalarString($request->input('category'));
         $categoriesArray = ! empty($categories) ? $categories : null;
 
         $countryCodes = array_slice($this->parseCodeList($request->input('country', $request->input('countries'))), 0, 1);
@@ -1499,18 +1499,18 @@ class SiteController extends Controller
 
         if ($countryCodes !== []) {
             $request->merge(['country' => $countryCodes[0]]);
-        } elseif ($request->has('country') && trim((string) $request->input('country')) === '') {
+        } elseif ($request->has('country') && is_string($request->input('country')) && trim($request->input('country')) === '') {
             $request->merge(['country' => null]);
         }
         if ($languageCodes !== []) {
             $request->merge(['language' => $languageCodes[0]]);
-        } elseif ($request->has('language') && trim((string) $request->input('language')) === '') {
+        } elseif ($request->has('language') && is_string($request->input('language')) && trim($request->input('language')) === '') {
             $request->merge(['language' => null]);
         }
-        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+        if ($request->has('description') && is_string($request->input('description')) && trim($request->input('description')) === '') {
             $request->merge(['description' => null]);
         }
-        if ($request->has('link_type') && trim((string) $request->input('link_type')) === '') {
+        if ($request->has('link_type') && is_string($request->input('link_type')) && trim($request->input('link_type')) === '') {
             $request->merge(['link_type' => null]);
         }
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
@@ -1596,8 +1596,8 @@ class SiteController extends Controller
             }
 
             if ($request->has('country') || $request->has('language')) {
-                $country = strtolower(trim((string) ($request->input('country', $site->country) ?? '')));
-                $language = strtolower(trim((string) ($request->input('language', $site->language) ?? '')));
+                $country = strtolower($this->scalarString($request->input('country', $site->country)));
+                $language = strtolower($this->scalarString($request->input('language', $site->language)));
                 if ($country !== '' && $language !== '' && ! app(CountryLanguagePairs::class)->isAllowedPair($country, $language)) {
                     $validator->errors()->add(
                         'language',
@@ -1777,10 +1777,10 @@ class SiteController extends Controller
             $data['language'] = '';
             $data['languages'] = null;
         }
-        if ($request->has('example_url') && trim((string) $request->input('example_url')) === '') {
+        if ($request->has('example_url') && is_string($request->input('example_url')) && trim($request->input('example_url')) === '') {
             $data['example_url'] = null;
         }
-        if ($request->has('description') && trim((string) $request->input('description')) === '') {
+        if ($request->has('description') && is_string($request->input('description')) && trim($request->input('description')) === '') {
             $data['description'] = '';
         }
 
@@ -1862,8 +1862,8 @@ class SiteController extends Controller
         }
 
         $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site) {
-            $language = strtolower(trim((string) $request->input('language', '')));
-            $country = strtolower(trim((string) $request->input('country', '')));
+            $language = strtolower($this->scalarString($request->input('language')));
+            $country = strtolower($this->scalarString($request->input('country')));
 
             if ($language !== '' && ! in_array($language, $allowedLanguages, true)) {
                 $validator->errors()->add('language', 'Choose a valid marketplace language.');
@@ -1928,8 +1928,8 @@ class SiteController extends Controller
             return back()->withErrors($validator)->withInput();
         }
 
-        $language = strtolower(trim((string) $request->input('language')));
-        $country = strtolower(trim((string) $request->input('country')));
+        $language = strtolower($this->scalarString($request->input('language')));
+        $country = strtolower($this->scalarString($request->input('country')));
 
         $payload = [
             'da' => (int) $request->input('da'),
@@ -2276,9 +2276,14 @@ class SiteController extends Controller
      */
     private function parseCodeList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
-            $parts = $value;
-        } else {
+            array_walk_recursive($value, function ($item) use (&$parts) {
+                if (is_scalar($item) && ! is_bool($item)) {
+                    $parts[] = $item;
+                }
+            });
+        } elseif (is_scalar($value) && ! is_bool($value)) {
             $parts = preg_split('/[|,]/', (string) $value) ?: [];
         }
 
@@ -2291,6 +2296,18 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * Form/JSON text. Arrays/objects must not reach (string) — PHP 8 TypeError.
+     */
+    private function scalarString(mixed $value): string
+    {
+        if (! is_scalar($value) || is_bool($value)) {
+            return '';
+        }
+
+        return trim((string) $value);
     }
 
     /**

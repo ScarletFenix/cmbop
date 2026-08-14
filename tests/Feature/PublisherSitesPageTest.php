@@ -163,6 +163,34 @@ class PublisherSitesPageTest extends TestCase
         $this->assertSame($original, $site->fresh()->description);
     }
 
+    public function test_update_rejects_array_shaped_description_without_500(): void
+    {
+        $site = $this->makeSite($this->publisher);
+        $original = $site->description;
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->put(route('publisher.sites.update', $site->id), [
+                'exampleUrl' => $site->example_url,
+                'da' => $site->da,
+                'dr' => $site->dr,
+                'traffic' => $site->traffic,
+                'country' => [['de']],
+                'language' => $site->language,
+                'categories' => [1, [$site->category]],
+                'price' => $site->price,
+                'turnaround_time' => $site->turnaround_time,
+                'publicationTime' => $site->publication_time,
+                'link_type' => $site->link_type,
+                'siteDescription' => ['<p>Poisoned description</p>'],
+                'site_tag' => 'as_you_prefer',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('siteDescription');
+
+        $this->assertSame($original, $site->fresh()->description);
+    }
+
     public function test_update_category_resets_verification(): void
     {
         $site = $this->makeSite($this->publisher, [

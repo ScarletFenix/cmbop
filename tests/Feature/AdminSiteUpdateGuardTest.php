@@ -522,6 +522,51 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('News', $site->fresh()->category);
     }
 
+    public function test_update_rejects_array_shaped_geo_and_description_without_500(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'country' => [''],
+                'language' => [['de']],
+                'description' => ['Poisoned description that is long enough to look real.'],
+                'link_type' => ['dofollow'],
+            ])
+            ->assertStatus(422);
+
+        $site->refresh();
+        $this->assertSame('de', $site->country);
+        $this->assertSame('de', $site->language);
+        $this->assertSame(
+            str_repeat('Admin update guard listing description. ', 3),
+            $site->description
+        );
+        $this->assertSame('dofollow', $site->link_type);
+    }
+
+    public function test_update_accepts_nested_country_array(): void
+    {
+        $site = $this->site([
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'country' => [['de']],
+                'language' => 'de',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('de', $site->country);
+        $this->assertSame(['de'], $site->countries);
+    }
+
     public function test_update_rejects_port_duplicate_domain(): void
     {
         $this->site();
