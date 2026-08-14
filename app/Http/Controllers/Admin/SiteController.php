@@ -17,6 +17,7 @@ use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\SiteDescriptionSanitizer;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\MarketingOpsQueues;
 use App\Support\PublicStorageLink;
 use App\Support\SiteImageUpload;
@@ -1028,7 +1029,8 @@ class SiteController extends Controller
         $previous = is_string($site->site_image) ? $site->site_image : null;
 
         // Store new image first — only delete the previous file after success.
-        $path = $file->store('sites', 'public');
+        $path = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, 'sites')
+            ?? $file->store('sites', 'public');
         if (! is_string($path) || $path === '' || ! $disk->exists($path)) {
             $message = 'Could not save the site image to storage. Check disk permissions and MEDIA_PATH.';
 

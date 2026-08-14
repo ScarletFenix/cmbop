@@ -124,6 +124,9 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertNotEmpty($site->site_image);
         $this->assertStringStartsWith('sites/', $site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $site->site_image);
+        }
     }
 
     public function test_marketer_can_attach_image_via_site_update(): void
@@ -201,6 +204,10 @@ class MarketingSiteImageUploadTest extends TestCase
         $site->refresh();
         $this->assertNotEmpty($site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $site->site_image);
+            $this->assertStringEndsWith('.webp', (string) $response->json('image_path'));
+        }
 
         $imageUrl = (string) $response->json('image_url');
         $this->assertStringContainsString('/admin/sites/media/sites/', $imageUrl);
