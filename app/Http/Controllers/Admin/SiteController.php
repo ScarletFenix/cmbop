@@ -1320,7 +1320,7 @@ class SiteController extends Controller
             'price' => 'sometimes|required|numeric|min:0',
             'description' => 'sometimes|nullable|string|min:50',
             'publication_time' => 'sometimes|nullable|string|max:20',
-            'link_type' => 'sometimes|nullable|in:dofollow,nofollow',
+            'link_type' => 'sometimes|nullable|string|max:64',
             'site_image' => SiteImageUpload::fieldRules($request->hasFile('site_image')),
         ];
 
