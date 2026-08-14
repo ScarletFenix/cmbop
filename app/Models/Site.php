@@ -622,6 +622,11 @@ class Site extends Model
         return $this->belongsTo(AgencySiteImport::class, 'agency_site_import_id');
     }
 
+    public function bulkSiteRequest()
+    {
+        return $this->belongsTo(BulkSiteRequest::class);
+    }
+
     public function isFromAgencyCsvImport(): bool
     {
         if (! static::hasSitesColumn('agency_site_import_id')) {

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BulkSiteRequest;
 use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
@@ -186,5 +187,31 @@ class PublisherEditClearsAwaitingDetailsTest extends TestCase
         $this->assertTrue($site->hasCompletedPublisherDetails());
         $this->assertTrue($site->promoteFromAwaitingDetailsIfComplete());
         $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->fresh()->onboarding_status);
+    }
+
+    public function test_promoting_a_bulk_draft_refreshes_the_parent_request_status(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            'estimated_count' => 1,
+            'seeded_at' => now(),
+        ]);
+
+        $site = $this->makeAwaitingDetailsSite([
+            'site_name' => 'Bulk Draft Site',
+            'site_url' => 'https://bulk-draft.example',
+            'domain' => 'bulk-draft.example',
+            'bulk_site_request_id' => $bulk->id,
+        ]);
+
+        $this->assertTrue($site->bulkSiteRequest()->is($bulk));
+        $this->assertTrue($bulk->sites()->whereKey($site->id)->exists());
+
+        $this->assertTrue($site->promoteFromAwaitingDetailsIfComplete());
+
+        $this->assertSame(Site::ONBOARDING_READY_FOR_REVIEW, $site->fresh()->onboarding_status);
+        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        $this->assertNotNull($bulk->fresh()->completed_at);
     }
 }
