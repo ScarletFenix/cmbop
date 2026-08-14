@@ -240,12 +240,37 @@ class InAppNotification extends Model
         return $query->where('status', self::STATUS_UNREAD);
     }
 
+    public function isArchived(): bool
+    {
+        return $this->status === self::STATUS_ARCHIVED || $this->archived_at !== null;
+    }
+
     public function markRead(): self
     {
         if ($this->status !== self::STATUS_READ) {
             $this->forceFill([
                 'status' => self::STATUS_READ,
                 'read_at' => now(),
+            ])->save();
+        }
+
+        return $this;
+    }
+
+    /**
+     * Restore a read item to unread. Archived rows stay archived so they
+     * do not reappear in the bell Unread list or increment the badge.
+     */
+    public function markUnread(): self
+    {
+        if ($this->isArchived()) {
+            return $this;
+        }
+
+        if ($this->status !== self::STATUS_UNREAD) {
+            $this->forceFill([
+                'status' => self::STATUS_UNREAD,
+                'read_at' => null,
             ])->save();
         }
 
@@ -276,6 +301,7 @@ class InAppNotification extends Model
             'priority' => $this->priority,
             'status' => $this->status,
             'is_unread' => $this->status === self::STATUS_UNREAD,
+            'is_archived' => $this->isArchived(),
             'related_type' => $this->related_type,
             'related_id' => $this->related_id,
             'action_label' => $this->action_label ?: 'View details',

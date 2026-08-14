@@ -35,7 +35,7 @@
         <div class="col-md-3">
             <label class="form-label small text-muted mb-1">Category</label>
             <select name="category" class="form-select form-select-sm">
-                @foreach(['all' => 'All', 'unread' => 'Unread', 'orders' => 'Orders', 'messages' => 'Messages', 'payments' => 'Payments', 'account' => 'Account', 'system' => 'System', 'support' => 'Support'] as $value => $label)
+                @foreach(['all' => 'All', 'unread' => 'Unread', 'archived' => 'Archived', 'orders' => 'Orders', 'messages' => 'Messages', 'payments' => 'Payments', 'account' => 'Account', 'system' => 'System', 'support' => 'Support'] as $value => $label)
                     <option value="{{ $value }}" @selected($filters['category'] === $value)>{{ $label }}</option>
                 @endforeach
             </select>
@@ -54,7 +54,15 @@
                 'onclick' => 'markReadThenGo(event, ' . $notification->id . ', ' . json_encode($notification->action_url ?: '') . ')',
             ])
         @empty
-            <div class="nc-empty">You're all caught up. New activity will show up here.</div>
+            <div class="nc-empty">
+                @if(($filters['category'] ?? '') === 'unread')
+                    You're all caught up. Switch to All to see earlier notifications.
+                @elseif(($filters['category'] ?? '') === 'archived')
+                    No archived notifications.
+                @else
+                    You're all caught up. New activity will show up here.
+                @endif
+            </div>
         @endforelse
     </div>
 
@@ -66,6 +74,11 @@
 <script>
 document.getElementById('markAllReadForm')?.addEventListener('submit', function (e) {
     e.preventDefault();
+    var unread = {{ (int) $unreadCount }};
+    var msg = unread > 0
+        ? 'Mark all ' + unread + ' notifications as read?'
+        : 'Mark all notifications as read?';
+    if (!window.confirm(msg)) return;
     fetch(this.action, {
         method: 'POST',
         headers: {

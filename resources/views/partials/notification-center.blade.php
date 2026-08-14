@@ -6,6 +6,7 @@
      data-index-url="{{ route('notifications.index', absolute: false) }}"
      data-unread-url="{{ route('notifications.unread-count', absolute: false) }}"
      data-read-url="/notifications/__ID__/read"
+     data-unread-item-url="/notifications/__ID__/unread"
      data-read-all-url="{{ route('notifications.read-all', absolute: false) }}"
      data-archive-url="/notifications/__ID__/archive"
      data-destroy-url="/notifications/__ID__"
@@ -29,7 +30,10 @@
     <div class="nc-panel nc-theme" data-nc-panel role="dialog" aria-label="Notification center">
         <div class="nc-header">
             <div class="nc-header-row">
-                <h3 class="nc-title">Notifications</h3>
+                <div class="nc-header-copy">
+                    <h3 class="nc-title">Notifications</h3>
+                    <p class="nc-subtitle" data-nc-unread-label>0 unread</p>
+                </div>
                 <div class="nc-actions">
                     <button type="button" class="nc-link-btn" data-nc-mark-all>Mark all read</button>
                 </div>
@@ -45,8 +49,8 @@
         </div>
 
         <div class="nc-filters" role="tablist" aria-label="Filter notifications">
-            <button type="button" class="nc-filter is-active" data-nc-filter="all" role="tab" aria-selected="true">All</button>
-            <button type="button" class="nc-filter" data-nc-filter="unread" role="tab" aria-selected="false">Unread</button>
+            <button type="button" class="nc-filter" data-nc-filter="all" role="tab" aria-selected="false">All</button>
+            <button type="button" class="nc-filter is-active" data-nc-filter="unread" role="tab" aria-selected="true">Unread</button>
             <button type="button" class="nc-filter" data-nc-filter="orders" role="tab" aria-selected="false">Orders</button>
             <button type="button" class="nc-filter" data-nc-filter="messages" role="tab" aria-selected="false">Messages</button>
             <button type="button" class="nc-filter" data-nc-filter="payments" role="tab" aria-selected="false">Payments</button>

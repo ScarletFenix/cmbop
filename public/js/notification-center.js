@@ -114,7 +114,7 @@
     this.hasMore = false;
     this.items = [];
     this.filter = 'all';
-    this.status = 'active';
+    this.status = 'unread';
     this.query = '';
     this.pollTimer = null;
     this.searchTimer = null;
@@ -190,7 +190,7 @@
       });
     });
 
-    const markAll = this.root.querySelector('[data-nc-mark-all]');
+    const markAll = (this.panel || this.root).querySelector('[data-nc-mark-all]');
     if (markAll) {
       markAll.addEventListener('click', function () {
         self.markAllRead();
@@ -281,6 +281,7 @@
         alertOnIncrease: !!opts.alertOnIncrease,
         beep: opts.beep !== false
       });
+      this.syncUnreadLabel();
       return;
     }
     if (this.unread > 0) {
@@ -291,6 +292,15 @@
       this.badge.classList.remove('is-visible', 'is-pulsing', 'is-alerting');
       this.badge.style.display = 'none';
     }
+    this.syncUnreadLabel();
+  };
+
+  NotificationCenter.prototype.syncUnreadLabel = function () {
+    const el = (this.panel || this.root).querySelector('[data-nc-unread-label]');
+    if (!el) return;
+    el.textContent = this.unread > 0
+      ? (this.unread === 1 ? '1 unread' : (this.unread + ' unread'))
+      : 'All caught up';
   };
 
   NotificationCenter.prototype.showLoadError = function (detail) {
@@ -456,9 +466,11 @@
       const filtered = (this.filter && this.filter !== 'all')
         || this.status === 'unread'
         || !!(this.query && String(this.query).trim());
-      const emptyMsg = filtered
-        ? 'No matching notifications.'
-        : 'You\'re all caught up. New activity will show up here.';
+      const emptyMsg = (this.status === 'unread' && this.filter === 'all' && !this.query)
+        ? 'You\'re all caught up. Switch to All to see earlier notifications.'
+        : (filtered
+          ? 'No matching notifications.'
+          : 'You\'re all caught up. New activity will show up here.');
       this.list.innerHTML = '<div class="nc-empty">' + emptyMsg + '</div>';
       return;
     }
@@ -494,6 +506,12 @@
         self.markRead(btn.getAttribute('data-id'));
       });
     });
+    this.list.querySelectorAll('[data-nc-tool="unread"]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        self.markUnread(btn.getAttribute('data-id'));
+      });
+    });
     this.list.querySelectorAll('[data-nc-tool="archive"]').forEach(function (btn) {
       btn.addEventListener('click', function (e) {
         e.stopPropagation();
@@ -523,15 +541,18 @@
           (n.message ? '<p class="nc-item-msg">' + escapeHtml(n.message) + '</p>' : '') +
           '<div class="nc-item-meta">' +
             '<span class="nc-item-time">' + escapeHtml(relativeTime(n.created_at)) + '</span>' +
+            (n.is_unread ? '<span class="nc-item-state">Unread</span>' : (n.is_archived ? '<span class="nc-item-state is-archived">Archived</span>' : '')) +
             (n.action_url ? '<span class="nc-item-action">' + escapeHtml(n.action_label || 'View details') + ' →</span>' : '') +
           '</div>' +
         '</div>' +
         '<div class="nc-item-aside">' +
           '<span class="nc-dot' + dotPulse + '" aria-hidden="true"></span>' +
           '<div class="nc-item-tools">' +
-            (n.is_unread ? '<span class="nc-tool" data-nc-tool="read" data-id="' + n.id + '">Read</span>' : '') +
+            (n.is_unread
+              ? '<span class="nc-tool" data-nc-tool="read" data-id="' + n.id + '">Mark as read</span>'
+              : (!n.is_archived ? '<span class="nc-tool" data-nc-tool="unread" data-id="' + n.id + '">Mark as unread</span>' : '')) +
             '<span class="nc-tool" data-nc-tool="archive" data-id="' + n.id + '">Archive</span>' +
-            '<span class="nc-tool" data-nc-tool="delete" data-id="' + n.id + '">Delete</span>' +
+            '<span class="nc-tool nc-tool--muted" data-nc-tool="delete" data-id="' + n.id + '">Delete</span>' +
           '</div>' +
         '</div>' +
       '</button>'
@@ -583,8 +604,21 @@
     });
   };
 
+  NotificationCenter.prototype.markUnread = function (id) {
+    const self = this;
+    this.post(this.config.unreadItemUrl.replace('__ID__', id)).then(function (data) {
+      if (data.unread_count != null) self.setUnread(data.unread_count);
+      self.reload();
+    });
+  };
+
   NotificationCenter.prototype.markAllRead = function () {
     const self = this;
+    const n = this.unread || 0;
+    const msg = n > 0
+      ? 'Mark all ' + n + ' notifications as read?'
+      : 'Mark all notifications as read?';
+    if (!window.confirm(msg)) return;
     this.post(this.config.readAllUrl).then(function () {
       self.setUnread(0);
       self.reload();
@@ -617,6 +651,7 @@
       indexUrl: sameOriginUrl(root.getAttribute('data-index-url'), '/notifications'),
       unreadUrl: sameOriginUrl(root.getAttribute('data-unread-url'), '/notifications/unread-count'),
       readUrl: sameOriginUrl(root.getAttribute('data-read-url'), '/notifications/__ID__/read'),
+      unreadItemUrl: sameOriginUrl(root.getAttribute('data-unread-item-url'), '/notifications/__ID__/unread'),
       readAllUrl: sameOriginUrl(root.getAttribute('data-read-all-url'), '/notifications/read-all'),
       archiveUrl: sameOriginUrl(root.getAttribute('data-archive-url'), '/notifications/__ID__/archive'),
       destroyUrl: sameOriginUrl(root.getAttribute('data-destroy-url'), '/notifications/__ID__'),
