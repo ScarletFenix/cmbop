@@ -1012,7 +1012,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell #articleQuillEditor.ql-container', $css);
         $this->assertStringContainsString('#articleEditorModal .article-docs-shell .article-editor-scroll .ql-editor', $css);
         $this->assertStringContainsString('flex: 1 1 0%', $css);
-        $this->assertStringContainsString('min-height: 12rem', $css);
+        $this->assertStringContainsString('min-height: min(52vh, 28rem)', $css);
+        $this->assertStringNotContainsString('min-height: 12rem', $css);
+        $this->assertStringNotContainsString('max-height: 28vh', $css);
+        $this->assertStringContainsString('#articleEditorImageRights.article-editor-rights', $css);
+        $this->assertStringContainsString('max-height: 9rem', $css);
+        $this->assertStringContainsString('max-width: min(100%, 720px)', $css);
         $this->assertStringContainsString('function applyArticleEditorScrollport', $js);
         $this->assertStringContainsString('function bindArticleEditorScrollport', $js);
         $this->assertStringContainsString('function bindArticleEditorWheel', $js);
