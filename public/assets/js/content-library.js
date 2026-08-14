@@ -201,7 +201,9 @@ function libraryUploadTransportMessage(status) {
     if (status === 429) {
         return 'Too many upload attempts. Wait a minute and try again.';
     }
-    if (status === 408 || status === 413 || status === 422 || status === 500 || status === 502 || status === 504 || status === 0) {
+    // 413 / dropped connection: the file never reached Laravel (LiteSpeed / PHP pipe).
+    // 500 / 502 / 504 / 408 are processing or gateway failures — do not mislabel those as size.
+    if (status === 413 || status === 0) {
         return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
     }
     return 'Upload failed. Please try again.';
@@ -1259,6 +1261,9 @@ function openArticleEditor(submission) {
         return;
     }
     try {
+        if (typeof Quill === 'undefined') {
+            throw new Error('quill-missing');
+        }
         articleEditorSubmissionId = submission.id;
         articleEditorDetectedLinks = Array.isArray(submission.detected_links) ? submission.detected_links : [];
         ensureArticleQuill();
@@ -1278,7 +1283,9 @@ function openArticleEditor(submission) {
         libraryUploadClosingForEditor = false;
         resetLibraryUploadUi();
         const uploadEl = document.getElementById('uploadContentModal');
-        const message = 'Could not open the editor. Try again.';
+        const message = (typeof Quill === 'undefined')
+            ? 'The article editor failed to load. Refresh the page and try again.'
+            : 'Could not open the editor. Try again.';
         if (uploadEl && uploadEl.classList.contains('show')) {
             setFeedbackHtml(document.getElementById('libraryUploadFeedback'), false, message);
         } else {

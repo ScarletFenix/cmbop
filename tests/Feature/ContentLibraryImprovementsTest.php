@@ -1253,7 +1253,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Your session expired', $js);
         $this->assertStringContainsString('Too many upload attempts', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);
+        $this->assertStringContainsString('The article editor failed to load', $js);
         $this->assertStringContainsString('10240 * 1024', $js);
+        $this->assertStringContainsString('status === 413 || status === 0', $js);
+        $this->assertStringNotContainsString('status === 500', $js);
         $this->assertStringNotContainsString('hosting PHP settings', $js);
         $this->assertStringNotContainsString('server PHP upload limit', $js);
         $this->assertStringNotContainsString('upload_max_filesize to 64M', $js);
@@ -1306,6 +1309,23 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Drop a .docx', $message);
         $this->assertStringNotContainsString('country', strtolower($message));
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+    }
+
+    public function test_missing_file_uses_query_bytes_when_upload_header_is_zero(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $response = $this->actingAs($advertiser)->postJson(
+            route('advertiser.content-library.upload', ['client_bytes' => 5 * 1024 * 1024]),
+            ['country' => 'us', 'language' => 'en'],
+            ['X-Upload-Bytes' => '0']
+        );
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $message = (string) $response->json('message');
+        $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringNotContainsString('Drop a .docx', $message);
+        $this->assertStringNotContainsString('country', strtolower($message));
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string
