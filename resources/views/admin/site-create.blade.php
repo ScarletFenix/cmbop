@@ -251,7 +251,8 @@
                         <input type="file" id="site_image" name="site_image"
                                class="form-control @error('site_image') is-invalid @enderror"
                                accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                               data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
+                               data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}"
+                               data-php-max-kb="{{ \App\Support\SiteImageUpload::phpUploadMaxKilobytes() }}">
                         <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB).</div>
                         @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                     </div>
@@ -368,6 +369,7 @@
 <link href="{{ asset('assets/css/multi-select.css') }}?v={{ @filemtime(public_path('assets/css/multi-select.css')) ?: '1' }}" rel="stylesheet">
 <script src="{{ asset('assets/js/jquery-3.6.0.min.js') }}?v={{ @filemtime(public_path('assets/js/jquery-3.6.0.min.js')) ?: '1' }}"></script>
 <script src="{{ asset('js/multi-select.js') }}?v={{ @filemtime(public_path('js/multi-select.js')) ?: '1' }}"></script>
+<script src="{{ asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const map = @json($countryLanguageMap ?? new \stdClass());
@@ -376,6 +378,18 @@
     const langHidden = document.getElementById('selectedLanguage');
     const preferredLang = @json(old_text('language'));
     const imageInput = document.getElementById('site_image');
+    if (imageInput && window.SiteImageUpload) {
+        window.SiteImageUpload.bindSiteImageInput({
+            input: imageInput,
+            onError: function (title) {
+                if (window.slbAlert) {
+                    window.slbAlert({ icon: 'warning', title: title });
+                } else if (window.Swal) {
+                    Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
+                }
+            },
+        });
+    }
     const qualityBar = document.getElementById('qualityBarStatic');
     const qualityWarn = document.getElementById('qualityBarWarn');
     const minDa = parseInt((qualityBar && qualityBar.getAttribute('data-min-da')) || '30', 10);
@@ -545,8 +559,9 @@
                 const maxBytes = maxKb * 1024;
                 if (imageInput.files[0].size > maxBytes) {
                     e.preventDefault();
-                    const mb = Math.floor(maxKb / 1024);
-                    const title = 'Site image must be under ' + mb + ' MB';
+                    const title = (window.SiteImageUpload && window.SiteImageUpload.sizeError)
+                        ? window.SiteImageUpload.sizeError(maxKb)
+                        : ('Site image must be under ' + Math.floor(maxKb / 1024) + ' MB');
                     if (window.slbAlert) {
                         window.slbAlert({ icon: 'warning', title: title });
                     } else if (window.Swal) {

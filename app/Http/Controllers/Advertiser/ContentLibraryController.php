@@ -6,11 +6,13 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Models\Country;
 use App\Models\Language;
+use App\Models\User;
 use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Validation\Rule;
@@ -370,9 +372,35 @@ class ContentLibraryController extends Controller
         $allowedCountries = array_map('strtolower', config('markets.allowed_country_codes', []));
         $allowedLanguages = array_map('strtolower', config('markets.allowed_language_codes', []));
 
+        $user = auth()->user();
+        if (! $user instanceof User) {
+            abort(403);
+        }
+        $uploadedFile = $request->file('file');
+        $chunk = $this->uploads->receiveArticleChunk($request, $user);
+        if (is_array($chunk)) {
+            if (! ($chunk['ok'] ?? false)) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Upload failed',
+                    'message' => $chunk['message'] ?? 'The article could not be uploaded. Please try again.',
+                ], 422);
+            }
+            if (! ($chunk['complete'] ?? false)) {
+                return response()->json([
+                    'success' => true,
+                    'chunk_received' => true,
+                    'received' => $chunk['received'] ?? 0,
+                    'total' => $chunk['total'] ?? 0,
+                ]);
+            }
+            $uploadedFile = $chunk['file'];
+            $request->files->set('file', $uploadedFile);
+        }
+
         [$contentLength, $clientBytes] = $this->uploads->uploadByteHints($request);
         if ($message = $this->uploads->rejectedUploadMessage(
-            $request->file('file'),
+            $uploadedFile,
             $cfg,
             $contentLength,
             $clientBytes,
@@ -426,7 +454,9 @@ class ContentLibraryController extends Controller
 
         try {
             $result = $this->uploads->uploadAndProcess(
-                file: $request->file('file'),
+                file: $uploadedFile instanceof UploadedFile
+                    ? $uploadedFile
+                    : $request->file('file'),
                 user: auth()->user(),
                 siteId: null,
                 copyIndex: 0,

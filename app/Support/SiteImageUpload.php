@@ -8,7 +8,8 @@ use Throwable;
 
 /**
  * Shared limits / helpers for admin & marketing site cover uploads.
- * App cap is 10 MB; effective max also respects PHP upload_max_filesize / post_max_size.
+ * App cap is 10 MB. PHP upload_max_filesize is only a shrink hint for the
+ * browser — do not advertise it as the product limit (ini_get is often 2M).
  */
 final class SiteImageUpload
 {
@@ -19,9 +20,14 @@ final class SiteImageUpload
      */
     public const STORED_PATH_REGEX = '/^sites\/[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*\.(jpe?g|png|gif|webp)$/i';
 
+    /**
+     * Advertised / validated app cap. Do not clamp to ini_get(): Hostinger and
+     * `php artisan serve` often report the 2M PHP default even when .user.ini
+     * already allows 64M, which then rejects a normal screenshot as “under 2 MB”.
+     */
     public static function maxKilobytes(): int
     {
-        return max(1, min(self::APP_MAX_KILOBYTES, self::phpUploadMaxKilobytes()));
+        return self::APP_MAX_KILOBYTES;
     }
 
     public static function maxMegabytesLabel(): int

@@ -169,7 +169,8 @@ function titleFromFilename(name) {
         .replace(/\.docx$/i, '')
         .replace(/[_-]+/g, ' ')
         .replace(/\s+/g, ' ')
-        .trim();
+        .trim()
+        .slice(0, 200);
 }
 
 function showDropzoneFile(file) {
@@ -194,7 +195,29 @@ function libraryFileTooLargeMessage(file) {
     return '';
 }
 
-function libraryUploadTransportMessage(status) {
+function librarySafeDocxFilename(name) {
+    const base = String(name || 'article')
+        .replace(/\.docx$/i, '')
+        .replace(/['’`]/g, '')
+        .replace(/[^\w.\- ]+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 80) || 'article';
+    return base + '.docx';
+}
+
+function libraryNewUploadId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+        return window.crypto.randomUUID();
+    }
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (ch) {
+        const n = Math.random() * 16 | 0;
+        const v = ch === 'x' ? n : (n & 0x3 | 0x8);
+        return v.toString(16);
+    });
+}
+
+function libraryUploadTransportMessage(status, fileBytes) {
     if (status === 419) {
         return 'Your session expired. Refresh the page and try again.';
     }
@@ -204,9 +227,75 @@ function libraryUploadTransportMessage(status) {
     // 413 / dropped connection: the file never reached Laravel (LiteSpeed / PHP pipe).
     // 500 / 502 / 504 / 408 are processing or gateway failures — do not mislabel those as size.
     if (status === 413 || status === 0) {
+        const bytes = Number(fileBytes) || 0;
+        if (bytes > 0 && bytes <= 10240 * 1024) {
+            return 'The article could not be uploaded. Please try again.';
+        }
         return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
     }
     return 'Upload failed. Please try again.';
+}
+
+const LIBRARY_UPLOAD_CHUNK_BYTES = 1536 * 1024;
+
+async function postLibraryUpload(form, file, signal, onProgress) {
+    const safeName = librarySafeDocxFilename(file.name);
+    const sendPart = async function (body, bytes) {
+        const res = await fetch(libraryUrlWithClientBytes(libraryUploadUrl, bytes), {
+            method: 'POST',
+            headers: libraryClientByteHeaders(bytes),
+            body: body,
+            signal: signal,
+        });
+        let data = null;
+        try {
+            data = await res.json();
+        } catch (parseErr) {
+            data = null;
+        }
+        return { res: res, data: data };
+    };
+
+    if (file.size <= LIBRARY_UPLOAD_CHUNK_BYTES) {
+        const fd = new FormData(form);
+        fd.set('file', file, safeName);
+        if (typeof onProgress === 'function') onProgress(1, 1);
+        return sendPart(fd, file.size);
+    }
+
+    const total = Math.ceil(file.size / LIBRARY_UPLOAD_CHUNK_BYTES);
+    const uploadId = libraryNewUploadId();
+    let last = null;
+    for (let i = 0; i < total; i++) {
+        const blob = file.slice(i * LIBRARY_UPLOAD_CHUNK_BYTES, (i + 1) * LIBRARY_UPLOAD_CHUNK_BYTES);
+        const fd = new FormData(form);
+        fd.set('file', blob, safeName);
+        fd.set('chunk_index', String(i));
+        fd.set('chunk_total', String(total));
+        fd.set('upload_id', uploadId);
+        fd.set('original_filename', safeName);
+        if (typeof onProgress === 'function') onProgress(i + 1, total);
+        last = await sendPart(fd, file.size);
+        if (!last.data || !last.data.success) {
+            return last;
+        }
+        if (i < total - 1) {
+            if (!last.data.chunk_received) {
+                return last;
+            }
+            continue;
+        }
+        if (last.data.chunk_received || !last.data.submission) {
+            return {
+                res: last.res,
+                data: {
+                    success: false,
+                    message: 'The article could not be uploaded. Please try again.',
+                },
+            };
+        }
+    }
+    return last;
 }
 
 function libraryClientByteHeaders(bytes) {
@@ -1739,15 +1828,13 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
     // until a country is chosen.
     langSelect.disabled = false;
 
-    const fd = new FormData(this);
-    fd.set('file', file, file.name);
     abortLibraryUpload();
     libraryUploadAbort = (typeof AbortController !== 'undefined') ? new AbortController() : null;
     libraryUploadHandoff = false;
     libraryUploadSavedSubmission = null;
     if (btn) btn.disabled = true;
     progress?.classList.remove('d-none');
-    if (bar) bar.style.width = '40%';
+    if (bar) bar.style.width = '10%';
     if (feedback) feedback.textContent = 'Uploading your article…';
 
     let openedEditor = false;
@@ -1756,18 +1843,22 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
             setFeedbackHtml(feedback, false, 'Upload URL is missing');
             return;
         }
-        const res = await fetch(libraryUrlWithClientBytes(libraryUploadUrl, file.size), {
-            method: 'POST',
-            headers: libraryClientByteHeaders(file.size),
-            body: fd,
-            signal: libraryUploadAbort ? libraryUploadAbort.signal : undefined,
-        });
+        const posted = await postLibraryUpload(
+            this,
+            file,
+            libraryUploadAbort ? libraryUploadAbort.signal : undefined,
+            function (part, total) {
+                if (bar) bar.style.width = Math.round((part / total) * 100) + '%';
+                if (feedback && total > 1) {
+                    feedback.textContent = 'Uploading your article… (' + part + '/' + total + ')';
+                }
+            }
+        );
+        const res = posted.res;
+        let data = posted.data;
         if (bar) bar.style.width = '100%';
-        let data = {};
-        try {
-            data = await res.json();
-        } catch (parseErr) {
-            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
+        if (!data) {
+            setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status, file.size));
             return;
         }
         if (!data.success) {

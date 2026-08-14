@@ -1112,10 +1112,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $response->assertStatus(422)->assertJsonPath('success', false);
         $message = (string) $response->json('message');
         $this->assertStringNotContainsString('The file failed to upload', $message);
-        $this->assertStringContainsString('MB', $message);
         $this->assertStringNotContainsString('upload_max_filesize', $message);
         $this->assertStringNotContainsString('hosting PHP settings', $message);
         $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringContainsString('Please try again', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
     }
 
@@ -1156,7 +1157,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('enctype="multipart/form-data"', $html);
 
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
-        $this->assertStringContainsString("fd.set('file', file, file.name)", $js);
+        $this->assertStringContainsString('function postLibraryUpload', $js);
+        $this->assertStringContainsString('function librarySafeDocxFilename', $js);
+        $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
+        $this->assertStringContainsString("fd.set('file', file, safeName)", $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
         $this->assertStringContainsString('function resetLibraryUploadUi', $js);
@@ -1250,6 +1254,12 @@ class ContentLibraryImprovementsTest extends TestCase
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('function libraryFileTooLargeMessage', $js);
         $this->assertStringContainsString('function libraryUploadTransportMessage', $js);
+        $this->assertStringContainsString('function postLibraryUpload', $js);
+        $this->assertStringContainsString('function librarySafeDocxFilename', $js);
+        $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
+        $this->assertStringContainsString('1536 * 1024', $js);
+        $this->assertStringContainsString('.slice(0, 200)', $js);
+        $this->assertStringContainsString('last.data.chunk_received || !last.data.submission', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
         $this->assertStringContainsString('X-Upload-Bytes', $js);
         $this->assertStringContainsString('X-Requested-With', $js);

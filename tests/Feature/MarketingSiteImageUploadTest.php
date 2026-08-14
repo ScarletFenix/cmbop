@@ -390,6 +390,8 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('desktop screenshot', strtolower($marketingEdit));
         $this->assertStringContainsString('/marketing/sites/media/sites/existing-cover.webp', $marketingEdit);
         $this->assertStringContainsString('data-media-fallback', $marketingEdit);
+        $this->assertStringContainsString('site-image-upload.js', $marketingEdit);
+        $this->assertStringContainsString('data-php-max-kb', $marketingEdit);
 
         $adminEdit = $this->actingAs($this->admin)
             ->get(route('admin.sites.edit', $site->id))
@@ -399,12 +401,16 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('site-image-desktop-preview', $adminEdit);
         $this->assertStringContainsString('staff-sites.css', $adminEdit);
         $this->assertStringContainsString('name="site_image"', $adminEdit);
+        $this->assertStringContainsString('site-image-upload.js', $adminEdit);
+        $this->assertStringContainsString('data-php-max-kb', $adminEdit);
+        $this->assertStringContainsString('bindHoverZoom', $adminEdit);
 
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
         $this->assertStringContainsString('.site-image-desktop-preview', $staffCss);
         $this->assertStringContainsString('padding-top: 62.5%', $staffCss);
         $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
+        $this->assertStringContainsString('.site-image-desktop-preview.is-zooming img', $staffCss);
         $this->assertStringNotContainsString('@supports (aspect-ratio: 16 / 10)', $staffCss);
     }
 
@@ -416,6 +422,12 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('Desktop-size preview (16:10)', $html);
         $this->assertStringContainsString('width: 960', $html);
         $this->assertStringContainsString('SITE_IMAGE_MAX_KB', $html);
+        $this->assertStringContainsString('SITE_IMAGE_PHP_MAX_KB', $html);
+        $this->assertStringContainsString('site-image-upload.js', $html);
+        $this->assertStringContainsString('Hover to zoom', $html);
+        $this->assertStringContainsString('prepareSiteImage', $html);
+        $this->assertStringContainsString('let file = fileInput', $html);
+        $this->assertStringNotContainsString('const file = fileInput', $html);
         $this->assertStringContainsString("X-CSRF-TOKEN': CSRF_TOKEN", $html);
         $this->assertStringContainsString("Accept': 'application/json'", $html);
         $this->assertStringContainsString('data-media-fallback', $html);
@@ -426,12 +438,23 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertStringContainsString('max-width: 720px', $staffCss);
         $this->assertStringContainsString('object-fit: contain', $staffCss);
         $this->assertStringContainsString('.swal2-popup .site-image-desktop-preview', $staffCss);
+        $this->assertStringContainsString('max-width: 520px', $staffCss);
         $this->assertStringContainsString('.site-preview-zoom-pop', $staffCss);
+        $this->assertStringContainsString('@media (any-hover: hover)', $staffCss);
+        $this->assertStringContainsString('@media (any-hover: none)', $staffCss);
         // Row thumbs must contain the full desktop frame (not crop/zoom like mobile).
         $this->assertMatchesRegularExpression(
             '/\.site-row-preview img\s*\{[^}]*object-fit:\s*contain/s',
             $staffCss
         );
+
+        $helper = file_get_contents(public_path('assets/js/site-image-upload.js'));
+        $this->assertIsString($helper);
+        $this->assertStringContainsString('var APP_MAX_KB = 10240', $helper);
+        $this->assertStringContainsString('function bindHoverZoom', $helper);
+        $this->assertStringContainsString('function prepareSiteImage', $helper);
+        $this->assertStringContainsString('any-hover: hover', $helper);
+        $this->assertStringContainsString('image\\/gif', $helper);
     }
 
     public function test_admin_upload_keeps_image_when_public_storage_probe_fails(): void

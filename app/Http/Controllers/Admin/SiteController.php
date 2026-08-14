@@ -2224,7 +2224,7 @@ class SiteController extends Controller
 
     /**
      * Max upload size for site cover images (kilobytes).
-     * App cap 10 MB, also clamped to PHP upload_max_filesize / post_max_size.
+     * App cap is 10 MB. PHP ini is not the advertised product limit.
      */
     private function siteImageMaxKilobytes(): int
     {

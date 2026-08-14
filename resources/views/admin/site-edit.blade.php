@@ -242,8 +242,9 @@
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
-                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}"
+                                   data-php-max-kb="{{ \App\Support\SiteImageUpload::phpUploadMaxKilobytes() }}">
+                            <div class="form-text">Optional desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Hover the preview to zoom. Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
@@ -308,8 +309,9 @@
                                 const maxBytes = maxKb * 1024;
                                 if (imageInput.files[0].size > maxBytes) {
                                     e.preventDefault();
-                                    const mb = Math.floor(maxKb / 1024);
-                                    const title = 'Site image must be under ' + mb + ' MB';
+                                    const title = (window.SiteImageUpload && window.SiteImageUpload.sizeError)
+                                        ? window.SiteImageUpload.sizeError(maxKb)
+                                        : ('Site image must be under ' + Math.floor(maxKb / 1024) + ' MB');
                                     if (window.Swal) {
                                         Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
                                     } else {
@@ -462,8 +464,9 @@
                             <input type="file" id="site_image" name="site_image"
                                    class="form-control @error('site_image') is-invalid @enderror"
                                    accept="image/jpeg,image/png,image/gif,image/webp,.jpg,.jpeg,.png,.gif,.webp"
-                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}">
-                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Leave empty to keep the current image.</div>
+                                   data-max-kb="{{ \App\Support\SiteImageUpload::maxKilobytes() }}"
+                                   data-php-max-kb="{{ \App\Support\SiteImageUpload::phpUploadMaxKilobytes() }}">
+                            <div class="form-text">Desktop screenshot (JPEG, PNG, GIF, or WebP up to {{ \App\Support\SiteImageUpload::maxMegabytesLabel() }}&nbsp;MB). Hover the preview to zoom. Leave empty to keep the current image.</div>
                             @error('site_image')<div class="invalid-feedback">{{ $message }}</div>@enderror
                             <div id="siteImagePreview"
                                  class="site-image-desktop-preview {{ $site->site_image ? '' : 'is-empty' }}"
@@ -548,6 +551,7 @@
     }
 })();
 </script>
+<script src="{{ asset('assets/js/site-image-upload.js') }}?v={{ @filemtime(public_path('assets/js/site-image-upload.js')) ?: '1' }}"></script>
 <script>
 (function () {
     const imageInput = document.getElementById('site_image');
@@ -582,7 +586,30 @@
         }
     }
 
+    function warnSize(title) {
+        if (window.Swal) {
+            Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
+        } else if (window.slbAlert) {
+            slbAlert({ icon: 'warning', title: title });
+        }
+    }
+
     bindMediaFallback(preview.querySelector('img'));
+    if (window.SiteImageUpload) {
+        window.SiteImageUpload.bindHoverZoom(preview);
+        window.SiteImageUpload.bindSiteImageInput({
+            input: imageInput,
+            preview: preview,
+            existingSrc: existingSrc,
+            onError: warnSize,
+            onReady: function (file) {
+                if (!file) {
+                    bindMediaFallback(preview.querySelector('img'));
+                }
+            },
+        });
+        return;
+    }
 
     imageInput.addEventListener('change', function () {
         const file = this.files && this.files[0];
@@ -594,12 +621,7 @@
         if (file.size > maxKb * 1024) {
             this.value = '';
             showExistingOrEmpty();
-            const title = 'Site image must be under ' + Math.floor(maxKb / 1024) + ' MB';
-            if (window.Swal) {
-                Swal.fire({ icon: 'warning', title: title, timer: 2800, showConfirmButton: false });
-            } else if (window.slbAlert) {
-                slbAlert({ icon: 'warning', title: title });
-            }
+            warnSize('Site image must be under ' + Math.floor(maxKb / 1024) + ' MB');
             return;
         }
         const reader = new FileReader();
