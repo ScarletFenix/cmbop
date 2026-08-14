@@ -384,6 +384,15 @@ class MarketingPanelHistoryTest extends TestCase
             'description' => 'Staff changed niches',
             'subject_label' => 'Edit Target',
         ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.deactivated',
+            'description' => 'Staff took the listing offline',
+            'subject_label' => 'Offline Target',
+        ]);
 
         $this->actingAs($this->marketer)
             ->get(route('marketing.history', ['q' => 'Activated']))
@@ -391,7 +400,29 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Live Target', false)
             ->assertSee('Activated site', false)
             ->assertDontSee('Edit Target', false)
-            ->assertDontSee('Staff changed niches', false);
+            ->assertDontSee('Staff changed niches', false)
+            ->assertDontSee('Offline Target', false)
+            ->assertDontSee('Staff took the listing offline', false);
+    }
+
+    public function test_history_rejects_impossible_calendar_dates(): void
+    {
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Kept when February 31 is submitted',
+            'subject_label' => 'Calendar Site',
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['from' => '2026-02-31', 'to' => '2026-02-31']))
+            ->assertOk()
+            ->assertSee('Use a valid From date.', false)
+            ->assertSee('Use a valid To date.', false)
+            ->assertSee('Kept when February 31 is submitted', false);
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void
