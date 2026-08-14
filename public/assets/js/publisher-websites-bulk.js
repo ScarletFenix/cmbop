@@ -35,22 +35,66 @@
         });
     }
 
+    function syncRowSummary(row) {
+        const urlInput = rowUrlInput(row);
+        const priceInput = rowPriceInput(row);
+        const urlVal = String((urlInput && urlInput.value) || '').trim();
+        const priceVal = String((priceInput && priceInput.value) || '').trim();
+        const label = row.querySelector('[data-bulk-url-label]');
+        const priceLabel = row.querySelector('[data-bulk-price-label]');
+        const chip = row.querySelector('[data-bulk-url-price-chip]');
+        if (label) label.textContent = urlVal || 'Website URL';
+        if (priceLabel) priceLabel.textContent = priceVal !== '' ? ('€' + priceVal) : 'No price';
+        if (chip) {
+            chip.classList.remove('is-empty', 'is-partial', 'is-ready');
+            if (!urlVal && priceVal === '') {
+                chip.classList.add('is-empty');
+                chip.textContent = 'Empty';
+            } else if (urlVal && priceVal !== '') {
+                chip.classList.add('is-ready');
+                chip.textContent = 'Ready';
+            } else {
+                chip.classList.add('is-partial');
+                chip.textContent = '1/2 filled';
+            }
+        }
+    }
+
     function createRow(urlValue, priceValue) {
-        const tr = document.createElement('tr');
+        const tr = document.createElement('details');
         tr.className = 'bulk-url-price-row';
+        tr.open = true;
         // Named here as well as in reindexRows so a row is submittable the
         // moment it exists, whatever order the callers run in.
         const seq = body.querySelectorAll('.bulk-url-price-row').length;
         tr.innerHTML =
-            '<td><input type="url" name="sites[' + seq + '][url]" class="form-control form-control-sm" placeholder="https://example.com" required></td>' +
-            '<td><input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control form-control-sm" placeholder="99" required></td>' +
-            '<td class="text-end"><button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button></td>';
+            '<summary class="bulk-url-price-row__summary">' +
+                '<span class="bulk-url-price-row__identity"><span class="fw-semibold text-break" data-bulk-url-label>Website URL</span></span>' +
+                '<span class="bulk-url-price-row__meta">' +
+                    '<span class="text-nowrap" data-bulk-price-label>No price</span>' +
+                    '<span class="bulk-url-price-row__chip is-empty" data-bulk-url-price-chip>Empty</span>' +
+                '</span>' +
+            '</summary>' +
+            '<div class="bulk-url-price-row__body">' +
+                '<div class="bulk-url-price-row__fields">' +
+                    '<div class="bulk-url-price-field">' +
+                        '<label class="form-label">Website URL <span class="text-danger">*</span></label>' +
+                        '<input type="url" name="sites[' + seq + '][url]" class="form-control" placeholder="https://example.com" required>' +
+                    '</div>' +
+                    '<div class="bulk-url-price-field bulk-url-price-field--price">' +
+                        '<label class="form-label">Price (€) <span class="text-danger">*</span></label>' +
+                        '<input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control" placeholder="99" required>' +
+                    '</div>' +
+                '</div>' +
+                '<button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">Remove</button>' +
+            '</div>';
         const urlInput = tr.querySelector('input[type="url"]');
         const priceInput = tr.querySelector('input[type="number"]');
         if (urlInput && urlValue) urlInput.value = urlValue;
         if (priceInput && priceValue !== undefined && priceValue !== null && priceValue !== '') {
             priceInput.value = priceValue;
         }
+        syncRowSummary(tr);
         return tr;
     }
 
@@ -343,13 +387,14 @@
         });
         reindexRows();
         syncRemoveButtons();
+        refreshOpenStateAfterImport();
 
         const priced = rows.filter(function (r) { return r.price !== null && r.price !== undefined; }).length;
         let msg = 'Loaded ' + rows.length + ' site' + (rows.length === 1 ? '' : 's');
         if (priced > 0) {
             msg += ' (' + priced + ' with price)';
         } else {
-            msg += ' — fill € prices in the table before submit';
+            msg += ' — fill € prices in the rows before submit';
         }
         if (truncated) {
             msg += '. Maximum ' + MAX_ROWS + ' rows; extras were skipped.';
@@ -364,11 +409,42 @@
         return applyImportRows(parsed.rows, parsed.mode, parsed.truncated);
     }
 
+    function refreshOpenStateAfterImport() {
+        let openedEmpty = false;
+        body.querySelectorAll('.bulk-url-price-row').forEach(function (row) {
+            const urlVal = String((rowUrlInput(row) && rowUrlInput(row).value) || '').trim();
+            const priceVal = String((rowPriceInput(row) && rowPriceInput(row).value) || '').trim();
+            const ready = urlVal !== '' && priceVal !== '';
+            const empty = urlVal === '' && priceVal === '';
+            if (ready) {
+                row.open = false;
+            } else if (empty) {
+                row.open = !openedEmpty;
+                openedEmpty = true;
+            } else {
+                row.open = true;
+            }
+            syncRowSummary(row);
+        });
+    }
+
+    function focusFirstInvalidBulkRow() {
+        const invalid = body.querySelector('.is-invalid');
+        if (!invalid) return;
+        const row = invalid.closest('.bulk-url-price-row');
+        if (row) row.open = true;
+        if (typeof invalid.focus === 'function') invalid.focus();
+    }
+
     addBtn.addEventListener('click', function () {
         if (body.querySelectorAll('.bulk-url-price-row').length >= MAX_ROWS) return;
-        body.appendChild(createRow('', ''));
+        const row = createRow('', '');
+        body.appendChild(row);
         reindexRows();
         syncRemoveButtons();
+        if (typeof row.scrollIntoView === 'function') {
+            row.scrollIntoView({ block: 'nearest' });
+        }
     });
 
     body.addEventListener('click', function (e) {
@@ -376,10 +452,20 @@
         if (!btn) return;
         const rows = body.querySelectorAll('.bulk-url-price-row');
         if (rows.length <= 2) return;
-        btn.closest('tr')?.remove();
+        btn.closest('.bulk-url-price-row')?.remove();
         reindexRows();
         syncRemoveButtons();
     });
+
+    body.addEventListener('input', function (e) {
+        const row = e.target.closest('.bulk-url-price-row');
+        if (row) syncRowSummary(row);
+    });
+
+    const modal = document.getElementById('bulkRequestModal');
+    if (modal) {
+        modal.addEventListener('shown.bs.modal', focusFirstInvalidBulkRow);
+    }
 
     if (pasteBtn && pasteArea) {
         pasteBtn.addEventListener('click', function () {
@@ -437,4 +523,6 @@
 
     reindexRows();
     syncRemoveButtons();
+    body.querySelectorAll('.bulk-url-price-row').forEach(syncRowSummary);
+    focusFirstInvalidBulkRow();
 })();

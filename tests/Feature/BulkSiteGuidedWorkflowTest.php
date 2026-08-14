@@ -140,7 +140,20 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertSee('Website URL', false)
             ->assertSee('Price (€)', false)
             ->assertSee('How bulk onboarding works', false)
-            ->assertSee('Our marketer', false);
+            ->assertSee('Our marketer', false)
+            ->assertSee('modal-xl', false)
+            ->assertSee('bulk-url-price-row__summary', false)
+            ->assertSee('data-bulk-url-price-chip', false)
+            ->assertSee('name="sites[0][url]"', false)
+            ->assertSee('name="sites[0][price]"', false)
+            ->assertDontSee('modal-lg modal-dialog-scrollable', false);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<details class="bulk-url-price-row" open/', $html);
+        $css = file_get_contents(public_path('assets/css/publisher-websites.css'));
+        $this->assertStringContainsString('#bulkRequestModal .bulk-url-price-row__fields', $css);
     }
 
     public function test_admin_can_seed_draft_sites_hidden_from_catalog(): void
