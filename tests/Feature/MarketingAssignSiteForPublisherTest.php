@@ -1454,6 +1454,10 @@ class MarketingAssignSiteForPublisherTest extends TestCase
 
     public function test_marketing_update_coerces_decimal_and_grouped_metrics(): void
     {
+        $niche = Category::query()->where('name', 'News')->value('name')
+            ?? Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
         $pending = Site::create([
             'publisher_id' => $this->publisher->id,
             'publisher_accepted_at' => now(),
@@ -1466,8 +1470,8 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             'traffic' => 12000,
             'country' => 'de',
             'language' => 'de',
-            'category' => 'News',
-            'categories' => ['News'],
+            'category' => $niche,
+            'categories' => [$niche],
             'price' => 50,
             'turnaround_time' => '3days',
             'publication_time' => 'permanent',
@@ -1489,9 +1493,10 @@ class MarketingAssignSiteForPublisherTest extends TestCase
                 'traffic' => '15,000',
                 'country' => 'de',
                 'language' => 'de',
-                'categories' => 'News',
+                'categories' => $niche,
             ])
-            ->assertRedirect();
+            ->assertRedirect()
+            ->assertSessionHasNoErrors();
 
         $pending->refresh();
         $this->assertSame(40, (int) $pending->da);
