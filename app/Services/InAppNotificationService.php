@@ -1622,7 +1622,11 @@ class InAppNotificationService
         $created = collect();
 
         foreach ($this->usersWithRoles($roles) as $admin) {
-            $note = $this->notify($admin, $type, $title, $message, $options);
+            $opts = $options;
+            if (array_key_exists('action_url', $opts)) {
+                $opts['action_url'] = staff_ops_url_for($admin, $opts['action_url']);
+            }
+            $note = $this->notify($admin, $type, $title, $message, $opts);
             if ($note) {
                 $created->push($note);
             }
@@ -1914,7 +1918,6 @@ class InAppNotificationService
                 'priority' => InAppNotification::PRIORITY_HIGH,
                 'related' => $bulk,
                 'action_label' => 'Open bulk request',
-                // Admin route works for admins; RedirectMarketingFromAdmin remaps it for marketers.
                 'action_url' => route('admin.bulk-site-requests.show', $bulk->id, false),
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,

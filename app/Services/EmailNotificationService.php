@@ -105,7 +105,7 @@ class EmailNotificationService
                 $this->dispatch(
                     'new_site',
                     $admin,
-                    new NewSiteNotification($site, $action),
+                    new NewSiteNotification($site, $action, $admin),
                     'new_site:'.$action.':'.$site->id.':admin:'.$admin->id
                 );
             }

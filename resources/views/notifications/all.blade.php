@@ -53,7 +53,7 @@
                 'notification' => $notification,
                 'as' => 'a',
                 'showTools' => false,
-                'onclick' => 'markReadThenGo(event, ' . $notification->id . ', ' . json_encode($notification->action_url ?: '') . ')',
+                'onclick' => 'markReadThenGo(event, ' . $notification->id . ', ' . json_encode($notification->actionUrlFor(auth()->user()) ?: '') . ')',
             ])
         @empty
             <div class="nc-empty">
