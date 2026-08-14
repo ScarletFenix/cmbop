@@ -1185,6 +1185,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function librarySafeDocxFilename', $js);
         $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
         $this->assertStringContainsString("fd.set('file', file, safeName)", $js);
+        $this->assertStringContainsString('function libraryUploadFields', $js);
+        $this->assertStringContainsString('function librarySizeAwareUploadMessage', $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
         $this->assertStringContainsString('function resetLibraryUploadUi', $js);
@@ -1281,7 +1283,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function postLibraryUpload', $js);
         $this->assertStringContainsString('function librarySafeDocxFilename', $js);
         $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
-        $this->assertStringContainsString('1536 * 1024', $js);
+        $this->assertStringContainsString('1024 * 1024', $js);
+        $this->assertStringContainsString('function libraryUploadFields', $js);
+        $this->assertStringContainsString('function librarySizeAwareUploadMessage', $js);
+        $this->assertStringContainsString('if (el.type === \'file\') return;', $js);
         $this->assertStringContainsString('.slice(0, 200)', $js);
         $this->assertStringContainsString('last.data.chunk_received || !last.data.submission', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
@@ -1332,6 +1337,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Drop a .docx', $message);
         $this->assertStringNotContainsString('country', strtolower($message));
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
+        $this->assertStringContainsString('Please try again', $message);
     }
 
     public function test_missing_file_with_client_bytes_and_no_content_length_is_not_a_missing_file(): void

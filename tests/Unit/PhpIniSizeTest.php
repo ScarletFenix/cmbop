@@ -31,16 +31,21 @@ class PhpIniSizeTest extends TestCase
 
         $this->assertSame(10240, $appKb);
         $this->assertSame(10240, $service->effectiveMaxKilobytes(['max_kilobytes' => 51200]));
-        $this->assertStringContainsString('MB', $message);
+        $this->assertStringContainsString('Please try again', $message);
+        $this->assertStringNotContainsString('MB', $message);
 
         $this->assertStringNotContainsString('upload_max_filesize', $message);
         $this->assertStringNotContainsString('hosting PHP settings', $message);
         $this->assertStringNotContainsString('server PHP still allows only', $message);
         $this->assertStringContainsString('The article could not be uploaded', $message);
+        $this->assertStringContainsString('Please try again', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
         $underCap = $service->phpSizeRejectedMessage($cfg, 5400000);
         $this->assertStringContainsString('Please try again', $underCap);
         $this->assertStringNotContainsString('under 10 MB', $underCap);
+        $overCap = $service->phpSizeRejectedMessage($cfg, 12 * 1024 * 1024);
+        $this->assertStringContainsString('That file is over the 10 MB limit', $overCap);
         $this->assertStringContainsString('JPG', $service->phpImageRejectedMessage());
         $this->assertStringNotContainsString('.docx', $service->phpImageRejectedMessage());
         $uploaded = $service->uploadValidationMessages($cfg)['file.uploaded'] ?? '';

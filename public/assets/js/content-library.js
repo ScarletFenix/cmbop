@@ -227,16 +227,36 @@ function libraryUploadTransportMessage(status, fileBytes) {
     // 413 / dropped connection: the file never reached Laravel (LiteSpeed / PHP pipe).
     // 500 / 502 / 504 / 408 are processing or gateway failures — do not mislabel those as size.
     if (status === 413 || status === 0) {
-        const bytes = Number(fileBytes) || 0;
-        if (bytes > 0 && bytes <= 10240 * 1024) {
-            return 'The article could not be uploaded. Please try again.';
-        }
-        return 'The article could not be uploaded. Use a Word .docx under 10 MB and try again.';
+        return librarySizeAwareUploadMessage(fileBytes);
     }
     return 'Upload failed. Please try again.';
 }
 
-const LIBRARY_UPLOAD_CHUNK_BYTES = 1536 * 1024;
+function librarySizeAwareUploadMessage(fileBytes, serverMessage) {
+    const bytes = Number(fileBytes) || 0;
+    const text = String(serverMessage || '').trim();
+    if (bytes > 10240 * 1024) {
+        return 'That file is over the 10 MB limit.';
+    }
+    if (text && !/under 10 MB/i.test(text) && !/over the 10 MB limit/i.test(text)) {
+        return text;
+    }
+    return 'The article could not be uploaded. Please try again.';
+}
+
+const LIBRARY_UPLOAD_CHUNK_BYTES = 1024 * 1024;
+
+function libraryUploadFields(form) {
+    const fd = new FormData();
+    if (!form) return fd;
+    Array.from(form.elements).forEach(function (el) {
+        if (!el || !el.name || el.disabled) return;
+        if (el.type === 'file') return;
+        if ((el.type === 'checkbox' || el.type === 'radio') && !el.checked) return;
+        fd.append(el.name, el.value);
+    });
+    return fd;
+}
 
 async function postLibraryUpload(form, file, signal, onProgress) {
     const safeName = librarySafeDocxFilename(file.name);
@@ -257,7 +277,7 @@ async function postLibraryUpload(form, file, signal, onProgress) {
     };
 
     if (file.size <= LIBRARY_UPLOAD_CHUNK_BYTES) {
-        const fd = new FormData(form);
+        const fd = libraryUploadFields(form);
         fd.set('file', file, safeName);
         if (typeof onProgress === 'function') onProgress(1, 1);
         return sendPart(fd, file.size);
@@ -268,7 +288,7 @@ async function postLibraryUpload(form, file, signal, onProgress) {
     let last = null;
     for (let i = 0; i < total; i++) {
         const blob = file.slice(i * LIBRARY_UPLOAD_CHUNK_BYTES, (i + 1) * LIBRARY_UPLOAD_CHUNK_BYTES);
-        const fd = new FormData(form);
+        const fd = libraryUploadFields(form);
         fd.set('file', blob, safeName);
         fd.set('chunk_index', String(i));
         fd.set('chunk_total', String(total));
@@ -1867,7 +1887,10 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
                 setFeedbackHtml(feedback, false, libraryUploadTransportMessage(res.status));
                 return;
             }
-            setFeedbackHtml(feedback, false, firstErrorMessage(data, 'Upload failed. Use a Word .docx and try again.'));
+            setFeedbackHtml(feedback, false, librarySizeAwareUploadMessage(
+                file.size,
+                firstErrorMessage(data, 'The article could not be uploaded. Please try again.')
+            ));
             return;
         }
         libraryUploadAbort = null;
