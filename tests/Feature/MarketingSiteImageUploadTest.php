@@ -12,6 +12,7 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
@@ -89,6 +90,43 @@ class MarketingSiteImageUploadTest extends TestCase
             ?? Category::query()->firstOrFail())->name;
     }
 
+    /**
+     * @return array<string, mixed>
+     */
+    private function staffCreatePayload(string $domain, UploadedFile $file): array
+    {
+        return [
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'WebP Cover '.$domain,
+            'site_url' => 'https://'.$domain,
+            'example_url' => 'https://'.$domain.'/sample',
+            'da' => 40,
+            'dr' => 45,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'categories' => $this->nicheName(),
+            'price' => 99,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Quality editorial site for guest posts. ', 4),
+            'site_tag' => 'as_you_prefer',
+            'site_image' => $file,
+        ];
+    }
+
+    private function assertCoverStoredAsWebp(?string $path): void
+    {
+        $this->assertNotEmpty($path);
+        $this->assertStringStartsWith('sites/', (string) $path);
+        Storage::disk('public')->assertExists((string) $path);
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', (string) $path);
+            $this->assertStringStartsWith('RIFF', Storage::disk('public')->get((string) $path));
+        }
+    }
+
     public function test_marketer_cannot_upload_image_for_live_site(): void
     {
         $site = $this->makeSite([
@@ -124,6 +162,9 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertNotEmpty($site->site_image);
         $this->assertStringStartsWith('sites/', $site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $site->site_image);
+        }
     }
 
     public function test_marketer_can_attach_image_via_site_update(): void
@@ -133,7 +174,7 @@ class MarketingSiteImageUploadTest extends TestCase
             'dr' => 12,
             'traffic' => 900,
         ]);
-        $file = UploadedFile::fake()->image('from-edit.webp', 400, 300);
+        $file = UploadedFile::fake()->image('from-edit.jpg', 400, 300);
 
         $this->actingAs($this->marketer)
             ->put(route('marketing.sites.update', $site->id), [
@@ -152,9 +193,7 @@ class MarketingSiteImageUploadTest extends TestCase
 
         $site->refresh();
         $this->assertSame(33, (int) $site->da);
-        $this->assertNotEmpty($site->site_image);
-        $this->assertStringStartsWith('sites/', $site->site_image);
-        Storage::disk('public')->assertExists($site->site_image);
+        $this->assertCoverStoredAsWebp($site->site_image);
         // Restricted fields stay untouched.
         $this->assertSame('Image Upload Site', $site->site_name);
         $this->assertSame('https://image-upload.example', $site->site_url);
@@ -185,6 +224,81 @@ class MarketingSiteImageUploadTest extends TestCase
         $this->assertSame('sites/existing-cover.webp', $site->fresh()->site_image);
     }
 
+    public function test_admin_create_converts_png_cover_to_webp(): void
+    {
+        Mail::fake();
+        $file = UploadedFile::fake()->image('admin-create-cover.png', 640, 400);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.sites.store'), $this->staffCreatePayload('admin-create-webp.example', $file))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $site = Site::query()->where('domain', 'admin-create-webp.example')->first();
+        $this->assertNotNull($site);
+        $this->assertCoverStoredAsWebp($site->site_image);
+    }
+
+    public function test_marketer_create_converts_jpeg_cover_to_webp(): void
+    {
+        Mail::fake();
+        $file = UploadedFile::fake()->image('marketer-create-cover.jpg', 640, 400);
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.sites.store'), $this->staffCreatePayload('marketer-create-webp.example', $file))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $site = Site::query()->where('domain', 'marketer-create-webp.example')->first();
+        $this->assertNotNull($site);
+        $this->assertCoverStoredAsWebp($site->site_image);
+    }
+
+    public function test_admin_update_converts_png_cover_to_webp(): void
+    {
+        $site = $this->makeSite([
+            'domain' => 'admin-update-webp.example',
+            'site_url' => 'https://admin-update-webp.example',
+        ]);
+        $file = UploadedFile::fake()->image('admin-update-cover.png', 480, 300);
+
+        $this->actingAs($this->admin)
+            ->put(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => $file,
+            ])
+            ->assertRedirect(route('admin.sites.edit', $site->id));
+
+        $site->refresh();
+        $this->assertCoverStoredAsWebp($site->site_image);
+    }
+
+    public function test_marketer_update_rejects_non_stored_site_image_string(): void
+    {
+        $site = $this->makeSite([
+            'site_image' => 'sites/existing-cover.webp',
+            'da' => 10,
+            'dr' => 12,
+            'traffic' => 900,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->putJson(route('marketing.sites.update', $site->id), [
+                'da' => 33,
+                'dr' => 44,
+                'traffic' => 5000,
+                'language' => 'de',
+                'country' => 'de',
+                'categories' => [$this->nicheName()],
+                'site_image' => 'https://evil.example/cover.webp',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_image']);
+
+        $this->assertSame('sites/existing-cover.webp', $site->fresh()->site_image);
+    }
+
     public function test_admin_upload_image_endpoint_still_persists_site_image(): void
     {
         $site = $this->makeSite(['domain' => 'admin-image.example', 'site_url' => 'https://admin-image.example']);
@@ -201,6 +315,10 @@ class MarketingSiteImageUploadTest extends TestCase
         $site->refresh();
         $this->assertNotEmpty($site->site_image);
         Storage::disk('public')->assertExists($site->site_image);
+        if (function_exists('imagewebp')) {
+            $this->assertStringEndsWith('.webp', $site->site_image);
+            $this->assertStringEndsWith('.webp', (string) $response->json('image_path'));
+        }
 
         $imageUrl = (string) $response->json('image_url');
         $this->assertStringContainsString('/admin/sites/media/sites/', $imageUrl);

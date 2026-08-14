@@ -2010,7 +2010,7 @@ class InAppNotificationService
             $publisherId,
             self::TYPE_SITE_STATUS,
             'Please accept a website we added for you',
-            "Our team added {$domain}. Accept it to show the listing in My Sites. You can still verify ownership with the TXT file for the Verified badge.",
+            "Our team added {$domain}. Accept it to show the listing in My Sites. After Accept it goes to staff review — Verified and catalog Activate are separate steps.",
             [
                 'category' => self::CATEGORY_ACCOUNT,
                 'icon' => 'check-circle',

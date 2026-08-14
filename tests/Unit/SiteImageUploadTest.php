@@ -24,4 +24,28 @@ class SiteImageUploadTest extends TestCase
     {
         $this->assertGreaterThan(0, SiteImageUpload::phpUploadMaxKilobytes());
     }
+
+    public function test_normalize_stored_path_accepts_sites_covers(): void
+    {
+        $this->assertSame('sites/existing-cover.webp', SiteImageUpload::normalizeStoredPath('sites/existing-cover.webp'));
+        $this->assertSame('sites/existing.jpg', SiteImageUpload::normalizeStoredPath('/sites/existing.jpg'));
+        $this->assertSame('sites/nested/cover.PNG', SiteImageUpload::normalizeStoredPath('sites/nested/cover.PNG'));
+    }
+
+    public function test_normalize_stored_path_rejects_unsafe_values(): void
+    {
+        $this->assertNull(SiteImageUpload::normalizeStoredPath(''));
+        $this->assertNull(SiteImageUpload::normalizeStoredPath('not-a-path'));
+        $this->assertNull(SiteImageUpload::normalizeStoredPath('sites/../secret.webp'));
+        $this->assertNull(SiteImageUpload::normalizeStoredPath('https://evil.example/cover.webp'));
+        $this->assertNull(SiteImageUpload::normalizeStoredPath('sites/cover.pdf'));
+    }
+
+    public function test_field_rules_allow_stored_path_when_no_file(): void
+    {
+        $rules = SiteImageUpload::fieldRules(false);
+        $this->assertIsArray($rules);
+        $this->assertContains('nullable', $rules);
+        $this->assertContains('regex:'.SiteImageUpload::STORED_PATH_REGEX, $rules);
+    }
 }

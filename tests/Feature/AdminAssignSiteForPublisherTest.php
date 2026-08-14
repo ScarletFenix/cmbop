@@ -79,6 +79,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Quality editorial site for guest posts. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ]);
 
         $response->assertRedirect();
@@ -86,6 +87,9 @@ class AdminAssignSiteForPublisherTest extends TestCase
 
         $site = Site::where('domain', 'staff-added-news.example')->first();
         $this->assertNotNull($site);
+        $location = (string) $response->headers->get('Location');
+        $this->assertStringContainsString('publisher='.$this->publisher->id, $location);
+        $this->assertStringContainsString('site='.$site->id, $location);
         $this->assertSame((int) $this->publisher->id, (int) $site->publisher_id);
         $this->assertSame((int) $this->admin->id, (int) $site->assigned_by_user_id);
         $this->assertNull($site->publisher_accepted_at);
@@ -104,7 +108,11 @@ class AdminAssignSiteForPublisherTest extends TestCase
             }
             $mail->build();
 
-            return str_contains((string) ($mail->viewData['acceptUrl'] ?? ''), 'status=invites');
+            $html = $mail->render();
+
+            return str_contains((string) ($mail->viewData['acceptUrl'] ?? ''), 'status=invites')
+                && str_contains($html, 'Catalog Activate is not automatic')
+                && ! str_contains($html, 'Our team can activate it for the catalog when ready');
         });
 
         $bell = InAppNotification::query()
@@ -113,6 +121,8 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->first();
         $this->assertNotNull($bell);
         $this->assertStringContainsString('status=invites', (string) $bell->action_url);
+        $this->assertStringContainsString('staff review', (string) $bell->message);
+        $this->assertStringNotContainsString('You can still verify ownership with the TXT file', (string) $bell->message);
 
         $this->actingAs($this->publisher)
             ->get(route('publisher.sites.ajax', ['status' => 'pending']))
@@ -284,6 +294,7 @@ class AdminAssignSiteForPublisherTest extends TestCase
             'link_type' => 'dofollow',
             'description' => str_repeat('Metrics coerce site description text. ', 4),
             'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
         ])->assertRedirect();
 
         $site = Site::where('domain', 'metrics-coerce.example')->first();
@@ -342,5 +353,29 @@ class AdminAssignSiteForPublisherTest extends TestCase
             ->assertOk()
             ->assertSee('No site invites waiting', false)
             ->assertSee('Accept / Decline', false);
+    }
+
+    public function test_admin_create_page_uses_verify_first_copy_and_posts_language(): void
+    {
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.sites.create'))
+            ->assertOk()
+            ->assertSee('Add site for publisher', false)
+            ->assertSee('catalog Activate is not automatic', false)
+            ->assertSee('Accept ≠ Verified', false)
+            ->assertDontSee('Activate / Deactivate as usual', false)
+            ->assertSee('id="selectedLanguage"', false)
+            ->assertSee('name="language"', false)
+            ->assertSee('Select a language', false)
+            ->assertSee('data-max-kb', false)
+            ->assertSee('Site image must be under', false)
+            ->assertSee('id="publisherFilter"', false)
+            ->assertSee('written_request', false)
+            ->assertSee('This emails and bells the publisher', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('required disabled', $html);
+        $this->assertMatchesRegularExpression('/<select[^>]+id="language"[^>]*required/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<select[^>]+id="language"[^>]*disabled/', $html);
     }
 }

@@ -108,6 +108,8 @@ class PublicCopyIntegrityTest extends TestCase
                 'privacy_section_staff_assisted_title',
                 'privacy_section5_list1_4',
                 'staff_handbook_title',
+                'staff_handbook_section2_list4',
+                'staff_handbook_section2_list5',
                 'staff_handbook_section3_list1',
                 'staff_handbook_section6_title',
                 'staff_handbook_section6_list1',
