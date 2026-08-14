@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
+use App\Models\User;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
@@ -85,12 +86,6 @@ class OrderController extends Controller
             $site = $item?->site;
             $publisher = $site?->publisher;
             $liveUrl = $order->items->first(fn (OrderItem $line) => filled($line->live_url))?->live_url;
-            $userUrl = $order->user
-                ? route('admin.users.index').'#user-'.$order->user->id
-                : null;
-            $publisherUrl = $publisher
-                ? route('admin.users.index').'#user-'.$publisher->id
-                : null;
 
             return [
                 'id' => $order->id,
@@ -106,7 +101,7 @@ class OrderController extends Controller
                     'id' => $order->user->id,
                     'name' => $order->user->name,
                     'email' => $order->user->email,
-                    'url' => $userUrl,
+                    'url' => $this->adminUserUrl($order->user),
                 ] : null,
                 'site_name' => $item?->site_name ?: ($site?->site_name),
                 'site_admin_url' => $site ? route('admin.sites.edit', $site->id) : null,
@@ -114,7 +109,7 @@ class OrderController extends Controller
                 'publisher' => $publisher ? [
                     'id' => $publisher->id,
                     'name' => $publisher->name,
-                    'url' => $publisherUrl,
+                    'url' => $this->adminUserUrl($publisher),
                 ] : null,
                 'live_url' => $liveUrl,
                 'has_open_dispute' => OrderItemDispute::tableAvailable()
@@ -269,5 +264,14 @@ class OrderController extends Controller
 
             abort(404, 'Content file not found.');
         }
+    }
+
+    private function adminUserUrl(?User $user): ?string
+    {
+        if (! $user) {
+            return null;
+        }
+
+        return route('admin.users.index', ['user' => $user->id]).'#user-'.$user->id;
     }
 }

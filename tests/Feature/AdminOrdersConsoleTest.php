@@ -601,8 +601,8 @@ class AdminOrdersConsoleTest extends TestCase
             'reason' => 'Live link was removed after approval.',
         ]);
 
-        $advertiserUrl = route('admin.users.index').'#user-'.$advertiser->id;
-        $publisherUrl = route('admin.users.index').'#user-'.$publisher->id;
+        $advertiserUrl = route('admin.users.index', ['user' => $advertiser->id]).'#user-'.$advertiser->id;
+        $publisherUrl = route('admin.users.index', ['user' => $publisher->id]).'#user-'.$publisher->id;
         $siteUrl = route('admin.sites.edit', $site->id);
 
         $this->actingAs($admin)

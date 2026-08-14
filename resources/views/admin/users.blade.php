@@ -663,7 +663,7 @@ function updateRoleBadges(id, roles, activeRole, canActivateSites = false){
     }
 })();
 
-// Deep-link from payout queue: /admin/users#user-{id}
+// Deep-link from Orders / finance: /admin/users?user={id}#user-{id}
 (function openUserFromHash() {
     const hash = window.location.hash || '';
     const match = hash.match(/^#user-(\d+)$/);
