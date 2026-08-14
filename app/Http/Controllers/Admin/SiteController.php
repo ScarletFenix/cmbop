@@ -836,21 +836,21 @@ class SiteController extends Controller
         $site = null;
         $publisherId = (int) $request->input('publisher_id');
 
-        try {
-            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$site) {
-                $site = new Site;
+        $imagePath = null;
+        if ($request->hasFile('site_image')) {
+            $stored = $this->storeStaffSiteImage($request->file('site_image'));
+            if ($stored === null) {
+                throw ValidationException::withMessages([
+                    'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                ]);
+            }
+            PublicStorageLink::ensure();
+            $imagePath = $stored;
+        }
 
-                $imagePath = null;
-                if ($request->hasFile('site_image')) {
-                    $stored = $this->storeStaffSiteImage($request->file('site_image'));
-                    if ($stored === null) {
-                        throw ValidationException::withMessages([
-                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
-                        ]);
-                    }
-                    PublicStorageLink::ensure();
-                    $imagePath = $stored;
-                }
+        try {
+            DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
+                $site = new Site;
 
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
@@ -920,6 +920,8 @@ class SiteController extends Controller
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
                 }
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Staff site-for-publisher store failed', [
                 'publisher_id' => $publisherId,
@@ -979,8 +981,14 @@ class SiteController extends Controller
             }
         }
 
+        if (! $site) {
+            return redirect()->back()
+                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withInput();
+        }
+
         $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.';
-        if ($site && ! $site->hasGoodMetrics()) {
+        if (! $site->hasGoodMetrics()) {
             $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
         }
 
@@ -1551,6 +1559,16 @@ class SiteController extends Controller
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $canFixListing = ! $this->marketingListingIsLocked($site);
+
+        $metrics = [];
+        foreach (['da', 'dr', 'traffic'] as $metric) {
+            if ($request->exists($metric)) {
+                $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
+            }
+        }
+        if ($metrics !== []) {
+            $request->merge($metrics);
+        }
 
         if ($canFixListing) {
             if ($request->exists('site_url') || $request->exists('siteUrl')) {
