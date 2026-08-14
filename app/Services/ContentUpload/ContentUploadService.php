@@ -23,10 +23,17 @@ class ContentUploadService
     public const MAX_KILOBYTES = 10240;
 
     /**
-     * Slice size for library uploads. Hostinger LiteSpeed often still drops a
-     * 5 MB body at the default 2M pipe even when .user.ini already says 64M.
+     * Slice size the browser should send. Hostinger LiteSpeed often still
+     * drops a 5 MB body at the default 2M pipe even when .user.ini says 64M.
+     * 512 KB leaves room for multipart headers without approaching 2M.
      */
-    public const CHUNK_KILOBYTES = 1536;
+    public const CHUNK_KILOBYTES = 512;
+
+    /** Accept older clients that still slice at 1.5 MB. */
+    public const MAX_RECEIVE_CHUNK_KILOBYTES = 1536;
+
+    /** 10 MB / 512 KB = 20 slices; keep headroom for retries and smaller slices. */
+    public const MAX_CHUNKS = 32;
 
     /** Editor / draft HTML cap. Quill inflates markup; 500k rejected real 10 MB articles. */
     public const PREVIEW_HTML_MAX_CHARS = 8000000;
@@ -581,20 +588,20 @@ class ContentUploadService
      * PHP rejected the file before Laravel saw the bytes (UPLOAD_ERR_INI_SIZE /
      * FORM_SIZE / empty body after post_max_size).
      *
-     * Never blame the 10 MB article cap when the browser already reported a
-     * file at or under that cap. ini_get() can read 64M from .user.ini while
-     * LiteSpeed still enforces 2M; a 5.4 MB .docx then looks "over 10 MB".
-     * The cap sentence is only when we do not know the client size.
+     * Never blame the 10 MB article cap unless the browser file is actually
+     * over it. A dropped 5.4 MB body often arrives with no size hint; saying
+     * “under 10 MB” is wrong and hides the real host/pipe failure.
      */
     public function phpSizeRejectedMessage(?array $cfg = null, ?int $clientFileBytes = null): string
     {
-        $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
         $cap = self::MAX_KILOBYTES * 1024;
-        if ($clientFileBytes !== null && $clientFileBytes > 0 && $clientFileBytes <= $cap) {
-            return 'The article could not be uploaded. Please try again.';
+        if ($clientFileBytes !== null && $clientFileBytes > $cap) {
+            $appMb = PhpIniSize::megabytesLabel($this->effectiveMaxKilobytes($cfg));
+
+            return 'That file is over the '.$appMb.' MB limit.';
         }
 
-        return 'The article could not be uploaded. Use a Word .docx under '.$appMb.' MB and try again.';
+        return 'The article could not be uploaded. Please try again.';
     }
 
     public function phpImageRejectedMessage(): string
@@ -685,6 +692,7 @@ class ContentUploadService
             $this->maxPositiveInt([
                 $request->header('X-Upload-Bytes'),
                 $request->query('client_bytes'),
+                $request->input('client_bytes'),
             ]),
         ];
     }
@@ -813,7 +821,7 @@ class ContentUploadService
         $uploadId = strtolower(trim(scalar_text($request->input('upload_id'))));
         $file = $request->file('file');
 
-        if ($total < 2 || $total > 16 || $index < 0 || $index >= $total) {
+        if ($total < 2 || $total > self::MAX_CHUNKS || $index < 0 || $index >= $total) {
             return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
         }
 
@@ -829,7 +837,7 @@ class ContentUploadService
             ];
         }
 
-        if ($file->getSize() > self::CHUNK_KILOBYTES * 1024) {
+        if ($file->getSize() > self::MAX_RECEIVE_CHUNK_KILOBYTES * 1024) {
             return ['ok' => false, 'message' => 'The article could not be uploaded. Please try again.'];
         }
 

@@ -1184,7 +1184,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function postLibraryUpload', $js);
         $this->assertStringContainsString('function librarySafeDocxFilename', $js);
         $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
-        $this->assertStringContainsString("fd.set('file', file, safeName)", $js);
+        $this->assertStringContainsString('function libraryUploadPartData', $js);
+        $this->assertStringContainsString("fd.set('file', filePart, LIBRARY_UPLOAD_PART_NAME)", $js);
+        $this->assertStringContainsString('function libraryUploadFields', $js);
+        $this->assertStringContainsString('function librarySizeAwareUploadMessage', $js);
         $this->assertStringContainsString('function firstErrorMessage', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
         $this->assertStringContainsString('function resetLibraryUploadUi', $js);
@@ -1216,6 +1219,10 @@ class ContentLibraryImprovementsTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Max 10 MB', $html);
+        $this->assertStringContainsString('-c512', $html);
+        $this->assertSame(512, ContentUploadService::CHUNK_KILOBYTES);
+        $this->assertSame(1536, ContentUploadService::MAX_RECEIVE_CHUNK_KILOBYTES);
+        $this->assertSame(32, ContentUploadService::MAX_CHUNKS);
         $this->assertStringNotContainsString('Max 2 MB', $html);
         $this->assertStringNotContainsString('Max 5 MB', $html);
         $this->assertStringNotContainsString('server PHP still allows only', $html);
@@ -1253,6 +1260,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('memory_limit', $htaccess);
         $this->assertStringNotContainsString('max_execution_time', $htaccess);
         $this->assertStringContainsString('LimitRequestBody 67108864', $htaccess);
+        $this->assertStringContainsString('content-library\\.js$', $htaccess);
+        $this->assertStringContainsString('Cache-Control', $htaccess);
         $this->assertDoesNotMatchRegularExpression(
             '/^php_value /m',
             $htaccess,
@@ -1281,7 +1290,13 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function postLibraryUpload', $js);
         $this->assertStringContainsString('function librarySafeDocxFilename', $js);
         $this->assertStringContainsString('LIBRARY_UPLOAD_CHUNK_BYTES', $js);
-        $this->assertStringContainsString('1536 * 1024', $js);
+        $this->assertStringContainsString('512 * 1024', $js);
+        $this->assertStringContainsString("LIBRARY_UPLOAD_PART_NAME = 'article.docx'", $js);
+        $this->assertStringContainsString('function libraryUploadPartData', $js);
+        $this->assertStringContainsString('function libraryUploadFields', $js);
+        $this->assertStringContainsString('function librarySizeAwareUploadMessage', $js);
+        $this->assertStringContainsString('librarySizeAwareUploadMessage(bytes, message)', $js);
+        $this->assertStringContainsString('if (el.type === \'file\') return;', $js);
         $this->assertStringContainsString('.slice(0, 200)', $js);
         $this->assertStringContainsString('last.data.chunk_received || !last.data.submission', $js);
         $this->assertStringContainsString('function libraryUrlWithClientBytes', $js);
@@ -1332,6 +1347,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('Drop a .docx', $message);
         $this->assertStringNotContainsString('country', strtolower($message));
         $this->assertStringNotContainsString('That file is over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('under 10 MB', $message);
+        $this->assertStringContainsString('Please try again', $message);
     }
 
     public function test_missing_file_with_client_bytes_and_no_content_length_is_not_a_missing_file(): void
@@ -1639,6 +1656,106 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertStringContainsString($site->site_name, $details);
         $this->assertStringNotContainsString('Website ·', $details);
+    }
+
+    public function test_library_upload_accepts_chunked_docx(): void
+    {
+        Storage::fake('local');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/chunk-src-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path, str_repeat('Useful editorial content about productivity software for busy teams. ', 80));
+        $bytes = (string) file_get_contents($path);
+        @unlink($path);
+        $this->assertGreaterThan(200, strlen($bytes));
+
+        $mid = (int) intdiv(strlen($bytes), 2);
+        $uploadId = '11111111-1111-4111-8111-111111111111';
+        $partOne = sys_get_temp_dir().'/chunk-a-'.uniqid('', true).'.docx';
+        $partTwo = sys_get_temp_dir().'/chunk-b-'.uniqid('', true).'.docx';
+        file_put_contents($partOne, substr($bytes, 0, $mid));
+        file_put_contents($partTwo, substr($bytes, $mid));
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($partOne, 'article.docx', 'application/octet-stream', null, true),
+                'country' => 'ch',
+                'language' => 'de',
+                'title' => 'AUTODOC delivery',
+                'chunk_index' => 0,
+                'chunk_total' => 2,
+                'upload_id' => $uploadId,
+                'original_filename' => "letemps.ch How AUTODOC is solving Europe's long-tail delivery.docx",
+                'client_bytes' => (string) strlen($bytes),
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('chunk_received', true)
+            ->assertJsonPath('received', 1)
+            ->assertJsonPath('total', 2);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($partTwo, 'article.docx', 'application/octet-stream', null, true),
+                'country' => 'ch',
+                'language' => 'de',
+                'title' => 'AUTODOC delivery',
+                'chunk_index' => 1,
+                'chunk_total' => 2,
+                'upload_id' => $uploadId,
+                'original_filename' => "letemps.ch How AUTODOC is solving Europe's long-tail delivery.docx",
+                'client_bytes' => (string) strlen($bytes),
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonMissingPath('chunk_received');
+
+        $this->assertDatabaseHas('content_submissions', [
+            'user_id' => $advertiser->id,
+            'title' => 'AUTODOC delivery',
+            'country' => 'ch',
+            'language' => 'de',
+        ]);
+
+        $stored = ContentSubmission::query()
+            ->where('user_id', $advertiser->id)
+            ->where('title', 'AUTODOC delivery')
+            ->first();
+        $this->assertNotNull($stored);
+        $this->assertSame('letemps.ch How AUTODOC is solving Europes long-tail delivery.docx', $stored->original_filename);
+
+        @unlink($partOne);
+        @unlink($partTwo);
+    }
+
+    public function test_library_upload_last_chunk_without_the_rest_fails(): void
+    {
+        Storage::fake('local');
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/chunk-only-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path);
+        $bytes = (string) file_get_contents($path);
+        @unlink($path);
+        $mid = (int) intdiv(strlen($bytes), 2);
+        $partTwo = sys_get_temp_dir().'/chunk-only-b-'.uniqid('', true).'.docx';
+        file_put_contents($partTwo, substr($bytes, $mid));
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile($partTwo, 'article.docx', 'application/octet-stream', null, true),
+                'country' => 'us',
+                'language' => 'en',
+                'chunk_index' => 1,
+                'chunk_total' => 2,
+                'upload_id' => '11111111-1111-4111-8111-111111111111',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'The article could not be uploaded. Please try again.');
+
+        @unlink($partTwo);
     }
 
     public function test_library_upload_array_country_does_not_500(): void
