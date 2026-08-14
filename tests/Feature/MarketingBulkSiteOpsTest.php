@@ -673,4 +673,28 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
         $this->assertSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
     }
+
+    public function test_sheet_sent_cannot_rewind_a_live_batch(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $bulk->update(['status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER]);
+        $this->seedDraft($bulk, 'sheet-rewind.example');
+
+        $this->assertFalse($bulk->fresh()->canMarkSheetSent());
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Mark sheet emailed (optional)', $html);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.sheet-sent', $bulk))
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('error', 'Sheet emailed can only be marked before drafts are added.');
+
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+    }
 }

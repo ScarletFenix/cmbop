@@ -33,17 +33,20 @@ class BulkSiteRequestController extends Controller
                 'sites',
                 'sites as awaiting_details_count' => fn ($q) => $q->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS),
                 'sites as ready_count' => fn ($q) => $q->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW),
+                'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
             ])
             ->latest();
 
         MarketingOpsQueues::applyBulkIndexStatus($query, $status);
 
         $requests = $query->paginate(20)->withQueryString();
+        $selectedStatus = $status !== '' ? $status : 'all';
 
         return view('admin.bulk-site-requests.index', [
             'requests' => $requests,
-            'status' => $status !== '' ? $status : 'all',
-            'openCount' => MarketingOpsQueues::openBulkForMarketer()->count(),
+            'status' => $selectedStatus,
+            'filtersActive' => $selectedStatus !== 'all',
+            'waitingOnYouCount' => MarketingOpsQueues::bulkWaitingOnMarketer()->count(),
         ]);
     }
 
@@ -92,8 +95,8 @@ class BulkSiteRequestController extends Controller
     {
         $bulkRequest = BulkSiteRequest::findOrFail($id);
 
-        if ($bulkRequest->status === BulkSiteRequest::STATUS_CANCELLED) {
-            return back()->with('error', 'This request was cancelled.');
+        if (! $bulkRequest->canMarkSheetSent()) {
+            return back()->with('error', 'Sheet emailed can only be marked before drafts are added.');
         }
 
         $bulkRequest->forceFill([
