@@ -74,6 +74,14 @@ class ContentLibraryLiveSearchTest extends TestCase
             '/libraryIndexUrl:\s*["\']https?:/',
             $html
         );
+        $this->assertDoesNotMatchRegularExpression(
+            '/libraryUpdateUrl:\s*["\']https?:/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/uploadUrl:\s*["\']https?:/',
+            $html
+        );
     }
 
     public function test_word_and_requires_every_token_on_title_or_filename(): void

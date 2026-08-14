@@ -2,20 +2,6 @@
 (function () {
 'use strict';
 const boot = window.ContentLibraryBoot || {};
-const libraryUpdateUrl = boot.libraryUpdateUrl;
-const libraryContentUrl = boot.libraryContentUrl;
-const libraryImageUploadUrl = boot.libraryImageUploadUrl;
-const libraryPreviewUrlBase = boot.libraryPreviewUrlBase;
-const libraryCsrf = boot.libraryCsrf;
-const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
-const libraryCountryLanguageMap = boot.libraryCountryLanguageMap || {};
-const libraryPreferredCountry = boot.libraryPreferredCountry || '';
-const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
-const libraryUploadsEnabled = !!boot.uploadsEnabled;
-const libraryOpenUpload = !!boot.openUpload;
-const libraryEditSubmission = boot.editSubmission || null;
-const libraryIndexUrl = boot.libraryIndexUrl || '';
-const libraryResultsUrl = boot.libraryResultsUrl || '';
 
 function librarySameOriginPath(url, fallback) {
     if (!url) return fallback || '';
@@ -26,6 +12,22 @@ function librarySameOriginPath(url, fallback) {
         return fallback || '';
     }
 }
+
+const libraryUpdateUrl = librarySameOriginPath(boot.libraryUpdateUrl, '/advertiser/content-submissions');
+const libraryContentUrl = librarySameOriginPath(boot.libraryContentUrl, '/advertiser/content-submissions');
+const libraryImageUploadUrl = librarySameOriginPath(boot.libraryImageUploadUrl, '');
+const libraryPreviewUrlBase = librarySameOriginPath(boot.libraryPreviewUrlBase, '/advertiser/content-submissions');
+const libraryCsrf = boot.libraryCsrf;
+const libraryLanguageCountryMap = boot.libraryLanguageCountryMap || {};
+const libraryCountryLanguageMap = boot.libraryCountryLanguageMap || {};
+const libraryPreferredCountry = boot.libraryPreferredCountry || '';
+const libraryPreferredLanguage = boot.libraryPreferredLanguage || '';
+const libraryUploadsEnabled = !!boot.uploadsEnabled;
+const libraryOpenUpload = !!boot.openUpload;
+const libraryEditSubmission = boot.editSubmission || null;
+const libraryIndexUrl = librarySameOriginPath(boot.libraryIndexUrl, '');
+const libraryResultsUrl = librarySameOriginPath(boot.libraryResultsUrl, '');
+const libraryUploadUrl = librarySameOriginPath(boot.uploadUrl, '');
 
 let articleQuill = null;
 let articleEditorSubmissionId = null;
@@ -1665,7 +1667,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
 
     let openedEditor = false;
     try {
-        const res = await fetch(boot.uploadUrl, {
+        if (!libraryUploadUrl) {
+            setFeedbackHtml(feedback, false, 'Upload URL is missing');
+            return;
+        }
+        const res = await fetch(libraryUploadUrl, {
             method: 'POST',
             headers: { 'X-CSRF-TOKEN': libraryCsrf, 'Accept': 'application/json' },
             body: fd,

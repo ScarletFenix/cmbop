@@ -285,10 +285,10 @@
 <script src="{{ asset('assets/js/article-preview-tools.js') }}?v={{ @filemtime(public_path('assets/js/article-preview-tools.js')) ?: '1' }}"></script>
 <script>
 window.ContentLibraryBoot = {
-    libraryUpdateUrl: @json(url('/advertiser/content-submissions')),
-    libraryContentUrl: @json(url('/advertiser/content-submissions')),
-    libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image')),
-    libraryPreviewUrlBase: @json(url('/advertiser/content-submissions')),
+    libraryUpdateUrl: @json(parse_url(url('/advertiser/content-submissions'), PHP_URL_PATH) ?: '/advertiser/content-submissions'),
+    libraryContentUrl: @json(parse_url(url('/advertiser/content-submissions'), PHP_URL_PATH) ?: '/advertiser/content-submissions'),
+    libraryImageUploadUrl: @json(route('advertiser.content-submissions.editor-image', absolute: false)),
+    libraryPreviewUrlBase: @json(parse_url(url('/advertiser/content-submissions'), PHP_URL_PATH) ?: '/advertiser/content-submissions'),
     libraryCsrf: @json(csrf_token()),
     libraryLanguageCountryMap: @json($languageCountryMap ?? new \stdClass()),
     libraryCountryLanguageMap: @json($countryLanguageMap ?? new \stdClass()),
@@ -296,7 +296,7 @@ window.ContentLibraryBoot = {
     libraryPreferredLanguage: @json(strtolower((string) ($editSubmission?->language ?? ''))),
     uploadsEnabled: @json(!empty($uploadsEnabled)),
     openUpload: @json(!empty($openUpload)),
-    uploadUrl: @json(route('advertiser.content-library.upload')),
+    uploadUrl: @json(route('advertiser.content-library.upload', absolute: false)),
     libraryIndexUrl: @json(route('advertiser.content-library', absolute: false)),
     libraryResultsUrl: @json(route('advertiser.content-library.results', absolute: false)),
     editSubmission: @json($editSubmissionBoot ?? null),

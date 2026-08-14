@@ -125,7 +125,9 @@ class SitewideLiveSearchFlowTest extends TestCase
         $this->assertStringContainsString('fetchLibraryResults', $libraryJs);
         $this->assertStringContainsString('librarySameOriginPath', $libraryJs);
         $this->assertStringContainsString('syncLibraryFiltersFromParams', $libraryJs);
+        $this->assertStringContainsString('libraryUploadUrl', $libraryJs);
         $this->assertStringContainsString("route('advertiser.content-library.results', absolute: false)", $library);
+        $this->assertStringContainsString("route('advertiser.content-library.upload', absolute: false)", $library);
     }
 
     public function test_shared_search_field_component_has_catalog_chrome(): void
