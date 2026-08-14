@@ -1709,20 +1709,9 @@ class SiteController extends Controller
             // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
 
-            if ($activating && $site->isPendingPublisherAcceptance()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'This site is waiting for the publisher to accept it into My Sites.',
-                ], 422);
-            }
-
             $isMarketingActor = (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
 
-            // Heal complete drafts. Admin may still force-activate incomplete
-            // awaiting_details; marketing cannot publish unfinished listings.
             if ($activating) {
-                $site->promoteFromAwaitingDetailsIfComplete();
-                $site->refresh();
                 if ($isMarketingActor && $site->isPendingPublisherBulkSubmit()) {
                     return response()->json([
                         'success' => false,
@@ -1732,23 +1721,12 @@ class SiteController extends Controller
                     ], 422);
                 }
 
-                if ($site->awaitsPublisherDetails()) {
-                    $site->clearAwaitingDetailsForAdmin();
-                    $site->refresh();
-                }
-
-                if ($isMarketingActor && $site->isArchived()) {
+                $block = $site->activationBlockReason();
+                if ($block !== null) {
                     return response()->json([
                         'success' => false,
-                        'message' => 'This listing is archived and cannot be activated.',
-                    ], 422);
-                }
-
-                if ($isMarketingActor && ! $site->hasMarketplaceCountry()) {
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Set a marketplace country before activating. This listing will not appear in country filters without one.',
-                        'missing_market' => true,
+                        'message' => $block,
+                        'missing_market' => ! $site->hasMarketplaceCountry(),
                     ], 422);
                 }
 
