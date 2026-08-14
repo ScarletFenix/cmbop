@@ -409,6 +409,65 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertDontSee('Deactivated site (1)', false);
     }
 
+    public function test_history_search_matches_subtitle_task_stems(): void
+    {
+        $rows = [
+            ['bulk_request.seeded', 'Created 2 draft listings for bulk #9', 'Northwind Drafts'],
+            ['site.updated', 'Staff changed niches', 'Niche Change Listing'],
+            ['site.activated', 'Staff made the listing live', 'Live Target'],
+            ['site.deactivated', 'Staff deactivated site "Offline Target"', 'Offline Target'],
+            ['site.assigned_for_acceptance', 'Handed listing to publisher', 'Publisher Handoff'],
+            ['site.deleted_by_marketing', 'Removed a pending leftover', 'Pending Leftover'],
+        ];
+
+        foreach ($rows as [$action, $description, $label]) {
+            ActivityLog::create([
+                'user_id' => $this->marketer->id,
+                'user_name' => $this->marketer->name,
+                'user_email' => $this->marketer->email,
+                'role' => 'marketing',
+                'action' => $action,
+                'description' => $description,
+                'subject_label' => $label,
+            ]);
+        }
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'Seed']))
+            ->assertOk()
+            ->assertSee('Northwind Drafts', false)
+            ->assertSee('Seeded / added sites (1)', false)
+            ->assertDontSee('Niche Change Listing', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'edit']))
+            ->assertOk()
+            ->assertSee('Niche Change Listing', false)
+            ->assertSee('Edited site (1)', false)
+            ->assertDontSee('Northwind Drafts', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'activate']))
+            ->assertOk()
+            ->assertSee('Live Target', false)
+            ->assertSee('Activated site (1)', false)
+            ->assertSee('Deactivated site (0)', false)
+            ->assertDontSee('Offline Target', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'assign']))
+            ->assertOk()
+            ->assertSee('Publisher Handoff', false)
+            ->assertDontSee('Pending Leftover', false);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', ['q' => 'delete']))
+            ->assertOk()
+            ->assertSee('Pending Leftover', false)
+            ->assertSee('Deleted pending site (1)', false)
+            ->assertDontSee('Publisher Handoff', false);
+    }
+
     public function test_history_rejects_impossible_calendar_dates(): void
     {
         ActivityLog::create([
