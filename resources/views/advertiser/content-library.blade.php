@@ -19,7 +19,7 @@
     $statusLabels = [
         'available' => 'Approved',
         'evaluating' => 'Processing',
-        'in_progress' => 'In progress',
+        'in_progress' => 'Processing',
         'published' => 'Completed/LIVE',
         'needs_fix' => 'Needs corrections',
         'expired' => 'Expired',
@@ -43,8 +43,8 @@
         'needs_fix' => 0,
     ];
     $uploadsEnabled = $uploadsEnabled ?? true;
-    $evaluatingCount = (int) ($availabilityCounts['evaluating'] ?? 0);
-    // Status strip: Approved · Processing · In progress · Needs corrections · Completed/LIVE · Archived · Expired
+    // Status strip: Approved · Processing · Needs corrections · Completed/LIVE · Archived · Expired
+    // Processing is the existing in_progress bucket (ordered, not live) — not a new evaluating tab.
     $libraryStatusChips = [
         'approved' => [
             'label' => 'Approved',
@@ -53,11 +53,6 @@
         ],
         'processing' => [
             'label' => 'Processing',
-            'count' => $evaluatingCount,
-            'params' => ['status' => 'all', 'availability' => 'evaluating'],
-        ],
-        'in_progress' => [
-            'label' => 'In progress',
             'count' => (int) ($availabilityCounts['in_progress'] ?? 0),
             'params' => ['status' => 'all', 'availability' => 'in_progress'],
         ],
@@ -85,10 +80,8 @@
     $activeLibraryChip = 'approved';
     if (($availabilityFilter ?? 'all') === 'completed') {
         $activeLibraryChip = 'completed';
-    } elseif (($availabilityFilter ?? 'all') === 'evaluating') {
-        $activeLibraryChip = 'processing';
     } elseif (($availabilityFilter ?? 'all') === 'in_progress') {
-        $activeLibraryChip = 'in_progress';
+        $activeLibraryChip = 'processing';
     } elseif (($availabilityFilter ?? 'all') === 'needs_fix'
         || ($statusFilter ?? 'all') === 'rejected') {
         $activeLibraryChip = 'needs_fix';
@@ -103,7 +96,7 @@
         $category = match ($availability) {
             'published' => 'completed',
             'needs_fix' => 'needs_fix',
-            'in_progress' => 'in_progress',
+            'in_progress' => 'processing',
             'available' => 'approved',
             'evaluating' => 'processing',
             'expired' => 'expired',
@@ -113,7 +106,6 @@
         $label = match ($category) {
             'completed' => 'Completed/LIVE',
             'needs_fix' => 'Needs corrections',
-            'in_progress' => 'In progress',
             'approved' => 'Approved',
             'processing' => 'Processing',
             'expired' => 'Expired',
@@ -577,14 +569,8 @@
                             @elseif(($availabilityFilter ?? 'all') === 'in_progress')
                                 <x-ui.empty-state
                                     icon="fa-clock"
-                                    title="No articles in progress"
-                                    message="After you Order an approved article, it stays here until the publisher posts the live URL."
-                                />
-                            @elseif(($availabilityFilter ?? 'all') === 'evaluating')
-                                <x-ui.empty-state
-                                    icon="fa-file-word"
                                     title="No articles processing"
-                                    message="Uploads being checked appear here. Order unlocks when they are approved."
+                                    message="After you Order an approved article, it stays here until the publisher posts the live URL."
                                 />
                             @elseif(($availabilityFilter ?? 'all') === 'needs_fix'
                                 || ($statusFilter ?? 'all') === 'rejected')

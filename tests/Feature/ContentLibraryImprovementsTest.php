@@ -117,9 +117,11 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Ordered Piece')
             ->assertDontSee('Growth Playbook')
             ->assertSee('Approved')
-            ->assertSee('In progress')
-            ->assertSee('library-status--in_progress', false)
-            ->assertSee('Uploaded', false);
+            ->assertSee('Processing')
+            ->assertSee('library-status--processing', false)
+            ->assertSee('library-status-sweep', false)
+            ->assertSee('Uploaded', false)
+            ->assertDontSee('>In progress</span>', false);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['q' => 'Growth']))
@@ -250,19 +252,19 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $this->assertStringContainsString('availability=completed', $html);
         $this->assertStringContainsString('availability=available', $html);
-        $this->assertStringContainsString('availability=evaluating', $html);
         $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('availability=archived', $html);
         $this->assertStringContainsString('availability=expired', $html);
+        $this->assertStringNotContainsString('availability=evaluating', $html);
         $this->assertStringContainsString('Completed/LIVE', $html);
         $this->assertStringContainsString('>Approved</span>', $html);
         $this->assertStringContainsString('>Processing</span>', $html);
-        $this->assertStringContainsString('>In progress</span>', $html);
+        $this->assertStringNotContainsString('>In progress</span>', $html);
         $this->assertStringContainsString('>Needs corrections</span>', $html);
         $this->assertStringContainsString('>Archived</span>', $html);
         $this->assertStringContainsString('>Expired</span>', $html);
         $this->assertStringContainsString('library-status-box--processing', $html);
-        $this->assertStringContainsString('library-status-box--in_progress', $html);
+        $this->assertStringNotContainsString('library-status-box--in_progress', $html);
         $this->assertStringContainsString('library-status-box--archived', $html);
         $this->assertStringContainsString('library-status-box--expired', $html);
         $this->assertStringNotContainsString('>All</span>', $html);
@@ -342,10 +344,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->createApprovedSubmission($advertiser);
 
         $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library', ['availability' => 'evaluating']))
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
             ->assertOk()
             ->assertSee('No articles processing')
             ->assertSee('library-status-box--processing', false)
+            ->assertDontSee('No articles in progress')
             ->assertDontSee('No articles yet');
     }
 
