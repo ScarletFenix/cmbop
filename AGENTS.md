@@ -28,11 +28,10 @@ and persist in the snapshot, so they usually already exist on startup. The notes
 below are non-obvious gotchas discovered during setup.
 
 ### Database: use MySQL/MariaDB, not SQLite
-Despite `.env.example` defaulting to `DB_CONNECTION=sqlite`, the app requires
-**MySQL/MariaDB**. Migration `2026_05_03_064024_add_refunded_to_payment_status`
-uses raw MySQL DDL (`ALTER TABLE ... MODIFY COLUMN ... ENUM(...)`) that SQLite
-cannot run. The committed `.env` is configured for MySQL (db `laravel`, user
-`laravel`, password `secret` on `127.0.0.1:3306`).
+`.env.example` defaults to **MySQL** (`laravel` / `laravel` / `secret` on
+`127.0.0.1:3306`). Several migrations use raw MySQL DDL
+(`ALTER TABLE ... MODIFY COLUMN ... ENUM(...)`) that SQLite cannot run.
+PHPUnit uses `.env.testing` (sqlite) and is fine.
 
 MariaDB does not auto-start. Start it each session (it is not in the update script
 because the update script must not start services):
@@ -42,33 +41,18 @@ sudo mysqld_safe --datadir=/var/lib/mysql &
 The data dir `/var/lib/mysql` persists in the snapshot, so an already-migrated
 database is normally still present after restart.
 
-### Migration ordering is broken for a fresh `migrate`
-The migration filename timestamps are out of dependency order, so a clean
-`php artisan migrate` / `migrate:fresh` FAILS:
-- `2024_01_01_000001_create_order_chat_messages_table` has an FK to `orders`
-  (created only in `2026_04_21_...`).
-- `2024_01_01_000002_add_live_url_to_order_items` alters `order_items`
-  (also created in `2026_04_21_...`).
+After migrate + seed (or `composer setup`), confirm the launch path:
+```
+php artisan ops:production-ready
+```
+`--repair` seeds missing roles and recreates `public/storage`. `--strict` fails
+on warnings too (use on Hostinger after deploy).
 
-To build the schema from scratch, pre-create the out-of-order tables in dependency
-order, then run the rest (do NOT modify the migration files):
-```
-php artisan db:wipe --force
-for m in 0001_01_01_000000_create_users_table \
-         2026_04_06_094704_create_sites_table \
-         2026_04_21_070134_create_orders_table \
-         2026_04_21_070217_create_order_items_table; do
-  php artisan migrate --force --path=database/migrations/$m.php
-done
-php artisan migrate --force
-```
-
-### Seeders: roles are NOT in DatabaseSeeder
-`php artisan db:seed` only seeds countries/languages/categories. Registration needs
-the `roles` table populated, so also run:
-```
-php artisan db:seed --class=RolesTableSeeder --force
-```
+### Seeders
+`php artisan db:seed` now includes `RolesTableSeeder` (advertiser, publisher,
+admin, marketing) plus countries/languages/categories/blogs. Registration fails
+with “temporarily unavailable” if roles are missing — run
+`php artisan ops:production-ready --repair` or `db:seed --force`.
 There is no default user/admin seeder; an admin must be promoted manually in the DB.
 
 ### Auth: email verification

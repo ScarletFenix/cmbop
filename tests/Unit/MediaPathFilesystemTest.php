@@ -117,6 +117,9 @@ class MediaPathFilesystemTest extends TestCase
         $example = file_get_contents(base_path('.env.example'));
         $this->assertIsString($example);
         $this->assertStringContainsString('MEDIA_PATH=', $example);
+        $this->assertStringContainsString('DB_CONNECTION=mysql', $example);
+        $this->assertStringNotContainsString('DB_CONNECTION=sqlite', $example);
+        $this->assertStringContainsString('MAIL_QUEUE_AUTO_DRAIN=true', $example);
         $this->assertFileExists(base_path('docs/hostinger-media.md'));
         $this->assertFileExists(base_path('docs/deploy-hostinger.md'));
 
@@ -124,5 +127,6 @@ class MediaPathFilesystemTest extends TestCase
         $this->assertIsString($deploy);
         $this->assertStringContainsString('persistent/media', $deploy);
         $this->assertStringContainsString('storage:link', $deploy);
+        $this->assertStringContainsString('ops:production-ready', $deploy);
     }
 }

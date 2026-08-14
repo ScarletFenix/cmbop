@@ -26,6 +26,11 @@ Use this on **every** code update. Full media background:
    already request 64M/64M; Hostinger LiteSpeed often ignores `php_value` until
    the same numbers are saved in hPanel. A 5 MB Word file is rejected as
    `UPLOAD_ERR_INI_SIZE` while PHP stays at the default 2M.
+8. `php artisan db:seed --force` if roles were never seeded (registration otherwise
+   returns “temporarily unavailable”).
+9. Confirm MySQL, `APP_URL`, `MEDIA_PATH`, uploads, mail drain, and the scheduler:
+   `php artisan ops:production-ready --repair --strict`
+   Then spot-check register → verify email → catalog image → wallet order → chat mail.
 
 ## Weekly
 
