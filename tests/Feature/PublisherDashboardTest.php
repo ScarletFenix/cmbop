@@ -340,4 +340,35 @@ class PublisherDashboardTest extends TestCase
                 ],
             ]);
     }
+
+    public function test_checkout_scheduled_orders_count_as_scheduled_not_pending(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $this->createOrderItem($advertiser, $site, ['status' => 'pending']);
+        $this->createOrderItem($advertiser, $site, [
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.pending_orders', 1)
+            ->assertJsonPath('data.scheduled_orders', 1);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.order-status'))
+            ->assertOk()
+            ->assertJsonPath('data.values', [1, 0, 0, 1, 0, 0]);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.dashboard'))
+            ->assertOk()
+            ->assertSee('id="openTasks">1', false);
+    }
 }
