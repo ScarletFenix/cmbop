@@ -208,6 +208,27 @@ class PublisherReportsTest extends TestCase
             ->assertJsonCount(2, 'data');
     }
 
+    public function test_orders_list_filters_checkout_scheduled_rows(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $scheduled = $this->createOrderItem($advertiser, $site, [
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'Europe/Berlin',
+        ]);
+        $this->createOrderItem($advertiser, $site, ['status' => 'pending']);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.orders', ['status' => 'scheduled']))
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.id', $scheduled->id);
+    }
+
     public function test_order_details_are_scoped_to_owner(): void
     {
         $owner = $this->publisher();

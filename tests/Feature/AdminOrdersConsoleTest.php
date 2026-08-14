@@ -853,6 +853,7 @@ class AdminOrdersConsoleTest extends TestCase
             ->get(route('admin.orders.show', $order->id))
             ->assertOk()
             ->assertSee('id="order-schedule"', false)
+            ->assertSee("hash === '#order-schedule'", false)
             ->assertSee('Publication mode', false)
             ->assertSee('Scheduled for', false)
             ->assertSee($local->format('M j, Y g:i A'), false)

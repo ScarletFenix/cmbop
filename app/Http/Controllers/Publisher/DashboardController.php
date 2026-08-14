@@ -252,10 +252,13 @@ class DashboardController extends Controller
 
         return [
             'total_orders' => count($orderIds),
-            'pending_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'pending')->count(),
+            'pending_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)
+                ->where('status', 'pending')
+                ->notAwaitingScheduledRelease()
+                ->count(),
             'processing_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'processing')->count(),
             'review_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'review')->count(),
-            'scheduled_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->where('status', 'scheduled')->count(),
+            'scheduled_orders' => $orderIds === [] ? 0 : Order::whereIn('id', $orderIds)->awaitingScheduledRelease()->count(),
             'completed_orders' => $completedOrders,
             'cancelled_orders' => $cancelledOrders,
             'total_sites' => count($siteIds),
@@ -470,7 +473,14 @@ class DashboardController extends Controller
 
         if ($orderIds !== []) {
             foreach (array_keys($statuses) as $status) {
-                $statuses[$status] = Order::whereIn('id', $orderIds)->where('status', $status)->count();
+                $statuses[$status] = match ($status) {
+                    'scheduled' => Order::whereIn('id', $orderIds)->awaitingScheduledRelease()->count(),
+                    'pending' => Order::whereIn('id', $orderIds)
+                        ->where('status', 'pending')
+                        ->notAwaitingScheduledRelease()
+                        ->count(),
+                    default => Order::whereIn('id', $orderIds)->where('status', $status)->count(),
+                };
             }
         }
 
