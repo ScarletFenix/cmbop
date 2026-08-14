@@ -97,7 +97,7 @@ class ContentLibraryPhases02Test extends TestCase
             ->assertJsonPath('config.enabled', false);
     }
 
-    public function test_status_strip_includes_archived_expired_and_evaluating_badge(): void
+    public function test_status_strip_includes_archived_expired_and_processing_tab(): void
     {
         $advertiser = $this->advertiser();
 
@@ -141,14 +141,31 @@ class ContentLibraryPhases02Test extends TestCase
 
         $this->assertStringContainsString('library-status-box--archived', $html);
         $this->assertStringContainsString('library-status-box--expired', $html);
+        $this->assertStringContainsString('library-status-box--processing', $html);
         $this->assertStringContainsString('>Archived</span>', $html);
         $this->assertStringContainsString('>Expired</span>', $html);
-        $this->assertStringContainsString('library-eval-badge', $html);
-        $this->assertStringContainsString('Evaluating 1', $html);
-        $this->assertStringContainsString('still evaluating', $html);
+        $this->assertStringContainsString('>Processing</span>', $html);
+        $this->assertStringContainsString('availability=evaluating', $html);
+        $this->assertStringNotContainsString('library-eval-badge', $html);
+        $this->assertStringNotContainsString('Evaluating 1', $html);
+        $this->assertStringNotContainsString('still evaluating', $html);
+        $this->assertStringNotContainsString('Evaluating…', $html);
         $this->assertStringContainsString('Ready Piece', $html);
-        $this->assertStringContainsString('Still Checking', $html);
-        $this->assertStringContainsString('Evaluating…', $html);
+        $this->assertStringNotContainsString('Still Checking', $html);
+
+        $processingHtml = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'evaluating']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Still Checking', $processingHtml);
+        $this->assertStringContainsString('library-status--processing', $processingHtml);
+        $this->assertStringContainsString('library-status-sweep', $processingHtml);
+        $this->assertStringContainsString('Uploaded', $processingHtml);
+        $this->assertStringNotContainsString('Ready Piece', $processingHtml);
+        $this->assertMatchesRegularExpression(
+            '/library-status-box--processing\s+is-active/',
+            $processingHtml
+        );
 
         $archivedHtml = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['availability' => 'archived']))
