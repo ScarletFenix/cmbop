@@ -1316,4 +1316,89 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         );
         $this->assertNull(Site::where('domain', 'legacy-port.example')->first());
     }
+
+    public function test_store_rejects_nbsp_only_site_name(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_name' => "\u{00A0}\u{00A0}",
+                'site_url' => 'https://nbsp-name.example',
+                'example_url' => 'https://nbsp-name.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_name');
+
+        $this->assertNull(Site::where('domain', 'nbsp-name.example')->first());
+    }
+
+    public function test_store_rejects_localhost_and_bare_tld(): void
+    {
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://localhost/path',
+                'example_url' => 'https://localhost/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'localhost')->first());
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://com',
+                'example_url' => 'https://com/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertNull(Site::where('domain', 'com')->first());
+    }
+
+    public function test_idn_unicode_host_matches_existing_punycode_listing(): void
+    {
+        $this->assertTrue(function_exists('idn_to_ascii'));
+        $ascii = idn_to_ascii('münchen-idn.example', IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+        $this->assertIsString($ascii);
+
+        Site::create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Live Idn',
+            'site_url' => 'https://'.$ascii,
+            'domain' => $ascii,
+            'example_url' => 'https://'.$ascii.'/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Live IDN twin description text here. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.create'))
+            ->post(route('marketing.sites.store'), $this->validPayload([
+                'site_url' => 'https://www.münchen-idn.example/path',
+                'example_url' => 'https://münchen-idn.example/sample',
+            ]))
+            ->assertRedirect(route('marketing.sites.create'))
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame(
+            'This website domain is already registered.',
+            (string) session('errors')->first('site_url')
+        );
+        $this->assertSame(1, Site::where('domain', $ascii)->count());
+        $this->assertNull(Site::where('domain', 'münchen-idn.example')->first());
+    }
 }

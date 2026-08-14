@@ -716,14 +716,19 @@ class SiteController extends Controller
             'dr' => $dr,
             'traffic' => $traffic,
             'site_name' => is_string($request->input('site_name'))
-                ? trim($request->input('site_name'))
+                ? $this->normalizeSiteName($request->input('site_name'))
                 : $request->input('site_name'),
         ]);
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
         $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
-        if ($domain === '') {
+        if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
             return back()->withErrors(['site_url' => 'Invalid URL'])->withInput();
+        }
+        $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
+        $exampleDomain = is_string($exampleHost) && $exampleHost !== '' ? $this->normalizeDomain($exampleHost) : '';
+        if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
+            return back()->withErrors(['example_url' => 'Invalid URL'])->withInput();
         }
 
         $resolvedNiches = Category::resolveNicheNames(
@@ -847,9 +852,15 @@ class SiteController extends Controller
 
                 $imagePath = null;
                 if ($request->hasFile('site_image')) {
+                    $upload = $request->file('site_image');
+                    if ($upload && ! $upload->isValid()) {
+                        throw ValidationException::withMessages([
+                            'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                        ]);
+                    }
                     $disk = Storage::disk('public');
                     $disk->makeDirectory('sites');
-                    $stored = $request->file('site_image')->store('sites', 'public');
+                    $stored = $upload->store('sites', 'public');
                     if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
                         throw ValidationException::withMessages([
                             'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
@@ -1452,7 +1463,7 @@ class SiteController extends Controller
             $request->merge(['link_type' => null]);
         }
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
-            $request->merge(['site_name' => trim($request->input('site_name'))]);
+            $request->merge(['site_name' => $this->normalizeSiteName($request->input('site_name'))]);
         }
 
         $domain = null;
@@ -1511,14 +1522,29 @@ class SiteController extends Controller
 
         $validator->after(function ($validator) use ($request, $site, $domain) {
             if (is_string($domain) && $domain !== '') {
-                $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
-                if ($existing) {
-                    $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
+                if (! $this->isMarketplaceHost($domain)) {
+                    $validator->errors()->add('site_url', 'Invalid URL');
+                } else {
+                    $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
+                    if ($existing) {
+                        $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
+                    }
                 }
             }
 
             if ($request->filled('site_url') && ($domain === null || $domain === '')) {
                 $validator->errors()->add('site_url', 'Invalid URL');
+            }
+
+            $exampleUrl = $request->input('example_url');
+            if (is_string($exampleUrl) && $exampleUrl !== '') {
+                $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
+                $exampleDomain = is_string($exampleHost) && $exampleHost !== ''
+                    ? $this->normalizeDomain($exampleHost)
+                    : '';
+                if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
+                    $validator->errors()->add('example_url', 'Invalid URL');
+                }
             }
 
             if ($request->has('country') || $request->has('language')) {
@@ -1632,7 +1658,8 @@ class SiteController extends Controller
             $request->attributes->set('staff_stored_site_image', $stored);
         } elseif ($request->has('site_image') && ! $request->hasFile('site_image')) {
             $path = $this->postedSiteImagePath($request->input('site_image'));
-            if ($path !== null) {
+            $current = is_string($site->site_image) ? $this->postedSiteImagePath($site->site_image) : null;
+            if ($path !== null && $current !== null && $path === $current) {
                 $data['site_image'] = $path;
             } else {
                 unset($data['site_image']);
@@ -1705,7 +1732,7 @@ class SiteController extends Controller
         }
 
         if ($request->exists('site_name') && is_string($request->input('site_name'))) {
-            $request->merge(['site_name' => trim($request->input('site_name'))]);
+            $request->merge(['site_name' => $this->normalizeSiteName($request->input('site_name'))]);
         }
 
         $validator = Validator::make($request->all(), $rules, array_merge($this->siteImageValidationMessages(), [
@@ -1745,13 +1772,24 @@ class SiteController extends Controller
                 $siteUrl = (string) $request->input('site_url', '');
                 $host = parse_url($siteUrl, PHP_URL_HOST);
                 $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
-                if ($domain === '') {
+                if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
                     $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
                     }
+                }
+            }
+
+            if ($canFixListing && $request->filled('example_url')) {
+                $exampleUrl = (string) $request->input('example_url', '');
+                $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
+                $exampleDomain = is_string($exampleHost) && $exampleHost !== ''
+                    ? $this->normalizeDomain($exampleHost)
+                    : '';
+                if ($exampleDomain === '' || ! $this->isMarketplaceHost($exampleDomain)) {
+                    $validator->errors()->add('example_url', 'Invalid URL');
                 }
             }
         });
@@ -1854,7 +1892,8 @@ class SiteController extends Controller
         } elseif ($request->filled('site_image') && ! $request->hasFile('site_image')) {
             // JSON/AJAX path: image already persisted via upload-image.
             $path = $this->postedSiteImagePath($request->input('site_image'));
-            if ($path !== null) {
+            $current = is_string($site->site_image) ? $this->postedSiteImagePath($site->site_image) : null;
+            if ($path !== null && $current !== null && $path === $current) {
                 $payload['site_image'] = $path;
             }
         }
@@ -1962,7 +2001,7 @@ class SiteController extends Controller
         }
 
         $path = ltrim(str_replace('\\', '/', $raw), '/');
-        if ($path === '' || ! str_starts_with($path, 'sites/')) {
+        if (preg_match('#^sites/[A-Za-z0-9._-]+\.(jpe?g|png|gif|webp)$#i', $path) !== 1) {
             return null;
         }
 
@@ -1971,7 +2010,7 @@ class SiteController extends Controller
 
     private function deleteStoredSiteImage(?string $path): void
     {
-        if ($path === null || $path === '' || str_contains($path, '..')) {
+        if ($this->postedSiteImagePath($path) === null) {
             return;
         }
 
@@ -2004,8 +2043,11 @@ class SiteController extends Controller
         }
 
         $amount = round((float) $raw, 2);
+        if (! is_finite($amount) || $amount < 0 || $amount > 999999.99) {
+            return null;
+        }
 
-        return $amount < 0 ? null : $amount;
+        return $amount;
     }
 
     /**
@@ -2156,7 +2198,52 @@ class SiteController extends Controller
             $domain = explode(':', $domain, 2)[0];
         }
 
-        return rtrim($domain, '.');
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && function_exists('idn_to_ascii') && ! filter_var($domain, FILTER_VALIDATE_IP) && ! str_starts_with($domain, '[')) {
+            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $domain = strtolower($ascii);
+            }
+        }
+
+        return $domain;
+    }
+
+    private function isMarketplaceHost(string $host): bool
+    {
+        $host = strtolower(trim($host));
+        if ($host === '' || str_starts_with($host, '[')) {
+            return false;
+        }
+        if (str_contains($host, ':') && preg_match('/^(.+):(\d+)$/', $host, $m) === 1) {
+            $host = $m[1];
+        }
+        if (filter_var($host, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+        if ($host === 'localhost' || ! str_contains($host, '.')) {
+            return false;
+        }
+
+        $labels = explode('.', $host);
+        $tld = (string) end($labels);
+        if (in_array($tld, ['localhost', 'local', 'internal', 'invalid'], true)) {
+            return false;
+        }
+        foreach ($labels as $label) {
+            if ($label === '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalizeSiteName(string $raw): string
+    {
+        $name = preg_replace('/\s+/u', ' ', $raw) ?? $raw;
+
+        return trim($name);
     }
 
     /**
@@ -2169,7 +2256,7 @@ class SiteController extends Controller
             return [];
         }
 
-        return array_values(array_unique([
+        $candidates = [
             $normalized,
             'www.'.$normalized,
             $normalized.'.',
@@ -2178,7 +2265,17 @@ class SiteController extends Controller
             $normalized.':443',
             'www.'.$normalized.':80',
             'www.'.$normalized.':443',
-        ]));
+        ];
+        if (function_exists('idn_to_utf8')) {
+            $utf8 = idn_to_utf8($normalized, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($utf8) && $utf8 !== '' && strtolower($utf8) !== $normalized) {
+                $utf8 = strtolower($utf8);
+                $candidates[] = $utf8;
+                $candidates[] = 'www.'.$utf8;
+            }
+        }
+
+        return array_values(array_unique($candidates));
     }
 
     /**
@@ -2244,7 +2341,16 @@ class SiteController extends Controller
             return '';
         }
 
-        $host = $parts['host'];
+        $host = rtrim($parts['host'], '.');
+        if ($host === '') {
+            return '';
+        }
+        if (function_exists('idn_to_ascii') && ! filter_var($host, FILTER_VALIDATE_IP) && ! str_starts_with($host, '[')) {
+            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $host = $ascii;
+            }
+        }
         if (str_contains($host, ':') && ! str_starts_with($host, '[')) {
             $host = '['.$host.']';
         }

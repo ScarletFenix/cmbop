@@ -502,4 +502,53 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
         $this->assertNull(Site::where('site_image', 'https://evil.example/phish.jpg')->first());
     }
+
+    public function test_update_ignores_other_listing_cover_path(): void
+    {
+        $site = $this->site([
+            'site_image' => 'sites/existing.jpg',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => 'sites/other-cover.jpg',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'site_image' => 'sites/malware.php',
+            ])
+            ->assertOk();
+
+        $this->assertSame('sites/existing.jpg', $site->fresh()->site_image);
+    }
+
+    public function test_update_rejects_localhost_and_ip_hosts(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://localhost/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://127.0.0.1/path',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['site_url']);
+
+        $this->assertSame('https://guard-site.example', $site->fresh()->site_url);
+    }
 }
