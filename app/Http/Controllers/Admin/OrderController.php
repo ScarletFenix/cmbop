@@ -5,11 +5,14 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderActivity;
+use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class OrderController extends Controller
 {
@@ -115,6 +118,7 @@ class OrderController extends Controller
         $order = Order::with(array_merge([
             'user',
             'items.site.publisher',
+            'items.contentSubmission',
             'chatMessages.user',
         ], OrderItemDispute::eagerPaths([
             'items.disputes.opener',
@@ -169,5 +173,38 @@ class OrderController extends Controller
         }
 
         return back()->with('success', 'Order '.$order->order_number.' moved to '.$data['status'].'.');
+    }
+
+    /**
+     * Download the article file for this placement (submission, else item snapshot).
+     */
+    public function downloadContent(OrderItem $orderItem): StreamedResponse
+    {
+        $orderItem->loadMissing('contentSubmission');
+        $submission = $orderItem->contentSubmission;
+
+        if ($submission && $submission->hasStoredFile()) {
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if ($disk->exists($submission->path)) {
+                return $disk->download(
+                    $submission->path,
+                    $submission->original_filename ?: 'article',
+                    ['Content-Type' => $submission->mime ?: 'application/octet-stream']
+                );
+            }
+        }
+
+        if (filled($orderItem->content_path)) {
+            $disk = Storage::disk($orderItem->content_disk ?: 'local');
+            if ($disk->exists($orderItem->content_path)) {
+                return $disk->download(
+                    $orderItem->content_path,
+                    $orderItem->content_original_name ?: 'article',
+                    ['Content-Type' => $orderItem->content_mime ?: 'application/octet-stream']
+                );
+            }
+        }
+
+        abort(404, 'File not found');
     }
 }

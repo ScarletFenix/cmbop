@@ -135,6 +135,21 @@
                                         @endif
                                     </div>
                                 @endif
+                                <div class="mb-2"><span class="text-muted small">Anchor text</span>
+                                    <div>{{ $line->anchor_text ?: '—' }}</div>
+                                </div>
+                                <div class="mb-2"><span class="text-muted small">Target URL</span>
+                                    <div>
+                                        @if($line->target_url)
+                                            <a href="{{ $line->target_url }}" target="_blank" rel="noopener">{{ $line->target_url }}</a>
+                                        @else
+                                            <span class="text-muted">—</span>
+                                        @endif
+                                    </div>
+                                </div>
+                                <div class="mb-2"><span class="text-muted small">Accepted at</span>
+                                    <div>{{ optional($line->accepted_at)->format('M j, Y g:i A') ?: 'Not accepted' }}</div>
+                                </div>
                                 <div class="mb-2"><span class="text-muted small">Live URL</span>
                                     <div>
                                         @if($line->live_url)
@@ -147,11 +162,22 @@
                                 <div class="mb-2"><span class="text-muted small">Modification requested</span>
                                     <div>{{ $line->modification_requested ?: 'no' }}</div>
                                 </div>
-                                @if($line->content_link)
-                                    <div class="mb-2"><span class="text-muted small">Content</span>
-                                        <div><a href="{{ $line->content_link }}" target="_blank" rel="noopener">Open content link</a></div>
+                                <div class="mb-2"><span class="text-muted small">Content</span>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                        @if($line->content_link)
+                                            <a href="{{ $line->content_link }}" target="_blank" rel="noopener">Open content link</a>
+                                        @endif
+                                        @if($line->hasDownloadableContent())
+                                            <a href="{{ route('admin.orders.content.download', $line) }}" class="btn btn-sm btn-outline-secondary">
+                                                <i class="fa fa-download me-1"></i>
+                                                {{ $line->contentSubmission?->original_filename ?: ($line->content_original_name ?: 'Download file') }}
+                                            </a>
+                                        @endif
+                                        @if(! $line->content_link && ! $line->hasDownloadableContent())
+                                            <span class="text-muted">No file uploaded</span>
+                                        @endif
                                     </div>
-                                @endif
+                                </div>
                                 @if($linePublisher && $loop->count > 1)
                                     <div class="small text-muted">Publisher: {{ $linePublisher->name }}</div>
                                 @endif

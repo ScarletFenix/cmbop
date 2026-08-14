@@ -141,6 +141,22 @@ class OrderItem extends Model
     }
 
     /**
+     * Uploaded article on the submission or a path snapshotted onto the item.
+     */
+    public function hasDownloadableContent(): bool
+    {
+        $submission = $this->relationLoaded('contentSubmission')
+            ? $this->contentSubmission
+            : $this->contentSubmission()->first();
+
+        if ($submission && $submission->hasStoredFile()) {
+            return true;
+        }
+
+        return filled($this->content_path);
+    }
+
+    /**
      * Get the publisher (site owner) for this order item
      */
     public function getPublisherAttribute()

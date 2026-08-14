@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderChatMessage;
@@ -10,6 +11,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminOrdersConsoleTest extends TestCase
@@ -290,5 +292,84 @@ class AdminOrdersConsoleTest extends TestCase
             ->assertOk()
             ->assertJsonFragment(['order_number' => $order->order_number])
             ->assertJsonMissing(['order_number' => $other->order_number]);
+    }
+
+    public function test_order_show_displays_brief_and_content_download(): void
+    {
+        Storage::fake('local');
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $item = $order->items->first();
+        $path = 'content-uploads/'.$advertiser->id.'/brief-article.docx';
+        Storage::disk('local')->put($path, 'article-bytes');
+
+        $submission = ContentSubmission::create([
+            'user_id' => $advertiser->id,
+            'title' => 'Brief article',
+            'original_filename' => 'brief-article.docx',
+            'disk' => 'local',
+            'path' => $path,
+            'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'extension' => 'docx',
+            'size_bytes' => 13,
+            'moderation_status' => ContentSubmission::STATUS_APPROVED,
+            'anchor_text' => 'best guest post tools',
+            'target_url' => 'https://advertiser.example/tools',
+        ]);
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'anchor_text' => 'best guest post tools',
+            'target_url' => 'https://advertiser.example/tools',
+            'accepted_at' => now()->subHours(3),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('best guest post tools')
+            ->assertSee('https://advertiser.example/tools', false)
+            ->assertSee('Not submitted')
+            ->assertSee(route('admin.orders.content.download', $item), false)
+            ->assertSee('brief-article.docx');
+    }
+
+    public function test_admin_can_download_order_content_and_others_cannot(): void
+    {
+        Storage::fake('local');
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $item = $order->items->first();
+        $path = 'content-uploads/'.$advertiser->id.'/download-me.docx';
+        Storage::disk('local')->put($path, 'download-bytes');
+
+        $submission = ContentSubmission::create([
+            'user_id' => $advertiser->id,
+            'title' => 'Download me',
+            'original_filename' => 'download-me.docx',
+            'disk' => 'local',
+            'path' => $path,
+            'mime' => 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'extension' => 'docx',
+            'size_bytes' => 14,
+            'moderation_status' => ContentSubmission::STATUS_APPROVED,
+        ]);
+        $item->update(['content_submission_id' => $submission->id]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.content.download', $item))
+            ->assertOk()
+            ->assertHeader('content-disposition');
+
+        $this->actingAs($advertiser)
+            ->get(route('admin.orders.content.download', $item))
+            ->assertStatus(403);
+
+        Storage::disk('local')->delete($path);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.content.download', $item))
+            ->assertNotFound();
     }
 }
