@@ -140,13 +140,13 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_url">Site URL <span class="text-danger">*</span></label>
-                            <input type="url" id="site_url" name="site_url" class="form-control @error('site_url') is-invalid @enderror"
+                            <input type="text" id="site_url" name="site_url" class="form-control @error('site_url') is-invalid @enderror" placeholder="https://example.com"
                                    value="{{ old_text('site_url', $site->site_url) }}" required>
                             @error('site_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
-                            <input type="url" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror"
+                            <input type="text" id="example_url" name="example_url" class="form-control @error('example_url') is-invalid @enderror" placeholder="https://example.com/sample-post"
                                    value="{{ old_text('example_url', $site->example_url) }}">
                             <div class="form-text">Optional. If set, must be on the same domain as the site URL.</div>
                             @error('example_url')<div class="invalid-feedback">{{ $message }}</div>@enderror
@@ -335,7 +335,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="site_url">Site URL</label>
-                            <input type="url" id="site_url" name="site_url" class="form-control"
+                            <input type="text" id="site_url" name="site_url" class="form-control" placeholder="https://example.com"
                                    value="{{ old_text('site_url', $site->site_url) }}" required>
                         </div>
 
@@ -393,7 +393,7 @@
                         </div>
                         <div class="col-md-6">
                             <label class="form-label fw-semibold" for="example_url">Example URL</label>
-                            <input type="url" id="example_url" name="example_url" class="form-control"
+                            <input type="text" id="example_url" name="example_url" class="form-control" placeholder="https://example.com/sample-post"
                                    value="{{ old_text('example_url', $site->example_url) }}">
                         </div>
 

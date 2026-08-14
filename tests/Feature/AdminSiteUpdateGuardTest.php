@@ -330,7 +330,9 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertOk()
             ->assertSee('Edit site', false)
             ->assertDontSee('htmlspecialchars', false)
-            ->assertSee('value="25"', false);
+            ->assertSee('value="25"', false)
+            ->assertDontSee('type="url"', false)
+            ->assertSee('type="text" id="site_url"', false);
     }
 
     public function test_update_rejects_array_shaped_category(): void
@@ -471,6 +473,52 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertJsonValidationErrors(['site_url']);
 
         $this->assertSame('https://guard-site.example/path', $site->fresh()->site_url);
+    }
+
+    public function test_update_rejects_invalid_example_url_without_clearing(): void
+    {
+        $site = $this->site([
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://guard-site.example/path',
+                'example_url' => 'javascript:alert(1)',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['example_url']);
+
+        $this->assertSame('https://guard-site.example/sample', $site->fresh()->example_url);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_url' => 'https://guard-site.example/path',
+                'example_url' => 'ftp://guard-site.example/sample',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['example_url']);
+
+        $this->assertSame('https://guard-site.example/sample', $site->fresh()->example_url);
+    }
+
+    public function test_update_ignores_posted_domain_without_site_url(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'domain' => 'stolen-domain.example',
+                'da' => 41,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('guard-site.example', $site->domain);
+        $this->assertSame('https://guard-site.example', $site->site_url);
+        $this->assertSame(41, (int) $site->da);
+        $this->assertNull(Site::where('domain', 'stolen-domain.example')->first());
     }
 
     public function test_update_accepts_protocol_relative_and_host_port_urls(): void

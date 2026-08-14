@@ -918,12 +918,14 @@ class SiteController extends Controller
                 ]);
 
                 // Hard-set invite + metrics so a missing column skip cannot silently drop them.
+                $price = $request->input('price');
                 $site->forceFill([
                     'assigned_by_user_id' => auth()->id(),
                     'publisher_accepted_at' => null,
                     'da' => $da,
                     'dr' => $dr,
                     'traffic' => $traffic,
+                    'price' => $price,
                     'metrics_manual' => true,
                     'metrics_provider' => 'manual',
                     'metrics_fetched_at' => now(),
@@ -938,6 +940,9 @@ class SiteController extends Controller
 
                 if ((int) $site->da !== $da || (int) $site->dr !== $dr || (int) $site->traffic !== $traffic) {
                     throw new \RuntimeException('DA/DR/traffic did not persist after save.');
+                }
+                if (is_numeric($price) && round((float) $site->price, 2) !== round((float) $price, 2)) {
+                    throw new \RuntimeException('Staff site price did not persist after save.');
                 }
                 if (filled($site->publisher_accepted_at) || blank($site->assigned_by_user_id)) {
                     throw new \RuntimeException('Publisher invite state did not persist after save.');
@@ -963,7 +968,7 @@ class SiteController extends Controller
             $hint = 'We could not save this website. Please try again.';
             if (str_contains($e->getMessage(), 'Unknown column')
                 || str_contains($e->getMessage(), 'did not persist after save.')) {
-                $hint = 'We could not save invite state, DA/DR, or monthly traffic. Run the latest migrations on the server, clear caches, and try again.';
+                $hint = 'We could not save invite state, DA/DR, monthly traffic, or price. Run the latest migrations on the server, clear caches, and try again.';
             }
 
             return redirect()->back()
@@ -1478,9 +1483,6 @@ class SiteController extends Controller
                 $normalized = $this->normalizeDomain($host);
                 $domain = $normalized !== '' ? $normalized : null;
             }
-        } elseif (is_string($request->input('domain')) && $request->filled('domain')) {
-            $normalized = $this->normalizeDomain($request->input('domain'));
-            $domain = $normalized !== '' ? $normalized : null;
         }
 
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
@@ -1603,20 +1605,11 @@ class SiteController extends Controller
             'site_image',
         ]);
 
-        if (isset($data['domain']) && ! is_string($data['domain'])) {
-            unset($data['domain']);
-        }
-        // URL host wins. A posted domain field must not bypass the unique check
-        // or collide with another publisher (DB unique is publisher_id + domain).
+        // Domain comes only from the listing URL host. A posted domain field
+        // must not retarget uniqueness (DB unique is publisher_id + domain).
+        unset($data['domain']);
         if (is_string($domain) && $domain !== '') {
             $data['domain'] = $domain;
-        } elseif (isset($data['domain']) && is_string($data['domain'])) {
-            $normalized = $this->normalizeDomain($data['domain']);
-            if ($normalized === '') {
-                unset($data['domain']);
-            } else {
-                $data['domain'] = $normalized;
-            }
         }
 
         if ($metricMerge !== []) {
@@ -2362,7 +2355,10 @@ class SiteController extends Controller
         }
 
         $normalized = $this->normalizeHttpUrl($raw);
-        $request->merge([$field => ($nullable && $normalized === '') ? null : $normalized]);
+        if ($normalized === '') {
+            throw ValidationException::withMessages([$field => ['Invalid URL']]);
+        }
+        $request->merge([$field => $normalized]);
     }
 
     private function normalizeHttpUrl(string $url): string

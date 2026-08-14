@@ -167,6 +167,7 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame(40, (int) $site->da);
         $this->assertSame(45, (int) $site->dr);
         $this->assertSame(12000, (int) $site->traffic);
+        $this->assertEqualsWithDelta(99.0, (float) $site->price, 0.001);
         $this->assertTrue($site->isPendingPublisherAcceptance());
         $this->assertNull($site->sensitive_prices);
         $this->assertStringContainsString('Invites', (string) session('success'));
@@ -1026,7 +1027,9 @@ class MarketingAssignSiteForPublisherTest extends TestCase
             ->assertOk()
             ->assertSee('Fill metrics, geo', false)
             ->assertDontSee('htmlspecialchars', false)
-            ->assertSee('id="language"', false);
+            ->assertSee('id="language"', false)
+            ->assertDontSee('type="url"', false)
+            ->assertSee('type="text" id="site_url"', false);
     }
 
     public function test_store_does_not_claim_notify_when_mail_and_bell_fail(): void
