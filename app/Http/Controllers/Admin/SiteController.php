@@ -26,6 +26,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
@@ -429,6 +430,8 @@ class SiteController extends Controller
                 ? ($site->agency_site_import_id ? (int) $site->agency_site_import_id : null)
                 : null,
             'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
+            'archived' => $site->isArchived(),
+            'orders_count' => $site->orderItemsCount(),
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
             'preview_fallback_urls' => $preview['fallbacks'],
@@ -546,9 +549,15 @@ class SiteController extends Controller
             }
         ));
 
-        $sites = Site::query()
+        $sitesQuery = Site::query()
             ->where('publisher_id', $user->id)
-            ->latest()
+            ->latest();
+
+        if (Schema::hasTable('order_items')) {
+            $sitesQuery->withCount('orderItems');
+        }
+
+        $sites = $sitesQuery
             ->get($select)
             ->map(fn (Site $site) => $this->staffSiteListRow($site))
             ->values();
@@ -1777,7 +1786,8 @@ class SiteController extends Controller
         $site->status_reason_by = auth()->id();
     }
 
-    // DELETE — admin: any site; marketing: pending / not-live only
+    // DELETE — pending never-ordered: hard delete. Live listings: archive.
+    // Sites with order items cannot be removed (FK restrict + 422).
     public function destroy(Request $request, $id)
     {
         $user = auth()->user();
@@ -1795,11 +1805,74 @@ class SiteController extends Controller
             ], 403);
         }
 
+        $orderCount = $site->orderItemsCount();
+        if ($orderCount > 0) {
+            return response()->json([
+                'success' => false,
+                'message' => $orderCount === 1
+                    ? 'This site has 1 order and cannot be deleted. Deactivate it to hide it from the catalog.'
+                    : 'This site has '.$orderCount.' orders and cannot be deleted. Deactivate it to hide it from the catalog.',
+                'order_count' => $orderCount,
+            ], 422);
+        }
+
+        if ($site->isArchived()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This site is already archived.',
+            ], 422);
+        }
+
         $siteName = $site->site_name;
         $siteId = $site->id;
         $domain = $site->domain;
         $bulkRequestId = $site->bulk_site_request_id;
         $onboarding = $site->onboarding_status;
+        $rejectionReason = $this->validatedStatusReason($request, true);
+        $publisher = $site->publisher;
+
+        Site::ensureStatusReasonColumns();
+        $this->applyStatusReason($site, $rejectionReason);
+
+        $shouldArchive = (bool) $site->verified || (bool) $site->active;
+        if ($shouldArchive) {
+            if (! $site->archiveByStaff($rejectionReason)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Archive is not available yet.',
+                ], 503);
+            }
+
+            try {
+                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Could not complete site review notifications before archive: '.$e->getMessage());
+            }
+
+            $this->notifyPublisherSiteRemoved($site->fresh() ?? $site, $publisher, $rejectionReason, 'archived');
+
+            ActivityLogger::log(
+                'site.archived',
+                ($user->name ?? 'Staff').' archived site "'.$siteName.'"'.($domain ? ' ('.$domain.')' : ''),
+                $site,
+                [
+                    'site_id' => $siteId,
+                    'site_name' => $siteName,
+                    'domain' => $domain,
+                    'bulk_site_request_id' => $bulkRequestId,
+                    'onboarding_status' => $onboarding,
+                    'archived_by_role' => $user?->activeRole(),
+                    'reason' => $rejectionReason,
+                ],
+                $siteName
+            );
+
+            return response()->json([
+                'success' => true,
+                'archived' => true,
+                'message' => 'Site archived and hidden from the catalog.',
+            ]);
+        }
 
         try {
             app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
@@ -1807,12 +1880,7 @@ class SiteController extends Controller
             Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
         }
 
-        // Deleting is how staff reject a submission outright, so the publisher
-        // needs the same courtesy as a deactivation — otherwise their site just
-        // vanishes and the first they hear of it is when they come looking.
-        // Captured before delete(): the mailable and bell both read the model.
-        $publisher = $site->publisher;
-        $rejectionReason = $request->input('reason') ?: $site->status_reason;
+        // Deleting is how staff reject a pending submission outright.
         $notifySnapshot = clone $site;
 
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
@@ -1821,19 +1889,7 @@ class SiteController extends Controller
 
         $site->delete();
 
-        try {
-            if ($publisher?->email) {
-                Mail::to($publisher->email)->send(
-                    new SiteStatusNotification($notifySnapshot, 'removed', null, $rejectionReason)
-                );
-            }
-            if ($publisher) {
-                app(InAppNotificationService::class)
-                    ->notifySiteStatusChanged($notifySnapshot, 'removed', $rejectionReason);
-            }
-        } catch (\Throwable $e) {
-            Log::error('Failed to notify publisher after site delete: '.$e->getMessage());
-        }
+        $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
 
         ActivityLogger::log(
             $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
@@ -1854,7 +1910,29 @@ class SiteController extends Controller
 
         return response()->json([
             'success' => true,
+            'archived' => false,
             'message' => 'Site deleted successfully',
         ]);
+    }
+
+    private function notifyPublisherSiteRemoved(
+        Site $site,
+        ?User $publisher,
+        ?string $reason,
+        string $action
+    ): void {
+        try {
+            if ($publisher?->email) {
+                Mail::to($publisher->email)->send(
+                    new SiteStatusNotification($site, $action, null, $reason)
+                );
+            }
+            if ($publisher) {
+                app(InAppNotificationService::class)
+                    ->notifySiteStatusChanged($site, $action, $reason);
+            }
+        } catch (\Throwable $e) {
+            Log::error('Failed to notify publisher after site '.$action.': '.$e->getMessage());
+        }
     }
 }
