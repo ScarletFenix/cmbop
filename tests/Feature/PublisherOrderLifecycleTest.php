@@ -221,6 +221,30 @@ class PublisherOrderLifecycleTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $wallet->fresh()->balance, 0.01);
     }
 
+    public function test_rejecting_an_unpaid_order_does_not_credit_the_advertiser(): void
+    {
+        $wallet = $this->advertiserWallet();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+
+        $item = $this->makeOrder('card', 'pending', 80);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.reject', $item->id), [
+                'reason' => 'We cannot publish this content right now, sorry.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+
+        $order = $item->order->fresh();
+        $this->assertSame('cancelled', $order->status);
+        $this->assertSame('pending', $order->payment_status);
+    }
+
     public function test_rejecting_requires_a_meaningful_reason(): void
     {
         $item = $this->makeOrder();
