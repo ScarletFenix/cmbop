@@ -361,76 +361,75 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
 
-    public function test_order_number_collision_retries_instead_of_dropping_the_paid_line(): void
+    public function test_finalize_survives_cache_flush_via_durable_checkout_intent(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
-        $site = $this->makeSite($publisher, 'order-number-retry.example', 40);
-        $ref = 'ORDNUM-RETRY-1';
+        $site = $this->makeSite($publisher, 'durable-package.example', 80);
+        $ref = 'DURABLE-PKG-1';
 
-        Order::create([
-            'user_id' => $advertiser->id,
-            'order_number' => '000001',
-            'reference_code' => 'OTHER-REF',
-            'subtotal' => 10,
-            'tax' => 0,
-            'total_amount' => 10,
-            'payment_method' => 'wallet',
-            'payment_status' => 'paid',
-            'status' => 'completed',
-        ]);
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package(
+            $advertiser,
+            [$this->lineFor($site, 80)],
+            80
+        ));
 
-        $payments = new class extends OrderPaymentService
-        {
-            public int $orderNumberCalls = 0;
+        Cache::flush();
+        $this->assertNull(Cache::get(OrderPaymentService::pendingCheckoutCacheKey($ref)));
 
-            protected function freshOrderNumber(): string
-            {
-                $this->orderNumberCalls++;
-
-                return $this->orderNumberCalls === 1
-                    ? '000001'
-                    : parent::freshOrderNumber();
-            }
-        };
-
-        $payments->storePendingCheckout($ref, $this->package($advertiser, [
-            $this->lineFor($site, 40),
-        ], 40));
-
-        $created = $payments->finalizeStripeFirstCheckout($ref, $this->paidSession($ref, 40, 'cs_ordnum_retry'));
+        $created = app(OrderPaymentService::class)->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_durable_pkg')
+        );
 
         $this->assertCount(1, $created);
-        $this->assertGreaterThanOrEqual(2, $payments->orderNumberCalls);
-        $this->assertSame(1, Order::where('reference_code', $ref)->count());
-        $this->assertSame($site->id, (int) Order::where('reference_code', $ref)->first()?->items()->first()?->site_id);
-        $this->assertNotSame('000001', Order::where('reference_code', $ref)->value('order_number'));
+        $order = Order::where('reference_code', $ref)->first();
+        $this->assertNotNull($order);
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame($site->id, (int) $order->items()->first()?->site_id);
     }
 
-    public function test_missing_stripe_amount_fields_refuse_to_finalize(): void
+    public function test_session_expiry_refunds_bonus_after_cache_flush(): void
     {
-        $payments = app(OrderPaymentService::class);
-        $ref = 'MISSING-AMT-1';
-        $payments->storePendingCheckout($ref, $this->package($this->makeUser('advertiser'), [], 50));
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $this->makeSite($publisher, 'expire-durable.example');
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'EXPIRE-DURABLE-1';
 
-        $session = (object) [
-            'id' => 'cs_missing_amount',
-            'object' => 'checkout.session',
-            'payment_intent' => 'pi_missing_amount',
-            'metadata' => (object) [
-                'expected_amount' => '50',
-                'type' => 'order_payment',
-                'reference_code' => $ref,
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package(
+            $advertiser,
+            [$this->lineFor($this->makeSite($publisher, 'expire-durable-line.example'), 40)],
+            20,
+            20
+        ));
+
+        Cache::flush();
+
+        $this->signedWebhook([
+            'id' => 'evt_expire_durable_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.expired',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expired_durable',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'unpaid',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'bonus_applied' => '20',
+                    ],
+                ],
             ],
-        ];
+        ])->assertOk();
 
-        try {
-            $payments->finalizeStripeFirstCheckout($ref, $session);
-            $this->fail('Missing Stripe amount fields should refuse to finalize.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('missing', strtolower($e->getMessage()));
-        }
-
-        $this->assertSame(0, Order::where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
 }

@@ -6,6 +6,8 @@ use App\Mail\SiteStatusNotification;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\SiteDescriptionRules;
+use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
@@ -29,6 +31,7 @@ class AdminSiteUpdateGuardTest extends TestCase
         $this->seed(RolesTableSeeder::class);
         $this->seed(CountriesTableSeeder::class);
         $this->seed(LanguagesTableSeeder::class);
+        $this->seed(CategoriesTableSeeder::class);
 
         $adminRole = Role::where('name', 'admin')->firstOrFail();
         $this->admin = User::factory()->create([
@@ -292,6 +295,176 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame('Guest Post', $site->fresh()->link_type);
+        $this->assertTrue(Site::ensureLinkTypeColumn());
+    }
+
+    public function test_update_syncs_categories_json_from_category_field(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => 'Business & Finance',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('Business & Finance', $site->category);
+        $this->assertSame(['Business & Finance'], $site->categories);
+    }
+
+    public function test_update_keeps_secondary_niches_when_primary_category_is_resent(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News', 'Business & Finance'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => 'News',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('News', $site->category);
+        $this->assertSame(['News', 'Business & Finance'], $site->categories);
+    }
+
+    public function test_update_replaces_primary_niche_without_dropping_others(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News', 'Technology & Gadgets'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => 'Business & Finance',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('Business & Finance', $site->category);
+        $this->assertSame(['Business & Finance', 'Technology & Gadgets'], $site->categories);
+    }
+
+    public function test_update_ignores_blank_category_and_keeps_niches(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News', 'Business & Finance'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'category' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('News', $site->category);
+        $this->assertSame(['News', 'Business & Finance'], $site->categories);
+    }
+
+    public function test_update_keeps_categories_when_category_is_omitted(): void
+    {
+        $site = $this->site([
+            'category' => 'News',
+            'categories' => ['News'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'da' => 55,
+            ])
+            ->assertOk();
+
+        $site->refresh();
+        $this->assertSame(55, (int) $site->da);
+        $this->assertSame('News', $site->category);
+        $this->assertSame(['News'], $site->categories);
+    }
+
+    public function test_update_clears_empty_country_and_language(): void
+    {
+        $site = $this->site([
+            'country' => 'de',
+            'language' => 'de',
+            'countries' => ['de'],
+            'languages' => ['de'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'country' => '',
+                'language' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue(blank($site->country));
+        $this->assertTrue(blank($site->language));
+        $this->assertEmpty($site->countries);
+        $this->assertEmpty($site->languages);
+    }
+
+    public function test_update_clears_empty_description_and_example_url(): void
+    {
+        $site = $this->site([
+            'description' => str_repeat('Admin update guard listing description. ', 3),
+            'example_url' => 'https://guard-site.example/sample',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'description' => '',
+                'example_url' => '',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertTrue(blank($site->description));
+        $this->assertTrue(blank($site->example_url));
+    }
+
+    public function test_update_rejects_description_over_word_max(): void
+    {
+        $site = $this->site();
+        $tooLong = implode(' ', array_fill(0, SiteDescriptionRules::MAX_WORDS + 1, 'word'));
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'description' => $tooLong,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['description']);
+
+        $this->assertSame(
+            str_repeat('Admin update guard listing description. ', 3),
+            $site->fresh()->description
+        );
     }
 
     public function test_update_rejects_array_shaped_homepage_fee(): void
@@ -349,6 +522,51 @@ class AdminSiteUpdateGuardTest extends TestCase
             ->assertJsonPath('success', true);
 
         $this->assertSame('News', $site->fresh()->category);
+    }
+
+    public function test_update_rejects_array_shaped_geo_and_description_without_500(): void
+    {
+        $site = $this->site();
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'country' => [''],
+                'language' => [['de']],
+                'description' => ['Poisoned description that is long enough to look real.'],
+                'link_type' => ['dofollow'],
+            ])
+            ->assertStatus(422);
+
+        $site->refresh();
+        $this->assertSame('de', $site->country);
+        $this->assertSame('de', $site->language);
+        $this->assertSame(
+            str_repeat('Admin update guard listing description. ', 3),
+            $site->description
+        );
+        $this->assertSame('dofollow', $site->link_type);
+    }
+
+    public function test_update_accepts_nested_country_array(): void
+    {
+        $site = $this->site([
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+        ]);
+
+        $this->actingAs($this->admin)
+            ->putJson(route('admin.sites.update', $site->id), [
+                'country' => [['de']],
+                'language' => 'de',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertSame('de', $site->country);
+        $this->assertSame(['de'], $site->countries);
     }
 
     public function test_update_rejects_port_duplicate_domain(): void

@@ -121,7 +121,7 @@ class SiteController extends Controller
         // Handle categories - get as array from multi-select
         $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
         // Pipe-join avoids breaking names that contain commas (e.g. "Marketing, PR & Advertising")
-        $primaryCategory = ! empty($categories) ? implode('|', $categories) : (string) $request->category;
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : $this->scalarString($request->input('category'));
         $categoriesArray = ! empty($categories) ? $categories : null;
 
         // Single country + single language per website (manual entry — never auto-overwritten)
@@ -214,7 +214,11 @@ class SiteController extends Controller
         });
 
         $validator->after(function ($validator) use ($request) {
-            foreach (SiteDescriptionRules::errors((string) $request->input('siteDescription', '')) as $message) {
+            $rawDescription = $request->input('siteDescription', '');
+            if (! is_string($rawDescription)) {
+                return;
+            }
+            foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
                 $validator->errors()->add('siteDescription', $message);
             }
         });
@@ -741,6 +745,16 @@ class SiteController extends Controller
             }
         });
 
+        $validator->after(function ($validator) use ($request) {
+            $rawDescription = $request->input('siteDescription', '');
+            if (! is_string($rawDescription)) {
+                return;
+            }
+            foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
+                $validator->errors()->add('siteDescription', $message);
+            }
+        });
+
         if ($validator->fails()) {
             return redirect()->back()
                 ->withErrors($validator)
@@ -1240,8 +1254,13 @@ class SiteController extends Controller
      */
     private function parseCategoryList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
-            $parts = $value;
+            array_walk_recursive($value, function ($item) use (&$parts) {
+                if (is_scalar($item) && ! is_bool($item)) {
+                    $parts[] = $item;
+                }
+            });
         } elseif (is_string($value) && $value !== '') {
             $decoded = json_decode($value, true);
             if (is_array($decoded)) {
@@ -1253,12 +1272,13 @@ class SiteController extends Controller
                 $known = Category::query()->where('name', $value)->exists();
                 $parts = $known ? [$value] : (preg_split('/,/', $value) ?: []);
             }
-        } else {
-            $parts = [];
         }
 
         $categories = [];
         foreach ($parts as $part) {
+            if (! is_scalar($part) || is_bool($part)) {
+                continue;
+            }
             $name = trim((string) $part);
             if ($name !== '') {
                 $categories[] = $name;
@@ -1276,9 +1296,14 @@ class SiteController extends Controller
      */
     private function parseCodeList($value): array
     {
+        $parts = [];
         if (is_array($value)) {
-            $parts = $value;
-        } else {
+            array_walk_recursive($value, function ($item) use (&$parts) {
+                if (is_scalar($item) && ! is_bool($item)) {
+                    $parts[] = $item;
+                }
+            });
+        } elseif (is_scalar($value) && ! is_bool($value)) {
             $parts = preg_split('/[|,]/', (string) $value) ?: [];
         }
 
@@ -1291,6 +1316,18 @@ class SiteController extends Controller
         }
 
         return array_values(array_unique($codes));
+    }
+
+    /**
+     * Form/JSON text. Arrays/objects must not reach (string) — PHP 8 TypeError.
+     */
+    private function scalarString(mixed $value): string
+    {
+        if (! is_scalar($value) || is_bool($value)) {
+            return '';
+        }
+
+        return trim((string) $value);
     }
 
     /**
