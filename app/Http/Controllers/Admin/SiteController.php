@@ -1259,11 +1259,15 @@ class SiteController extends Controller
             ]);
         }
         if ($request->hasAny(['da', 'dr', 'traffic'])) {
-            $request->merge([
-                'da' => $request->has('da') ? $this->normalizeMetricInt($request->input('da')) : $request->input('da'),
-                'dr' => $request->has('dr') ? $this->normalizeMetricInt($request->input('dr')) : $request->input('dr'),
-                'traffic' => $request->has('traffic') ? $this->normalizeMetricInt($request->input('traffic')) : $request->input('traffic'),
-            ]);
+            $metrics = [];
+            foreach (['da', 'dr', 'traffic'] as $metric) {
+                if ($request->has($metric)) {
+                    $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
+                }
+            }
+            if ($metrics !== []) {
+                $request->merge($metrics);
+            }
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
