@@ -89,6 +89,25 @@ class MarketingSiteImageUploadTest extends TestCase
             ?? Category::query()->firstOrFail())->name;
     }
 
+    public function test_marketer_cannot_upload_image_for_live_site(): void
+    {
+        $site = $this->makeSite([
+            'domain' => 'live-image.example',
+            'site_url' => 'https://live-image.example',
+            'active' => true,
+        ]);
+        $file = UploadedFile::fake()->image('blocked.jpg', 320, 200);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.upload-image', $site->id), [
+                'site_image' => $file,
+            ])
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        $this->assertEmpty($site->fresh()->site_image);
+    }
+
     public function test_marketer_upload_image_endpoint_persists_site_image(): void
     {
         $site = $this->makeSite();

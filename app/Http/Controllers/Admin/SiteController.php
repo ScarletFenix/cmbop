@@ -878,7 +878,8 @@ class SiteController extends Controller
     {
         $site = Site::with('publisher:id,name,email')->findOrFail($id);
         $user = auth()->user();
-        $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+        $isMarketingEditor = $this->isMarketingEditor($user);
+        $marketingListingLocked = $isMarketingEditor && $this->marketingListingIsLocked($site);
         $languages = Language::marketplace()->orderBy('name')->get();
         $countries = Country::marketplace()->orderBy('name')->get();
         // Same A–Z niche list as Catalog main search filter.
@@ -892,6 +893,7 @@ class SiteController extends Controller
             return view()->file($editViewPath, compact(
                 'site',
                 'isMarketingEditor',
+                'marketingListingLocked',
                 'languages',
                 'countries',
                 'categories',
@@ -910,6 +912,17 @@ class SiteController extends Controller
     public function uploadImage(Request $request, $id)
     {
         $site = Site::findOrFail($id);
+        if ($this->isMarketingEditor(auth()->user()) && $this->marketingListingIsLocked($site)) {
+            $message = 'Marketing can only edit pending sites that are not live.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 403);
+            }
+
+            abort(403, $message);
+        }
 
         $file = $request->file('site_image');
         if (! $file) {
@@ -1049,7 +1062,21 @@ class SiteController extends Controller
 
         $site = Site::findOrFail($id);
         $user = auth()->user();
-        $isMarketingEditor = (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+        $isMarketingEditor = $this->isMarketingEditor($user);
+
+        if ($isMarketingEditor && $this->marketingListingIsLocked($site)) {
+            $message = 'Marketing can only edit pending sites that are not live.';
+            if ($request->expectsJson() || $request->ajax()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $message,
+                ], 403);
+            }
+
+            return redirect()
+                ->to(staff_route('sites.edit', $site->id))
+                ->withErrors(['site_url' => $message]);
+        }
 
         // Store old data for email comparison / activity log
         $oldData = [
@@ -1244,8 +1271,18 @@ class SiteController extends Controller
             ->with('success', $message);
     }
 
+    private function isMarketingEditor(?User $user): bool
+    {
+        return (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+    }
+
+    private function marketingListingIsLocked(Site $site): bool
+    {
+        return (bool) $site->verified || (bool) $site->active;
+    }
+
     /**
-     * Marketing may only edit metrics, geo, and niches for the bulk handoff.
+     * Marketing may edit metrics/geo/niches, plus URL/price on pending listings.
      *
      * @return array<string, mixed>|JsonResponse|RedirectResponse
      */
@@ -1253,6 +1290,21 @@ class SiteController extends Controller
     {
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+        $canFixListing = ! $this->marketingListingIsLocked($site);
+
+        if ($canFixListing) {
+            if ($request->exists('site_url') || $request->exists('siteUrl')) {
+                $request->merge([
+                    'site_url' => $this->normalizeHttpUrl((string) $request->input('site_url', $request->input('siteUrl', ''))),
+                ]);
+            }
+            if ($request->exists('example_url') || $request->exists('exampleUrl')) {
+                $exampleUrl = $this->normalizeHttpUrl((string) $request->input('example_url', $request->input('exampleUrl', '')));
+                $request->merge([
+                    'example_url' => $exampleUrl !== '' ? $exampleUrl : null,
+                ]);
+            }
+        }
 
         // Resolve exact niche names and group aliases (e.g. Technology → Technology & Gadgets).
         // Also recovers from urlencoded truncation of "Technology & Gadgets" → "Technology".
@@ -1261,7 +1313,7 @@ class SiteController extends Controller
         $unknownNiches = $resolved['unknown'];
         $request->merge(['categories' => $categories]);
 
-        $validator = Validator::make($request->all(), [
+        $rules = [
             'da' => 'required|integer|min:0|max:100',
             'dr' => 'required|integer|min:0|max:100',
             'traffic' => 'required|integer|min:0|max:4294967295',
@@ -1269,9 +1321,17 @@ class SiteController extends Controller
             'country' => 'required|string|max:10',
             'categories' => 'required|array|min:1|max:7',
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
-        ], $this->siteImageValidationMessages());
+        ];
+        if ($canFixListing) {
+            $rules['site_name'] = 'sometimes|required|string|max:255';
+            $rules['site_url'] = 'sometimes|required|url|max:255';
+            $rules['example_url'] = 'nullable|url|max:255';
+            $rules['price'] = 'sometimes|required|numeric|min:0';
+        }
 
-        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches) {
+        $validator = Validator::make($request->all(), $rules, $this->siteImageValidationMessages());
+
+        $validator->after(function ($validator) use ($request, $allowedCountries, $allowedLanguages, $unknownNiches, $canFixListing, $site) {
             $language = strtolower(trim((string) $request->input('language', '')));
             $country = strtolower(trim((string) $request->input('country', '')));
 
@@ -1290,6 +1350,19 @@ class SiteController extends Controller
 
             foreach ($unknownNiches as $cat) {
                 $validator->errors()->add('categories', 'Unknown niche: '.$cat);
+            }
+
+            if ($canFixListing && $request->filled('site_url')) {
+                $siteUrl = (string) $request->input('site_url', '');
+                $host = parse_url($siteUrl, PHP_URL_HOST);
+                if (! $host) {
+                    $validator->errors()->add('site_url', 'Invalid URL');
+                } else {
+                    $domain = preg_replace('/^www\./', '', strtolower((string) $host));
+                    if (Site::query()->where('domain', $domain)->where('id', '!=', $site->id)->exists()) {
+                        $validator->errors()->add('site_url', 'This website domain is already registered.');
+                    }
+                }
             }
         });
 
@@ -1323,6 +1396,24 @@ class SiteController extends Controller
             'metrics_fetched_at' => now(),
             'enrichment_status' => 'ready',
         ];
+
+        if ($canFixListing) {
+            if ($request->exists('site_name')) {
+                $payload['site_name'] = (string) $request->input('site_name');
+            }
+            if ($request->exists('site_url')) {
+                $siteUrl = (string) $request->input('site_url');
+                $host = parse_url($siteUrl, PHP_URL_HOST) ?: '';
+                $payload['site_url'] = $siteUrl;
+                $payload['domain'] = preg_replace('/^www\./', '', strtolower((string) $host));
+            }
+            if ($request->exists('example_url')) {
+                $payload['example_url'] = $request->input('example_url');
+            }
+            if ($request->exists('price')) {
+                $payload['price'] = $request->input('price');
+            }
+        }
 
         // Same image rules as admin — optional; leave empty to keep current.
         if ($request->hasFile('site_image')) {
@@ -1848,6 +1939,13 @@ class SiteController extends Controller
             ], 403);
         }
 
+        $isMarketingActor = $this->isMarketingEditor($user);
+        $rejectionReason = $this->validatedStatusReason($request, $isMarketingActor);
+        if ($rejectionReason === null && ! $isMarketingActor) {
+            $existing = is_string($site->status_reason) ? trim($site->status_reason) : '';
+            $rejectionReason = $existing !== '' ? $existing : null;
+        }
+
         $siteName = $site->site_name;
         $siteId = $site->id;
         $domain = $site->domain;
@@ -1865,8 +1963,10 @@ class SiteController extends Controller
         // vanishes and the first they hear of it is when they come looking.
         // Captured before delete(): the mailable and bell both read the model.
         $publisher = $site->publisher;
-        $rejectionReason = $request->input('reason') ?: $site->status_reason;
         $notifySnapshot = clone $site;
+        if ($rejectionReason) {
+            $notifySnapshot->status_reason = $rejectionReason;
+        }
 
         if ($site->site_image && Storage::disk('public')->exists($site->site_image)) {
             Storage::disk('public')->delete($site->site_image);
@@ -1899,6 +1999,7 @@ class SiteController extends Controller
                 'bulk_site_request_id' => $bulkRequestId,
                 'onboarding_status' => $onboarding,
                 'deleted_by_role' => $user?->activeRole(),
+                'reason' => $rejectionReason,
             ],
             $siteName
         );
