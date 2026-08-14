@@ -981,8 +981,14 @@ class SiteController extends Controller
             }
         }
 
+        if (! $site) {
+            return redirect()->back()
+                ->withErrors(['site_url' => 'We could not save this website. Please try again.'])
+                ->withInput();
+        }
+
         $success = 'Site added (DA '.$site->da.' / DR '.$site->dr.'). Publisher was notified — they must open My Sites → Invites and Accept before it appears under Pending.';
-        if ($site && ! $site->hasGoodMetrics()) {
+        if (! $site->hasGoodMetrics()) {
             $success .= ' This listing is below the marketing Activate bar (DA ≥ '.Site::GOOD_MIN_DA.', DR ≥ '.Site::GOOD_MIN_DR.', traffic ≥ '.number_format(Site::GOOD_MIN_TRAFFIC).').';
         }
 
@@ -1336,15 +1342,13 @@ class SiteController extends Controller
             ]);
         }
         $metrics = [];
-        if ($request->hasAny(['da', 'dr', 'traffic'])) {
-            foreach (['da', 'dr', 'traffic'] as $metric) {
-                if ($request->has($metric)) {
-                    $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
-                }
+        foreach (['da', 'dr', 'traffic'] as $metric) {
+            if ($request->exists($metric)) {
+                $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
             }
-            if ($metrics !== []) {
-                $request->merge($metrics);
-            }
+        }
+        if ($metrics !== []) {
+            $request->merge($metrics);
         }
 
         $countryCodes = $request->has('country') || $request->has('countries')
@@ -1577,6 +1581,16 @@ class SiteController extends Controller
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $canFixListing = ! $this->marketingListingIsLocked($site);
+
+        $metrics = [];
+        foreach (['da', 'dr', 'traffic'] as $metric) {
+            if ($request->exists($metric)) {
+                $metrics[$metric] = $this->normalizeMetricInt($request->input($metric));
+            }
+        }
+        if ($metrics !== []) {
+            $request->merge($metrics);
+        }
 
         if ($canFixListing) {
             if ($request->exists('site_url') || $request->exists('siteUrl')) {

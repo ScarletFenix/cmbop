@@ -423,7 +423,7 @@
                                     @foreach($homepageDays as $days)
                                         @php
                                             $checked = old("homepage.$days", array_key_exists((string) $days, $existingHomepage) || array_key_exists($days, $existingHomepage));
-                                            $priceVal = old("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
+                                            $priceVal = old_text("price_homepage.$days", $existingHomepage[(string) $days] ?? $existingHomepage[$days] ?? '');
                                         @endphp
                                         <div style="min-width:140px;">
                                             <div class="form-check">
