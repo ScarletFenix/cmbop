@@ -165,6 +165,39 @@
             .replace(/'/g, '&#39;');
     }
 
+    function isHttpUrl(value) {
+        return /^https?:\/\//i.test(String(value || ''));
+    }
+
+    function textLink(url, label, extraClass, attrs) {
+        const text = escapeHtml(label || '—');
+        const cls = extraClass ? (' class="' + extraClass + '"') : '';
+        if (!url) {
+            return extraClass ? ('<span' + cls + '>' + text + '</span>') : text;
+        }
+        return '<a href="' + escapeHtml(url) + '"' + cls + (attrs || '') + '>' + text + '</a>';
+    }
+
+    function signalBadges(order) {
+        const chips = [];
+        if (order.has_open_dispute) {
+            chips.push(textLink(order.url + '#order-disputes', 'Dispute', 'badge text-bg-danger text-decoration-none'));
+        }
+        if (order.has_live_url) {
+            chips.push(isHttpUrl(order.live_url)
+                ? textLink(order.live_url, 'Live', 'badge text-bg-success text-decoration-none', ' target="_blank" rel="noopener"')
+                : '<span class="badge text-bg-success">Live</span>');
+        }
+        if (order.is_scheduled) {
+            const when = order.scheduled_publish_at_human
+                ? ' title="' + escapeHtml(order.scheduled_publish_at_human) + '"'
+                : '';
+            chips.push('<span class="badge text-bg-warning text-dark"' + when + '>Scheduled</span>');
+        }
+        if (!chips.length) return '';
+        return '<div class="d-flex flex-wrap gap-1 mt-1">' + chips.join('') + '</div>';
+    }
+
     function loadOrders(page) {
         currentPage = page || 1;
         const filters = readFilters();
@@ -206,13 +239,18 @@
 
                 body.innerHTML = json.data.map(order => {
                     const adv = order.advertiser
-                        ? '<div class="fw-semibold">' + escapeHtml(order.advertiser.name) + '</div><div class="small text-muted slb-text-break">' + escapeHtml(order.advertiser.email) + '</div>'
+                        ? '<div class="fw-semibold">' + textLink(order.advertiser.url, order.advertiser.name, 'link-dark') + '</div>'
+                            + '<div class="small text-muted slb-text-break">' + escapeHtml(order.advertiser.email) + '</div>'
                         : '—';
-                    const site = '<div class="fw-semibold slb-text-break">' + escapeHtml(order.site_name || '—') + '</div>'
-                        + '<div class="small text-muted slb-text-break">' + escapeHtml(order.publisher_name || '') + '</div>';
+                    const publisherName = (order.publisher && order.publisher.name) || order.publisher_name || '';
+                    const publisherUrl = order.publisher && order.publisher.url;
+                    const site = textLink(order.site_admin_url, order.site_name || '—', 'fw-semibold slb-text-break link-dark')
+                        + (publisherName
+                            ? '<div>' + textLink(publisherUrl, publisherName, 'small text-muted slb-text-break') + '</div>'
+                            : '');
                     return '<tr>'
                         + '<td><strong class="admin-id-clamp" title="' + escapeHtml(order.order_number) + '">#'
-                            + escapeHtml(order.order_number) + '</strong></td>'
+                            + escapeHtml(order.order_number) + '</strong>' + signalBadges(order) + '</td>'
                         + '<td>' + adv + '</td>'
                         + '<td>' + site + '</td>'
                         + '<td>' + statusBadge(order.status) + '</td>'

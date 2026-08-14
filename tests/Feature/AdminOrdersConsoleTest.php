@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\OrderActivity;
 use App\Models\OrderChatMessage;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -493,5 +494,112 @@ class AdminOrdersConsoleTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.orders.content.download', $item))
             ->assertNotFound();
+    }
+
+    public function test_orders_index_renders_signal_and_party_link_helpers(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.index'))
+            ->assertOk()
+            ->assertSee('function signalBadges', false)
+            ->assertSee('has_open_dispute', false)
+            ->assertSee('#order-disputes', false)
+            ->assertSee('site_admin_url', false)
+            ->assertSee('order.advertiser.url', false)
+            ->assertSee('order.publisher.url', false);
+    }
+
+    public function test_orders_data_includes_list_signals_and_party_links(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->siteFor($publisher);
+
+        $plain = $this->orderFor($advertiser, $site);
+
+        $live = $this->orderFor($advertiser, $site);
+        $live->items->first()->update([
+            'live_url' => 'https://admin-orders.example/published-guest-post',
+        ]);
+
+        $scheduled = $this->orderFor($advertiser, $site);
+        $scheduled->update([
+            'status' => 'scheduled',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+        ]);
+
+        $disputed = $this->orderFor($advertiser, $site);
+        $disputed->update(['status' => 'completed', 'completed_at' => now()->subDay()]);
+        OrderItemDispute::ensureTable();
+        OrderItemDispute::create([
+            'order_id' => $disputed->id,
+            'order_item_id' => $disputed->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live link was removed after approval.',
+        ]);
+
+        $advertiserUrl = route('admin.users.index').'#user-'.$advertiser->id;
+        $publisherUrl = route('admin.users.index').'#user-'.$publisher->id;
+        $siteUrl = route('admin.sites.edit', $site->id);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment([
+                'order_number' => $plain->order_number,
+                'has_open_dispute' => false,
+                'has_live_url' => false,
+                'is_scheduled' => false,
+                'site_admin_url' => $siteUrl,
+            ])
+            ->assertJsonFragment([
+                'order_number' => $live->order_number,
+                'has_live_url' => true,
+                'live_url' => 'https://admin-orders.example/published-guest-post',
+            ])
+            ->assertJsonFragment([
+                'order_number' => $scheduled->order_number,
+                'is_scheduled' => true,
+            ])
+            ->assertJsonFragment([
+                'order_number' => $disputed->order_number,
+                'has_open_dispute' => true,
+            ]);
+
+        $rows = $this->actingAs($admin)
+            ->getJson(route('admin.orders.data'))
+            ->json('data');
+        $plainRow = collect($rows)->firstWhere('order_number', $plain->order_number);
+
+        $this->assertSame($advertiserUrl, $plainRow['advertiser']['url'] ?? null);
+        $this->assertSame($publisherUrl, $plainRow['publisher']['url'] ?? null);
+        $this->assertSame($siteUrl, $plainRow['site_admin_url'] ?? null);
+    }
+
+    public function test_order_show_exposes_dispute_anchor_for_list_signals(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $order = $this->orderFor($advertiser, $this->siteFor($this->userWithRole('publisher')));
+        $order->update(['status' => 'completed', 'completed_at' => now()->subDay()]);
+        OrderItemDispute::ensureTable();
+        OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items->first()->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Live link was removed after approval.',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('id="order-disputes"', false);
     }
 }

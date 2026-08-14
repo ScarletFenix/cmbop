@@ -207,7 +207,7 @@
                     </div>
                 </div>
                 @if($order->status === 'completed' || ($disputes ?? collect())->isNotEmpty())
-                <div class="col-12">
+                <div class="col-12" id="order-disputes">
                     <div class="card border-0 shadow-sm">
                         <div class="card-header bg-white border-0 d-flex flex-wrap justify-content-between align-items-center gap-2">
                             <strong>Link-removed dispute / clawback</strong>

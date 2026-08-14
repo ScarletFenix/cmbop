@@ -28,6 +28,12 @@ class OrderController extends Controller
         $query = Order::with(['user', 'items.site.publisher'])
             ->orderByDesc('created_at');
 
+        if (OrderItemDispute::tableAvailable()) {
+            $query->withCount([
+                'disputes as open_disputes_count' => fn ($q) => $q->where('status', OrderItemDispute::STATUS_OPEN),
+            ]);
+        }
+
         if ($request->filled('search')) {
             $search = $request->string('search')->toString();
             $query->where(function ($q) use ($search) {
@@ -75,6 +81,13 @@ class OrderController extends Controller
             $item = $order->items->first();
             $site = $item?->site;
             $publisher = $site?->publisher;
+            $liveUrl = $order->items->first(fn (OrderItem $line) => filled($line->live_url))?->live_url;
+            $userUrl = $order->user
+                ? route('admin.users.index').'#user-'.$order->user->id
+                : null;
+            $publisherUrl = $publisher
+                ? route('admin.users.index').'#user-'.$publisher->id
+                : null;
 
             return [
                 'id' => $order->id,
@@ -90,10 +103,23 @@ class OrderController extends Controller
                     'id' => $order->user->id,
                     'name' => $order->user->name,
                     'email' => $order->user->email,
+                    'url' => $userUrl,
                 ] : null,
                 'site_name' => $item?->site_name ?: ($site?->site_name),
+                'site_admin_url' => $site ? route('admin.sites.edit', $site->id) : null,
                 'publisher_name' => $publisher?->name,
-                'live_url' => $item?->live_url,
+                'publisher' => $publisher ? [
+                    'id' => $publisher->id,
+                    'name' => $publisher->name,
+                    'url' => $publisherUrl,
+                ] : null,
+                'live_url' => $liveUrl,
+                'has_open_dispute' => OrderItemDispute::tableAvailable()
+                    && (int) ($order->open_disputes_count ?? 0) > 0,
+                'has_live_url' => filled($liveUrl),
+                'is_scheduled' => $order->isScheduled(),
+                'scheduled_publish_at' => optional($order->scheduled_publish_at)?->toIso8601String(),
+                'scheduled_publish_at_human' => optional($order->scheduled_publish_at)?->format('M j, Y'),
                 'modification_requested' => $item?->modification_requested,
                 'url' => route('admin.orders.show', $order->id),
             ];
