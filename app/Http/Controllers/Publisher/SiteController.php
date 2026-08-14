@@ -93,7 +93,7 @@ class SiteController extends Controller
     public function getCountryLanguages($countryCode)
     {
         $pairs = app(CountryLanguagePairs::class);
-        $rows = $pairs->mapWithNames()[strtolower(trim((string) $countryCode))] ?? [];
+        $rows = $pairs->mapWithNames()[strtolower(trim(scalar_text($countryCode)))] ?? [];
 
         return response()->json(collect($rows)->map(fn ($r) => [
             'code' => $r['code'],
@@ -121,7 +121,7 @@ class SiteController extends Controller
         // Handle categories - get as array from multi-select
         $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
         // Pipe-join avoids breaking names that contain commas (e.g. "Marketing, PR & Advertising")
-        $primaryCategory = ! empty($categories) ? implode('|', $categories) : $this->scalarString($request->input('category'));
+        $primaryCategory = ! empty($categories) ? implode('|', $categories) : scalar_text($request->category);
         $categoriesArray = ! empty($categories) ? $categories : null;
 
         // Single country + single language per website (manual entry — never auto-overwritten)
@@ -214,11 +214,7 @@ class SiteController extends Controller
         });
 
         $validator->after(function ($validator) use ($request) {
-            $rawDescription = $request->input('siteDescription', '');
-            if (! is_string($rawDescription)) {
-                return;
-            }
-            foreach (SiteDescriptionRules::errors($rawDescription) as $message) {
+            foreach (SiteDescriptionRules::errors(scalar_text($request->input('siteDescription', ''))) as $message) {
                 $validator->errors()->add('siteDescription', $message);
             }
         });
@@ -1276,10 +1272,7 @@ class SiteController extends Controller
 
         $categories = [];
         foreach ($parts as $part) {
-            if (! is_scalar($part) || is_bool($part)) {
-                continue;
-            }
-            $name = trim((string) $part);
+            $name = trim(scalar_text($part));
             if ($name !== '') {
                 $categories[] = $name;
             }
@@ -1298,18 +1291,14 @@ class SiteController extends Controller
     {
         $parts = [];
         if (is_array($value)) {
-            array_walk_recursive($value, function ($item) use (&$parts) {
-                if (is_scalar($item) && ! is_bool($item)) {
-                    $parts[] = $item;
-                }
-            });
-        } elseif (is_scalar($value) && ! is_bool($value)) {
-            $parts = preg_split('/[|,]/', (string) $value) ?: [];
+            $parts = $value;
+        } else {
+            $parts = preg_split('/[|,]/', scalar_text($value)) ?: [];
         }
 
         $codes = [];
         foreach ($parts as $part) {
-            $code = strtolower(trim((string) $part));
+            $code = strtolower(trim(scalar_text($part)));
             if ($code !== '' && preg_match('/^[a-z]{2}$/', $code)) {
                 $codes[] = $code;
             }
