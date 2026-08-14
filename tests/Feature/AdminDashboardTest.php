@@ -50,6 +50,48 @@ class AdminDashboardTest extends TestCase
             ]);
     }
 
+    public function test_admin_statistics_endpoint(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.total_users', 1)
+            ->assertJsonPath('data.admins', 1)
+            ->assertJsonPath('data.advertisers', 0)
+            ->assertJsonPath('data.pending_deposits', 0);
+    }
+
+    public function test_admin_trends_distributions_and_action_queue_endpoints(): void
+    {
+        $admin = $this->makeAdmin();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.trends'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonCount(30, 'labels')
+            ->assertJsonCount(30, 'revenue');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.distributions'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonStructure(['orders' => ['labels', 'values'], 'roles' => ['labels', 'values']]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.dashboard.action-queue'))
+            ->assertOk()
+            ->assertJson([
+                'success' => true,
+                'deposits' => [],
+                'withdrawals' => [],
+                'sites' => [],
+            ]);
+    }
+
     public function test_non_admin_cannot_access_ops_dashboard(): void
     {
         $role = Role::create(['name' => 'advertiser']);
