@@ -23,6 +23,7 @@ use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -694,8 +695,8 @@ class SiteController extends Controller
                 ->withInput();
         }
 
-        $rawSiteUrl = $request->input('site_url', $request->input('siteUrl', ''));
-        $rawExampleUrl = $request->input('example_url', $request->input('exampleUrl', ''));
+        $rawSiteUrl = $this->firstScalarString($request->input('site_url', $request->input('siteUrl', '')));
+        $rawExampleUrl = $this->firstScalarString($request->input('example_url', $request->input('exampleUrl', '')));
         $urlErrors = $this->nonStringUrlErrors([
             'site_url' => $rawSiteUrl,
             'example_url' => $rawExampleUrl,
@@ -845,25 +846,6 @@ class SiteController extends Controller
         $storedImagePath = null;
         $publisherId = (int) $request->input('publisher_id');
 
-        $imagePath = null;
-        if ($request->hasFile('site_image')) {
-            $upload = $request->file('site_image');
-            if ($upload && ! $upload->isValid()) {
-                throw ValidationException::withMessages([
-                    'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
-                ]);
-            }
-            $stored = $this->storeStaffSiteImage($upload);
-            if ($stored === null) {
-                throw ValidationException::withMessages([
-                    'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
-                ]);
-            }
-            PublicStorageLink::ensure();
-            $imagePath = $stored;
-            $storedImagePath = $stored;
-        }
-
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, $imagePath, &$site) {
                 $existing = $this->findSiteByDomain($domain, lock: true);
@@ -874,6 +856,25 @@ class SiteController extends Controller
                 }
 
                 $site = new Site;
+
+                $imagePath = null;
+                if ($request->hasFile('site_image')) {
+                    $upload = $request->file('site_image');
+                    if (! $upload instanceof UploadedFile || ! $upload->isValid()) {
+                        throw ValidationException::withMessages([
+                            'site_image' => [$this->siteImageValidationMessages()['site_image.uploaded']],
+                        ]);
+                    }
+                    $stored = $this->storeStaffSiteImage($upload);
+                    if ($stored === null) {
+                        throw ValidationException::withMessages([
+                            'site_image' => ['Could not save the site image to storage. Check disk permissions and MEDIA_PATH.'],
+                        ]);
+                    }
+                    $storedImagePath = $stored;
+                    PublicStorageLink::ensure();
+                    $imagePath = $stored;
+                }
 
                 $da = (int) $request->input('da');
                 $dr = (int) $request->input('dr');
@@ -1452,6 +1453,13 @@ class SiteController extends Controller
 
                 continue;
             }
+            if (in_array($key, ['country', 'language'], true)) {
+                if (strtolower(trim((string) $oldValue)) !== strtolower(trim((string) $newValue))) {
+                    return true;
+                }
+
+                continue;
+            }
             if ((string) $oldValue !== (string) $newValue) {
                 return true;
             }
@@ -1528,6 +1536,10 @@ class SiteController extends Controller
 
         $allowedCountries = Country::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
         $allowedLanguages = Language::marketplace()->pluck('code')->map(fn ($c) => strtolower((string) $c))->all();
+
+        if ($request->exists('category') && ! is_string($request->input('category'))) {
+            $request->merge(['category' => null]);
+        }
 
         $rules = [
             'site_name' => 'sometimes|required|string|max:255',
@@ -1895,7 +1907,7 @@ class SiteController extends Controller
             }
 
             if ($canFixListing && $request->filled('example_url')) {
-                $exampleUrl = (string) $request->input('example_url', '');
+                $exampleUrl = scalar_text($request->input('example_url', ''));
                 $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
                 $exampleDomain = is_string($exampleHost) && $exampleHost !== ''
                     ? $this->normalizeDomain($exampleHost)
@@ -2324,6 +2336,15 @@ class SiteController extends Controller
      * @param  array<string, mixed>  $values
      * @return array<string, string>
      */
+    private function firstScalarString(mixed $raw): mixed
+    {
+        if (is_array($raw)) {
+            $raw = reset($raw);
+        }
+
+        return $raw;
+    }
+
     private function nonStringUrlErrors(array $values): array
     {
         $errors = [];
@@ -2670,20 +2691,17 @@ class SiteController extends Controller
         $approving = $this->requestFlag($request, 'verified');
         $reason = $this->validatedStatusReason($request, ! $approving);
 
-        $site = Site::findOrFail($id);
+            $site = Site::findOrFail($id);
 
-        if ($approving && $site->isPendingPublisherAcceptance()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This site is waiting for the publisher to accept it into My Sites.',
-            ], 422);
-        }
+            if ($approving && $site->isPendingPublisherAcceptance()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is waiting for the publisher to accept it into My Sites.',
+                ], 422);
+            }
 
-        // Heal complete drafts; admin approve also clears incomplete awaiting_details.
-        $site->promoteFromAwaitingDetailsIfComplete();
-        $site->refresh();
-        if ($approving && $site->awaitsPublisherDetails()) {
-            $site->clearAwaitingDetailsForAdmin();
+            // Heal complete drafts; admin approve also clears incomplete awaiting_details.
+            $site->promoteFromAwaitingDetailsIfComplete();
             $site->refresh();
         }
 
@@ -2726,58 +2744,80 @@ class SiteController extends Controller
             ], 500);
         }
 
-        $action = $site->verified ? 'site.approved' : 'site.rejected';
-        $label = $site->verified ? 'approved' : 'rejected';
+            $action = $site->verified ? 'site.approved' : 'site.rejected';
+            $label = $site->verified ? 'approved' : 'rejected';
 
-        ActivityLogger::log(
-            $action,
-            auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
-            $site,
-            [
-                'from' => $oldStatus,
-                'to' => (int) $site->verified,
-                'bulk_site_request_id' => $site->bulk_site_request_id,
-                'reason' => $reason,
-            ],
-            $site->site_name
-        );
+            ActivityLogger::log(
+                $action,
+                auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
+                $site,
+                [
+                    'from' => $oldStatus,
+                    'to' => (int) $site->verified,
+                    'bulk_site_request_id' => $site->bulk_site_request_id,
+                    'reason' => $reason,
+                ],
+                $site->site_name
+            );
 
-        // After verification: always refresh homepage screenshot.
-        // Skip automated metrics when the publisher entered DA/DR/traffic manually.
-        if ($site->verified && config('site_enrichment.enabled', true)) {
-            $runMetrics = ! (bool) $site->metrics_manual;
-            EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
-        }
+            // After verification: always refresh homepage screenshot.
+            // Skip automated metrics when the publisher entered DA/DR/traffic manually.
+            if ($site->verified && config('site_enrichment.enabled', true)) {
+                $runMetrics = ! (bool) $site->metrics_manual;
+                EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
+            }
 
-        // Verify / unverify is an admin decision — clear open review reminders for this site.
-        try {
-            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            // Verify / unverify is an admin decision — clear open review reminders for this site.
+            try {
+                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Could not complete site review notifications after verify: '.$e->getMessage());
+            }
+
+            $emailSent = false;
+            $status = $site->verified ? 'verified' : 'unverified';
+            $notifyReason = $approving ? null : $reason;
+
+            try {
+                $publisher = $site->publisher;
+                if ($publisher && $publisher->email) {
+                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
+                    $emailSent = true;
+                }
+                if ($publisher) {
+                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to send verification notification: '.$e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verification updated',
+                'email_sent' => $emailSent,
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (ModelNotFoundException $e) {
+            throw $e;
         } catch (\Throwable $e) {
-            Log::warning('Could not complete site review notifications after verify: '.$e->getMessage());
-        }
+            Log::error('Failed to update site verification', [
+                'site_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
 
-        $emailSent = false;
-        $status = $site->verified ? 'verified' : 'unverified';
-        $notifyReason = $approving ? null : $reason;
-
-        try {
-            $publisher = $site->publisher;
-            if ($publisher && $publisher->email) {
-                Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
-                $emailSent = true;
+            $hint = '';
+            if (str_contains($e->getMessage(), 'onboarding_status')) {
+                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
+            } elseif (str_contains($e->getMessage(), 'status_reason')) {
+                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
             }
-            if ($publisher) {
-                app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send verification notification: '.$e->getMessage());
-        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Verification updated',
-            'email_sent' => $emailSent,
-        ]);
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not update verification.'.$hint,
+            ], 500);
+        }
     }
 
     // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
@@ -2946,65 +2986,123 @@ class SiteController extends Controller
     public function destroy(Request $request, $id)
     {
         $user = auth()->user();
-        $site = Site::findOrFail($id);
 
-        $isAdmin = (bool) $user?->isAdmin();
-        $isMarketingPendingDelete = (bool) $user?->isMarketing() && $site->canBeDeletedByMarketing();
+        $outcome = DB::transaction(function () use ($request, $id, $user) {
+            $site = Site::query()->lockForUpdate()->findOrFail($id);
 
-        if (! $isAdmin && ! $isMarketingPendingDelete) {
-            return response()->json([
-                'success' => false,
-                'message' => $user?->isMarketing()
-                    ? 'Marketing can only delete pending sites that are not verified or active in the portal.'
-                    : 'Only admins can delete sites.',
-            ], 403);
-        }
+            $isAdmin = (bool) $user?->isAdmin();
+            $isMarketingPendingDelete = (bool) $user?->isMarketing() && $site->canBeDeletedByMarketing();
 
-        $orderCount = $site->orderItemsCount();
-        if ($orderCount > 0) {
-            return response()->json([
-                'success' => false,
-                'message' => $orderCount === 1
-                    ? 'This site has 1 order and cannot be deleted. Deactivate it to hide it from the catalog.'
-                    : 'This site has '.$orderCount.' orders and cannot be deleted. Deactivate it to hide it from the catalog.',
-                'order_count' => $orderCount,
-            ], 422);
-        }
-
-        if ($site->isArchived()) {
-            return response()->json([
-                'success' => false,
-                'message' => 'This site is already archived.',
-            ], 422);
-        }
-
-        $siteName = $site->site_name;
-        $siteId = $site->id;
-        $domain = $site->domain;
-        $bulkRequestId = $site->bulk_site_request_id;
-        $onboarding = $site->onboarding_status;
-        $rejectionReason = $this->validatedStatusReason($request, true);
-        $publisher = $site->publisher;
-
-        Site::ensureStatusReasonColumns();
-        $this->applyStatusReason($site, $rejectionReason);
-
-        $shouldArchive = (bool) $site->verified || (bool) $site->active;
-        if ($shouldArchive) {
-            if (! $site->archiveByStaff($rejectionReason)) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Archive is not available yet.',
-                ], 503);
+            if (! $isAdmin && ! $isMarketingPendingDelete) {
+                return [
+                    'http' => 403,
+                    'payload' => [
+                        'success' => false,
+                        'message' => $user?->isMarketing()
+                            ? 'Marketing can only delete pending sites that are not verified or active in the portal.'
+                            : 'Only admins can delete sites.',
+                    ],
+                ];
             }
 
+            $orderCount = $site->orderItemsCount();
+            if ($orderCount > 0) {
+                return [
+                    'http' => 422,
+                    'payload' => [
+                        'success' => false,
+                        'message' => $orderCount === 1
+                            ? 'This site has 1 order and cannot be deleted. Deactivate it to hide it from the catalog.'
+                            : 'This site has '.$orderCount.' orders and cannot be deleted. Deactivate it to hide it from the catalog.',
+                        'order_count' => $orderCount,
+                    ],
+                ];
+            }
+
+            if ($site->isArchived()) {
+                return [
+                    'http' => 422,
+                    'payload' => [
+                        'success' => false,
+                        'message' => 'This site is already archived.',
+                    ],
+                ];
+            }
+
+            $rejectionReason = $this->validatedStatusReason($request, true);
+
+            Site::ensureStatusReasonColumns();
+            $this->applyStatusReason($site, $rejectionReason);
+
+            $meta = [
+                'siteName' => $site->site_name,
+                'siteId' => $site->id,
+                'domain' => $site->domain,
+                'bulkRequestId' => $site->bulk_site_request_id,
+                'onboarding' => $site->onboarding_status,
+                'rejectionReason' => $rejectionReason,
+                'publisher' => $site->publisher,
+                'isAdmin' => $isAdmin,
+                'isMarketingPendingDelete' => $isMarketingPendingDelete,
+            ];
+
+            $shouldArchive = (bool) $site->verified || (bool) $site->active;
+            if ($shouldArchive) {
+                if (! $site->archiveByStaff($rejectionReason)) {
+                    return [
+                        'http' => 503,
+                        'payload' => [
+                            'success' => false,
+                            'message' => 'Archive is not available yet.',
+                        ],
+                    ];
+                }
+
+                return $meta + [
+                    'action' => 'archived',
+                    'site' => $site->fresh() ?? $site,
+                ];
+            }
+
+            $notifySnapshot = clone $site;
+            if ($rejectionReason) {
+                $notifySnapshot->status_reason = $rejectionReason;
+            }
+
+            return $meta + [
+                'action' => 'deleted',
+                'notifySnapshot' => $notifySnapshot,
+                'cover' => is_string($site->site_image) ? $site->site_image : null,
+                'screenshot' => is_string($site->screenshot_path) ? $site->screenshot_path : null,
+                'thumb' => is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null,
+                'mediaSiteId' => (int) $site->id,
+                'deleted' => (bool) $site->delete(),
+            ];
+        });
+
+        if (isset($outcome['http'])) {
+            return response()->json($outcome['payload'], $outcome['http']);
+        }
+
+        $siteName = $outcome['siteName'];
+        $siteId = $outcome['siteId'];
+        $domain = $outcome['domain'];
+        $bulkRequestId = $outcome['bulkRequestId'];
+        $onboarding = $outcome['onboarding'];
+        $rejectionReason = $outcome['rejectionReason'];
+        $publisher = $outcome['publisher'];
+        $isAdmin = $outcome['isAdmin'];
+        $isMarketingPendingDelete = $outcome['isMarketingPendingDelete'];
+
+        if (($outcome['action'] ?? '') === 'archived') {
+            $site = $outcome['site'];
             try {
                 app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
             } catch (\Throwable $e) {
                 Log::warning('Could not complete site review notifications before archive: '.$e->getMessage());
             }
 
-            $this->notifyPublisherSiteRemoved($site->fresh() ?? $site, $publisher, $rejectionReason, 'archived');
+            $this->notifyPublisherSiteRemoved($site, $publisher, $rejectionReason, 'archived');
 
             ActivityLogger::log(
                 'site.archived',
@@ -3029,31 +3127,25 @@ class SiteController extends Controller
             ]);
         }
 
+        $notifySnapshot = $outcome['notifySnapshot'];
         try {
-            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($notifySnapshot);
         } catch (\Throwable $e) {
             Log::warning('Could not complete site review notifications before delete: '.$e->getMessage());
         }
 
         try {
-            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($notifySnapshot);
         } catch (\Throwable $e) {
             Log::warning('Could not complete publisher invite notifications before delete: '.$e->getMessage());
         }
 
-        // Deleting is how staff reject a submission outright, so the publisher
-        // needs the same courtesy as a deactivation — otherwise their site just
-        // vanishes and the first they hear of it is when they come looking.
-        // Captured before delete(): the mailable and bell both read the model.
-        $publisher = $site->publisher;
-        $notifySnapshot = clone $site;
-        if ($rejectionReason) {
-            $notifySnapshot->status_reason = $rejectionReason;
-        }
-
-        $this->deleteStoredSiteImage(is_string($site->site_image) ? $site->site_image : null);
-
-        $site->delete();
+        SiteImageUpload::deleteListingPublicMedia(
+            $outcome['cover'] ?? null,
+            $outcome['screenshot'] ?? null,
+            $outcome['thumb'] ?? null,
+            (int) ($outcome['mediaSiteId'] ?? 0)
+        );
 
         $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
 

@@ -441,9 +441,19 @@ class SiteController extends Controller
 
     public function acceptAssignment(Request $request, $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $site = DB::transaction(function () use ($id) {
+            $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+            if (! $locked->isPendingPublisherAcceptance()) {
+                return null;
+            }
 
-        if (! $site->isPendingPublisherAcceptance()) {
+            $locked->publisher_accepted_at = now();
+            $locked->save();
+
+            return $locked;
+        });
+
+        if ($site === null) {
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
@@ -455,9 +465,6 @@ class SiteController extends Controller
                 ->route('publisher.websites', ['status' => 'pending'])
                 ->with('error', 'This site is not waiting for acceptance.');
         }
-
-        $site->publisher_accepted_at = now();
-        $site->save();
 
         try {
             app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
@@ -502,9 +509,37 @@ class SiteController extends Controller
 
     public function rejectAssignment(Request $request, $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $rejected = DB::transaction(function () use ($id) {
+            $locked = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
+            if (! $locked->isPendingPublisherAcceptance()) {
+                return ['status' => 'not_pending'];
+            }
 
-        if (! $site->isPendingPublisherAcceptance()) {
+            $orderCount = $locked->orderItemsCount();
+            if ($orderCount > 0) {
+                return ['status' => 'has_orders', 'order_count' => $orderCount];
+            }
+
+            try {
+                app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($locked);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
+            }
+
+            $snapshot = [
+                'status' => 'deleted',
+                'id' => $locked->id,
+                'domain' => $locked->domain ?: $locked->site_name,
+                'cover' => is_string($locked->site_image) ? $locked->site_image : null,
+                'screenshot' => is_string($locked->screenshot_path) ? $locked->screenshot_path : null,
+                'thumb' => is_string($locked->screenshot_thumb_path) ? $locked->screenshot_thumb_path : null,
+            ];
+            $locked->delete();
+
+            return $snapshot;
+        });
+
+        if (($rejected['status'] ?? '') === 'not_pending') {
             if ($request->expectsJson() || $request->ajax()) {
                 return response()->json([
                     'success' => false,
@@ -517,8 +552,8 @@ class SiteController extends Controller
                 ->with('error', 'This site is not waiting for acceptance.');
         }
 
-        $orderCount = $site->orderItemsCount();
-        if ($orderCount > 0) {
+        if (($rejected['status'] ?? '') === 'has_orders') {
+            $orderCount = (int) ($rejected['order_count'] ?? 0);
             $message = $orderCount === 1
                 ? 'This site has 1 order and cannot be removed. Contact support if the invitation was sent in error.'
                 : 'This site has '.$orderCount.' orders and cannot be removed. Contact support if the invitation was sent in error.';
@@ -535,15 +570,14 @@ class SiteController extends Controller
                 ->with('error', $message);
         }
 
-        $siteId = $site->id;
-        $domain = $site->domain ?: $site->site_name;
-        try {
-            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to archive invite notification after publisher declined site: '.$e->getMessage());
-        }
-        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
-        $site->delete();
+        SiteImageUpload::deleteListingPublicMedia(
+            $rejected['cover'] ?? null,
+            $rejected['screenshot'] ?? null,
+            $rejected['thumb'] ?? null,
+            (int) ($rejected['id'] ?? 0)
+        );
+        $siteId = $rejected['id'];
+        $domain = $rejected['domain'];
 
         if ($request->expectsJson() || $request->ajax()) {
             return response()->json([
@@ -561,6 +595,13 @@ class SiteController extends Controller
     public function editData(int $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isPendingPublisherAcceptance()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Accept this invitation before editing the listing.',
+            ], 422);
+        }
 
         $categories = is_array($site->categories) && count($site->categories)
             ? array_values($site->categories)
@@ -604,6 +645,12 @@ class SiteController extends Controller
     public function update(Request $request, $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isPendingPublisherAcceptance()) {
+            return redirect()
+                ->route('publisher.websites', ['status' => 'invites'])
+                ->with('error', 'Accept this invitation before editing the listing.');
+        }
 
         if ($site->isArchived()) {
             return redirect()->back()->with('error', 'Archived sites cannot be edited. Restore the site first.');
@@ -824,23 +871,57 @@ class SiteController extends Controller
 
     public function destroy($id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $deleted = DB::transaction(function () use ($id) {
+            $site = Site::where('publisher_id', auth()->id())->lockForUpdate()->findOrFail($id);
 
-        if ($site->verified || $site->active) {
+            if ($site->verified || $site->active) {
+                return ['status' => 'live'];
+            }
+
+            if ($site->isArchived()) {
+                return ['status' => 'archived'];
+            }
+
+            if ($site->orderItemsCount() > 0) {
+                return ['status' => 'has_orders'];
+            }
+
+            try {
+                app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
+            }
+
+            $snapshot = [
+                'status' => 'deleted',
+                'cover' => is_string($site->site_image) ? $site->site_image : null,
+                'screenshot' => is_string($site->screenshot_path) ? $site->screenshot_path : null,
+                'thumb' => is_string($site->screenshot_thumb_path) ? $site->screenshot_thumb_path : null,
+                'id' => (int) $site->id,
+            ];
+            $site->delete();
+
+            return $snapshot;
+        });
+
+        if (($deleted['status'] ?? '') === 'live') {
             return redirect()->back()->with('error', 'You cannot delete an active or verified site. Archive it instead.');
         }
 
-        if ($site->isArchived()) {
+        if (($deleted['status'] ?? '') === 'archived') {
             return redirect()->back()->with('error', 'Archived sites cannot be deleted from here.');
         }
 
-        try {
-            app(InAppNotificationService::class)->completePublisherSiteAssignmentNotifications($site);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to archive invite notification after publisher deleted site: '.$e->getMessage());
+        if (($deleted['status'] ?? '') === 'has_orders') {
+            return redirect()->back()->with('error', 'This site has orders and cannot be deleted.');
         }
-        SiteImageUpload::deletePublicCover(is_string($site->site_image) ? $site->site_image : null);
-        $site->delete();
+
+        SiteImageUpload::deleteListingPublicMedia(
+            $deleted['cover'] ?? null,
+            $deleted['screenshot'] ?? null,
+            $deleted['thumb'] ?? null,
+            (int) ($deleted['id'] ?? 0)
+        );
 
         return redirect()->back()->with('success', 'Site deleted successfully!');
     }
