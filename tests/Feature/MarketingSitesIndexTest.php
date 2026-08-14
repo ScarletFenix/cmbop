@@ -235,6 +235,73 @@ class MarketingSitesIndexTest extends TestCase
         $this->assertStringContainsString('JSON.stringify({ reason:', $html);
         $this->assertStringContainsString("listingLocked ? 'View' : 'Edit'", $html);
         $this->assertStringContainsString('IS_MARKETING_EDITOR && listingLocked', $html);
+        $this->assertStringContainsString('Missing market', $html);
+        $this->assertStringContainsString('Below quality bar', $html);
+        $this->assertStringContainsString('QUALITY_MIN_DA', $html);
+        $this->assertStringContainsString('sitesLoadMore', $html);
+        $this->assertStringContainsString('Site queue', $html);
         $this->assertStringNotContainsString("}).then(() => {\n                toast('Deleted successfully');", $html);
+    }
+
+    public function test_flat_review_queue_lists_sites_across_publishers(): void
+    {
+        $first = $this->userWithRole('publisher', [
+            'name' => 'Flat First Publisher',
+            'email' => 'flat-first-publisher@example.test',
+        ]);
+        $second = $this->userWithRole('publisher', [
+            'name' => 'Flat Second Publisher',
+            'email' => 'flat-second-publisher@example.test',
+        ]);
+        $ready = $this->makeSite($first, [
+            'site_name' => 'Flat Ready Site',
+            'domain' => 'flat-ready.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+        ]);
+        $thin = $this->makeSite($second, [
+            'site_name' => 'Flat Thin Site',
+            'domain' => 'flat-thin.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+        $noMarket = $this->makeSite($second, [
+            'site_name' => 'Flat No Market Site',
+            'domain' => 'flat-no-market.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'country' => '',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 20000,
+        ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1]))
+            ->assertOk()
+            ->assertSee('Flat list of sites waiting for Activate or delete (pending only)', false)
+            ->assertSee('By publisher', false)
+            ->assertSee('data-flat-queue="1"', false)
+            ->assertSee('Flat Ready Site', false)
+            ->assertSee('Flat Thin Site', false)
+            ->assertSee('Flat No Market Site', false)
+            ->assertSee('Below quality bar', false)
+            ->assertSee('Missing market', false)
+            ->assertSee('Open', false)
+            ->assertSee('Edit', false)
+            ->assertDontSee('Hidden Advertiser', false)
+            ->getContent();
+
+        $this->assertStringContainsString(
+            route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false),
+            $html
+        );
+        $this->assertStringContainsString(route('marketing.sites.edit', $ready->id, false), $html);
+        $this->assertStringContainsString('js-mkt-activate', $html);
+        $this->assertStringContainsString($first->email, $html);
+        $this->assertStringContainsString($second->email, $html);
+        $this->assertStringContainsString('id="usersSection" class="d-none"', $html);
+        $this->assertFalse($thin->hasGoodMetrics());
+        $this->assertFalse($noMarket->hasMarketplaceCountry());
     }
 }

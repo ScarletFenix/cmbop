@@ -173,4 +173,16 @@ class NotificationEmailCtaFixesTest extends TestCase
         $this->assertStringContainsString('View Your Sites', $html);
         $this->assertStringNotContainsString(url('/login'), $html);
     }
+
+    public function test_site_update_email_says_updated_by_our_team(): void
+    {
+        $html = (new SiteStatusNotification($this->site->fresh('publisher'), 'update', [
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'price' => $this->site->price,
+        ]))->render();
+
+        $this->assertStringContainsString('updated by our team', $html);
+        $this->assertStringNotContainsString('updated by an administrator', $html);
+    }
 }

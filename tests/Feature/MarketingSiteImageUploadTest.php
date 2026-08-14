@@ -145,7 +145,10 @@ class MarketingSiteImageUploadTest extends TestCase
                 'categories' => $this->nicheName(),
                 'site_image' => $file,
             ])
-            ->assertRedirect(route('marketing.sites.edit', $site->id));
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
 
         $site->refresh();
         $this->assertSame(33, (int) $site->da);

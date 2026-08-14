@@ -51,6 +51,15 @@ class MarketingDashboardQueuesTest extends TestCase
             'site_url' => 'https://ready-activate.example',
             'domain' => 'ready-activate.example',
             'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+        ]);
+        $thinReady = $this->makeSite([
+            'site_name' => 'Thin Metrics Ready',
+            'site_url' => 'https://thin-ready.example',
+            'domain' => 'thin-ready.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
         ]);
         $awaiting = $this->makeSite([
             'site_name' => 'Awaiting Details Draft',
@@ -77,7 +86,7 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertTrue($ready->needsAdminReview());
         $this->assertFalse($awaiting->needsAdminReview());
         $this->assertFalse($invite->needsAdminReview());
-        $this->assertSame(1, MarketingOpsQueues::sitesReadyForStaff()->count());
+        $this->assertSame(2, MarketingOpsQueues::sitesReadyForStaff()->count());
         $this->assertSame(2, MarketingOpsQueues::sitesWaitingOnPublisher()->count());
 
         $html = $this->actingAs($this->marketer)
@@ -90,7 +99,7 @@ class MarketingDashboardQueuesTest extends TestCase
             ->assertDontSee('Admin handles verify, activate, enrichment', false)
             ->getContent();
 
-        $this->assertSame('1', $this->attrValue($html, 'data-stat', 'ready-to-activate', 'data-stat-value'));
+        $this->assertSame('2', $this->attrValue($html, 'data-stat', 'ready-to-activate', 'data-stat-value'));
         $this->assertSame('2', $this->attrValue($html, 'data-stat', 'waiting-on-publisher', 'data-stat-sites'));
         $this->assertSame('0', $this->attrValue($html, 'data-stat', 'waiting-on-publisher', 'data-stat-bulk'));
 
@@ -98,7 +107,17 @@ class MarketingDashboardQueuesTest extends TestCase
         $waitingTable = $this->nodeText($html, 'data-queue', 'waiting-sites');
 
         $this->assertStringContainsString('Ready Activate Target', $readyTable);
+        $this->assertStringContainsString('Thin Metrics Ready', $readyTable);
         $this->assertStringContainsString('Ready for review', $readyTable);
+        $this->assertStringContainsString('Below quality bar', $readyTable);
+        $this->assertStringContainsString('Open', $readyTable);
+        $this->assertStringContainsString('Edit', $readyTable);
+        $this->assertStringContainsString('js-mkt-activate', $this->nodeHtml($html, 'data-queue', 'ready-sites'));
+        $this->assertStringContainsString(
+            route('marketing.sites.index', ['publisher' => $ready->publisher_id, 'site' => $ready->id], false),
+            $html
+        );
+        $this->assertStringContainsString(route('marketing.sites.edit', $ready->id, false), $html);
         $this->assertStringNotContainsString('Awaiting Details Draft', $readyTable);
         $this->assertStringNotContainsString('Unaccepted Invite Site', $readyTable);
         $this->assertStringNotContainsString('Archived Ready Site', $readyTable);
@@ -110,9 +129,12 @@ class MarketingDashboardQueuesTest extends TestCase
         $this->assertStringNotContainsString('Ready Activate Target', $waitingTable);
         $this->assertStringNotContainsString('Archived Ready Site', $waitingTable);
 
-        $this->assertStringContainsString(route('marketing.sites.index', ['needs_review' => 1], false), $html);
+        $this->assertStringContainsString(route('marketing.sites.index', ['needs_review' => 1, 'flat' => 1], false), $html);
         $this->assertStringContainsString(route('marketing.sites.create', [], false), $html);
-        $this->assertSame('1', $this->node($html, 'data-nav-badge', 'sites')->attributes->getNamedItem('data-count')?->nodeValue);
+        $this->assertSame('2', $this->node($html, 'data-nav-badge', 'sites')->attributes->getNamedItem('data-count')?->nodeValue);
+        $this->assertStringContainsString('Open', $waitingTable);
+        $this->assertStringContainsString('Metrics/geo/niche edits do not email the publisher', $html);
+        $this->assertStringContainsString('/marketing/sites/__ID__/active', $html);
     }
 
     public function test_dashboard_open_bulk_includes_completed_rows_still_needing_done(): void
@@ -251,6 +273,28 @@ class MarketingDashboardQueuesTest extends TestCase
         $bulkTable = $this->nodeText($html, 'data-queue', 'open-bulk');
         $this->assertStringContainsString('#'.$oldest->id, $bulkTable);
         $this->assertStringNotContainsString('#'.$newest->id, $bulkTable);
+    }
+
+    public function test_dashboard_queue_counts_json_matches_ready_and_bulk_queues(): void
+    {
+        $this->makeSite([
+            'site_name' => 'Count Ready Site',
+            'site_url' => 'https://count-ready.example',
+            'domain' => 'count-ready.example',
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+        BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 2,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->getJson(route('marketing.dashboard.queue-counts'))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('ready_sites', 1)
+            ->assertJsonPath('bulk_waiting', 1);
     }
 
     public function test_empty_dashboard_shows_queue_ctas(): void

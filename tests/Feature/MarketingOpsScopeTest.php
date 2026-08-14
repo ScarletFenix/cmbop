@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\SiteStatusNotification;
 use App\Models\Category;
 use App\Models\Role;
 use App\Models\Site;
@@ -11,6 +12,7 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
 class MarketingOpsScopeTest extends TestCase
@@ -222,6 +224,8 @@ class MarketingOpsScopeTest extends TestCase
         $this->assertStringNotContainsString(route('marketing.site-enrichment.index'), $html);
         $this->assertStringNotContainsString('>Enrichment</span>', $html);
         $this->assertStringContainsString(route('marketing.history'), $html);
+        $this->assertStringContainsString(route('marketing.dashboard.queue-counts'), $html);
+        $this->assertStringContainsString('refreshAdminQueueBadges', $html);
         $this->assertStringContainsString('role-shell-marketing', $html);
     }
 
@@ -245,6 +249,8 @@ class MarketingOpsScopeTest extends TestCase
             ->assertOk()
             ->assertSee('Fill metrics, geo & niches')
             ->assertSee('Fix the URL, price, or metrics if needed', false)
+            ->assertSee('Metrics, geo, and niche-only saves do not email the publisher.', false)
+            ->assertSee('Below the quality bar', false)
             ->assertSee('https://pending-edit.example', false)
             ->assertDontSee('name="description"', false)
             ->assertSee('name="site_name"', false)
@@ -292,7 +298,10 @@ class MarketingOpsScopeTest extends TestCase
                 'country' => 'de',
                 'categories' => $category->name,
             ])
-            ->assertRedirect(route('marketing.sites.edit', $site->id));
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
 
         $site->refresh();
         $this->assertSame('Corrected Name', $site->site_name);
@@ -513,5 +522,108 @@ class MarketingOpsScopeTest extends TestCase
             ->get(route('admin.sites.edit', $site->id))
             ->assertOk()
             ->assertSee('href="'.e($expectedBack).'"', false);
+    }
+
+    public function test_handbook_includes_marketing_catalog_ops_section(): void
+    {
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.staff-handbook'))
+            ->assertOk()
+            ->assertSee('Marketing catalog ops', false)
+            ->assertSee('DA ≥ 30', false)
+            ->assertSee('do not email the publisher', false)
+            ->assertSee('flat review queue', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('messages.staff_handbook_section6', $html);
+    }
+
+    public function test_marketing_niche_or_metrics_save_does_not_email_publisher(): void
+    {
+        Mail::fake();
+        $category = Category::query()->where('name', 'News')->first()
+            ?? Category::query()->firstOrFail();
+        $site = $this->makeSite([
+            'site_name' => 'Notify Skip Site',
+            'site_url' => 'https://notify-skip.example',
+            'domain' => 'notify-skip.example',
+            'category' => $category->name,
+            'categories' => [$category->name],
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'da' => 41,
+                'dr' => 52,
+                'traffic' => 18000,
+                'language' => 'en',
+                'country' => 'us',
+                'categories' => $category->name,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
+
+        Mail::assertNothingOutgoing();
+    }
+
+    public function test_marketing_price_change_emails_publisher(): void
+    {
+        Mail::fake();
+        $category = Category::query()->where('name', 'News')->first()
+            ?? Category::query()->firstOrFail();
+        $site = $this->makeSite([
+            'site_name' => 'Notify Price Site',
+            'site_url' => 'https://notify-price.example',
+            'domain' => 'notify-price.example',
+            'category' => $category->name,
+            'categories' => [$category->name],
+            'price' => 40,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->put(route('marketing.sites.update', $site->id), [
+                'da' => 20,
+                'dr' => 20,
+                'traffic' => 1000,
+                'language' => 'en',
+                'country' => 'us',
+                'categories' => $category->name,
+                'price' => 99,
+            ])
+            ->assertRedirect(route('marketing.sites.index', [
+                'publisher' => $site->publisher_id,
+                'site' => $site->id,
+            ]));
+
+        Mail::assertQueued(SiteStatusNotification::class, function (SiteStatusNotification $mail) use ($site) {
+            return $mail->hasTo($site->publisher->email) && $mail->action === 'update';
+        });
+    }
+
+    public function test_admin_metrics_change_still_emails_publisher(): void
+    {
+        Mail::fake();
+        $site = $this->makeSite([
+            'site_name' => 'Admin Notify Site',
+            'site_url' => 'https://admin-notify.example',
+            'domain' => 'admin-notify.example',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('admin.sites.update', $site->id), [
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'da' => 55,
+                'dr' => 20,
+                'traffic' => 1000,
+            ])
+            ->assertRedirect(route('admin.sites.edit', $site->id));
+
+        Mail::assertQueued(SiteStatusNotification::class, function (SiteStatusNotification $mail) use ($site) {
+            return $mail->hasTo($site->publisher->email) && $mail->action === 'update';
+        });
     }
 }
