@@ -23,6 +23,7 @@ use App\Support\PublicStorageLink;
 use App\Support\SiteDescriptionRules;
 use App\Support\SiteImageUpload;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\RedirectResponse;
@@ -47,7 +48,7 @@ class SiteController extends Controller
             || $request->query('verified') === '0'
             || $request->query('verified') === 0;
 
-        $publisherSearch = trim((string) $request->query('q', ''));
+        $publisherSearch = trim(scalar_text($request->query('q', '')));
         $flatQueue = $request->boolean('flat');
 
         $reviewQueue = function ($q) {
@@ -119,7 +120,7 @@ class SiteController extends Controller
      */
     public function records(Request $request)
     {
-        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         if ($countryFilter === 'all') {
             $countryFilter = '';
         }
@@ -205,7 +206,7 @@ class SiteController extends Controller
      */
     public function exportRecords(Request $request): StreamedResponse
     {
-        $countryFilter = strtolower(trim((string) $request->query('country', '')));
+        $countryFilter = strtolower(trim(scalar_text($request->query('country', ''))));
         if ($countryFilter === 'all') {
             $countryFilter = '';
         }
@@ -1894,7 +1895,7 @@ class SiteController extends Controller
             }
 
             if ($canFixListing && $request->filled('site_url')) {
-                $siteUrl = (string) $request->input('site_url', '');
+                $siteUrl = scalar_text($request->input('site_url', ''));
                 $host = parse_url($siteUrl, PHP_URL_HOST);
                 $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
                 if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
@@ -1908,7 +1909,7 @@ class SiteController extends Controller
             }
 
             if ($canFixListing && $request->filled('example_url')) {
-                $exampleUrl = (string) $request->input('example_url', '');
+                $exampleUrl = scalar_text($request->input('example_url', ''));
                 $exampleHost = parse_url($exampleUrl, PHP_URL_HOST);
                 $exampleDomain = is_string($exampleHost) && $exampleHost !== ''
                     ? $this->normalizeDomain($exampleHost)
@@ -1960,10 +1961,10 @@ class SiteController extends Controller
 
         if ($canFixListing) {
             if ($request->exists('site_name')) {
-                $payload['site_name'] = (string) $request->input('site_name');
+                $payload['site_name'] = scalar_text($request->input('site_name'));
             }
             if ($request->exists('site_url')) {
-                $siteUrl = (string) $request->input('site_url');
+                $siteUrl = scalar_text($request->input('site_url'));
                 $host = parse_url($siteUrl, PHP_URL_HOST);
                 $domain = is_string($host) && $host !== '' ? $this->normalizeDomain($host) : '';
                 $payload['site_url'] = $siteUrl;
@@ -2697,95 +2698,118 @@ class SiteController extends Controller
             ], 403);
         }
 
-        $approving = (bool) (int) $request->verified;
-        $reason = $this->validatedStatusReason($request, ! $approving);
+        try {
+            $approving = (bool) (int) scalar_text($request->input('verified', 0));
+            $reason = $this->validatedStatusReason($request, ! $approving);
 
-        $site = Site::findOrFail($id);
+            $site = Site::findOrFail($id);
 
-        if ($approving && $site->isPendingPublisherAcceptance()) {
+            if ($approving && $site->isPendingPublisherAcceptance()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This site is waiting for the publisher to accept it into My Sites.',
+                ], 422);
+            }
+
+            // Heal complete drafts; admin approve also clears incomplete awaiting_details.
+            $site->promoteFromAwaitingDetailsIfComplete();
+            $site->refresh();
+            if ($approving && $site->awaitsPublisherDetails()) {
+                $site->clearAwaitingDetailsForAdmin();
+                $site->refresh();
+            }
+
+            $oldStatus = (int) $site->verified;
+            $site->verified = $approving ? 1 : 0;
+            if ($site->verified) {
+                $site->verified_at = now();
+                $site->verify_method = 'manual';
+                $site->verify_token = null;
+                $site->verify_token_created_at = null;
+                // Leave the review/onboarding queue once approved.
+                $site->onboarding_status = null;
+            } else {
+                $site->verified_at = null;
+                $site->verify_method = null;
+                Site::ensureStatusReasonColumns();
+                $this->applyStatusReason($site, $reason);
+            }
+            $site->save();
+
+            $action = $site->verified ? 'site.approved' : 'site.rejected';
+            $label = $site->verified ? 'approved' : 'rejected';
+
+            ActivityLogger::log(
+                $action,
+                auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
+                $site,
+                [
+                    'from' => $oldStatus,
+                    'to' => (int) $site->verified,
+                    'bulk_site_request_id' => $site->bulk_site_request_id,
+                    'reason' => $reason,
+                ],
+                $site->site_name
+            );
+
+            // After verification: always refresh homepage screenshot.
+            // Skip automated metrics when the publisher entered DA/DR/traffic manually.
+            if ($site->verified && config('site_enrichment.enabled', true)) {
+                $runMetrics = ! (bool) $site->metrics_manual;
+                EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
+            }
+
+            // Verify / unverify is an admin decision — clear open review reminders for this site.
+            try {
+                app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
+            } catch (\Throwable $e) {
+                Log::warning('Could not complete site review notifications after verify: '.$e->getMessage());
+            }
+
+            $emailSent = false;
+            $status = $site->verified ? 'verified' : 'unverified';
+            $notifyReason = $approving ? null : $reason;
+
+            try {
+                $publisher = $site->publisher;
+                if ($publisher && $publisher->email) {
+                    Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
+                    $emailSent = true;
+                }
+                if ($publisher) {
+                    app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
+                }
+            } catch (\Exception $e) {
+                Log::error('Failed to send verification notification: '.$e->getMessage());
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Verification updated',
+                'email_sent' => $emailSent,
+            ]);
+        } catch (ValidationException $e) {
+            throw $e;
+        } catch (ModelNotFoundException $e) {
+            throw $e;
+        } catch (\Throwable $e) {
+            Log::error('Failed to update site verification', [
+                'site_id' => $id,
+                'error' => $e->getMessage(),
+            ]);
+
+            $hint = '';
+            if (str_contains($e->getMessage(), 'onboarding_status')) {
+                $hint = ' Run database/sql/fix_sites_onboarding_status.sql on the database if this persists.';
+            } elseif (str_contains($e->getMessage(), 'status_reason')) {
+                $hint = ' Run database/sql/add_sites_status_reason.sql on the database if this persists.';
+            }
+
             return response()->json([
                 'success' => false,
-                'message' => 'This site is waiting for the publisher to accept it into My Sites.',
-            ], 422);
+                'message' => 'Could not update verification.'.$hint,
+            ], 500);
         }
-
-        // Heal complete drafts; admin approve also clears incomplete awaiting_details.
-        $site->promoteFromAwaitingDetailsIfComplete();
-        $site->refresh();
-        if ($approving && $site->awaitsPublisherDetails()) {
-            $site->clearAwaitingDetailsForAdmin();
-            $site->refresh();
-        }
-
-        $oldStatus = (int) $site->verified;
-        $site->verified = $approving ? 1 : 0;
-        if ($site->verified) {
-            $site->verified_at = now();
-            $site->verify_method = 'manual';
-            $site->verify_token = null;
-            $site->verify_token_created_at = null;
-            // Leave the review/onboarding queue once approved.
-            $site->onboarding_status = null;
-        } else {
-            $site->verified_at = null;
-            $site->verify_method = null;
-            Site::ensureStatusReasonColumns();
-            $this->applyStatusReason($site, $reason);
-        }
-        $site->save();
-
-        $action = $site->verified ? 'site.approved' : 'site.rejected';
-        $label = $site->verified ? 'approved' : 'rejected';
-
-        ActivityLogger::log(
-            $action,
-            auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
-            $site,
-            [
-                'from' => $oldStatus,
-                'to' => (int) $site->verified,
-                'bulk_site_request_id' => $site->bulk_site_request_id,
-                'reason' => $reason,
-            ],
-            $site->site_name
-        );
-
-        // After verification: always refresh homepage screenshot.
-        // Skip automated metrics when the publisher entered DA/DR/traffic manually.
-        if ($site->verified && config('site_enrichment.enabled', true)) {
-            $runMetrics = ! (bool) $site->metrics_manual;
-            EnrichSiteJob::dispatch($site->id, 'verify', $runMetrics, true);
-        }
-
-        // Verify / unverify is an admin decision — clear open review reminders for this site.
-        try {
-            app(InAppNotificationService::class)->completeAdminSiteReviewNotifications($site);
-        } catch (\Throwable $e) {
-            Log::warning('Could not complete site review notifications after verify: '.$e->getMessage());
-        }
-
-        $emailSent = false;
-        $status = $site->verified ? 'verified' : 'unverified';
-        $notifyReason = $approving ? null : $reason;
-
-        try {
-            $publisher = $site->publisher;
-            if ($publisher && $publisher->email) {
-                Mail::to($publisher->email)->send(new SiteStatusNotification($site, $status, null, $notifyReason));
-                $emailSent = true;
-            }
-            if ($publisher) {
-                app(InAppNotificationService::class)->notifySiteStatusChanged($site->fresh(), $status, $notifyReason);
-            }
-        } catch (\Exception $e) {
-            Log::error('Failed to send verification notification: '.$e->getMessage());
-        }
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Verification updated',
-            'email_sent' => $emailSent,
-        ]);
     }
 
     // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
@@ -2801,7 +2825,7 @@ class SiteController extends Controller
 
         try {
             $site = Site::findOrFail($id);
-            $activating = (bool) (int) $request->active;
+            $activating = (bool) (int) scalar_text($request->input('active', 0));
             // Must not be swallowed by the catch below — UI expects 422 + errors.reason.
             $reason = $this->validatedStatusReason($request, ! $activating);
 

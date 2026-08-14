@@ -79,4 +79,35 @@ class PublisherMySitesOldTextTest extends TestCase
             ->assertDontSee('htmlspecialchars(): Argument #1', false)
             ->assertDontSee('TypeError', false);
     }
+
+    public function test_scalar_text_flattens_arrays(): void
+    {
+        $this->assertTrue(function_exists('scalar_text'));
+        $this->assertSame('de', scalar_text(['de']));
+        $this->assertSame('pending', scalar_text([['pending']]));
+        $this->assertSame('', scalar_text([]));
+        $this->assertSame('ok', scalar_text('ok'));
+    }
+
+    public function test_my_sites_ajax_survives_array_query_and_status(): void
+    {
+        $role = Role::firstOrCreate(['name' => 'publisher']);
+        $user = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $user->roles()->attach($role->id);
+
+        $html = $this->actingAs($user)
+            ->get(route('publisher.sites.ajax', [
+                'status' => ['pending'],
+                'query' => ['poisoned-search'],
+                'page' => ['2'],
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Array to string conversion', $html);
+        $this->assertStringNotContainsString('Could not load your sites', $html);
+    }
 }

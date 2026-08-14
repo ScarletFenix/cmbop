@@ -331,12 +331,12 @@ class SiteController extends Controller
     {
         try {
             $this->ensureListingSchema();
-            $query = $request->get('query');
-            $status = strtolower((string) $request->get('status', 'active'));
+            $query = scalar_text($request->get('query'));
+            $status = strtolower(scalar_text($request->get('status', 'active')));
             if (! in_array($status, ['pending', 'active', 'invites', 'archived', 'all'], true)) {
                 $status = 'active';
             }
-            $page = max(1, (int) $request->get('page', 1));
+            $page = max(1, (int) scalar_text($request->get('page', 1)));
 
             $base = Site::where('publisher_id', auth()->id());
             $acceptedBase = (clone $base)->acceptedByPublisher();

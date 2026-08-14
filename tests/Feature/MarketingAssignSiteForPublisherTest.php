@@ -936,6 +936,51 @@ class MarketingAssignSiteForPublisherTest extends TestCase
         $this->assertSame('de', $pending->fresh()->language);
     }
 
+    public function test_marketing_update_rejects_array_site_url_without_500(): void
+    {
+        $pending = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'publisher_accepted_at' => now(),
+            'site_name' => 'Pending Url Guard',
+            'site_url' => 'https://pending-url-guard.example',
+            'domain' => 'pending-url-guard.example',
+            'example_url' => 'https://pending-url-guard.example/sample',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 12000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'categories' => ['News'],
+            'price' => 50,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Pending url guard description text. ', 3),
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.sites.edit', $pending->id))
+            ->put(route('marketing.sites.update', $pending->id), [
+                'site_name' => 'Pending Url Guard',
+                'site_url' => ['https://pending-url-guard.example'],
+                'example_url' => ['https://pending-url-guard.example/sample'],
+                'price' => 50,
+                'da' => 40,
+                'dr' => 40,
+                'traffic' => 12000,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => 'News',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('site_url');
+
+        $this->assertSame('https://pending-url-guard.example', $pending->fresh()->site_url);
+    }
+
     public function test_duplicate_domain_prefers_live_listing_message_over_archived(): void
     {
         $otherPublisher = User::factory()->create([
