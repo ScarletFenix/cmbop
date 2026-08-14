@@ -227,15 +227,11 @@
         border-color: #C5E4E4;
     }
     .library-status--processing,
-    .library-status--evaluating {
+    .library-status--evaluating,
+    .library-status--in_progress {
         background: #F3F0E8;
         color: #5C4E2E;
         border-color: #E4DCC8;
-    }
-    .library-status--in_progress {
-        background: #EEF2F5;
-        color: #3A5060;
-        border-color: #D5DEE6;
     }
     .library-status--needs_fix {
         background: #F6EEEE;

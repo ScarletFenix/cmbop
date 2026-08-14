@@ -3,7 +3,10 @@
 namespace Tests\Feature;
 
 use App\Models\ContentSubmission;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use App\Support\ContentLibrarySchema;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -100,9 +103,60 @@ class ContentLibraryPhases02Test extends TestCase
     public function test_status_strip_includes_archived_expired_and_processing_tab(): void
     {
         $advertiser = $this->advertiser();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Site ordered',
+            'site_url' => 'https://ordered.example',
+            'domain' => 'ordered.example',
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 500,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Test site',
+            'verified' => true,
+            'active' => true,
+        ]);
 
         $ready = $this->createApprovedSubmission($advertiser);
         $ready->update(['title' => 'Ready Piece']);
+
+        $ordered = $this->createApprovedSubmission($advertiser, $site->id);
+        $ordered->update(['title' => 'Ordered Piece']);
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'wallet',
+            'payment_status' => 'unpaid',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $ordered->id,
+        ]);
+        $ordered->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+        $this->assertSame('in_progress', $ordered->fresh()->libraryAvailability());
 
         $evaluating = ContentSubmission::create([
             'user_id' => $advertiser->id,
@@ -145,23 +199,27 @@ class ContentLibraryPhases02Test extends TestCase
         $this->assertStringContainsString('>Archived</span>', $html);
         $this->assertStringContainsString('>Expired</span>', $html);
         $this->assertStringContainsString('>Processing</span>', $html);
-        $this->assertStringContainsString('availability=evaluating', $html);
+        $this->assertStringContainsString('availability=in_progress', $html);
+        $this->assertStringNotContainsString('availability=evaluating', $html);
+        $this->assertStringNotContainsString('>In progress</span>', $html);
         $this->assertStringNotContainsString('library-eval-badge', $html);
         $this->assertStringNotContainsString('Evaluating 1', $html);
         $this->assertStringNotContainsString('still evaluating', $html);
         $this->assertStringNotContainsString('Evaluating…', $html);
         $this->assertStringContainsString('Ready Piece', $html);
         $this->assertStringNotContainsString('Still Checking', $html);
+        $this->assertStringNotContainsString('Ordered Piece', $html);
 
         $processingHtml = $this->actingAs($advertiser)
-            ->get(route('advertiser.content-library', ['availability' => 'evaluating']))
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
             ->assertOk()
             ->getContent();
-        $this->assertStringContainsString('Still Checking', $processingHtml);
+        $this->assertStringContainsString('Ordered Piece', $processingHtml);
         $this->assertStringContainsString('library-status--processing', $processingHtml);
         $this->assertStringContainsString('library-status-sweep', $processingHtml);
         $this->assertStringContainsString('Uploaded', $processingHtml);
         $this->assertStringNotContainsString('Ready Piece', $processingHtml);
+        $this->assertStringNotContainsString('Still Checking', $processingHtml);
         $this->assertMatchesRegularExpression(
             '/library-status-box--processing\s+is-active/',
             $processingHtml
