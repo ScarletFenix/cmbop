@@ -1041,6 +1041,7 @@ class SiteController extends Controller
             'price' => $site->price,
             'language' => $site->language,
             'country' => $site->country,
+            'category' => $site->category,
             'active' => $site->active,
             'verified' => $site->verified,
         ];
@@ -1843,8 +1844,10 @@ class SiteController extends Controller
                 'site_name' => $siteName,
                 'domain' => $domain,
                 'bulk_site_request_id' => $bulkRequestId,
+                'publisher_id' => $publisher?->id,
                 'onboarding_status' => $onboarding,
                 'deleted_by_role' => $user?->activeRole(),
+                'reason' => $rejectionReason,
             ],
             $siteName
         );

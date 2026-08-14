@@ -10,6 +10,7 @@ use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class MarketingPanelHistoryTest extends TestCase
@@ -258,6 +259,8 @@ class MarketingPanelHistoryTest extends TestCase
 
         $this->assertStringNotContainsString(route('marketing.sites.edit', 999999), $stale);
         $this->assertStringNotContainsString(route('marketing.bulk-site-requests.show', 888888), $stale);
+        $this->assertStringContainsString('data-history-removed', $stale);
+        $this->assertStringContainsString('Removed', $stale);
     }
 
     public function test_my_tasks_today_uses_app_timezone_window(): void
@@ -392,6 +395,132 @@ class MarketingPanelHistoryTest extends TestCase
             ->assertSee('Activated site', false)
             ->assertDontSee('Edit Target', false)
             ->assertDontSee('Staff changed niches', false);
+    }
+
+    public function test_history_shows_publisher_reason_changes_and_removed_without_n_plus_one(): void
+    {
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $publisher = User::factory()->create([
+            'name' => 'Publisher Pat',
+            'email' => 'pat-publisher@example.com',
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'History Extra Site',
+            'site_url' => 'https://history-extra.example',
+            'domain' => 'history-extra.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'News',
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'description' => 'History extra site',
+            'link_type' => 'dofollow',
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.updated',
+            'description' => 'Edited History Extra Site',
+            'subject_type' => Site::class,
+            'subject_id' => $site->id,
+            'subject_label' => 'History Extra Site',
+            'properties' => [
+                'publisher_id' => $publisher->id,
+                'changes' => [
+                    'da' => ['from' => 10, 'to' => 20],
+                    'country' => ['from' => 'de', 'to' => 'us'],
+                    'category' => ['from' => 'Pending', 'to' => 'News'],
+                ],
+            ],
+        ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.deactivated',
+            'description' => 'Deactivated History Extra Site',
+            'subject_type' => Site::class,
+            'subject_id' => $site->id,
+            'subject_label' => 'History Extra Site',
+            'properties' => [
+                'publisher_id' => $publisher->id,
+                'reason' => 'Metrics fell below the quality bar.',
+            ],
+        ]);
+        ActivityLog::create([
+            'user_id' => $this->marketer->id,
+            'user_name' => $this->marketer->name,
+            'user_email' => $this->marketer->email,
+            'role' => 'marketing',
+            'action' => 'site.deleted_by_marketing',
+            'description' => 'Deleted pending leftover extra',
+            'subject_label' => 'Deleted Extra',
+            'properties' => [
+                'publisher_id' => $publisher->id,
+                'reason' => 'Duplicate draft from the same domain.',
+            ],
+        ]);
+
+        for ($i = 0; $i < 4; $i++) {
+            ActivityLog::create([
+                'user_id' => $this->marketer->id,
+                'user_name' => $this->marketer->name,
+                'user_email' => $this->marketer->email,
+                'role' => 'marketing',
+                'action' => 'site.updated',
+                'description' => 'Repeat edit '.$i,
+                'subject_type' => Site::class,
+                'subject_id' => $site->id,
+                'subject_label' => 'History Extra Site',
+                'properties' => [
+                    'publisher_id' => $publisher->id,
+                    'changes' => ['dr' => ['from' => 10 + $i, 'to' => 11 + $i]],
+                ],
+            ]);
+        }
+
+        $queries = [];
+        DB::listen(function ($query) use (&$queries) {
+            $queries[] = $query->sql;
+        });
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.history'))
+            ->assertOk()
+            ->assertSee('Publisher', false)
+            ->assertSee('Publisher Pat', false)
+            ->assertSee('Reason: Metrics fell below the quality bar.', false)
+            ->assertSee('Changed: DA, Country, Niches', false)
+            ->assertSee('Changed: DR', false)
+            ->assertSee('Deleted Extra', false)
+            ->assertSee('data-history-removed', false)
+            ->getContent();
+
+        $this->assertStringContainsString('Reason: Duplicate draft from the same domain.', $html);
+        $this->assertSame(1, substr_count($html, 'data-history-removed'));
+
+        $existsLookups = array_values(array_filter($queries, function (string $sql) {
+            $s = strtolower($sql);
+
+            return (str_contains($s, 'sites') || str_contains($s, 'bulk_site_requests'))
+                && (str_contains($s, 'exists') || (bool) preg_match('/["`]?(?:sites|bulk_site_requests)["`]?\.["`]?id["`]? = \?/i', $sql));
+        }));
+
+        $this->assertSame([], $existsLookups, implode("\n", $existsLookups));
     }
 
     public function test_sites_page_uses_marketing_layout_for_marketers(): void

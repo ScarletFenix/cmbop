@@ -1,9 +1,8 @@
 <?php
 
 use App\Models\ActivityLog;
-use App\Models\BulkSiteRequest;
-use App\Models\Site;
 use App\Models\User;
+use App\Support\MarketingHistoryDisplay;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\App;
 use Illuminate\Support\Facades\Request;
@@ -543,52 +542,23 @@ if (! function_exists('marketing_task_actions_matching')) {
 if (! function_exists('marketing_history_subject_url')) {
     /**
      * Deep link for a marketing history row subject, or null when it should stay plain text.
+     *
+     * @param  ?array<string, mixed>  $lookup
      */
-    function marketing_history_subject_url(?ActivityLog $log): ?string
+    function marketing_history_subject_url(?ActivityLog $log, ?array $lookup = null): ?string
     {
-        if (! $log || $log->action === 'site.deleted_by_marketing') {
-            return null;
-        }
-
-        $type = (string) $log->subject_type;
-        $id = (int) $log->subject_id;
-
-        if ($id > 0) {
-            if ($type === Site::class && Site::query()->whereKey($id)->exists()) {
-                return route('marketing.sites.edit', $id);
-            }
-
-            if ($type === BulkSiteRequest::class && BulkSiteRequest::query()->whereKey($id)->exists()) {
-                return route('marketing.bulk-site-requests.show', $id);
-            }
-        }
-
-        $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
-
-        return $bulkId > 0 && BulkSiteRequest::query()->whereKey($bulkId)->exists()
-            ? route('marketing.bulk-site-requests.show', $bulkId)
-            : null;
+        return MarketingHistoryDisplay::subjectUrl($log, $lookup);
     }
 }
 
 if (! function_exists('marketing_history_bulk_url')) {
     /**
      * Extra bulk-request link when the primary subject is a site on a bulk batch.
+     *
+     * @param  ?array<string, mixed>  $lookup
      */
-    function marketing_history_bulk_url(?ActivityLog $log): ?string
+    function marketing_history_bulk_url(?ActivityLog $log, ?array $lookup = null): ?string
     {
-        if (! $log) {
-            return null;
-        }
-
-        $bulkId = (int) data_get($log->properties, 'bulk_site_request_id');
-        if ($bulkId <= 0 || ! BulkSiteRequest::query()->whereKey($bulkId)->exists()) {
-            return null;
-        }
-
-        $primary = marketing_history_subject_url($log);
-        $bulk = route('marketing.bulk-site-requests.show', $bulkId);
-
-        return $primary !== $bulk ? $bulk : null;
+        return MarketingHistoryDisplay::bulkUrl($log, $lookup);
     }
 }
