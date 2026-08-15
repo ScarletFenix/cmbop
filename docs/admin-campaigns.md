@@ -37,7 +37,10 @@ or marketing, even if that staff account also has a marketplace role.
    job is already in the `jobs` table) so a backed-up emails queue cannot
    enqueue another job on every page view. The jobs-table check must
    match JSON-escaped payloads (`\"campaignId\";i:N;`) — a literal
-   `campaignId";i:N;` LIKE misses every database-queue row.    A `sending` campaign that still
+   `campaignId";i:N;` LIKE misses every database-queue row — and look at
+   both `MAIL_QUEUE_CONNECTION` and `QUEUE_CONNECTION` so a mismatch
+   cannot flood. `SendEmailCampaignJob` uses the same mail queue
+   connection as `AudienceCampaignMail`. A `sending` campaign that still
    has `queued` recipients is left sending — leftover queued rows are not
    treated as a successful send. A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
@@ -64,8 +67,12 @@ or marketing, even if that staff account also has a marketplace role.
    job — a stale unique lock silently drops the only dispatch. The `queued` →
    `sending` claim plus per-row `pending` → `queued` is the mutex. Send
    hydrates `id`+`email` only (`collectRecipientRows` via
-   `queryForAudienceKey`) so a large audience cannot OOM the compose
-   request and a new inventory key cannot count N then send nobody.
+   `recipientBuilder` / `queryForAudienceKey`) so a large audience cannot
+   OOM the compose request and a new inventory key cannot count N then
+   send nobody. A live user email that is blank or whitespace is failed
+   at send instead of `Mail::to('')`. Email Center retry of a failed
+   campaign mailable clears `email_log_id` so a lost retry can still
+   expire as stale.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).
