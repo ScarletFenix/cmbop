@@ -105,7 +105,11 @@
                         </div>
                     </form>
                     @if($recentLogs->isEmpty())
-                        <p class="text-muted mb-0">No emails logged yet. New sends are captured automatically. Use <strong>Send Test Email</strong> below to verify logging.</p>
+                        @if(collect($logFilters)->filter()->isNotEmpty())
+                            <p class="text-muted mb-0">No emails match these filters.</p>
+                        @else
+                            <p class="text-muted mb-0">No emails logged yet. New sends are captured automatically. Use <strong>Send Test Email</strong> below to verify logging.</p>
+                        @endif
                     @else
                         <div class="table-responsive">
                             <table class="table table-sm align-middle mb-0">
@@ -482,7 +486,10 @@
             var critical = (form.getAttribute('data-ec-critical') || '').split(',').filter(Boolean);
             var disabling = [];
             critical.forEach(function (type) {
-                var box = form.querySelector('input[type="checkbox"][name="enabled[' + type + ']"]');
+                var name = 'enabled[' + type + ']';
+                var box = Array.prototype.find.call(form.querySelectorAll('input[type="checkbox"]'), function (el) {
+                    return el.name === name;
+                });
                 if (box && !box.checked && box.getAttribute('data-ec-was-enabled') === '1') {
                     disabling.push(type);
                 }

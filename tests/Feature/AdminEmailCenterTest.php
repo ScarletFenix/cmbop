@@ -941,6 +941,12 @@ class AdminEmailCenterTest extends TestCase
             ->assertOk()
             ->assertSee('keep@example.com', false)
             ->assertSee('other@example.com', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index', ['status' => 'failed', 'to_email' => 'nobody-matches@example.com']))
+            ->assertOk()
+            ->assertSee('No emails match these filters', false)
+            ->assertDontSee('No emails logged yet', false);
     }
 
     public function test_recent_logs_are_paginated(): void

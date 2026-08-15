@@ -555,9 +555,7 @@ class EmailCatalog
 
     public static function get(string $key): ?array
     {
-        $all = self::all();
-
-        return $all[$key] ?? null;
+        return self::templates()[$key] ?? null;
     }
 
     public static function keyFromMailable(?string $class): ?string

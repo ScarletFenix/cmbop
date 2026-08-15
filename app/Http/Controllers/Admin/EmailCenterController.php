@@ -35,7 +35,8 @@ class EmailCenterController extends Controller
             ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereDate('created_at', '<=', $to))
             ->latest('id')
             ->paginate(50)
-            ->withQueryString();
+            ->withQueryString()
+            ->fragment('ec-recent');
 
         $templateStats = EmailLog::query()
             ->selectRaw('template_key, COUNT(*) as sent_count, MAX(sent_at) as last_sent_at')
