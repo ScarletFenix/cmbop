@@ -2219,6 +2219,11 @@ class CatalogController extends Controller
         if ($amountDue <= 0 && $bonusApplied > 0) {
             $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
             try {
+                if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+
+                    return $denied;
+                }
                 app(CheckoutSchemaService::class)->ensureCheckoutTables();
                 $schema = app(CheckoutSchemaService::class);
                 $created = collect();
@@ -2697,6 +2702,10 @@ class CatalogController extends Controller
                 ]);
             }
 
+            if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
+                return $denied;
+            }
+
             DB::beginTransaction();
 
             // Lock wallet row inside the transaction to prevent concurrent overspend
@@ -2899,6 +2908,10 @@ class CatalogController extends Controller
             $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
             $bonusApplied = 0.0;
             $amountDue = $totalAmount;
+
+            if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
+                return $denied;
+            }
 
             DB::beginTransaction();
 
@@ -3781,6 +3794,30 @@ class CatalogController extends Controller
         }
 
         return true;
+    }
+
+    /**
+     * Scan checkout articles before the payment transaction so a reject is not
+     * rolled back with the wallet/Wise attach failure.
+     */
+    private function checkoutLinesFailLivePolicy(array $checkoutContent, int $userId): ?JsonResponse
+    {
+        $user = User::query()->find($userId) ?? auth()->user();
+        $moderation = app(ContentModerationService::class);
+        foreach ($checkoutContent['lines'] ?? [] as $line) {
+            $submission = $line['submission'] ?? null;
+            if (! $submission instanceof ContentSubmission) {
+                continue;
+            }
+            if (! $moderation->submissionPassesLivePolicy($submission, $user instanceof User ? $user : null)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
+                ], 422);
+            }
+        }
+
+        return null;
     }
 
     /**
