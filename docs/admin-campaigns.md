@@ -64,12 +64,16 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   refunded** order (abandoned checkout stays in; a later refund is still a
   customer). `advertisers_paid_orders` is the inverse.
 - Extra inventory / campaign keys: `both`, `advertisers_deposited_no_orders`
-  (credited deposit, no order row), `publishers_no_active_sites` (no
-  catalog-visible site: active + verified + not archived + not leftover from
-  a cancelled bulk). Publisher archive keeps `active=1`, so `active=1` alone
-  is not “live”. Tab slugs (`no_orders`, `paid_orders`, …) normalize
-  through `AudienceInventoryService::normalizeAudienceKey()` in inventory
-  and in campaign send / recipient-count.
+  (credited deposit and no paid/refunded order — abandoned checkout stays
+  in), `publishers_no_active_sites` (no catalog-visible site: active +
+  verified + not archived + not leftover from a cancelled bulk). Publisher
+  archive keeps `active=1`, so `active=1` alone is not “live”. Tab slugs
+  (`no_orders`, `paid_orders`, …) normalize through
+  `AudienceInventoryService::normalizeAudienceKey()` in inventory and in
+  campaign send / recipient-count.
+- The custom picker lists **verified users first** so unverified names cannot
+  crowd them out of the 200-per-role cap. The “showing first 200” warning
+  uses the same picker universe (all emails), not the verified-only KPI.
 - Inventory search / filters apply to the table and CSV only. **Email this
   audience** still sends the full segment (verified by default).
 - Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,

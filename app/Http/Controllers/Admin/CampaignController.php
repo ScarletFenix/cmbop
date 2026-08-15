@@ -34,8 +34,8 @@ class CampaignController extends Controller
 
         $advertisers = $inventory->pickerUsers('advertiser');
         $publishers = $inventory->pickerUsers('publisher');
-        $pickerCapped = $stats['advertisers'] > AudienceInventoryService::PICKER_LIMIT
-            || $stats['publishers'] > AudienceInventoryService::PICKER_LIMIT;
+        $pickerCapped = $inventory->pickerIsCapped('advertiser')
+            || $inventory->pickerIsCapped('publisher');
 
         return view('admin.campaigns.index', compact(
             'stats',

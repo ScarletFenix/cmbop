@@ -181,7 +181,7 @@ class AudienceInventoryService
             self::AUDIENCE_PUBLISHERS_NO_SITES => 'Publishers (no sites)',
             self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'Publishers (no active sites)',
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Advertisers (never deposited)',
-            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Advertisers (deposited, no orders)',
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Advertisers (deposited, no paid orders)',
             self::AUDIENCE_SELECTED => 'Selected users',
             default => ucfirst($audience),
         };
@@ -216,7 +216,7 @@ class AudienceInventoryService
             self::AUDIENCE_PUBLISHERS_NO_SITES => 'No sites',
             self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'No active sites',
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Never deposited',
-            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Deposited, no orders',
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Deposited, no paid orders',
             default => 'Advertisers',
         };
     }
@@ -344,7 +344,10 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers who funded a wallet but never started checkout.
+     * Advertisers who funded a wallet but never became a customer.
+     *
+     * An abandoned unpaid checkout still belongs here — they have credit and
+     * did not finish paying. A paid or refunded order does not.
      */
     public function queryAdvertisersDepositedNoOrders(): Builder
     {
@@ -352,7 +355,9 @@ class AudienceInventoryService
             ->whereHas('depositRequests', function (Builder $q) {
                 $q->whereIn('status', self::creditedDepositStatuses());
             })
-            ->whereDoesntHave('orders');
+            ->whereDoesntHave('orders', function (Builder $q) {
+                $q->whereIn('payment_status', self::customerPaymentStatuses());
+            });
     }
 
     public function queryMarketplaceUsers(): Builder
@@ -463,10 +468,28 @@ class AudienceInventoryService
      */
     public function pickerUsers(string $roleName, int $limit = self::PICKER_LIMIT): Collection
     {
-        return $this->queryForRole($roleName)
-            ->setEagerLoads([])
+        return $this->pickerQuery($roleName)
             ->limit($limit)
             ->get(['id', 'name', 'email']);
+    }
+
+    /**
+     * True when the custom picker is not showing every user in that role.
+     * Uses the same universe as pickerUsers() (verified first, then the rest).
+     */
+    public function pickerIsCapped(string $roleName, int $limit = self::PICKER_LIMIT): bool
+    {
+        return $this->pickerQuery($roleName)->count() > $limit;
+    }
+
+    protected function pickerQuery(string $roleName): Builder
+    {
+        return $this->queryForRole($roleName)
+            ->setEagerLoads([])
+            ->reorder()
+            ->orderByRaw('case when email_verified_at is null then 1 else 0 end')
+            ->orderBy('name')
+            ->orderBy('id');
     }
 
     /**
@@ -702,7 +725,7 @@ class AudienceInventoryService
                 }
 
                 return true;
-            });
+            }, 'users.id', 'id');
 
             fclose($out);
         }, $filename, $headers);
