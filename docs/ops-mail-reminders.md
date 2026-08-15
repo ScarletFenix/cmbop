@@ -8,7 +8,7 @@ Production checklist for Seolinkbuildings email delivery and scheduled reminders
 |---|---|
 | `APP_URL` = real public origin (`https://…`) | Named routes in mail and signed verify links use this host. |
 | `PUBLIC_APP_URL` | Fallback only when `APP_ENV=production` and `APP_URL` is still loopback (misconfigured deploy). Prefer fixing `APP_URL`. |
-| Queue worker **or** auto-drain | Mailables queue on `emails`. Run `php artisan queue:work --queue=default,emails`, **or** leave `MAIL_QUEUE_AUTO_DRAIN=true` (default) so web traffic + `mail:drain-queue` clear the backlog. |
+| Queue worker **or** auto-drain | Mailables **and** `SendEmailCampaignJob` queue on `emails`. Run `php artisan queue:work --queue=default,emails`, **or** leave `MAIL_QUEUE_AUTO_DRAIN=true` (default) so web traffic + `mail:drain-queue` clear the backlog. |
 | Scheduler every minute | Prefer `* * * * * cd /path/to/app && php artisan schedule:run`. When that cron is missing, `HOSTINGER_WEB_HEAL=true` (default) runs `schedule:run` from production page views about once a minute. Quiet overnight sites still need system cron. |
 | `CRON_SECRET` ≥ 32 chars **only if** using HTTP cron | Optional alternate: `GET /cron/run/{key}` when the host cannot run `schedule:run`. Short/empty secret keeps the route disabled. |
 
@@ -43,3 +43,10 @@ view (or `--repair`) writes a leftover loopback `APP_URL` from `PUBLIC_APP_URL`,
 and web traffic drains mail + runs due schedule events.
 
 Confirm a test registration writes a welcome/verify link (with `MAIL_MAILER=log`, search `storage/logs/laravel.log` for `email/verify`).
+
+## Admin campaigns
+
+Admin → Updates & Campaigns is queued bulk marketing mail (`AudienceCampaignMail`),
+not advertiser `/campaigns`. Signed marketing unsubscribe lives at
+`/email/unsubscribe/{user}`. Full send path, audiences, stale window, and
+preference rules: [`admin-campaigns.md`](admin-campaigns.md).
