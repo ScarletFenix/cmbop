@@ -265,8 +265,7 @@
                                                 || (int) $oldDr < \App\Models\Site::GOOD_MIN_DR
                                                 || (int) $oldTraffic < \App\Models\Site::GOOD_MIN_TRAFFIC);
                                     @endphp
-                                    <details class="bulk-done-row"
-                                             data-bulk-done-row
+                                    <details class="bulk-done-row" data-bulk-done-row
                                              data-item-id="{{ $item->id }}"
                                              @class(['d-none' => $isRejected])
                                              @if($isRejected) data-bulk-rejected="1" @endif
