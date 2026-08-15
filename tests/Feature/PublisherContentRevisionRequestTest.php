@@ -609,6 +609,46 @@ class PublisherContentRevisionRequestTest extends TestCase
         Mail::assertQueued(ContentRevisionFulfilled::class);
     }
 
+    public function test_confirm_existing_copies_cleared_library_link_onto_the_item(): void
+    {
+        $submission = $this->createApprovedSubmission($this->advertiser);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_original_name' => $submission->original_filename,
+            'content_disk' => $submission->disk,
+            'content_path' => $submission->path,
+            'anchor_text' => 'old publisher anchor',
+            'target_url' => 'https://old.example/backlink',
+            'feature_image_url' => 'https://cdn.example.test/old-hero.jpg',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please remove the outbound link.',
+        ]);
+        $submission->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'anchor_text' => null,
+            'target_url' => null,
+            'feature_image_url' => null,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'confirm_existing' => true,
+                'note' => 'Cleared the link on the library article.',
+                'order_item_id' => $item->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $item->refresh();
+        $this->assertFalse($item->isContentRevisionRequested());
+        $this->assertNull($item->anchor_text);
+        $this->assertNull($item->target_url);
+        $this->assertNull($item->feature_image_url);
+    }
+
     public function test_library_item_cannot_confirm_existing_article_without_image_rights(): void
     {
         $submission = $this->createApprovedSubmission($this->advertiser);

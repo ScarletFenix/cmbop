@@ -4716,7 +4716,7 @@ class CatalogController extends Controller
             ->forCheckoutSummary()
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->first();
     }
 

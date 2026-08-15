@@ -474,29 +474,18 @@ class ContentRevisionService
      */
     private function submissionFieldsForItem(ContentSubmission $submission): array
     {
-        $fields = [
+        return [
             'content_submission_id' => $submission->id,
             'content_disk' => $submission->disk,
             'content_path' => $submission->path,
             'content_original_name' => $submission->original_filename,
             'content_mime' => $submission->mime,
             'content_link' => route('advertiser.content-submissions.download', $submission),
+            'anchor_text' => $submission->anchor_text,
+            'target_url' => $submission->target_url,
+            'feature_image_url' => $submission->feature_image_url,
+            'moderation_status' => $submission->moderation_status,
         ];
-
-        if (filled($submission->anchor_text)) {
-            $fields['anchor_text'] = $submission->anchor_text;
-        }
-        if (filled($submission->target_url)) {
-            $fields['target_url'] = $submission->target_url;
-        }
-        if (filled($submission->feature_image_url)) {
-            $fields['feature_image_url'] = $submission->feature_image_url;
-        }
-        if (filled($submission->moderation_status)) {
-            $fields['moderation_status'] = $submission->moderation_status;
-        }
-
-        return $fields;
     }
 
     private function relinkSubmission(
