@@ -613,7 +613,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             const raw = sessionStorage.getItem(draftKey);
             if (!raw) return null;
             const parsed = JSON.parse(raw);
-            if (!parsed || typeof parsed !== 'object' || !parsed.items) return null;
+            if (!parsed || typeof parsed !== 'object') return null;
+            if (!parsed.items) parsed.items = {};
+            if (!Array.isArray(parsed.rejected)) parsed.rejected = [];
             if (!parsed.savedAt || (Date.now() - Number(parsed.savedAt)) > draftTtlMs) {
                 sessionStorage.removeItem(draftKey);
                 return null;
@@ -624,7 +626,13 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         }
     }
 
-    function writeDraft() {
+    function saveDraft(payload) {
+        try {
+            sessionStorage.setItem(draftKey, JSON.stringify(payload));
+        } catch (e) {}
+    }
+
+    function collectItemDrafts() {
         const items = {};
         doneRows().forEach(function (row) {
             const language = row.querySelector('select[name*="[language]"]');
@@ -646,12 +654,16 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 categories: categories ? categories.value : '',
             };
         });
-        try {
-            sessionStorage.setItem(draftKey, JSON.stringify({
-                savedAt: Date.now(),
-                items: items,
-            }));
-        } catch (e) {}
+        return items;
+    }
+
+    function writeDraft() {
+        saveDraft({
+            savedAt: Date.now(),
+            items: collectItemDrafts(),
+            rejected: rejectedIds(),
+            rejection_note: String((noteEl && noteEl.value) || ''),
+        });
     }
 
     function clearDraft() {
@@ -661,9 +673,19 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     function restoreDraftIfNeeded() {
         if (hasServerOld) return;
         const draft = readDraft();
-        if (!draft || !draft.items) return;
+        if (!draft) return;
 
-        Object.keys(draft.items).forEach(function (itemId) {
+        (draft.rejected || []).forEach(function (id) {
+            const row = form.querySelector('[data-bulk-done-row][data-item-id="' + String(id) + '"]');
+            if (row && row.getAttribute('data-bulk-rejected') !== '1') {
+                applyRejectedState(row);
+            }
+        });
+        if (noteEl && Object.prototype.hasOwnProperty.call(draft, 'rejection_note')) {
+            noteEl.value = String(draft.rejection_note || '');
+        }
+
+        Object.keys(draft.items || {}).forEach(function (itemId) {
             const data = draft.items[itemId] || {};
             const language = form.querySelector('select[name="items[' + itemId + '][language]"]');
             const country = form.querySelector('select[name="items[' + itemId + '][country]"]');
@@ -740,9 +762,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         return count >= 10 && count <= 1000;
     }
 
-    function markRowRejected(row) {
+    function applyRejectedState(row) {
         const id = row.getAttribute('data-item-id');
-        if (!id) return;
+        if (!id) return null;
         row.classList.add('d-none');
         row.setAttribute('data-bulk-rejected', '1');
         row.querySelectorAll('select, input, textarea, button').forEach(function (el) {
@@ -755,7 +777,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             hidden.value = id;
             rejectedBox.appendChild(hidden);
         }
-        pruneDraftForItemIds([id]);
+        return id;
+    }
+
+    function markRowRejected(row) {
+        if (!applyRejectedState(row)) return;
+        writeDraft();
         syncDoneState();
     }
 
@@ -791,21 +818,25 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     }
 
     function pruneDraftForItemIds(itemIds) {
+        writeDraft();
         const draft = readDraft();
-        if (!draft || !draft.items) return;
+        if (!draft) return;
+        const drop = {};
         (itemIds || []).forEach(function (id) {
+            drop[String(id)] = true;
             delete draft.items[String(id)];
         });
-        if (Object.keys(draft.items).length === 0) {
+        draft.rejected = (draft.rejected || []).filter(function (id) {
+            return !drop[String(id)];
+        });
+        if (Object.keys(draft.items).length === 0
+            && draft.rejected.length === 0
+            && !String(draft.rejection_note || '').trim()) {
             clearDraft();
             return;
         }
-        try {
-            sessionStorage.setItem(draftKey, JSON.stringify({
-                savedAt: Date.now(),
-                items: draft.items,
-            }));
-        } catch (e) {}
+        draft.savedAt = Date.now();
+        saveDraft(draft);
     }
 
     function doneFormReady() {

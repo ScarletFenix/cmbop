@@ -104,6 +104,9 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString("e.key === 'Backspace'", $js);
         $this->assertStringContainsString('removeLast', $js);
         $this->assertStringContainsString('categories: categories ? categories.value : \'\'', $html);
+        $this->assertStringContainsString('rejected: rejectedIds()', $html);
+        $this->assertStringContainsString('rejection_note:', $html);
+        $this->assertStringContainsString('applyRejectedState', $html);
         $this->assertStringContainsString('multiSelects[itemId].setSelectedItems(nicheValues, nicheValues)', $html);
         $this->assertStringContainsString('Category::catalogPickerNames()', file_get_contents(app_path('Http/Controllers/Admin/BulkSiteRequestController.php')));
 
