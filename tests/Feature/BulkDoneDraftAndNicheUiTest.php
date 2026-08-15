@@ -70,7 +70,8 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->get(route('marketing.bulk-site-requests.show', $bulk))
             ->assertOk()
             ->assertSee('id="bulkDoneForm"', false)
-            ->assertSee('bulk-done-panel', false)
+            ->assertSee('data-bulk-reject-row', false)
+            ->assertSee('name="rejection_note"', false)
             ->assertSee('bulk-done-table-wrap', false)
             ->assertSee('data-bulk-done-row', false)
             ->assertSee('bulkDoneDraft:'.$bulk->id.':'.$this->marketer->id, false)
@@ -132,6 +133,9 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
         $this->assertStringContainsString("e.key === 'Backspace'", $js);
         $this->assertStringContainsString('removeLast', $js);
         $this->assertStringContainsString('categories: categories ? categories.value : \'\'', $html);
+        $this->assertStringContainsString('rejected: rejectedIds()', $html);
+        $this->assertStringContainsString('rejection_note:', $html);
+        $this->assertStringContainsString('applyRejectedState', $html);
         $this->assertStringContainsString('multiSelects[itemId].setSelectedItems(nicheValues, nicheValues)', $html);
         $this->assertStringContainsString('Category::catalogPickerNames()', file_get_contents(app_path('Http/Controllers/Admin/BulkSiteRequestController.php')));
 

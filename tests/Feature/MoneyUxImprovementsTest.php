@@ -299,6 +299,20 @@ class MoneyUxImprovementsTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_retry_payment_rejected_when_listing_left_the_catalog(): void
+    {
+        $user = $this->advertiserWithBonus();
+        $order = $this->cardOrder($user, 'failed', 'pending');
+        $site = Site::query()->findOrFail($order->items->first()->site_id);
+        $site->update(['verified' => false, 'active' => false]);
+
+        $this->actingAs($user)
+            ->postJson(route('advertiser.orders.retry-payment', $order))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This order cannot be paid again. Open checkout if your cart was restored.');
+    }
+
     public function test_payment_failed_mail_links_to_orders_not_empty_checkout(): void
     {
         Mail::fake();

@@ -5,6 +5,7 @@
 namespace App\Mail;
 
 use App\Models\Site;
+use App\Models\User;
 
 class NewSiteNotification extends PlatformMailable
 {
@@ -12,11 +13,25 @@ class NewSiteNotification extends PlatformMailable
 
     public $action;
 
-    public function __construct(Site $site, $action = 'create')
+    public function __construct(Site $site, $action = 'create', public ?string $openUrl = null)
     {
         parent::__construct();
         $this->site = $site;
         $this->action = $action;
+    }
+
+    /**
+     * Needs-review queue URL for this staff member's active workspace.
+     */
+    public static function reviewUrl(Site $site, ?User $staff = null): string
+    {
+        $publisherId = (int) ($site->publisher_id ?? 0);
+
+        return route(staff_route_prefix_for($staff).'sites.index', array_filter([
+            'needs_review' => 1,
+            'publisher' => $publisherId > 0 ? $publisherId : null,
+            'site' => $site->id,
+        ]));
     }
 
     public function build()
@@ -26,13 +41,6 @@ class NewSiteNotification extends PlatformMailable
             : 'Site Updated - Requires Review';
 
         $this->site->loadMissing('publisher');
-        $publisherId = (int) ($this->site->publisher_id ?? 0);
-
-        $adminUrl = route('admin.sites.index', array_filter([
-            'needs_review' => 1,
-            'publisher' => $publisherId > 0 ? $publisherId : null,
-            'site' => $this->site->id,
-        ]));
 
         return $this->subject($subject)
             ->markdown('emails.new-site-notification')
@@ -42,7 +50,7 @@ class NewSiteNotification extends PlatformMailable
                 'publisherName' => $this->site->publisher->name ?? 'Unknown',
                 'publisherEmail' => $this->site->publisher->email ?? 'Unknown',
                 'action' => $this->action,
-                'adminUrl' => $adminUrl,
+                'adminUrl' => $this->openUrl ?: self::reviewUrl($this->site),
             ]);
     }
 }

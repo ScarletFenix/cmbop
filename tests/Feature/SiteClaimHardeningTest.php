@@ -86,7 +86,7 @@ class SiteClaimHardeningTest extends TestCase
         $site = $this->siteFor($owner);
 
         $this->actingAs($claimer)->postJson(route('publisher.sites.claim'), [
-            'website_url' => 'https://owned-news.example',
+            'website_url' => 'https://www.owned-news.example',
             'website_name' => 'Owned News Daily',
             'proof_message' => 'I own this domain via registrar account and CMS admin access.',
             'contact_email' => $claimer->email,
@@ -450,6 +450,28 @@ class SiteClaimHardeningTest extends TestCase
             ->get(route('publisher.websites'))
             ->assertOk()
             ->assertSee('Your ownership claims');
+    }
+
+    public function test_claim_by_site_id_rejects_listing_that_left_the_catalog(): void
+    {
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('publisher');
+        $site = $this->siteFor($owner);
+        $site->update(['verified' => false, 'active' => false]);
+
+        $this->actingAs($claimer)->postJson(route('publisher.sites.claim'), [
+            'site_id' => $site->id,
+            'proof_message' => 'I own this domain via registrar account and CMS admin access.',
+            'contact_email' => $claimer->email,
+        ])->assertStatus(422)->assertJson([
+            'success' => false,
+            'message' => 'We could not find that website in our catalog.',
+        ]);
+
+        $this->assertDatabaseMissing('site_claims', [
+            'site_id' => $site->id,
+            'claimer_id' => $claimer->id,
+        ]);
     }
 
     public function test_claimer_can_view_their_claims_page(): void

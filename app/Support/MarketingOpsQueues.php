@@ -132,13 +132,22 @@ class MarketingOpsQueues
      */
     public static function constrainWaitingOnMarketer(Builder $q): void
     {
+        // Status alone is not enough: reject-all leaves requested/seeded
+        // with zero pending rows and was still inflating the badge.
+        // Legacy sheet batches (count set, no item rows, no live sites)
+        // still block the publisher and must stay on "Waiting on you".
         $q->where('status', '!=', BulkSiteRequest::STATUS_CANCELLED)
             ->where(function ($inner) {
-                $inner->whereIn('status', [
-                    BulkSiteRequest::STATUS_REQUESTED,
-                    BulkSiteRequest::STATUS_SHEET_SENT,
-                    BulkSiteRequest::STATUS_SEEDED,
-                ])->orWhereHas('items', fn ($items) => $items->whereNull('site_id'));
+                $inner->whereHas('items', fn ($items) => $items->whereNull('site_id'))
+                    ->orWhere(function ($legacy) {
+                        $legacy->whereNotIn('status', [
+                            BulkSiteRequest::STATUS_COMPLETED,
+                            BulkSiteRequest::STATUS_CANCELLED,
+                        ])
+                            ->where('estimated_count', '>', 0)
+                            ->whereDoesntHave('items')
+                            ->whereDoesntHave('sites', fn ($sites) => $sites->notArchived());
+                    });
             });
     }
 

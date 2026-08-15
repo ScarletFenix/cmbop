@@ -25,16 +25,21 @@ class BulkSiteRequestController extends Controller
     {
         $open = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
-            ->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
-            ])
-            ->exists();
+            ->blockingPublisher()
+            ->latest('id')
+            ->first();
 
         if ($open) {
+            $publisherOwesWork = $open->status === BulkSiteRequest::STATUS_AWAITING_PUBLISHER
+                || $open->pendingPublisherCount() > 0;
+
+            $message = $publisherOwesWork
+                ? 'Finish your pending sites under Complete details before submitting another bulk request.'
+                : 'You already have an open bulk request. Wait for our team to finish it, or message support.';
+
             return redirect()
                 ->route('publisher.websites')
-                ->with('error', 'You already have an open bulk request. Wait for our team to finish it, or message support.');
+                ->with('error', $message);
         }
 
         $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
@@ -67,9 +72,11 @@ class BulkSiteRequestController extends Controller
 
                 $siteUrl = $this->normalizeHttpUrl($urlRaw);
                 $host = parse_url($siteUrl, PHP_URL_HOST);
-                $domain = $host ? preg_replace('/^www\./', '', strtolower($host)) : null;
+                $domain = is_string($host) && $host !== ''
+                    ? Site::normalizeMarketplaceDomain($host)
+                    : '';
 
-                if (! $domain || ! filter_var($siteUrl, FILTER_VALIDATE_URL)) {
+                if ($domain === '' || ! filter_var($siteUrl, FILTER_VALIDATE_URL)) {
                     $validator->errors()->add("sites.$index.url", 'Enter a valid website URL.');
 
                     continue;
@@ -82,8 +89,14 @@ class BulkSiteRequestController extends Controller
                 }
                 $seenDomains[$domain] = true;
 
-                if (Site::where('domain', $domain)->exists()) {
-                    $validator->errors()->add("sites.$index.url", "Already registered: {$domain}");
+                $existing = Site::findOccupyingDomain($domain);
+                if ($existing) {
+                    $validator->errors()->add(
+                        "sites.$index.url",
+                        $existing->isArchived()
+                            ? $existing->occupyingDomainMessage()
+                            : "Already registered: {$domain}"
+                    );
 
                     continue;
                 }
@@ -157,9 +170,17 @@ class BulkSiteRequestController extends Controller
                 : collect([(object) ['email' => config('mail.admin_email', 'admin@yourdomain.com')]]);
 
             foreach ($recipients as $admin) {
-                if (! empty($admin->email)) {
-                    Mail::to($admin->email)->send(new BulkSiteRequestSubmitted($bulk->load('items')));
+                if (empty($admin->email)) {
+                    continue;
                 }
+                $openUrl = $admin instanceof User
+                    ? route(staff_route_prefix_for($admin).'bulk-site-requests.show', $bulk)
+                    : route('admin.bulk-site-requests.show', $bulk);
+                Mail::to($admin->email)->send(new BulkSiteRequestSubmitted(
+                    $bulk->load('items'),
+                    $openUrl,
+                    $admin instanceof User ? $admin : null
+                ));
             }
         } catch (\Throwable $e) {
             Log::warning('Failed to email admins about bulk site request: '.$e->getMessage());
@@ -185,6 +206,7 @@ class BulkSiteRequestController extends Controller
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->whereIn('onboarding_status', [
                 Site::ONBOARDING_AWAITING_DETAILS,
                 Site::ONBOARDING_DETAILS_COMPLETE,
@@ -223,6 +245,12 @@ class BulkSiteRequestController extends Controller
                 Site::ONBOARDING_DETAILS_COMPLETE,
             ])
             ->findOrFail($id);
+
+        if ($site->bulkSiteRequest?->isCancelled()) {
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', 'This bulk request was cancelled. Those sites will not be prepared.');
+        }
 
         if ($request->filled('exampleUrl')) {
             $request->merge([
@@ -361,12 +389,14 @@ class BulkSiteRequestController extends Controller
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
             ->orderByDesc('id')
             ->get();
 
         $awaitingCount = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
             ->count();
 
@@ -395,6 +425,7 @@ class BulkSiteRequestController extends Controller
 
         $query = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE);
 
         if (! ($validated['submit_all'] ?? false)) {
@@ -407,7 +438,7 @@ class BulkSiteRequestController extends Controller
             $query->whereIn('id', $ids);
         }
 
-        $sites = $query->get();
+        $sites = $query->with('bulkSiteRequest')->get();
         if ($sites->isEmpty()) {
             return redirect()
                 ->route('publisher.bulk-sites.review')
@@ -420,6 +451,10 @@ class BulkSiteRequestController extends Controller
         try {
             DB::transaction(function () use ($sites, &$submitted, &$bulkIds) {
                 foreach ($sites as $site) {
+                    if ($site->bulkSiteRequest?->isCancelled()) {
+                        continue;
+                    }
+
                     if (! $site->hasCompletedPublisherDetails()) {
                         continue;
                     }
@@ -464,9 +499,13 @@ class BulkSiteRequestController extends Controller
         }
 
         if ($submitted === 0) {
+            $cancelled = $sites->contains(fn (Site $site) => $site->bulkSiteRequest?->isCancelled());
+
             return redirect()
                 ->route('publisher.bulk-sites.review')
-                ->with('error', 'None of the selected sites have complete details yet.');
+                ->with('error', $cancelled
+                    ? 'This bulk request was cancelled. Those sites will not be prepared.'
+                    : 'None of the selected sites have complete details yet.');
         }
 
         return redirect()

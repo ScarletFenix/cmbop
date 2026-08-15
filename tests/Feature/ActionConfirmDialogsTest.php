@@ -58,7 +58,7 @@ class ActionConfirmDialogsTest extends TestCase
             resource_path('views/admin/promotions/index.blade.php') => 'Disable the {{ $welcomeBonusEuro }} welcome credit?',
             resource_path('views/admin/moderation/index.blade.php') => 'data-slb-confirm="Approve this submission',
             resource_path('views/admin/campaigns/index.blade.php') => 'data-slb-confirm="Send this campaign',
-            resource_path('views/admin/bulk-site-requests/show.blade.php') => 'data-slb-confirm="Cancel this bulk request?',
+            resource_path('views/admin/bulk-site-requests/show.blade.php') => "title: 'Cancel bulk request?'",
         ];
 
         foreach ($cases as $path => $needle) {
@@ -87,8 +87,10 @@ class ActionConfirmDialogsTest extends TestCase
         $this->assertFileExists($path);
         $html = file_get_contents($path);
 
-        $this->assertStringContainsString("title: 'Seed draft sites?'", $html);
-        $this->assertStringContainsString("confirmText: 'Add drafts'", $html);
+        $this->assertStringContainsString("confirmTitle = 'Seed draft sites?'", $html);
+        $this->assertStringContainsString("confirmTextBtn = 'Add drafts'", $html);
+        $this->assertStringContainsString('title: confirmTitle', $html);
+        $this->assertStringContainsString('confirmText: confirmTextBtn', $html);
         $this->assertStringContainsString('slbBulkAllowSubmit', $html);
         $this->assertStringContainsString('bulkDoneForm', $html);
         $this->assertStringNotContainsString('form.dataset.slbAllowSubmit', $html);

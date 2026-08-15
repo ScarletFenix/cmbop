@@ -432,6 +432,7 @@ class OrderPaymentService
             }
 
             $userId = (int) ($package['user_id'] ?? 0);
+            $buyer = $userId > 0 ? User::query()->find($userId) : null;
             $schedule = is_array($package['schedule'] ?? null) ? $package['schedule'] : ['mode' => 'immediate', 'timezone' => 'UTC'];
             $lines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
             $orders = collect();
@@ -450,6 +451,21 @@ class OrderPaymentService
                 }
 
                 $siteId = isset($line['site_id']) ? (int) $line['site_id'] : 0;
+                if ($siteId > 0 && isset($takenSiteIds[$siteId])) {
+                    continue;
+                }
+
+                $site = $siteId > 0 ? Site::query()->find($siteId) : null;
+                if ($siteId > 0 && (! $site || ! $site->isCatalogVisible() || $site->isOwnedBy($buyer))) {
+                    Log::warning('Skipping Stripe-first line; listing left the catalog', [
+                        'reference_code' => $referenceCode,
+                        'site_id' => $siteId,
+                        'session_id' => $session->id ?? null,
+                    ]);
+
+                    continue;
+                }
+
                 $lineKey = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
 
                 $submissionId = (int) ($line['content_submission_id'] ?? 0);
@@ -485,9 +501,8 @@ class OrderPaymentService
                     continue;
                 }
 
-                $siteId = isset($line['site_id']) ? (int) $line['site_id'] : 0;
-                $site = $siteId > 0 ? Site::query()->find($siteId) : null;
-                $attachSubmission = $submission && ! $articleTaken;
+                $submissionId = (int) ($line['content_submission_id'] ?? 0);
+                $submission = $submissionId > 0 ? ContentSubmission::query()->find($submissionId) : null;
 
                 $itemPayload = [
                     'order_id' => $order->id,
@@ -563,6 +578,23 @@ class OrderPaymentService
             if ($existing->isNotEmpty()) {
                 return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
             }
+
+            $userId = (int) ($package['user_id'] ?? 0);
+            if ($userId > 0) {
+                $this->refundBonusReservedForReference(
+                    $userId,
+                    $referenceCode,
+                    round((float) ($package['bonus_applied'] ?? 0), 2)
+                );
+            }
+            $this->forgetPendingCheckout($referenceCode);
+            Log::warning('Stripe-first checkout paid but no catalog-visible lines to materialize', [
+                'reference_code' => $referenceCode,
+                'session_id' => $session->id ?? null,
+                'user_id' => $userId,
+            ]);
+
+            return collect();
         }
 
         $this->forgetPendingCheckout($referenceCode);
@@ -607,6 +639,16 @@ class OrderPaymentService
             Log::warning('Skipping Stripe mark-paid for cancelled or completed order', [
                 'order_id' => $order->id,
                 'status' => $order->status,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
+        if (! $order->hasCatalogVisibleFulfillment()) {
+            Log::warning('Skipping Stripe mark-paid; listing left the catalog', [
+                'order_id' => $order->id,
+                'reference_code' => $order->reference_code,
                 'payment_status' => $order->payment_status,
             ]);
 

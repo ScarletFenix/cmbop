@@ -49,7 +49,7 @@
                     <td class="small">
                         <div>{{ $log->description }}</div>
                         @if($reason)
-                            <div class="text-muted mt-1" data-history-reason>Reason: {{ $reason }}</div>
+                            <div class="text-muted mt-1" data-history-reason>{{ \App\Support\MarketingHistoryDisplay::reasonLabel($log) }}: {{ $reason }}</div>
                         @endif
                         @if($changeKeys !== [])
                             <div class="text-muted mt-1" data-history-changes>Changed: {{ implode(', ', $changeKeys) }}</div>
