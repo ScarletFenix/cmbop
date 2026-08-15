@@ -72,9 +72,11 @@ class BulkSiteRequestController extends Controller
 
                 $siteUrl = $this->normalizeHttpUrl($urlRaw);
                 $host = parse_url($siteUrl, PHP_URL_HOST);
-                $domain = $host ? preg_replace('/^www\./', '', strtolower($host)) : null;
+                $domain = is_string($host) && $host !== ''
+                    ? Site::normalizeMarketplaceDomain($host)
+                    : '';
 
-                if (! $domain || ! filter_var($siteUrl, FILTER_VALIDATE_URL)) {
+                if ($domain === '' || ! filter_var($siteUrl, FILTER_VALIDATE_URL)) {
                     $validator->errors()->add("sites.$index.url", 'Enter a valid website URL.');
 
                     continue;

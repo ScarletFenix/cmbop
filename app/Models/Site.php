@@ -1132,14 +1132,28 @@ class Site extends Model
      */
     public function scopeCatalogVisible(Builder $query): Builder
     {
-        return $query->active()->verified()->notArchived();
+        return $query->active()->verified()->notArchived()->notFromCancelledBulk();
     }
 
     public function isCatalogVisible(): bool
     {
         return (bool) $this->active
             && (bool) $this->verified
-            && ! $this->isArchived();
+            && ! $this->isArchived()
+            && ! $this->isFromCancelledBulk();
+    }
+
+    public function isFromCancelledBulk(): bool
+    {
+        if (! $this->bulk_site_request_id) {
+            return false;
+        }
+
+        $bulk = $this->relationLoaded('bulkSiteRequest')
+            ? $this->bulkSiteRequest
+            : $this->bulkSiteRequest()->first();
+
+        return (bool) $bulk?->isCancelled();
     }
 
     public function canBeActivated(): bool

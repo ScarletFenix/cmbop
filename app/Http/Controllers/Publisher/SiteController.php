@@ -115,7 +115,10 @@ class SiteController extends Controller
             return back()->withErrors(['siteUrl' => 'Invalid URL'])->withInput();
         }
 
-        $domain = preg_replace('/^www\./', '', strtolower($host));
+        $domain = Site::normalizeMarketplaceDomain($host);
+        if ($domain === '') {
+            return back()->withErrors(['siteUrl' => 'Invalid URL'])->withInput();
+        }
 
         // Handle categories - get as array from multi-select
         $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
@@ -389,7 +392,7 @@ class SiteController extends Controller
             } elseif ($status === 'archived') {
                 $sitesQuery = (clone $acceptedBase)->archived();
             } elseif ($status === 'all') {
-                $sitesQuery = (clone $acceptedBase)->notArchived();
+                $sitesQuery = (clone $acceptedBase)->notArchived()->notFromCancelledBulk();
             } else {
                 $sitesQuery = (clone $acceptedBase)->notArchived()
                     ->when($status === 'pending', function ($q) {
@@ -600,6 +603,13 @@ class SiteController extends Controller
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
 
+        if ($site->isFromCancelledBulk()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This listing is from a cancelled bulk request and cannot be edited.',
+            ], 422);
+        }
+
         if ($site->isPendingPublisherAcceptance()) {
             return response()->json([
                 'success' => false,
@@ -649,6 +659,10 @@ class SiteController extends Controller
     public function update(Request $request, $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isFromCancelledBulk()) {
+            return redirect()->back()->with('error', 'This listing is from a cancelled bulk request and cannot be edited.');
+        }
 
         if ($site->isPendingPublisherAcceptance()) {
             return redirect()

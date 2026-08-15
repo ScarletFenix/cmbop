@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -99,5 +100,40 @@ class CatalogVisibleScopeTest extends TestCase
         $this->assertStringNotContainsString('Unverified Catalog Site', $html);
         $this->assertStringNotContainsString('Inactive Catalog Site', $html);
         $this->assertStringNotContainsString('Archived Catalog Site', $html);
+    }
+
+    public function test_catalog_excludes_cancelled_bulk_live_leftovers(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $leftover = $this->site($publisher, [
+            'site_name' => 'Cancelled Bulk Leftover',
+            'domain' => 'cancelled-bulk-live.example',
+            'site_url' => 'https://cancelled-bulk-live.example',
+            'bulk_site_request_id' => $bulk->id,
+        ]);
+        $live = $this->site($publisher, [
+            'site_name' => 'Independent Live Site',
+            'domain' => 'independent-live.example',
+            'site_url' => 'https://independent-live.example',
+        ]);
+
+        $this->assertFalse($leftover->isCatalogVisible());
+        $this->assertTrue($live->isCatalogVisible());
+        $this->assertSame(1, Site::query()->catalogVisible()->count());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.results'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Independent Live Site', $html);
+        $this->assertStringNotContainsString('Cancelled Bulk Leftover', $html);
     }
 }

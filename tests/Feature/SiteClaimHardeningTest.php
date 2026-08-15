@@ -86,7 +86,7 @@ class SiteClaimHardeningTest extends TestCase
         $site = $this->siteFor($owner);
 
         $this->actingAs($claimer)->postJson(route('publisher.sites.claim'), [
-            'website_url' => 'https://owned-news.example',
+            'website_url' => 'https://www.owned-news.example',
             'website_name' => 'Owned News Daily',
             'proof_message' => 'I own this domain via registrar account and CMS admin access.',
             'contact_email' => $claimer->email,

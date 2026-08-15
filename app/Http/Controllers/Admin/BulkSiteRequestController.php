@@ -561,7 +561,7 @@ class BulkSiteRequestController extends Controller
         $pendingDomains = $bulkRequest->items()
             ->whereNull('site_id')
             ->pluck('domain')
-            ->map(fn ($domain) => strtolower(trim((string) $domain)))
+            ->map(fn ($domain) => Site::normalizeMarketplaceDomain((string) $domain))
             ->filter()
             ->values()
             ->all();
@@ -569,7 +569,7 @@ class BulkSiteRequestController extends Controller
         if ($pendingDomains !== []) {
             $allowed = [];
             foreach ($parsed['rows'] as $row) {
-                $domain = strtolower(trim((string) ($row['domain'] ?? '')));
+                $domain = Site::normalizeMarketplaceDomain((string) ($row['domain'] ?? ''));
                 if (! in_array($domain, $pendingDomains, true)) {
                     $parsed['failures'][] = [
                         'line' => $row['line'] ?? 0,
@@ -637,7 +637,7 @@ class BulkSiteRequestController extends Controller
             foreach ($rows as $row) {
                 $domain = $row['domain'];
 
-                $existing = Site::findOccupyingDomain($domain);
+                $existing = Site::findOccupyingDomain($domain, lock: true);
 
                 if ($existing) {
                     $failures[] = [
@@ -688,9 +688,20 @@ class BulkSiteRequestController extends Controller
                 ]);
                 $site->save();
 
+                $candidates = Site::domainLookupCandidates($domain);
+                $normalized = Site::normalizeMarketplaceDomain($domain);
                 $bulkRequest->items()
-                    ->where('domain', $domain)
                     ->whereNull('site_id')
+                    ->where(function ($q) use ($candidates, $normalized) {
+                        if ($candidates !== []) {
+                            $q->whereIn('domain', $candidates);
+                        }
+                        if ($normalized !== '') {
+                            $escaped = addcslashes($normalized, '%_\\');
+                            $q->orWhere('domain', 'like', $escaped.':%')
+                                ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+                        }
+                    })
                     ->update(['site_id' => $site->id]);
 
                 $created++;
@@ -946,6 +957,7 @@ class BulkSiteRequestController extends Controller
     {
         $rows = [];
         $failures = [];
+        $seenDomains = [];
         $lines = preg_split('/\R/', $raw) ?: [];
 
         foreach ($lines as $i => $line) {
@@ -973,7 +985,9 @@ class BulkSiteRequestController extends Controller
 
             $siteUrl = $this->normalizeHttpUrl($urlRaw);
             $host = parse_url($siteUrl, PHP_URL_HOST);
-            $domain = $host ? preg_replace('/^www\./', '', strtolower($host)) : null;
+            $domain = is_string($host) && $host !== ''
+                ? Site::normalizeMarketplaceDomain($host)
+                : null;
 
             $errors = [];
             if (! $domain) {
@@ -1020,6 +1034,17 @@ class BulkSiteRequestController extends Controller
 
                 continue;
             }
+
+            if (isset($seenDomains[$domain])) {
+                $failures[] = [
+                    'line' => $lineNum,
+                    'url' => $siteUrl,
+                    'errors' => ['Duplicate domain in this list: '.$domain],
+                ];
+
+                continue;
+            }
+            $seenDomains[$domain] = true;
 
             $rows[] = [
                 'line' => $lineNum,

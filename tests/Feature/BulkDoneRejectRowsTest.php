@@ -1488,6 +1488,85 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString('data-active="0"', $html);
     }
 
+    public function test_all_tab_hides_cancelled_bulk_leftover(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'cancel-all');
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $site = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $bulk->forceFill(['status' => BulkSiteRequest::STATUS_CANCELLED])->save();
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'all']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString($site->domain, $html);
+    }
+
+    public function test_publisher_bulk_rejects_port_variant_in_same_list(): void
+    {
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://same-host.example', 'price' => 40],
+                    ['url' => 'https://same-host.example:443', 'price' => 50],
+                ],
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('sites.1.url');
+
+        $this->assertSame(0, BulkSiteRequest::query()->count());
+    }
+
+    public function test_publisher_cannot_edit_cancelled_bulk_leftover(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'cancel-edit');
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $site = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $site->forceFill([
+            'verified' => true,
+            'active' => true,
+            'onboarding_status' => null,
+        ])->save();
+        $bulk->forceFill(['status' => BulkSiteRequest::STATUS_CANCELLED])->save();
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->put(route('publisher.sites.update', $site->id), [
+                'exampleUrl' => $site->example_url ?: $site->site_url,
+                'da' => $site->da,
+                'dr' => $site->dr,
+                'traffic' => $site->traffic,
+                'country' => $site->country,
+                'language' => $site->language,
+                'categories' => $site->categories ?: [$site->category],
+                'price' => 999,
+                'turnaround_time' => $site->turnaround_time ?: '3days',
+                'publicationTime' => $site->publication_time,
+                'link_type' => $site->link_type,
+                'siteDescription' => $site->description,
+                'site_tag' => 'as_you_prefer',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertEquals(40 + 1, (float) $site->fresh()->price);
+        $this->actingAs($this->publisher)
+            ->getJson(route('publisher.sites.edit-data', $site->id))
+            ->assertStatus(422);
+    }
+
     /**
      * @param  array<string, mixed>  $overrides
      */
