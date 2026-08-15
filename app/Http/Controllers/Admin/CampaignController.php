@@ -149,7 +149,7 @@ class CampaignController extends Controller
                 EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
                     'email_campaign_id' => $campaign->id,
                     'user_id' => $user->id,
-                    'email' => $user->email,
+                    'email' => trim((string) $user->email),
                     'status' => EmailCampaignRecipient::STATUS_PENDING,
                     'created_at' => $now,
                     'updated_at' => $now,

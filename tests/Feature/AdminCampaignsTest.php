@@ -1795,6 +1795,76 @@ class AdminCampaignsTest extends TestCase
         Mail::assertNothingQueued();
     }
 
+    public function test_job_sends_to_stored_email_when_live_address_is_unusable(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $queuedEmail = $advertiser->email;
+        $advertiser->forceFill(['email' => 'not-an-email'])->save();
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Stored email',
+            'subject' => 'Stored email',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $queuedEmail,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        (new SendEmailCampaignJob($campaign->id))->handle();
+
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($queuedEmail));
+    }
+
+    public function test_stall_recovery_does_not_dispatch_when_jobs_table_scan_throws(): void
+    {
+        Queue::fake();
+        Schema::create('jobs_broken_payload', function ($table) {
+            $table->id();
+            $table->string('queue')->nullable();
+        });
+        config([
+            'email_notifications.queue_connection' => 'broken-db',
+            'queue.default' => 'broken-db',
+            'queue.connections.broken-db.driver' => 'database',
+            'queue.connections.broken-db.table' => 'jobs_broken_payload',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Broken scan',
+            'subject' => 'Broken scan',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        Queue::assertNothingPushed();
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+    }
+
     public function test_stall_recovery_gives_up_when_fail_streak_is_exhausted(): void
     {
         Queue::fake();

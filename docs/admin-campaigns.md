@@ -37,8 +37,10 @@ or marketing, even if that staff account also has a marketplace role.
    Recovery **touches** the campaign after a re-dispatch (or when a send
    job is already in the `jobs` table) so a backed-up emails queue cannot
    enqueue another job on every page view. The jobs-table check must
-   match JSON-escaped payloads (`\"campaignId\";i:N;`) — a literal
-   `campaignId";i:N;` LIKE misses every database-queue row. It walks
+   match JSON-escaped payloads (`\"campaignId\";i:N;`) and `"campaignId":N`
+   via `containsSendCampaignJob` → `containsCampaignId` — a literal
+   `campaignId";i:N;` LIKE misses every database-queue row, and `i:12;`
+   must not match campaign 123. It walks
    every send-job connection (mail first, then `queue.default`); a miss
    or error on the first must not skip the other. The send job pins
    `onConnection` to a drainable queue (mail connection first, otherwise
@@ -87,7 +89,13 @@ or marketing, even if that staff account also has a marketplace role.
    missing `@` is dropped from count/collect (MySQL `TRIM` does not strip
    tabs) and failed at send instead of `Mail::to('')`. Stall recovery
    wraps **each** queue connection in its own try/catch so a broken first
-   connection cannot hide a job on the other (and must stay valid PHP).
+   connection cannot hide a job on the other (and must stay valid PHP —
+   no extra unclosed `try`, and `recipientRowQuery` / `containsCampaignId`
+   must not be declared twice). A scan that throws (lock wait, missing
+   `payload` column) must **not** look like “no job” or recover floods
+   another send. Live send uses the current `@` address, then the stored
+   recipient email from compose, then fails — a profile wipe after queue
+   must not drop someone we already counted.
    Email Center retry of a failed campaign mailable clears `email_log_id`
    so a lost retry can still expire as stale.
    `user_ids` are integers capped at
@@ -100,7 +108,8 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
 - Body is sanitized with `CampaignHtml` (allowlist `p, br, strong, b, em, i, u,
   ul, ol, li, a, h1–h3, blockquote`). Event handlers and `javascript:` / `data:`
-  hrefs are dropped. CTA URLs must be `http` or `https`.
+  hrefs are dropped. CTA URLs must be `http` or `https`. `&nbsp;`-only bodies
+  are blank and rejected before hydrate.
 - Campaign `collect()` / `count()` default **`includeUnverified = false`**.
   Audience Inventory census (`paginate` / `export` / `stats()`) still includes
   unverified unless asked otherwise. Inventory cards show **all** plus
@@ -125,7 +134,9 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   campaign send / recipient-count.
 - The custom picker lists **verified users first** so unverified names cannot
   crowd them out of the 200-per-role cap. The “showing first 200” warning
-  uses the same picker universe (all emails), not the verified-only KPI.
+  uses the same picker universe (usable emails: not blank/tab-only and
+  containing `@`), not the verified-only KPI. Tab-only / no-`@` accounts
+  must not appear in the picker or they crowd the cap and then fail at send.
 - Inventory search / filters apply to the table and CSV only. **Email this
   audience** still sends the full segment (verified by default).
 - Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,
