@@ -30,8 +30,7 @@ or marketing, even if that staff account also has a marketplace role.
    Leftover `queued` rows with no delivery stay failed. A timeout, a
    transient DB error, or `failed()` before the claim must **not** wipe the
    rest of the audience.    Fail streak is stored in cache so stall recovery
-   cannot reset it and retry forever. Stall recovery must **not** give
-   up leftover pending while a `SendEmailCampaignJob` is already in the
+   cannot reset it and retry forever. Stall recovery must **not** give up leftover pending while a `SendEmailCampaignJob` is already in the
    jobs table — `failed()` remembers MAX and dispatches the last attempt;
    giving up first wipes the audience beside that job. An unclaimed `queued` job is left
    for stall recovery. Opening Admin → Campaigns, web mail drain, and
@@ -125,8 +124,7 @@ or marketing, even if that staff account also has a marketplace role.
    recipient email from compose, then fails — a profile wipe after queue
    must not drop someone we already counted.
    Email Center retry of a failed campaign mailable clears `email_log_id`
-   so a lost retry can still expire as stale. Bulk retry must mark only
-   one failed log per job UUID — a shared stale stamp plus the same
+   so a lost retry can still expire as stale. Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
    `to_email` used to pending-mark two campaigns and reclaim the extra
    recipient beside a single `queue:retry`.
    `user_ids` are integers capped at
