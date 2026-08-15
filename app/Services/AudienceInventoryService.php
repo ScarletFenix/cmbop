@@ -426,8 +426,7 @@ class AudienceInventoryService
      */
     public function collectRecipientRows(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        $key = self::canonicalAudienceKey($audience) ?? $audience;
-        if ($key === self::AUDIENCE_SELECTED) {
+        if ($audience === self::AUDIENCE_SELECTED) {
             return $this->recipientRowQuery(
                 $this->querySelected($selectedIds, $includeUnverified),
                 $includeUnverified,
@@ -435,7 +434,14 @@ class AudienceInventoryService
             )->get();
         }
 
-        return $this->recipientRowQuery($this->queryForAudienceKey($key), $includeUnverified)->get();
+        if (! in_array($audience, self::audienceKeys(), true)) {
+            return collect();
+        }
+
+        // Same query as inventory / count — a second match here previously
+        // dropped paid_orders, no_active_sites, and deposited_no_orders, so
+        // compose counted them and send returned "No recipients found".
+        return $this->recipientRowQuery($this->queryForAudienceKey($audience), $includeUnverified)->get();
     }
 
     /**
