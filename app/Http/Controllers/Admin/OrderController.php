@@ -130,7 +130,7 @@ class OrderController extends Controller
                 'modification_requested' => $item?->modification_requested,
                 'url' => route('admin.orders.show', $order->id),
                 'invoices' => $documents,
-                'invoice_url' => $primary['url'] ?? null,
+                'invoice_url' => data_get($primary, 'url'),
             ];
         })->values();
 

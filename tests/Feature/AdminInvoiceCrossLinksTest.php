@@ -268,6 +268,29 @@ class AdminInvoiceCrossLinksTest extends TestCase
             ->assertJsonPath('data.invoice_url', route('admin.invoices.show', $statement));
     }
 
+    public function test_open_withdrawal_without_statement_has_null_invoice_url(): void
+    {
+        $admin = $this->admin();
+        $publisher = $this->publisher();
+        $withdrawal = Withdrawal::create([
+            'user_id' => $publisher->id,
+            'amount' => 40,
+            'fee' => 0,
+            'net_amount' => 40,
+            'payment_method' => 'paypal',
+            'payment_details' => ['email' => 'pay@example.com'],
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.data', ['search' => (string) $withdrawal->id]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.0.id', $withdrawal->id)
+            ->assertJsonPath('data.0.invoice', null)
+            ->assertJsonPath('data.0.invoice_url', null);
+    }
+
     public function test_invoice_index_links_deposit_and_payout_lists(): void
     {
         $admin = $this->admin();

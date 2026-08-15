@@ -519,7 +519,7 @@ class PaymentController extends Controller
             $documents = $byOrder->get((int) $order->id, []);
             $order->setAttribute('invoice_documents', $documents);
             $primary = $links->primary($documents);
-            $order->setAttribute('invoice_url', $primary['url'] ?? null);
+            $order->setAttribute('invoice_url', data_get($primary, 'url'));
         }
     }
 

@@ -86,7 +86,7 @@ class AdminWithdrawalController extends Controller
 
                 $invoice = $invoiceLinks->get((int) $withdrawal->id);
                 $withdrawal->setAttribute('invoice', $invoice);
-                $withdrawal->setAttribute('invoice_url', $invoice['url'] ?? null);
+                $withdrawal->setAttribute('invoice_url', data_get($invoice, 'url'));
 
                 return $withdrawal;
             });
@@ -127,7 +127,7 @@ class AdminWithdrawalController extends Controller
 
             $invoice = app(AdminInvoiceLinks::class)->forWithdrawals(collect([$withdrawal]))->get((int) $withdrawal->id);
             $withdrawal->setAttribute('invoice', $invoice);
-            $withdrawal->setAttribute('invoice_url', $invoice['url'] ?? null);
+            $withdrawal->setAttribute('invoice_url', data_get($invoice, 'url'));
 
             return response()->json([
                 'success' => true,
