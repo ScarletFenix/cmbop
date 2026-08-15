@@ -1699,6 +1699,91 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
     }
 
+    public function test_retry_production_log_uses_model_identifier_campaign_job(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $mailUuid = (string) Str::uuid();
+        $campaign = EmailCampaign::create([
+            'name' => 'Model identifier retry',
+            'subject' => 'Model identifier retry',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id),
+            'to_email' => $advertiser->email,
+            'subject' => 'Model identifier retry',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            'email_log_id' => $log->id,
+        ]);
+
+        $queuedCampaign = new EmailCampaign([
+            'subject' => 'Hi',
+            'body_html' => '<p>x</p>',
+            'audience' => 'advertisers',
+        ]);
+        $queuedCampaign->id = (int) $campaign->id;
+        $queuedUser = new User(['email' => 'queued@example.com', 'name' => 'Queued']);
+        $queuedUser->id = (int) $advertiser->id;
+        $mailable = new AudienceCampaignMail($queuedCampaign, $queuedUser);
+        $mailable->notificationType = 'audience_campaign';
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $mailUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => AudienceCampaignMail::class,
+                'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
+                'data' => [
+                    'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                    'command' => serialize($mailable),
+                ],
+            ]),
+            'exception' => 'SMTP failed',
+            'failed_at' => now(),
+        ]);
+
+        $this->mockQueueRetry([$mailUuid]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $fresh->status);
+        $this->assertNull($fresh->skip_reason);
+        $this->assertNull($fresh->email_log_id);
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+    }
+
     public function test_retry_clears_fail_streak_so_recover_does_not_give_up_leftover_pending(): void
     {
         Queue::fake();

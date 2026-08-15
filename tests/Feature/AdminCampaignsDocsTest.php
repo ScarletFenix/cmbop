@@ -59,6 +59,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('delivered log still wins when a', $body);
         $this->assertStringContainsString('Lost transactional pending logs', $body);
         $this->assertStringContainsString('must **not** abort that expire', $body);
+        $this->assertStringContainsString('only serializes the campaign as a ModelIdentifier', $body);
+        $this->assertStringContainsString('expire must not fail a pending campaign log beside that jobs row', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 
