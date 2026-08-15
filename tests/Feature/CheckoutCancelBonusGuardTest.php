@@ -362,6 +362,153 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(20.0, $wallet->lockedBonusBalance(), 0.01);
     }
 
+    public function test_late_mark_paid_credits_card_when_released_bonus_was_spent(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-BONUS-SPENT', 'pending');
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-BONUS-SPENT', 20);
+
+        app(OrderPaymentService::class)->markOrdersFailedFromReference('REF-BONUS-SPENT', 'expired');
+
+        $wallet->refresh();
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-CART', 20);
+
+        $session = (object) [
+            'id' => 'cs_bonus_spent',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_bonus_spent',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-BONUS-SPENT',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession('REF-BONUS-SPENT', $session);
+
+        $this->assertTrue($paid->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-CART'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            0.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-BONUS-SPENT'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            60.0,
+            app(OrderPaymentService::class)->unfulfilledCardCreditAmount('REF-BONUS-SPENT'),
+            0.01
+        );
+
+        $wallet->refundReserved(20, 20);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-CART');
+
+        $paidAgain = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession('REF-BONUS-SPENT', $session);
+        $this->assertTrue($paidAgain->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(
+            60.0,
+            app(OrderPaymentService::class)->unfulfilledCardCreditAmount('REF-BONUS-SPENT'),
+            0.01
+        );
+    }
+
+    public function test_leftover_first_finalize_credits_when_package_bonus_was_spent(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-LEFTOVER-BONUS-SPENT', 'pending');
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-LEFTOVER-BONUS-SPENT', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-LEFTOVER-BONUS-SPENT',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'stripe_session_id' => 'cs_leftover_bonus_spent',
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-LEFTOVER-BONUS-SPENT', 20);
+
+        $payments->markOrdersFailedFromReference('REF-LEFTOVER-BONUS-SPENT', 'expired');
+        $payments->storePendingCheckout('REF-LEFTOVER-BONUS-SPENT', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-LEFTOVER-BONUS-SPENT',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'stripe_session_id' => 'cs_leftover_bonus_spent',
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+        ]);
+        // fail() deletes the intent. Re-storing the late-pay snapshot must
+        // not recreate a live hold — package JSON is not reserved promo.
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-LEFTOVER-BONUS-SPENT');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-PACKAGE', 20);
+
+        $session = (object) [
+            'id' => 'cs_leftover_bonus_spent',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_leftover_bonus_spent',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-LEFTOVER-BONUS-SPENT',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $created = $payments->finalizeStripeFirstCheckout('REF-LEFTOVER-BONUS-SPENT', $session);
+
+        $this->assertTrue($created->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertSame(1, Order::query()->where('reference_code', 'REF-LEFTOVER-BONUS-SPENT')->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-PACKAGE'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-LEFTOVER-BONUS-SPENT'), 0.01);
+
+        $wallet->refundReserved(20, 20);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-PACKAGE');
+
+        $createdAgain = $payments->finalizeStripeFirstCheckout('REF-LEFTOVER-BONUS-SPENT', $session);
+        $this->assertTrue($createdAgain->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertSame(1, Order::query()->where('reference_code', 'REF-LEFTOVER-BONUS-SPENT')->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
     public function test_second_cancel_does_not_steal_another_checkouts_reserved_bonus(): void
     {
         $advertiser = $this->userWithRole('advertiser');

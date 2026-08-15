@@ -42,6 +42,7 @@ class ContentModerationEngine
 
         $rawHaystack = mb_strtolower($title."\n".$text);
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
+        $tightHaystack = $this->tightenHaystack($haystack);
         $urlStrings = $this->normalizeLinkList($links);
         $urlStrings = $this->enrichLinksFromContent($urlStrings, $haystack, $categories);
         $linkHosts = array_map(fn (string $u) => $this->hostForMatch($u), $urlStrings);
@@ -70,7 +71,7 @@ class ContentModerationEngine
                 if ($kw === '') {
                     continue;
                 }
-                $count = $this->countTerm($haystack, $kw);
+                $count = $this->countTerm($haystack, $kw, $tightHaystack);
                 if ($count > 0) {
                     // One clear restricted keyword is enough to fail the default threshold (70).
                     $points += min(95, 78 + ($count - 1) * 6);
@@ -82,7 +83,7 @@ class ContentModerationEngine
 
             foreach ($cat['intent_phrases'] ?? [] as $phrase) {
                 $phrase = mb_strtolower(trim((string) $phrase));
-                if ($phrase !== '' && str_contains($haystack, $phrase)) {
+                if ($phrase !== '' && $this->phrasePresent($haystack, $tightHaystack, $phrase)) {
                     $points += 85;
                     $hits++;
                     $matched[] = $phrase;
@@ -147,7 +148,7 @@ class ContentModerationEngine
         $customHits = 0;
         foreach ($extraKeywords as $extra) {
             $extra = mb_strtolower(trim((string) $extra));
-            if ($extra !== '' && $this->countTerm($haystack, $extra) > 0) {
+            if ($extra !== '' && $this->countTerm($haystack, $extra, $tightHaystack) > 0) {
                 $customHits++;
                 $customMatched[] = $extra;
             }
@@ -379,8 +380,23 @@ class ContentModerationEngine
         // "stake . com" / "bet365 . com"
         $text = preg_replace('/(\w)\s*\.\s*(\w)/u', '$1.$2', $text) ?? $text;
         $text = str_ireplace(['hxxps://', 'hxxp://', 'h**ps://'], ['https://', 'http://', 'https://'], $text);
+        // Soft hyphen / zero-width / bidi marks used to split "casino" into "cas<zw>ino".
+        $text = preg_replace(
+            '/[\x{00AD}\x{034F}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}\x{FFF9}-\x{FFFB}]/u',
+            '',
+            $text
+        ) ?? $text;
 
         return $text;
+    }
+
+    /**
+     * Join letter-split evasions ("cas-ino", "c a s i n o") without
+     * destroying hyphen boundaries on the original haystack.
+     */
+    public function tightenHaystack(string $haystack): string
+    {
+        return preg_replace('/(?<=\p{L})[\s\-\._]+(?=\p{L})/u', '', $haystack) ?? $haystack;
     }
 
     /**
@@ -408,7 +424,17 @@ class ContentModerationEngine
         ), static fn ($k) => $k !== '')));
     }
 
-    protected function countTerm(string $haystack, string $term): int
+    protected function countTerm(string $haystack, string $term, ?string $tightHaystack = null): int
+    {
+        $count = $this->countTermIn($haystack, $term);
+        if ($tightHaystack !== null && $tightHaystack !== $haystack) {
+            $count = max($count, $this->countTermIn($tightHaystack, $term));
+        }
+
+        return $count;
+    }
+
+    protected function countTermIn(string $haystack, string $term): int
     {
         if (str_contains($term, ' ')) {
             return substr_count($haystack, $term);
@@ -416,6 +442,17 @@ class ContentModerationEngine
 
         // Unicode-aware word boundaries; also catch glued variants like "casino!" already via \b.
         return preg_match_all('/(?<![\p{L}\p{N}_])'.preg_quote($term, '/').'(?![\p{L}\p{N}_])/u', $haystack) ?: 0;
+    }
+
+    protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool
+    {
+        if (str_contains($haystack, $phrase)) {
+            return true;
+        }
+
+        $tightPhrase = preg_replace('/[\s\-\._]+/u', '', $phrase) ?? $phrase;
+
+        return $tightPhrase !== '' && str_contains($tightHaystack, $tightPhrase);
     }
 
     /**

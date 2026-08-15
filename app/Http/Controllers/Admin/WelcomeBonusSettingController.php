@@ -27,6 +27,7 @@ class WelcomeBonusSettingController extends Controller
             'enabled' => ['required', 'boolean'],
         ]);
         $enabled = $request->boolean('enabled');
+        $already = $welcomeBonus->isEnabled() === $enabled;
 
         try {
             $welcomeBonus->setEnabled($enabled, $request->user()?->id);
@@ -38,6 +39,15 @@ class WelcomeBonusSettingController extends Controller
 
         if ($welcomeBonus->isEnabled() !== $enabled) {
             return back()->with('error', 'Could not update the welcome bonus. Please try again.');
+        }
+
+        if ($already) {
+            return back()->with(
+                'success',
+                $enabled
+                    ? 'Welcome bonus enabled. New advertisers can receive the credit once per place.'
+                    : 'Welcome bonus disabled. New advertisers will not receive the credit. Existing bonuses stay.'
+            );
         }
 
         ActivityLogger::tryLog(
@@ -69,6 +79,7 @@ class WelcomeBonusSettingController extends Controller
             'amount' => ['required', 'numeric', 'min:0', 'max:'.WelcomeBonusSetting::maxAmount()],
         ]);
         $amount = round((float) $data['amount'], 2);
+        $already = abs($welcomeBonus->amount() - $amount) <= 0.001;
 
         try {
             $welcomeBonus->setAmount($amount, $request->user()?->id);
@@ -80,6 +91,10 @@ class WelcomeBonusSettingController extends Controller
 
         if (abs($welcomeBonus->amount() - $amount) > 0.001) {
             return back()->with('error', 'Could not update the welcome bonus amount. Please try again.');
+        }
+
+        if ($already) {
+            return back()->with('success', 'Welcome bonus amount set to €'.number_format($amount, 2).'. New advertisers receive this amount. Existing bonuses stay.');
         }
 
         ActivityLogger::tryLog(

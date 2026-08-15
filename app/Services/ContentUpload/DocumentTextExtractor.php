@@ -21,6 +21,101 @@ class DocumentTextExtractor
      *   error_message:?string
      * }
      */
+    /**
+     * Policy-only read of the stored package. Includes headers, footers,
+     * notes, comments, and every external hyperlink. Does not store images
+     * or build preview HTML.
+     *
+     * @return array{ok:bool, text:string, links:list<string>}
+     */
+    public function extractPolicySignals(string $absolutePath): array
+    {
+        if (! is_file($absolutePath) || ! class_exists(ZipArchive::class)) {
+            return ['ok' => false, 'text' => '', 'links' => []];
+        }
+
+        $zip = new ZipArchive;
+        if ($zip->open($absolutePath) !== true) {
+            return ['ok' => false, 'text' => '', 'links' => []];
+        }
+
+        $texts = [];
+        $urls = [];
+
+        try {
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                $name = $zip->getNameIndex($i);
+                if (! is_string($name) || $name === '') {
+                    continue;
+                }
+                $name = str_replace('\\', '/', $name);
+                $lower = strtolower($name);
+                $xml = (string) $zip->getFromIndex($i);
+                if ($xml === '') {
+                    continue;
+                }
+                if (str_ends_with($lower, '.rels')) {
+                    $urls = array_merge($urls, $this->externalTargetsFromRels($xml));
+
+                    continue;
+                }
+                if (! str_starts_with($lower, 'word/') || ! str_ends_with($lower, '.xml')) {
+                    continue;
+                }
+                $plain = $this->xmlToPolicyText($xml);
+                if ($plain !== '') {
+                    $texts[] = $plain;
+                }
+            }
+        } finally {
+            $zip->close();
+        }
+
+        $urls = array_values(array_unique(array_filter($urls)));
+
+        return [
+            'ok' => true,
+            'text' => trim(implode("\n", $texts)),
+            'links' => $urls,
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function externalTargetsFromRels(string $relsXml): array
+    {
+        $urls = [];
+        if (! preg_match_all('/<Relationship\b[^>]*>/i', $relsXml, $tags)) {
+            return [];
+        }
+
+        foreach ($tags[0] as $tag) {
+            if (! stripos($tag, 'TargetMode="External"') && ! stripos($tag, "TargetMode='External'")) {
+                continue;
+            }
+            if (! preg_match('/\bTarget=("|\')(.*?)\1/i', $tag, $target)) {
+                continue;
+            }
+            $url = trim(html_entity_decode((string) $target[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+            if ($url !== '' && preg_match('#^https?://#i', $url)) {
+                $urls[] = $url;
+            }
+        }
+
+        return $urls;
+    }
+
+    protected function xmlToPolicyText(string $xml): string
+    {
+        $withBreaks = preg_replace('/<\/w:p>/', "\n\n", $xml) ?? $xml;
+        $text = html_entity_decode(strip_tags($withBreaks), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+        $text = preg_replace("/[ \t]+/", ' ', $text) ?? $text;
+        $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+
+        return trim($text);
+    }
+
     public function extract(string $absolutePath, string $extension, ?callable $storeImage = null): array
     {
         $extension = strtolower(ltrim($extension, '.'));

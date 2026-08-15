@@ -45,4 +45,39 @@ class PromotionServiceRotationTest extends TestCase
         $this->assertCount(1, $first);
         $this->assertTrue($first->pluck('id')->all() === $second->pluck('id')->all());
     }
+
+    public function test_banner_without_safe_image_does_not_take_the_slot(): void
+    {
+        config(['promotions.banners_per_placement' => 1]);
+
+        AdBanner::create([
+            'name' => 'Broken creative',
+            'size_key' => 'leaderboard',
+            'width' => 728,
+            'height' => 90,
+            'image_path' => '../etc/passwd',
+            'image_url' => 'javascript:alert(1)',
+            'placement' => 'header',
+            'audience' => 'all',
+            'is_active' => true,
+            'priority' => 1,
+        ]);
+        $good = AdBanner::create([
+            'name' => 'Good creative',
+            'size_key' => 'leaderboard',
+            'width' => 728,
+            'height' => 90,
+            'image_url' => 'https://example.com/good.png',
+            'placement' => 'header',
+            'audience' => 'all',
+            'is_active' => true,
+            'priority' => 50,
+        ]);
+
+        $chosen = app(PromotionService::class)->activeBanners('header', 'public');
+
+        $this->assertCount(1, $chosen);
+        $this->assertSame($good->id, $chosen->first()->id);
+        $this->assertSame('https://example.com/good.png', $chosen->first()->imageSrc());
+    }
 }

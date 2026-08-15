@@ -37,26 +37,20 @@ class MailJobPayloadTest extends TestCase
         $this->assertFalse(MailJobPayload::containsCampaignId($json, 123));
     }
 
-    public function test_matches_email_log_require_token_rejects_unidentified_payload(): void
+    public function test_contains_campaign_mail_matches_dedupe_token_without_crossing_ids(): void
     {
-        $log = new EmailLog([
-            'mailable' => WelcomeEmail::class,
-            'template_key' => 'welcome',
-            'to_email' => 'customer@example.com',
-            'dedupe_key' => 'welcome:1',
-        ]);
-        $unidentified = json_encode([
-            'displayName' => WelcomeEmail::class,
-            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
-        ], JSON_THROW_ON_ERROR);
-        $identified = json_encode([
-            'displayName' => WelcomeEmail::class,
-            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
-            'to' => 'customer@example.com',
+        $payload = json_encode([
+            'displayName' => 'App\\Mail\\AudienceCampaignMail',
+            'data' => [
+                'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                'command' => 's:32:"audience_campaign:12:user:34"',
+            ],
         ], JSON_THROW_ON_ERROR);
 
-        $this->assertTrue(MailJobPayload::matchesEmailLog($unidentified, $log));
-        $this->assertFalse(MailJobPayload::matchesEmailLog($unidentified, $log, requireToken: true));
-        $this->assertTrue(MailJobPayload::matchesEmailLog($identified, $log, requireToken: true));
+        $this->assertTrue(MailJobPayload::containsCampaignMail($payload, 12));
+        $this->assertFalse(MailJobPayload::containsCampaignMail($payload, 123));
+        $this->assertFalse(MailJobPayload::containsCampaignMail($payload, 1));
+        $this->assertSame([34], MailJobPayload::campaignMailUserIds($payload, 12));
+        $this->assertSame([], MailJobPayload::campaignMailUserIds($payload, 123));
     }
 }

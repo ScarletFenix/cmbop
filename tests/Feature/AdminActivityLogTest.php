@@ -3,9 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\DepositRequest;
+use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -246,6 +249,35 @@ class AdminActivityLogTest extends TestCase
             ->assertRedirect(route('marketing.dashboard'));
     }
 
+    public function test_export_refuses_invalid_dates_instead_of_dumping_all_rows(): void
+    {
+        $this->makeLog(['description' => 'Must not be exported on bad dates']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export', ['from' => 'not-a-date']))
+            ->assertRedirect(route('admin.activity-logs.index', ['from' => 'not-a-date']))
+            ->assertSessionHas('error', 'Use a valid From date.');
+    }
+
+    public function test_export_refuses_when_more_rows_match_than_the_cap(): void
+    {
+        config(['activity_logs.export_limit' => 2]);
+        $this->makeLog(['description' => 'Export cap one']);
+        $this->makeLog(['description' => 'Export cap two']);
+        $this->makeLog(['description' => 'Export cap three']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('More than 2 events match', false)
+            ->assertDontSee('Export CSV', false);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export'))
+            ->assertRedirect(route('admin.activity-logs.index'))
+            ->assertSessionHas('error');
+    }
+
     public function test_company_update_is_logged(): void
     {
         $user = User::factory()->create([
@@ -265,18 +297,73 @@ class AdminActivityLogTest extends TestCase
             'user_id' => $this->admin->id,
             'subject_id' => $user->id,
         ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.users.updateCompany', $user->id), [
+                'company_name' => 'New Co',
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'user.company_updated')->count());
+    }
+
+    public function test_deposit_and_withdrawal_rows_link_to_finance_not_json_show(): void
+    {
+        $customer = User::factory()->create(['email_verified_at' => now()]);
+        $deposit = DepositRequest::create([
+            'user_id' => $customer->id,
+            'reference_code' => 'DEP-AUDIT-1',
+            'amount' => 40,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+        ]);
+        $withdrawal = Withdrawal::create([
+            'user_id' => $customer->id,
+            'amount' => 20,
+            'fee' => 0,
+            'net_amount' => 20,
+            'payment_method' => 'wise',
+            'status' => 'completed',
+        ]);
+
+        $this->makeLog([
+            'action' => 'deposit.approved',
+            'description' => 'Approved a deposit',
+            'subject_type' => DepositRequest::class,
+            'subject_id' => $deposit->id,
+            'subject_label' => 'Deposit #'.$deposit->id,
+            'properties' => ['user_id' => $customer->id],
+        ]);
+        $this->makeLog([
+            'action' => 'withdrawal.status_updated',
+            'description' => 'Paid a withdrawal',
+            'subject_type' => Withdrawal::class,
+            'subject_id' => $withdrawal->id,
+            'subject_label' => 'Withdrawal #'.$withdrawal->id,
+            'properties' => ['from' => 'processing', 'to' => 'completed'],
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->getContent();
+
+        $dossier = route('admin.finance.user', $customer->id);
+        $this->assertStringContainsString($dossier, $html);
+        $this->assertStringNotContainsString(route('admin.deposits.show', $deposit->id), $html);
+        $this->assertStringNotContainsString(route('admin.withdrawals.show', $withdrawal->id), $html);
     }
 
     public function test_search_activate_does_not_match_deactivated(): void
     {
         $this->makeLog([
             'action' => 'site.activated',
-            'description' => 'Staff made the listing live',
+            'description' => 'Ada Admin activated site "Live Site"',
             'subject_label' => 'Live Site',
         ]);
         $this->makeLog([
             'action' => 'site.deactivated',
-            'description' => 'Staff took the listing offline',
+            'description' => 'Ada Admin deactivated site "Offline Site"',
             'subject_label' => 'Offline Site',
         ]);
 
@@ -313,6 +400,48 @@ class AdminActivityLogTest extends TestCase
 
         $this->assertStringNotContainsString(route('admin.users.index', ['user' => $other->id]), $html);
         $this->assertStringNotContainsString(route('admin.sites.edit', 999999), $html);
+    }
+
+    public function test_gone_order_does_not_link_to_unrelated_site_id_in_properties(): void
+    {
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Unrelated Order Site',
+            'site_url' => 'https://unrelated-order.example',
+            'domain' => 'unrelated-order.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'News',
+            'price' => 20,
+            'publication_time' => 'permanent',
+            'description' => 'Unrelated',
+            'link_type' => 'dofollow',
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->makeLog([
+            'action' => 'order.status_overridden',
+            'description' => 'Moved an order that was later removed',
+            'subject_type' => Order::class,
+            'subject_id' => 888888,
+            'subject_label' => 'ORD-GONE',
+            'properties' => ['site_id' => $site->id, 'from' => 'processing', 'to' => 'completed'],
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('ORD-GONE', false)
+            ->assertSee('Removed', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString(route('admin.sites.edit', $site->id), $html);
+        $this->assertStringNotContainsString(route('admin.orders.show', 888888), $html);
     }
 
     public function test_flag_status_change_is_hidden_and_observed_actions_appear_in_filter(): void

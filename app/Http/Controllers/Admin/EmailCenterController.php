@@ -442,8 +442,10 @@ class EmailCenterController extends Controller
 
         $failed = EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
+            ->orderByDesc('id')
             ->get();
         $marked = [];
+        $claimedUuids = [];
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
@@ -463,6 +465,10 @@ class EmailCenterController extends Controller
         }
 
         foreach ($uuids as $uuid) {
+            if (! empty($claimedUuids[$uuid])) {
+                continue;
+            }
+
             $payload = (string) ($payloadsByUuid[$uuid] ?? '');
             if ($payload === '') {
                 continue;
@@ -479,6 +485,7 @@ class EmailCenterController extends Controller
             $log = $matches->first();
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
+            $claimedUuids[$uuid] = true;
         }
     }
 
@@ -512,7 +519,17 @@ class EmailCenterController extends Controller
             $updated = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
-                ->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                ->where(function ($query) {
+                    $query->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                        ->orWhere(function ($skipped) {
+                            // Expire parks lost mail as skipped/stale and
+                            // fails the leftover pending log. Retry must
+                            // reclaim that skip or the next recoverStalled()
+                            // immediately fails the log again.
+                            $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                                ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                        });
+                })
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_QUEUED,
                     'skip_reason' => null,

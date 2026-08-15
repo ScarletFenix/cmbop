@@ -61,8 +61,8 @@ class AdminActivityDisplay
      *     existingBulkIds: array<int, true>,
      *     existingUserIds: array<int, true>,
      *     existingOrderIds: array<int, true>,
-     *     existingDepositIds: array<int, true>,
-     *     existingWithdrawalIds: array<int, true>,
+     *     existingDepositIds: array<int, int>,
+     *     existingWithdrawalIds: array<int, int>,
      *     existingInvoiceIds: array<int, true>,
      *     existingBlogIds: array<int, true>,
      *     existingWalletIds: array<int, int>,
@@ -115,11 +115,11 @@ class AdminActivityDisplay
             'existingBulkIds' => self::existingKeys(BulkSiteRequest::class, $buckets['bulk']),
             'existingUserIds' => self::existingKeys(User::class, $buckets['user']),
             'existingOrderIds' => self::existingKeys(Order::class, $buckets['order']),
-            'existingDepositIds' => self::existingKeys(DepositRequest::class, $buckets['deposit']),
-            'existingWithdrawalIds' => self::existingKeys(Withdrawal::class, $buckets['withdrawal']),
+            'existingDepositIds' => self::existingUserMap(DepositRequest::class, $buckets['deposit']),
+            'existingWithdrawalIds' => self::existingUserMap(Withdrawal::class, $buckets['withdrawal']),
             'existingInvoiceIds' => self::existingKeys(Invoice::class, $buckets['invoice']),
             'existingBlogIds' => self::existingKeys(Blog::class, $buckets['blog']),
-            'existingWalletIds' => self::walletUserIds($buckets['wallet']),
+            'existingWalletIds' => self::existingUserMap(Wallet::class, $buckets['wallet']),
             'existingAnnouncementIds' => self::existingKeys(SiteAnnouncement::class, $buckets['announcement']),
             'existingBannerIds' => self::existingKeys(AdBanner::class, $buckets['banner']),
             'existingSubmissionIds' => self::existingKeys(ContentSubmission::class, $buckets['submission']),
@@ -145,8 +145,13 @@ class AdminActivityDisplay
             }
         }
 
-        // Only fall back to the same family of subject (site / bulk). Guessing
-        // user_id/order_id from properties can send an admin to the wrong record.
+        // Only fall back to site/bulk when this row is about a site or bulk
+        // request. A leftover site_id on an order/user row must not deep-link.
+        $siteFamily = in_array($type, ['', Site::class, BulkSiteRequest::class], true);
+        if (! $siteFamily) {
+            return null;
+        }
+
         $props = is_array($log->properties) ? $log->properties : [];
         $siteId = (int) data_get($props, 'site_id');
         if ($siteId > 0) {
@@ -318,25 +323,45 @@ class AdminActivityDisplay
     }
 
     /**
+     * @param  class-string  $model
      * @param  array<int, int>  $ids
      * @return array<int, int>
      */
-    private static function walletUserIds(array $ids): array
+    private static function existingUserMap(string $model, array $ids): array
     {
-        if ($ids === []) {
+        if ($ids === [] || ! class_exists($model)) {
             return [];
         }
 
         try {
             $map = [];
-            foreach (Wallet::query()->whereIn('id', array_values($ids))->get(['id', 'user_id']) as $wallet) {
-                $map[(int) $wallet->id] = (int) $wallet->user_id;
+            foreach ($model::query()->whereIn('id', array_values($ids))->get(['id', 'user_id']) as $row) {
+                $map[(int) $row->id] = (int) $row->user_id;
             }
 
             return $map;
         } catch (\Throwable) {
             return [];
         }
+    }
+
+    /**
+     * Deposit / withdrawal "show" routes return JSON for the queue UI.
+     * Send the admin to the user's finance dossier, or the HTML list.
+     *
+     * @param  array<string, mixed>  $lookup
+     */
+    private static function moneySubjectUrl(array $lookup, string $key, int $id, string $fallbackRoute): ?string
+    {
+        if (! isset($lookup[$key][$id])) {
+            return null;
+        }
+
+        $userId = (int) $lookup[$key][$id];
+
+        return $userId > 0
+            ? route('admin.finance.user', $userId)
+            : route($fallbackRoute);
     }
 
     /**
@@ -357,12 +382,8 @@ class AdminActivityDisplay
             Order::class => isset($lookup['existingOrderIds'][$id])
                 ? route('admin.orders.show', $id)
                 : null,
-            DepositRequest::class => isset($lookup['existingDepositIds'][$id])
-                ? route('admin.deposits.show', $id)
-                : null,
-            Withdrawal::class => isset($lookup['existingWithdrawalIds'][$id])
-                ? route('admin.withdrawals.show', $id)
-                : null,
+            DepositRequest::class => self::moneySubjectUrl($lookup, 'existingDepositIds', $id, 'admin.deposits'),
+            Withdrawal::class => self::moneySubjectUrl($lookup, 'existingWithdrawalIds', $id, 'admin.withdrawals'),
             Invoice::class => isset($lookup['existingInvoiceIds'][$id])
                 ? route('admin.invoices.show', $id)
                 : null,

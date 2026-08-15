@@ -129,6 +129,40 @@ class HomepagePromotionTablesTest extends TestCase
         $this->assertStringNotContainsString('Third cap notice', $html);
     }
 
+    public function test_unparseable_rows_do_not_crowd_out_live_announcements(): void
+    {
+        for ($i = 0; $i < 12; $i++) {
+            $row = SiteAnnouncement::create([
+                'title' => 'Garbage leftover '.$i,
+                'message' => 'Body',
+                'type' => 'general',
+                'style' => 'info',
+                'audience' => 'all',
+                'is_active' => true,
+                'priority' => 1,
+                'ends_at' => now()->addDay(),
+            ]);
+            DB::table('site_announcements')->where('id', $row->id)->update([
+                'ends_at' => 'not-a-date',
+            ]);
+        }
+
+        SiteAnnouncement::create([
+            'title' => 'Real live notice after leftovers',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+            'priority' => 500,
+        ]);
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Real live notice after leftovers', false)
+            ->assertDontSee('Garbage leftover', false);
+    }
+
     public function test_announcement_click_is_404_when_table_is_missing(): void
     {
         Schema::dropIfExists('site_announcements');
