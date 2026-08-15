@@ -122,6 +122,23 @@ class PublicI18nTest extends TestCase
             ->assertSee('Italiano', false);
     }
 
+    public function test_spanish_and_italian_homes_use_translated_copy(): void
+    {
+        $this->get('/es')
+            ->assertOk()
+            ->assertSee('Iniciar sesión', false)
+            ->assertSee('Registrarse', false)
+            ->assertSee('El marketplace global de link building', false)
+            ->assertSee('Cómo funciona', false);
+
+        $this->get('/it')
+            ->assertOk()
+            ->assertSee('Accedi', false)
+            ->assertSee('Registrati', false)
+            ->assertSee('Il marketplace globale di link building', false)
+            ->assertSee('Come funziona', false);
+    }
+
     public function test_us_english_browser_language_suggests_us_locale(): void
     {
         $this->withHeader('Accept-Language', 'en-US,en;q=0.8')
