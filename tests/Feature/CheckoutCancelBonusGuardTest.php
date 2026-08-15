@@ -12,10 +12,12 @@ use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use Stripe\ApiRequestor;
+use Stripe\Checkout\Session;
 use Stripe\HttpClient\ClientInterface;
 use Tests\TestCase;
 
@@ -507,6 +509,117 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_pay_again_applies_unfulfilled_credit_and_charges_the_shortfall(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-PAY-AGAIN-CREDIT', 'pending');
+        $payments = app(OrderPaymentService::class);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PAY-AGAIN-CREDIT', 20);
+
+        $payments->markOrdersFailedFromReference('REF-PAY-AGAIN-CREDIT', 'expired');
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-PAY-AGAIN', 20);
+
+        $lateSession = (object) [
+            'id' => 'cs_pay_again_credit_late',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_pay_again_credit_late',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PAY-AGAIN-CREDIT',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+        $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-PAY-AGAIN-CREDIT', $lateSession)->isEmpty());
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-PAY-AGAIN-CREDIT'), 0.01);
+
+        $this->mock(StripeCustomerService::class, function ($mock) {
+            $mock->shouldReceive('configured')->andReturn(true);
+            $mock->shouldReceive('createCheckoutSession')
+                ->once()
+                ->withArgs(function (array $payload) {
+                    return (int) ($payload['line_items'][0]['price_data']['unit_amount'] ?? 0) === 2000
+                        && (string) ($payload['metadata']['unfulfilled_credit_applied'] ?? '') === '60'
+                        && (string) ($payload['metadata']['expected_amount'] ?? '') === '20';
+                })
+                ->andReturn(Session::constructFrom([
+                    'id' => 'cs_pay_again_shortfall',
+                    'object' => 'checkout.session',
+                    'url' => 'https://checkout.stripe.test/pay-again-shortfall',
+                ]));
+        });
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('amount_due', 20)
+            ->assertJsonPath('unfulfilled_credit_applied', 60);
+
+        $retrySession = (object) [
+            'id' => 'cs_pay_again_shortfall',
+            'object' => 'checkout.session',
+            'amount_total' => 2000,
+            'payment_intent' => 'pi_pay_again_shortfall',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PAY-AGAIN-CREDIT',
+                'expected_amount' => '20',
+                'order_total' => '80',
+                'bonus_applied' => '0',
+                'is_retry' => '1',
+                'unfulfilled_credit_applied' => '60',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $paid = $payments->markOrdersPaidFromStripeSession('REF-PAY-AGAIN-CREDIT', $retrySession);
+        $this->assertCount(1, $paid);
+        $this->assertSame('paid', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-PAY-AGAIN'),
+            0.01
+        );
+    }
+
+    public function test_pay_again_settles_from_wallet_when_unfulfilled_credit_covers_leftover(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 0);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-PAY-AGAIN-COVERED', 'failed');
+        $payments = app(OrderPaymentService::class);
+        $payments->creditUnfulfilledCardCapture(
+            $advertiser->id,
+            'REF-PAY-AGAIN-COVERED',
+            80,
+            'cs_covered_late'
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, $wallet->withdrawableBalance(), 0.01);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('settled', true)
+            ->assertJsonPath('amount_due', 0);
+
+        $this->assertSame('paid', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
     }
 
     public function test_second_cancel_does_not_steal_another_checkouts_reserved_bonus(): void
