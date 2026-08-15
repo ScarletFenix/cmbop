@@ -47,6 +47,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
+        $this->assertStringContainsString('must **not** block expire', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
