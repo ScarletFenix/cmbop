@@ -119,12 +119,17 @@ class OrderRefundService
 
         $bonusRestored = 0.0;
         $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
-        // Wallet holds already contain promo. A 0 peek means "no intent
-        // recorded", not "restore none of the reserved promo". Card leftover
-        // still uses 0 so a refund cannot steal another checkout's bucket.
-        $applyBonusCap = $maxBonusShare !== null
-            && ! ($order->payment_method === 'wallet' && $maxBonusShare <= 0);
-        if ($applyBonusCap) {
+        if ($order->payment_method === 'wallet') {
+            // Peek 0 used to mean "no cap" and dumped every reserved promo
+            // on this wallet, including another checkout's leftover. Cap to
+            // the promo that still fits inside this hold (and siblings).
+            $holdCap = $this->walletHoldBonusCap($wallet, $order, $amount);
+            if ($maxBonusShare !== null && $maxBonusShare > 0) {
+                $bonusShare = min($bonusShare, round($maxBonusShare, 2), $holdCap);
+            } else {
+                $bonusShare = min($bonusShare, $holdCap);
+            }
+        } elseif ($maxBonusShare !== null) {
             $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
         }
 
@@ -199,6 +204,7 @@ class OrderRefundService
         $bonusShare = $this->checkoutBonusShare($wallet, $order, $total);
 
         if ($order->payment_method === 'wallet') {
+            $bonusShare = min($bonusShare, $this->walletHoldBonusCap($wallet, $order, $total));
             $wallet->consumeReserved($total, $bonusShare);
 
             return;
@@ -207,6 +213,24 @@ class OrderRefundService
         if ($bonusShare > 0) {
             $wallet->consumeReserved($bonusShare, $bonusShare);
         }
+    }
+
+    /**
+     * Promo that can belong to this wallet hold. Reserved above this line
+     * (and its same-reference siblings) is another checkout's leftover.
+     */
+    private function walletHoldBonusCap(Wallet $wallet, Order $order, float $amount): float
+    {
+        $reserved = max(0, round((float) $wallet->reserved_balance, 2));
+        $bonus = max(0, round((float) $wallet->bonus_reserved, 2));
+        $siblingTotal = $this->openCheckoutSiblingTotal(
+            (int) $order->user_id,
+            (string) ($order->reference_code ?? ''),
+            [(int) $order->id]
+        );
+        $otherReserved = max(0, round($reserved - $amount - $siblingTotal, 2));
+
+        return max(0, round($bonus - $otherReserved, 2));
     }
 
     /**

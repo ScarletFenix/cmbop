@@ -443,6 +443,50 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertEqualsWithDelta(10.0, (float) $wallet->fresh()->balance, 0.01);
     }
 
+    public function test_wallet_fail_without_intent_does_not_steal_other_leftover(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 135,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'wallet-no-peek'), [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 115,
+            'subtotal' => 115,
+            'reference_code' => 'PAY-WALLET-NO-PEEK-HOLD',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PAY-WALLET-OTHER-LEFTOVER', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(115.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(95.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'PAY-WALLET-OTHER-LEFTOVER'),
+            0.01
+        );
+    }
+
     public function test_wallet_fail_does_not_steal_another_checkout_leftover_bonus(): void
     {
         $admin = $this->makeUser('admin');
