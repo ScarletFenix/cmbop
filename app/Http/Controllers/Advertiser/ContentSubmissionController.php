@@ -445,13 +445,32 @@ class ContentSubmissionController extends Controller
             $url = trim((string) $data['target_url']);
             if ($url === '') {
                 $data['target_url'] = null;
-            } elseif (! filter_var($url, FILTER_VALIDATE_URL) || ! str_starts_with(strtolower($url), 'https://')) {
+            } elseif (! ContentSubmission::isCheckoutReadyTarget($url)) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Target URL must be a valid HTTPS URL.',
+                    'message' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                 ], 422);
             } else {
                 $data['target_url'] = $url;
+            }
+        }
+
+        if (array_key_exists('links', $data) && is_array($data['links'])) {
+            foreach ($data['links'] as $link) {
+                if (! is_array($link)) {
+                    continue;
+                }
+                $url = trim((string) ($link['url'] ?? ''));
+                $anchor = trim(preg_replace('/\s+/u', ' ', (string) ($link['anchor'] ?? '')) ?? '');
+                if ($url === '' && $anchor === '') {
+                    continue;
+                }
+                if ($anchor === '' || ! ContentSubmission::isCheckoutReadyTarget($url)) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                    ], 422);
+                }
             }
         }
 

@@ -1126,6 +1126,18 @@ class ContentSubmission extends Model
      * Checkout and revision attach allow no link, or a complete HTTPS pair.
      * A half-filled or http:// target is not usable on an order item.
      */
+    public static function isCheckoutReadyTarget(string $target): bool
+    {
+        $target = trim($target);
+        $lower = strtolower($target);
+
+        return $target !== ''
+            && strlen($target) >= 12
+            && str_starts_with($lower, 'https://')
+            && ! str_starts_with($lower, 'https:///')
+            && (bool) filter_var($target, FILTER_VALIDATE_URL);
+    }
+
     public function hasCheckoutReadyLinks(): bool
     {
         $anchor = trim((string) $this->anchor_text);
@@ -1135,10 +1147,7 @@ class ContentSubmission extends Model
             return true;
         }
 
-        return $anchor !== ''
-            && $target !== ''
-            && (bool) filter_var($target, FILTER_VALIDATE_URL)
-            && str_starts_with(strtolower($target), 'https://');
+        return $anchor !== '' && self::isCheckoutReadyTarget($target);
     }
 
     public function isReadyForCheckout(): bool

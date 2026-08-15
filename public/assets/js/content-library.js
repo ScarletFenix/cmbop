@@ -591,6 +591,15 @@ function showLibraryFlash(message, ok) {
 function libraryChipParams(submission) {
     const availability = String((submission && submission.availability) || '');
     const status = String((submission && submission.moderation_status) || '');
+    if (availability === 'archived') {
+        return { status: 'all', availability: 'archived' };
+    }
+    if (availability === 'expired') {
+        return { status: 'all', availability: 'expired' };
+    }
+    if (availability === 'in_progress') {
+        return { status: 'all', availability: 'in_progress' };
+    }
     if (
         availability === 'needs_fix'
         || status === 'needs_improvement'
@@ -598,6 +607,8 @@ function libraryChipParams(submission) {
         || status === 'error'
         || (submission && submission.needs_correction)
         || (submission && submission.needs_image_rights)
+        || (submission && submission.ready === false)
+        || (submission && submission.can_order === false)
     ) {
         return { status: 'all', availability: 'needs_fix' };
     }
@@ -607,6 +618,9 @@ function libraryChipParams(submission) {
 function libraryResultMessage(submission, fallback, ok) {
     if (submission && submission.needs_image_rights) {
         return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
+    }
+    if (submission && submission.ready === false && submission.can_order !== false) {
+        return 'Add anchor text and a valid HTTPS target URL, or clear both link fields.';
     }
     if (fallback) return fallback;
     if (!ok) {
@@ -899,7 +913,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         }
         const sub = data.submission || {};
         const html = sub.preview_html || previewModalState.html;
-        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order !== false && sub.ready !== false;
+        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order === true && sub.ready === true;
         const editable = stillApproved;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
         if (!stillApproved) {
@@ -1707,7 +1721,7 @@ async function saveArticleEditor() {
             return;
         }
         const sub = data.submission || { id: articleEditorSubmissionId };
-        const stillApproved = data.approved === true && !sub.needs_image_rights && !!sub.can_order && sub.ready !== false;
+        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order === true && sub.ready === true;
         const msg = data.message
             || (stillApproved
                 ? 'Article saved and re-approved.'

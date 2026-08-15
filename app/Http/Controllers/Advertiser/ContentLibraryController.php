@@ -514,13 +514,18 @@ class ContentLibraryController extends Controller
                 'submission_id' => $result['submission']->id ?? null,
                 'error' => $e->getMessage(),
             ]);
+            $fallback = $result['submission'] ?? null;
             $submission = [
-                'id' => $result['submission']->id ?? null,
-                'title' => $result['submission']->title ?? $result['title'],
-                'moderation_status' => $result['submission']->moderation_status ?? null,
+                'id' => $fallback->id ?? null,
+                'title' => $fallback->title ?? $result['title'],
+                'moderation_status' => $fallback->moderation_status ?? null,
                 'can_order' => false,
+                'ready' => false,
+                'availability' => $fallback instanceof ContentSubmission
+                    ? $fallback->libraryAvailability()
+                    : 'needs_fix',
                 'editable' => true,
-                'needs_image_rights' => (bool) ($result['submission']?->hasImages() && ! $result['submission']->imageRightsCoverContent()),
+                'needs_image_rights' => (bool) ($fallback?->hasImages() && ! $fallback->imageRightsCoverContent()),
                 'editor_notice' => $result['message'] ?? null,
                 'editor_notice_ok' => false,
             ];

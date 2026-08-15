@@ -934,6 +934,50 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertSame('available', $fresh->libraryAvailability());
     }
 
+    public function test_preview_patch_rejects_an_http_link_row_before_processing(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'insecure', 'url' => 'http://example.com/tools'],
+                ],
+                'preview_html' => $original,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentSubmission::CHECKOUT_LINK_MESSAGE);
+
+        $fresh = $submission->fresh();
+        $this->assertSame('https://example.com/tools', $fresh->target_url);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+    }
+
+    public function test_short_https_target_is_not_checkout_ready_in_php_or_sql(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'anchor_text' => 'short host',
+            'target_url' => 'https://a.b',
+        ]);
+
+        $fresh = $submission->fresh();
+        $this->assertFalse($fresh->hasCheckoutReadyLinks());
+        $this->assertFalse($fresh->isReadyForCheckout());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+    }
+
     public function test_incomplete_link_is_not_shown_as_orderable(): void
     {
         $advertiser = $this->advertiser();
@@ -1665,6 +1709,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
+        $this->assertStringContainsString('submission.ready === false', $js);
+        $this->assertStringContainsString('sub.ready === true', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
         $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.ready)', $js);
         $this->assertStringContainsString('libraryResultFlash', $js);

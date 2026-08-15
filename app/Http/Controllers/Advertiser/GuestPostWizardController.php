@@ -304,6 +304,7 @@ class GuestPostWizardController extends Controller
         $pruned = $this->cartPricing->pruneUnavailableCartItems($cart);
         $cart = array_values($pruned['cart']);
         $this->enrichCartSites($cart);
+        $cart = $this->dropUnreadyCartArticles($cart);
         session()->put('cart', $cart);
 
         return $cart;
@@ -337,6 +338,57 @@ class GuestPostWizardController extends Controller
             $kept[] = $line;
         }
         $cart = $kept;
+    }
+
+    /**
+     * @param  list<array<string, mixed>>  $cart
+     * @return list<array<string, mixed>>
+     */
+    private function dropUnreadyCartArticles(array $cart): array
+    {
+        $ids = [];
+        foreach ($cart as $line) {
+            $lineIds = is_array($line['content_submission_ids'] ?? null) ? $line['content_submission_ids'] : [];
+            foreach ($lineIds as $id) {
+                $id = (int) $id;
+                if ($id > 0) {
+                    $ids[$id] = $id;
+                }
+            }
+            $scalar = (int) ($line['content_submission_id'] ?? 0);
+            if ($scalar > 0) {
+                $ids[$scalar] = $scalar;
+            }
+        }
+        if ($ids === []) {
+            return $cart;
+        }
+
+        $ready = ContentSubmission::query()
+            ->whereIn('id', array_values($ids))
+            ->where('user_id', auth()->id())
+            ->checkoutReady()
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+        $readySet = array_fill_keys($ready, true);
+
+        foreach ($cart as $i => $line) {
+            $qty = max(1, (int) ($line['quantity'] ?? 1));
+            $lineIds = is_array($line['content_submission_ids'] ?? null) ? $line['content_submission_ids'] : [];
+            $cleaned = [];
+            for ($copy = 0; $copy < $qty; $copy++) {
+                $id = (int) ($lineIds[$copy] ?? 0);
+                if ($id <= 0 && $copy === 0) {
+                    $id = (int) ($line['content_submission_id'] ?? 0);
+                }
+                $cleaned[$copy] = ($id > 0 && isset($readySet[$id])) ? $id : 0;
+            }
+            $cart[$i]['content_submission_id'] = $cleaned[0] ?? 0;
+            $cart[$i]['content_submission_ids'] = $cleaned;
+        }
+
+        return $cart;
     }
 
     /**
