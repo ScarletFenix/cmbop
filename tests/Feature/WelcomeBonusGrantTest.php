@@ -31,6 +31,7 @@ class WelcomeBonusGrantTest extends TestCase
         RateLimiter::clear('register:9.9.9.9');
         RateLimiter::clear('register:10.0.0.2');
         RateLimiter::clear('register:127.0.0.1');
+        RateLimiter::clear('register:8.8.8.8');
     }
 
     public function test_first_advertiser_from_ip_receives_bonus_and_claim(): void
@@ -47,6 +48,34 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertAdvertiserBonus($user, 20.0);
         $this->assertSame(1, WelcomeBonusClaim::query()->where('user_id', $user->id)->count());
         $this->assertSame('1.2.3.4', WelcomeBonusClaim::query()->where('user_id', $user->id)->value('ip_address'));
+    }
+
+    public function test_forwarded_for_spoof_does_not_unlock_a_second_bonus(): void
+    {
+        Notification::fake();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->withHeaders(['X-Forwarded-For' => '9.9.9.9'])
+            ->postJson('/register', $this->registerPayload('xff-first@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        RateLimiter::clear('register:9.9.9.9');
+        RateLimiter::clear('register:8.8.8.8');
+        RateLimiter::clear('register:1.2.3.4');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
+            ->withHeaders(['X-Forwarded-For' => '8.8.8.8'])
+            ->postJson('/register', $this->registerPayload('xff-second@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $first = User::where('email', 'xff-first@example.com')->first();
+        $second = User::where('email', 'xff-second@example.com')->first();
+        $this->assertAdvertiserBonus($first, 20.0);
+        $this->assertAdvertiserBonus($second, 0.0);
+        $this->assertSame('1.2.3.4', WelcomeBonusClaim::query()->where('user_id', $first->id)->value('ip_address'));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 
     public function test_second_advertiser_from_same_ip_gets_no_bonus(): void
@@ -111,6 +140,22 @@ class WelcomeBonusGrantTest extends TestCase
             ->assertOk();
 
         $user = User::where('email', 'pub-bonus@example.com')->first();
+        $this->assertAdvertiserBonus($user, 0.0);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_google_signup_skips_bonus_when_disabled(): void
+    {
+        Mail::fake();
+        $this->configureGoogle();
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $this->mockGoogleCallback('google-disabled', 'google-disabled@example.com');
+        $this->withServerVariables(['REMOTE_ADDR' => '8.8.4.4'])
+            ->get(route('auth.google.callback'))
+            ->assertRedirect('/advertiser/dashboard');
+
+        $user = User::where('email', 'google-disabled@example.com')->first();
         $this->assertAdvertiserBonus($user, 0.0);
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }

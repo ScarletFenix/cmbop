@@ -47,6 +47,7 @@
                   @endif
             >
                 @csrf
+                <input type="hidden" name="enabled" value="{{ $welcomeBonusEnabled ? '0' : '1' }}">
                 <button type="submit" class="btn btn-sm {{ $welcomeBonusEnabled ? 'btn-outline-danger' : 'btn-primary' }}">
                     {{ $welcomeBonusEnabled ? 'Disable' : 'Enable' }}
                 </button>
