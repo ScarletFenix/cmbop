@@ -1119,6 +1119,78 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(1, $campaign->fresh()->skipped_count);
     }
 
+    public function test_job_skips_recipient_promoted_to_staff_before_send(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $staffRole = Role::where('name', 'admin')->firstOrFail();
+        $advertiser->roles()->syncWithoutDetaching([$staffRole->id]);
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Promoted mid-queue',
+            'subject' => 'Promoted mid-queue',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        (new SendEmailCampaignJob((int) $campaign->id))->handle();
+
+        $row = $campaign->recipients()->where('user_id', $advertiser->id)->first();
+        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_STAFF, $row->skip_reason);
+        Mail::assertNothingOutgoing();
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
+    }
+
+    public function test_queued_mail_skips_recipient_promoted_to_staff(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $staffRole = Role::where('name', 'marketing')->firstOrFail();
+        $advertiser->roles()->syncWithoutDetaching([$staffRole->id]);
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Queued then staff',
+            'subject' => 'Queued then staff',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $mailable->to($advertiser->email);
+
+        $this->assertNull($mailable->send(app('mailer')));
+        $this->assertSame('staff', $mailable->suppressReason);
+        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_STAFF, $row->fresh()->skip_reason);
+        $this->assertSame(0, $campaign->fresh()->sent_count);
+        $this->assertSame(1, $campaign->fresh()->skipped_count);
+    }
+
     public function test_mailable_failed_marks_recipient_failed(): void
     {
         $admin = $this->makeUser('admin');

@@ -147,7 +147,9 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   **emailable (verified)** so the compose count matches the subtitle.
 - `selected` accepts advertiser/publisher IDs only. Admin and marketing IDs
   are dropped, including dual-role staff (admin+advertiser still must not
-  receive “all advertisers” blasts). `queryForRole()` is unchanged so
+  receive “all advertisers” blasts). The send job and `AudienceCampaignMail`
+  re-check staff roles at send time so a promotion after compose cannot
+  sneak a staff inbox onto a queued blast. `queryForRole()` is unchanged so
   deposit / add-site / digest reminders can still reach those accounts.
 - Custom picker is capped at 200 users per role (`AudienceInventoryService::PICKER_LIMIT`).
 - `advertisers_no_orders` is an alias of `advertisers_never_checked_out` (no

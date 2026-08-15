@@ -7,6 +7,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\User;
+use App\Services\AudienceInventoryService;
 use App\Support\EmailUnsubscribeLink;
 use Carbon\Carbon;
 use Illuminate\Mail\Mailables\Headers;
@@ -61,6 +62,13 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function send($mailer)
     {
+        if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
+            $this->suppressReason = 'staff';
+            $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
+
+            return null;
+        }
+
         $result = parent::send($mailer);
 
         if ($result !== null || $this->suppressReason === 'duplicate') {
@@ -106,6 +114,11 @@ class AudienceCampaignMail extends PlatformMailable
             || ($this->campaign->respect_preferences
                 && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails'))) {
             return EmailCampaignRecipient::SKIP_PREFERENCE;
+        }
+
+        if ($this->suppressReason === 'staff'
+            || AudienceInventoryService::userHasStaffRole($this->recipient)) {
+            return EmailCampaignRecipient::SKIP_STAFF;
         }
 
         return EmailCampaignRecipient::SKIP_DISABLED;
