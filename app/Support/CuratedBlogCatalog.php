@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use App\Models\Blog;
+
 /**
  * Single registry of code-defined pillar posts (slugs + FAQ payloads).
  */
@@ -84,6 +86,28 @@ class CuratedBlogCatalog
                 return is_array($items) ? $items : [];
             } catch (\Throwable) {
                 continue;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Pillar FAQ is keyed by catalog slug. Public pages must not look up
+     * a renamed / uniquified translation slug or blogs.slug alone.
+     *
+     * @return list<array{question: string, answer: string}>
+     */
+    public static function faqForBlog(Blog $blog, ?string $resolvedSlug = null): array
+    {
+        foreach (array_unique(array_filter([
+            $blog->curated_key,
+            $blog->slug,
+            $resolvedSlug,
+        ])) as $slug) {
+            $items = self::faqForSlug(is_string($slug) ? $slug : null);
+            if ($items !== []) {
+                return $items;
             }
         }
 

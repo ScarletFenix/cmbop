@@ -23,19 +23,26 @@ class CuratedBlogWriter
 
     public static function rememberDeleted(Blog $blog): void
     {
-        $slug = $blog->curated_key ?: $blog->slug;
-        if ($slug === '') {
+        $catalogSlug = filled($blog->curated_key)
+            ? (string) $blog->curated_key
+            : (string) $blog->slug;
+        if ($catalogSlug === '') {
             return;
         }
 
-        $isCurated = filled($blog->curated_key)
-            || in_array($slug, CuratedBlogSync::curatedSlugs(), true);
+        // Only tombstone a real pillar. A custom post that reused a catalog
+        // slug must not block later upserts of the curated article.
+        $isCuratedPillar = filled($blog->curated_key)
+            || (
+                in_array($catalogSlug, CuratedBlogSync::curatedSlugs(), true)
+                && ! $blog->manually_edited_at
+            );
 
-        if (! $isCurated || ! Schema::hasTable('curated_blog_tombstones')) {
+        if (! $isCuratedPillar || ! Schema::hasTable('curated_blog_tombstones')) {
             return;
         }
 
-        CuratedBlogTombstone::query()->updateOrCreate(['slug' => $slug]);
+        CuratedBlogTombstone::query()->updateOrCreate(['slug' => $catalogSlug]);
     }
 
     /**
@@ -191,21 +198,14 @@ class CuratedBlogWriter
             : 'en';
 
         $slug = $blog->slug ?: 'post-'.$blog->id;
-        $slugTaken = BlogTranslation::query()
-            ->where('slug', $slug)
-            ->where(function ($query) use ($blog, $locale) {
-                $query->where('blog_id', '!=', $blog->id)
-                    ->orWhere('locale', '!=', $locale);
-            })
-            ->exists();
-        if ($slugTaken) {
+        if (self::translationSlugTaken($slug, $blog->id, $locale)) {
             $existingSlug = BlogTranslation::query()
                 ->where('blog_id', $blog->id)
                 ->where('locale', $locale)
                 ->value('slug');
             $slug = is_string($existingSlug) && $existingSlug !== ''
                 ? $existingSlug
-                : $slug.'-'.$locale;
+                : self::uniqueTranslationSlug($slug, $blog->id, $locale);
         }
 
         BlogTranslation::query()->updateOrCreate(
@@ -221,5 +221,30 @@ class CuratedBlogWriter
                 'is_published' => $blog->status === 'published',
             ]
         );
+    }
+
+    private static function translationSlugTaken(string $slug, int $blogId, string $locale): bool
+    {
+        return BlogTranslation::query()
+            ->where('slug', $slug)
+            ->where(function ($query) use ($blogId, $locale) {
+                $query->where('blog_id', '!=', $blogId)
+                    ->orWhere('locale', '!=', $locale);
+            })
+            ->exists();
+    }
+
+    private static function uniqueTranslationSlug(string $slug, int $blogId, string $locale): string
+    {
+        $base = $slug !== '' ? $slug : 'post-'.$blogId;
+        $candidate = $base.'-'.$locale;
+        $counter = 1;
+
+        while (self::translationSlugTaken($candidate, $blogId, $locale)) {
+            $candidate = $base.'-'.$locale.'-'.$counter;
+            $counter++;
+        }
+
+        return $candidate;
     }
 }

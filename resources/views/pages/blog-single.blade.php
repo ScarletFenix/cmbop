@@ -9,7 +9,7 @@
     $blogCanonical = $canonicalUrl ?? $blog->canonicalUrl($activeTranslation?->locale ?: app()->getLocale(), 'en');
     $blogDescription = $activeTranslation?->meta_description ?: ($resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160));
     $blogPageTitle = $activeTranslation?->meta_title ?: ($resolvedTitle ?? 'Blog');
-    $blogFaq = \App\Support\CuratedBlogCatalog::faqForSlug($resolvedSlug);
+    $blogFaq = \App\Support\CuratedBlogCatalog::faqForBlog($blog, $resolvedSlug);
 @endphp
 
 @section('title', $blogPageTitle.' — SEOLinkBuildings')

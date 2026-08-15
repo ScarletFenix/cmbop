@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\CuratedBlogSync;
+use App\Services\CuratedBlogWriter;
 use App\Support\AcheterGuestPostsFrBlogPost;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\ChoosePublisherSiteBlogPost;
@@ -411,5 +413,92 @@ class AdminBlogCuratedSyncTest extends TestCase
             $slug,
             Blog::query()->where('curated_key', $slug)->value('slug')
         );
+    }
+
+    public function test_deleting_custom_post_that_reused_catalog_slug_does_not_tombstone_pillar(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        $custom = Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->actingAs($this->adminUser())
+            ->delete(route('admin.blogs.destroy', $custom->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseMissing('curated_blog_tombstones', ['slug' => $slug]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertTrue(Blog::query()->where('curated_key', $slug)->exists());
+    }
+
+    public function test_uniquified_pillar_keeps_faq_schema_on_public_page(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $pillar = Blog::query()->where('curated_key', $slug)->firstOrFail();
+        $this->assertNotSame($slug, $pillar->slug);
+
+        $this->get('/blog/'.$pillar->slug)
+            ->assertOk()
+            ->assertSee('FAQPage', false)
+            ->assertSee('What to Check After the Live Link', false);
+    }
+
+    public function test_sync_primary_translation_uniquifies_when_locale_suffix_is_taken(): void
+    {
+        $other = Blog::factory()->published()->create([
+            'slug' => 'other-translation-host',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $other->id,
+            'locale' => 'de',
+            'title' => 'Taken base',
+            'slug' => 'collision-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Taken base</p>',
+            'is_published' => true,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $other->id,
+            'locale' => 'en',
+            'title' => 'Taken suffix',
+            'slug' => 'collision-slug-en',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Taken suffix</p>',
+            'is_published' => true,
+        ]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Needs a free translation slug',
+            'slug' => 'collision-slug',
+            'content' => '<p>Body</p>',
+            'primary_locale' => 'en',
+        ]);
+
+        CuratedBlogWriter::syncPrimaryTranslation($blog);
+
+        $translationSlug = $blog->translations()->where('locale', 'en')->value('slug');
+        $this->assertNotSame('collision-slug', $translationSlug);
+        $this->assertNotSame('collision-slug-en', $translationSlug);
+        $this->assertSame('collision-slug-en-1', $translationSlug);
     }
 }
