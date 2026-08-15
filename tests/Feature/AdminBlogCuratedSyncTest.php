@@ -9,6 +9,7 @@ use App\Services\CuratedBlogSync;
 use App\Support\AcheterGuestPostsFrBlogPost;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\ChoosePublisherSiteBlogPost;
+use App\Support\CuratedBlogCatalog;
 use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use App\Support\GuestPostsEuropeEnBlogPost;
@@ -36,6 +37,21 @@ class AdminBlogCuratedSyncTest extends TestCase
         $user->roles()->attach($role->id);
 
         return $user;
+    }
+
+    public function test_admin_blogs_index_resolves_curated_catalog(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->assertSame(
+            CuratedBlogCatalog::slugs(),
+            \App\Services\CuratedBlogCatalog::slugs()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.blogs.index'))
+            ->assertOk()
+            ->assertSee('Blogs', false);
     }
 
     public function test_admin_can_sync_curated_blogs_into_manageable_list(): void
