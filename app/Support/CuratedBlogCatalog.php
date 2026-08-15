@@ -182,8 +182,18 @@ class CuratedBlogCatalog
         ));
 
         $rewritten = preg_replace_callback(
-            '~((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(/)?(?=["\'?#\s>]|$)~i',
+            '~(?<![:\w.-])((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(/)?(?=["\'?#\s>]|$)~i',
             static function (array $matches) use ($map): string {
+                $absolute = $matches[1];
+                if ($absolute !== '') {
+                    $appHost = parse_url((string) config('app.url'), PHP_URL_HOST);
+                    $linkHost = parse_url($absolute, PHP_URL_HOST);
+                    if (! is_string($appHost) || $appHost === ''
+                        || ! is_string($linkHost) || strcasecmp($appHost, $linkHost) !== 0) {
+                        return $matches[0];
+                    }
+                }
+
                 $catalog = $matches[4];
                 $public = $map[$catalog] ?? $catalog;
                 foreach ($map as $fromSlug => $toSlug) {

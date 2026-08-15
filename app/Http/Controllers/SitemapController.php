@@ -125,6 +125,12 @@ class SitemapController extends Controller
             if ($pathSlug === '' || in_array($pathSlug, $listedSlugs, true)) {
                 continue;
             }
+            // listedSlugs is this locale only. show() resolves any published
+            // translation slug, so a FR-owned slug must not appear as this
+            // post's EN fallback URL.
+            if ($this->publicSlugOwnedByAnotherBlog($pathSlug, (int) $blog->id)) {
+                continue;
+            }
             $listedSlugs[] = $pathSlug;
             $path = 'blog/'.$pathSlug;
             $slugsByLocale = $blog->translations->pluck('slug', 'locale')->all();
@@ -171,5 +177,17 @@ class SitemapController extends Controller
             'priority' => $priority,
             'alternates' => $alternates,
         ];
+    }
+
+    private function publicSlugOwnedByAnotherBlog(string $slug, int $blogId): bool
+    {
+        if (Blog::query()->where('slug', $slug)->where('id', '!=', $blogId)->exists()) {
+            return true;
+        }
+
+        return BlogTranslation::query()
+            ->where('slug', $slug)
+            ->where('blog_id', '!=', $blogId)
+            ->exists();
     }
 }

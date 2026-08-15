@@ -154,10 +154,12 @@ class AdminBlogCuratedSyncTest extends TestCase
         Blog::query()->delete();
         Cache::forget('curated_blogs_present_v1');
 
-        $this->get(route('blog.index'))
-            ->assertOk()
-            ->assertSee('Gastbeiträge kaufen', false)
-            ->assertSee('Wallet, Escrow', false);
+        $this->get(route('blog.index'))->assertOk();
+
+        $this->assertSame(
+            count(CuratedBlogSync::curatedSlugs()),
+            Blog::query()->where('status', 'published')->count()
+        );
 
         foreach (CuratedBlogSync::curatedSlugs() as $slug) {
             $this->assertDatabaseHas('blogs', [
@@ -621,6 +623,44 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertOk()
             ->assertSee('href="/blog/live-link-checklist-en-live"', false)
             ->assertDontSee('href="/blog/'.$slug.'"', false);
+    }
+
+    public function test_catalog_link_rewrite_leaves_external_blog_urls_alone(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+        $pillar = Blog::query()->where('curated_key', $slug)->firstOrFail();
+
+        $linker = Blog::factory()->published()->create([
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-external-blog',
+            'content' => '<p><a href="https://example.com/blog/'.$slug.'">External</a> <a href="/blog/'.$slug.'">Internal</a></p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $linker->id,
+            'locale' => 'en',
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-external-blog',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><a href="https://example.com/blog/'.$slug.'">External</a> <a href="/blog/'.$slug.'">Internal</a></p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/blog/linker-to-external-blog')
+            ->assertOk()
+            ->assertSee('href="https://example.com/blog/'.$slug.'"', false)
+            ->assertDontSee('href="https://example.com/blog/'.$pillar->slug.'"', false)
+            ->assertSee('href="/blog/'.$pillar->slug.'"', false);
     }
 
     public function test_custom_post_occupying_catalog_slug_does_not_inherit_pillar_faq(): void
