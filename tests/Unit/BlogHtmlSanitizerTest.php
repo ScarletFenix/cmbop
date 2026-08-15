@@ -156,5 +156,10 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertTrue(BlogHtmlSanitizer::isBlank('   '));
         $this->assertFalse(BlogHtmlSanitizer::isBlank('<p>Hello</p>'));
         $this->assertFalse(BlogHtmlSanitizer::isBlank('<p><img src="/storage/blogs/content/a.png" alt=""></p>'));
+        $this->assertSame(
+            BlogHtmlSanitizer::isBlank('<p><img src="/storage/blogs/content/a.png" alt=""></p>'),
+            BlogHtmlSanitizer::isEmptyHtml('<p><img src="/storage/blogs/content/a.png" alt=""></p>')
+        );
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml('<p><br></p>'));
     }
 }

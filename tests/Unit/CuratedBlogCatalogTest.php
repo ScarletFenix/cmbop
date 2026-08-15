@@ -27,4 +27,15 @@ class CuratedBlogCatalogTest extends TestCase
     {
         $this->assertContains(HowToPriceYourSiteBlogPost::SLUG, CuratedBlogCatalog::slugs());
     }
+
+    public function test_every_registered_post_class_exists(): void
+    {
+        foreach (CuratedBlogCatalog::postClasses() as $class) {
+            $this->assertTrue(class_exists($class), $class.' is missing from the autoloader');
+            $this->assertTrue(defined($class.'::SLUG'), $class.' is missing SLUG');
+        }
+
+        $this->assertNotEmpty(CuratedBlogCatalog::slugs());
+        $this->assertCount(count(CuratedBlogCatalog::postClasses()), CuratedBlogCatalog::slugs());
+    }
 }

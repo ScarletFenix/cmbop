@@ -51,7 +51,8 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.blogs.index'))
             ->assertOk()
-            ->assertSee('Blogs', false);
+            ->assertSee('Blogs', false)
+            ->assertViewHas('blogs');
     }
 
     public function test_admin_can_sync_curated_blogs_into_manageable_list(): void

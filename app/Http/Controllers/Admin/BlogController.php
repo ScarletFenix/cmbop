@@ -15,6 +15,7 @@ use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\BlogInlineImages;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -32,56 +33,55 @@ class BlogController extends Controller
     {
         try {
             CuratedBlogSync::ensurePresent();
-
-            $query = Blog::with(['creator', 'translations'])->orderByDesc('created_at');
-
-            $search = trim((string) $request->input('q', ''));
-            if ($search !== '') {
-                $like = '%'.$search.'%';
-                $query->where(function ($inner) use ($like) {
-                    $inner->where('title', 'like', $like)
-                        ->orWhere('slug', 'like', $like)
-                        ->orWhere('author', 'like', $like)
-                        ->orWhereHas('translations', function ($translations) use ($like) {
-                            $translations->where('title', 'like', $like)
-                                ->orWhere('slug', 'like', $like);
-                        });
-                });
-            }
-
-            $status = (string) $request->input('status', '');
-            if (in_array($status, ['draft', 'published'], true)) {
-                $query->where('status', $status);
-            }
-
-            $locale = (string) $request->input('locale', '');
-            if (PublicI18n::isSupported($locale)) {
-                $query->where('primary_locale', $locale);
-            }
-
-            $kind = (string) $request->input('kind', '');
-            if ($kind === 'curated') {
-                $query->whereNotNull('curated_key');
-            } elseif ($kind === 'custom') {
-                $query->whereNull('curated_key');
-            }
-
-            if ($request->boolean('missing_translations')) {
-                $needed = count(PublicI18n::supported());
-                $query->whereRaw(
-                    '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
-                    [$needed]
-                );
-            }
-
-            $blogs = $query->paginate(20)->withQueryString();
-
-            return view('admin.blogs.index', compact('blogs'));
-        } catch (\Exception $e) {
-            Log::error('Error fetching blogs: '.$e->getMessage());
-
-            return redirect()->back()->with('error', UserFacingError::message($e, 'Failed to load blogs. Please try again.'));
+        } catch (\Throwable $e) {
+            Log::error('Error ensuring curated blogs: '.$e->getMessage());
+            session()->now('error', UserFacingError::message($e, 'Curated blog sync failed. The list below may be incomplete.'));
         }
+
+        $query = Blog::with(['creator', 'translations'])->orderByDesc('created_at');
+
+        $search = trim((string) $request->input('q', ''));
+        if ($search !== '') {
+            $like = '%'.$search.'%';
+            $query->where(function ($inner) use ($like) {
+                $inner->where('title', 'like', $like)
+                    ->orWhere('slug', 'like', $like)
+                    ->orWhere('author', 'like', $like)
+                    ->orWhereHas('translations', function ($translations) use ($like) {
+                        $translations->where('title', 'like', $like)
+                            ->orWhere('slug', 'like', $like);
+                    });
+            });
+        }
+
+        $status = (string) $request->input('status', '');
+        if (in_array($status, ['draft', 'published'], true)) {
+            $query->where('status', $status);
+        }
+
+        $locale = (string) $request->input('locale', '');
+        if (PublicI18n::isSupported($locale)) {
+            $query->where('primary_locale', $locale);
+        }
+
+        $kind = (string) $request->input('kind', '');
+        if ($kind === 'curated') {
+            $query->whereNotNull('curated_key');
+        } elseif ($kind === 'custom') {
+            $query->whereNull('curated_key');
+        }
+
+        if ($request->boolean('missing_translations')) {
+            $needed = count(PublicI18n::supported());
+            $query->whereRaw(
+                '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
+                [$needed]
+            );
+        }
+
+        $blogs = $query->paginate(20)->withQueryString();
+
+        return view('admin.blogs.index', compact('blogs'));
     }
 
     /**
@@ -196,7 +196,7 @@ class BlogController extends Controller
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog creation failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
@@ -216,11 +216,14 @@ class BlogController extends Controller
             $safeContent = app(BlogHtmlSanitizer::class)->sanitize($blog->content);
 
             return view('admin.blogs.show', compact('blog', 'safeContent'));
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('admin.blogs.index')
+                ->with('error', 'Blog not found.');
+        } catch (\Throwable $e) {
             Log::error('Error showing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Blog not found.');
+                ->with('error', UserFacingError::message($e, 'Failed to load blog. Please try again.'));
         }
     }
 
@@ -236,11 +239,14 @@ class BlogController extends Controller
                 'blog' => $blog,
                 'locales' => PublicI18n::supported(),
             ]);
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('admin.blogs.index')
+                ->with('error', 'Blog not found.');
+        } catch (\Throwable $e) {
             Log::error('Error editing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Blog not found.');
+                ->with('error', UserFacingError::message($e, 'Failed to open blog editor. Please try again.'));
         }
     }
 
@@ -348,7 +354,7 @@ class BlogController extends Controller
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog update failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
@@ -379,7 +385,7 @@ class BlogController extends Controller
 
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blogTitle.'" deleted successfully!');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog deletion failed: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -411,7 +417,7 @@ class BlogController extends Controller
 
             return redirect()->route('admin.blogs.index')
                 ->with('success', $message);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog status toggle failed: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -455,7 +461,7 @@ class BlogController extends Controller
                 'success' => false,
                 'error' => collect($e->errors())->flatten()->first() ?: 'Invalid image.',
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Image upload failed: '.$e->getMessage());
 
             return response()->json([
@@ -487,7 +493,7 @@ class BlogController extends Controller
             Log::info('Blog content image delete requested', ['path' => $path]);
 
             return response()->json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog content image delete failed: '.$e->getMessage());
 
             return response()->json([

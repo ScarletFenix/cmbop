@@ -49,6 +49,14 @@ class BlogHtmlSanitizer
     }
 
     /**
+     * @deprecated Use isBlank() — kept so a master merge that still calls isEmptyHtml() does not 500.
+     */
+    public static function isEmptyHtml(?string $html): bool
+    {
+        return self::isBlank($html);
+    }
+
+    /**
      * Encode stored HTML for a <script type="application/json"> payload.
      * JSON_HEX_TAG prevents </script> in the body from breaking the edit page.
      */

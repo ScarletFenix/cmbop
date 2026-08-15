@@ -173,7 +173,7 @@ class AdminBlogImageTest extends TestCase
             'updated_by' => $admin->id,
         ]);
 
-        $this->actingAs($admin)
+        $editHtml = $this->actingAs($admin)
             ->get(route('admin.blogs.edit', $blog->id))
             ->assertOk()
             ->assertSee('admin\/blogs\/upload-image', false)
@@ -185,14 +185,18 @@ class AdminBlogImageTest extends TestCase
             ->assertSee('Article images', false)
             ->assertSee('admin-blog-images.js', false)
             ->assertSee('/media/blogs/content/demo.jpg', false)
-            ->assertDontSee('/storage/blogs/content/demo.jpg', false);
+            ->assertDontSee('/storage/blogs/content/demo.jpg', false)
+            ->getContent();
+        $this->assertSame(1, substr_count($editHtml, 'new Quill('));
 
-        $this->actingAs($admin)
+        $create = $this->actingAs($admin)
             ->get(route('admin.blogs.create'))
             ->assertOk()
             ->assertSee('admin\/blogs\/upload-image', false)
             ->assertSee('articleImagesManager', false)
             ->assertSee('quillImageInput', false);
+
+        $this->assertSame(1, substr_count($create->getContent(), 'new Quill('));
     }
 
     public function test_admin_can_delete_stored_blog_content_image(): void
