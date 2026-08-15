@@ -1203,7 +1203,10 @@ class ContentSubmission extends Model
             return self::CHECKOUT_LINK_MESSAGE;
         }
 
-        if ($this->canBeOrdered() && $this->isClaimedByAnotherOrder()) {
+        // order_id leftovers cannot be ordered again, but they stay editable
+        // until paid. Do not hide the Pay-again notice just because
+        // canBeOrdered() is false.
+        if ($this->isClaimedByAnotherOrder() && ! $this->isLockedByPaidOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
         }
 
