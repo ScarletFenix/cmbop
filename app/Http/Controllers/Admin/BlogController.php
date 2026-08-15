@@ -128,6 +128,7 @@ class BlogController extends Controller
 
         try {
             $translations = $this->sanitizeTranslations((array) $request->input('translations', []), true);
+            $this->assertPrimaryLocalePresent($this->requestedPrimaryLocale($request), $translations);
 
             if ($request->hasFile('featured_image')) {
                 $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
@@ -284,6 +285,7 @@ class BlogController extends Controller
             }
 
             $translations = $this->sanitizeTranslations((array) $request->input('translations', []), true);
+            $this->assertPrimaryLocalePresent($this->requestedPrimaryLocale($request), $translations);
             $en = $translations['en'];
             $data = [
                 'title' => $en['title'],
@@ -342,7 +344,7 @@ class BlogController extends Controller
                 Log::info('Blog published', ['blog_id' => $id]);
             }
 
-            DB::transaction(function () use ($blog, $data, $translations, $slugsByLocale) {
+            DB::transaction(function () use ($blog, $data, $translations, $slugsByLocale, $primaryLocale) {
                 $blog->update($data);
 
                 foreach ($translations as $locale => $translationData) {
@@ -355,6 +357,7 @@ class BlogController extends Controller
                 $blog->translations()
                     ->whereNotIn('locale', array_keys($translations))
                     ->where('locale', '!=', 'en')
+                    ->where('locale', '!=', $primaryLocale)
                     ->delete();
             });
 
@@ -572,7 +575,7 @@ class BlogController extends Controller
         }
 
         $path = rawurldecode($path);
-        if ($path === '' || str_contains($path, '..') || str_contains($path, '%')) {
+        if ($path === '' || str_contains($path, '..') || str_contains($path, '%') || str_contains($path, "\0")) {
             return null;
         }
 
@@ -788,6 +791,18 @@ class BlogController extends Controller
         $locale = (string) $request->input('primary_locale');
 
         return PublicI18n::isSupported($locale) ? $locale : 'en';
+    }
+
+    /**
+     * @param  array<string, array<string, mixed>>  $translations
+     */
+    private function assertPrimaryLocalePresent(string $primaryLocale, array $translations): void
+    {
+        if ($primaryLocale !== 'en' && ! isset($translations[$primaryLocale])) {
+            throw ValidationException::withMessages([
+                "translations.{$primaryLocale}.title" => strtoupper($primaryLocale).' is the primary locale and must include both title and content.',
+            ]);
+        }
     }
 
     /**
