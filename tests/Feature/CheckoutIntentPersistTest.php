@@ -200,4 +200,30 @@ class CheckoutIntentPersistTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $intents->peekBonus($advertiser->id, 'REF-SCRUB-PKG'), 0.01);
         $this->assertEqualsWithDelta(20.0, (float) ($intents->getPackage('REF-SCRUB-PKG')['bonus_applied'] ?? 0), 0.01);
     }
+
+    public function test_store_package_after_take_does_not_resurrect_live_hold(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $intents = app(CheckoutIntentService::class);
+        $intents->storePackage('REF-RESURRECT', [
+            'user_id' => $advertiser->id,
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'lines' => [],
+        ]);
+
+        $this->assertEqualsWithDelta(20.0, $intents->takeBonus($advertiser->id, 'REF-RESURRECT'), 0.01);
+
+        $package = $intents->getPackage('REF-RESURRECT');
+        $this->assertIsArray($package);
+        $package['stripe_session_id'] = 'cs_after_cancel';
+        $intents->storePackage('REF-RESURRECT', $package);
+
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'REF-RESURRECT'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->peekBonus($advertiser->id, 'REF-RESURRECT'), 0.01);
+        $stored = $intents->getPackage('REF-RESURRECT');
+        $this->assertSame('cs_after_cancel', $stored['stripe_session_id'] ?? null);
+        $this->assertEqualsWithDelta(20.0, (float) ($stored['bonus_applied'] ?? 0), 0.01);
+    }
 }

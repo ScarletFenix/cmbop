@@ -269,6 +269,60 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'REF-FIRST-CANCEL'), 0.01);
     }
 
+    public function test_restoring_leftover_package_after_cancel_does_not_steal_other_hold(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $wallet = $this->wallet($advertiser, 20);
+        $payments = app(OrderPaymentService::class);
+        $intents = app(CheckoutIntentService::class);
+        $refunds = app(OrderRefundService::class);
+
+        $payments->storePendingCheckout('REF-FIRST-CANCEL', [
+            'user_id' => $advertiser->id,
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+        ]);
+        $intents->rememberBonus($advertiser->id, 'REF-FIRST-CANCEL', 20);
+
+        $refunds->releaseReservedCheckoutBonusForReference(
+            $advertiser->id,
+            'REF-FIRST-CANCEL',
+            collect(),
+            20
+        );
+
+        $leftover = $payments->getPendingCheckout('REF-FIRST-CANCEL');
+        $this->assertIsArray($leftover);
+        $leftover['stripe_session_id'] = 'cs_written_after_cancel';
+        $payments->storePendingCheckout('REF-FIRST-CANCEL', $leftover);
+
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'REF-FIRST-CANCEL'), 0.01);
+
+        $wallet->reserveBonusOnly(20);
+        $intents->rememberBonus($advertiser->id, 'REF-SECOND-CART', 20);
+
+        $fallback = round((float) ($leftover['bonus_applied'] ?? 0), 2);
+        $refunds->releaseReservedCheckoutBonusForReference(
+            $advertiser->id,
+            'REF-FIRST-CANCEL',
+            collect(),
+            $fallback > 0 ? $fallback : 20
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, 'REF-SECOND-CART'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'REF-FIRST-CANCEL'), 0.01);
+        $this->assertSame(
+            'cs_written_after_cancel',
+            $payments->getPendingCheckout('REF-FIRST-CANCEL')['stripe_session_id'] ?? null
+        );
+    }
+
     public function test_stale_package_json_does_not_burn_other_checkout_on_approve(): void
     {
         $advertiser = $this->userWithRole('advertiser');
