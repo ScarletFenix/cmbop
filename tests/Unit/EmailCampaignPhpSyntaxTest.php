@@ -103,6 +103,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function containsSendCampaignJob\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsCampaignMail\b/', $payload));
         $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function containsEmailCampaignModel\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function modelIdentifierIds\b/', $payload));
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
@@ -156,6 +158,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $payloadTest = (string) file_get_contents($files[4]);
         $this->assertSame(1, preg_match_all(
             '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
+            $payloadTest
+        ));
+        $this->assertSame(1, preg_match_all(
+            '/function test_contains_campaign_mail_matches_model_identifier_without_dedupe_key\b/',
             $payloadTest
         ));
     }

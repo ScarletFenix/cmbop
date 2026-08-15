@@ -2,7 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\EmailCampaign;
 use App\Models\EmailLog;
+use App\Models\User;
 use Carbon\Carbon;
 
 class MailJobPayload
@@ -39,6 +41,8 @@ class MailJobPayload
     /**
      * True when this payload is an AudienceCampaignMail for exactly $campaignId.
      * `audience_campaign:12:user:` must not match campaign 123.
+     * Production SerializesModels stores the campaign as a ModelIdentifier
+     * (`App\Models\EmailCampaign` + id), not a `campaignId` property.
      */
     public static function containsCampaignMail(string $payload, int $campaignId): bool
     {
@@ -51,7 +55,8 @@ class MailJobPayload
         }
 
         return str_contains($payload, 'AudienceCampaignMail')
-            && self::containsCampaignId($payload, $campaignId);
+            && (self::containsCampaignId($payload, $campaignId)
+                || self::containsEmailCampaignModel($payload, $campaignId));
     }
 
     /**
@@ -65,15 +70,69 @@ class MailJobPayload
             return [];
         }
 
-        if (! preg_match_all(
+        $ids = [];
+        if (preg_match_all(
             '/audience_campaign:'.$campaignId.':user:(\d+)/',
             $payload,
             $matches
         )) {
+            $ids = array_map('intval', $matches[1]);
+        }
+
+        // Queued mail without a stamped dedupeKey still serializes the
+        // recipient as a User ModelIdentifier. Missing that looked like
+        // "nothing in flight" and reclaim doubled the send.
+        if ($ids === []
+            && str_contains($payload, 'AudienceCampaignMail')
+            && self::containsEmailCampaignModel($payload, $campaignId)) {
+            $ids = self::modelIdentifierIds($payload, User::class);
+        }
+
+        return array_values(array_unique(array_filter(
+            $ids,
+            static fn (int $id): bool => $id > 0
+        )));
+    }
+
+    /**
+     * True when SerializesModels stored EmailCampaign id $campaignId.
+     * `i:12;` must not match campaign 123.
+     */
+    public static function containsEmailCampaignModel(string $payload, int $campaignId): bool
+    {
+        return self::containsModelIdentifier($payload, EmailCampaign::class, $campaignId);
+    }
+
+    /**
+     * Eloquent ids stored as ModelIdentifier for $class.
+     *
+     * @return list<int>
+     */
+    public static function modelIdentifierIds(string $payload, string $class): array
+    {
+        if ($class === '') {
             return [];
         }
 
-        return array_values(array_unique(array_map('intval', $matches[1])));
+        $ids = [];
+        $quoted = preg_quote($class, '/');
+        foreach (self::payloadHaystacks($payload) as $haystack) {
+            if (preg_match_all('/'.$quoted.'";s:2:"id";i:(\d+);/', $haystack, $matches)) {
+                foreach ($matches[1] as $id) {
+                    $ids[] = (int) $id;
+                }
+            }
+            if (preg_match_all('/'.$quoted.'";s:2:"id";s:\d+:"(\d+)";/', $haystack, $matches)) {
+                foreach ($matches[1] as $id) {
+                    $ids[] = (int) $id;
+                }
+            }
+        }
+
+        return array_values(array_unique(array_filter(
+            $ids,
+            static fn (int $id): bool => $id > 0
+        )));
     }
 
     /**
@@ -99,6 +158,44 @@ class MailJobPayload
         $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
 
         return is_string($command) && (bool) preg_match('/s:10:"campaignId";i:'.$id.';/', $command);
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function payloadHaystacks(string $payload): array
+    {
+        $haystacks = [$payload];
+        $decoded = json_decode($payload, true);
+        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
+        if (is_string($command) && $command !== '') {
+            $haystacks[] = $command;
+        }
+
+        return $haystacks;
+    }
+
+    protected static function containsModelIdentifier(string $payload, string $class, int $id): bool
+    {
+        if ($id < 1 || $class === '') {
+            return false;
+        }
+
+        $idStr = (string) $id;
+        $needles = [
+            $class.'";s:2:"id";i:'.$idStr.';',
+            $class.'";s:2:"id";s:'.strlen($idStr).':"'.$idStr.'";',
+        ];
+
+        foreach (self::payloadHaystacks($payload) as $haystack) {
+            foreach ($needles as $needle) {
+                if (str_contains($haystack, $needle)) {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 
     /**
