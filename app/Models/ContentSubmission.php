@@ -245,6 +245,10 @@ class ContentSubmission extends Model
 
         if ($this->relationLoaded('orderItems')) {
             return $this->orderItems->contains(function (OrderItem $item) use ($orderId) {
+                if ($item->isClawedBack()) {
+                    return false;
+                }
+
                 $order = $item->relationLoaded('order')
                     ? $item->order
                     : $item->order()->first();
@@ -258,6 +262,7 @@ class ContentSubmission extends Model
             ->whereHas('order', function ($q) use ($orderId) {
                 $this->constrainActiveOrderClaim($q, $orderId);
             })
+            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
             ->exists();
     }
 
@@ -345,6 +350,7 @@ class ContentSubmission extends Model
             $item->whereHas('order', function ($order) {
                 $this->constrainActiveOrderClaim($order);
             });
+            $this->excludeClawedBackItems($item);
         });
     }
 
@@ -364,6 +370,7 @@ class ContentSubmission extends Model
             $item->whereHas('order', function ($order) {
                 $this->constrainActiveOrderClaim($order);
             });
+            $this->excludeClawedBackItems($item);
         });
     }
 
@@ -673,6 +680,10 @@ class ContentSubmission extends Model
 
         if ($this->relationLoaded('orderItems')) {
             return $this->orderItems->contains(function (OrderItem $item) {
+                if ($item->isClawedBack()) {
+                    return false;
+                }
+
                 $order = $item->relationLoaded('order')
                     ? $item->order
                     : $item->order()->first();
@@ -688,6 +699,7 @@ class ContentSubmission extends Model
                 $q->where('status', '!=', 'cancelled')
                     ->where('payment_status', 'paid');
             })
+            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
             ->exists();
     }
 
@@ -1313,6 +1325,20 @@ class ContentSubmission extends Model
         return $this->canBeOrdered()
             && $this->hasCheckoutReadyLinks()
             && ! $this->isClaimedByAnotherOrder();
+    }
+
+    /**
+     * @param  Builder<OrderItem>  $itemQuery
+     */
+    protected function excludeClawedBackItems($itemQuery): void
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return;
+        }
+
+        $itemQuery->whereDoesntHave('disputes', function ($dispute) {
+            $dispute->where('status', OrderItemDispute::STATUS_UPHELD);
+        });
     }
 
     /**

@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
@@ -361,6 +362,15 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertFalse($siblingArticle->fresh()->canBeOrdered());
         $this->assertNull($disputedArticle->fresh()->order_id);
         $this->assertSame($order->id, $siblingArticle->fresh()->order_id);
+        $released = $disputedArticle->fresh();
+        $this->assertFalse($released->isClaimedByAnotherOrder());
+        $this->assertFalse($released->isLockedByPaidOrder());
+        $this->assertTrue($released->isReadyForCheckout());
+        $this->assertSame('available', $released->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($disputedArticle->id)->checkoutReady()->exists()
+        );
+        $this->assertFalse($siblingArticle->fresh()->isReadyForCheckout());
     }
 
     public function test_advertiser_can_report_a_sibling_placement_and_must_choose_a_line(): void
