@@ -510,6 +510,8 @@ class ContentSubmissionController extends Controller
             'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
             'image_rights_covers' => $submission->imageRightsCoverContent(),
             'has_file' => $submission->hasStoredFile(),
+            'editor_notice' => $submission->editorNotice(),
+            'editor_notice_ok' => false,
         ]);
     }
 

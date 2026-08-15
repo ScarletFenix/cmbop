@@ -741,7 +741,7 @@ class CatalogController extends Controller
             return null;
         }
 
-        $id = (int) $request->query('content_submission_id', 0);
+        $id = (int) scalar_text($request->query('content_submission_id', 0));
         if ($id <= 0 && session('ordering_from_library')) {
             $id = (int) session('checkout_content_submission_id', 0);
         }
