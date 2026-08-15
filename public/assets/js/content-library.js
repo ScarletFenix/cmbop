@@ -871,7 +871,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             },
             body: JSON.stringify({
                 links: links,
-                preview_html: document.getElementById('articlePreviewBody').innerHTML,
+                preview_html: previewModalState.html || '',
             }),
         });
         const data = await res.json();
@@ -880,7 +880,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             return;
         }
         const sub = data.submission || {};
-        const html = sub.preview_html || document.getElementById('articlePreviewBody').innerHTML;
+        const html = sub.preview_html || previewModalState.html;
         const stillApproved = data.approved !== false;
         const editable = stillApproved;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);

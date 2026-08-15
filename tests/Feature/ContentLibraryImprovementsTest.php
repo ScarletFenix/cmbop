@@ -1010,6 +1010,60 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertSame(ContentUploadService::tooManyImagesMessage(), $result['submission']->editorNotice());
     }
 
+    public function test_preview_link_save_does_not_persist_download_chrome(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body with a figure.</p><p><img src="/storage/content-articles/demo.png" alt="Chart"></p>',
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $polluted = '<p>Body with a figure.</p><div class="article-img-wrap">'
+            .'<img src="/storage/content-articles/demo.png" alt="Chart">'
+            .'<button type="button" class="article-img-download btn btn-sm btn-dark">'
+            .'<i class="fa fa-download me-1"></i>Download</button></div>';
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'tool A', 'url' => 'https://example.com/a'],
+                ],
+                'preview_html' => $polluted,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $html = (string) $submission->fresh()->preview_html;
+        $this->assertStringContainsString('src="/storage/content-articles/demo.png"', $html);
+        $this->assertStringNotContainsString('article-img-wrap', $html);
+        $this->assertStringNotContainsString('Download', $html);
+        $this->assertStringNotContainsString('<button', $html);
+    }
+
+    public function test_available_filter_excludes_approved_articles_that_still_need_image_rights(): void
+    {
+        $advertiser = $this->advertiser();
+        $ready = $this->createApprovedSubmission($advertiser);
+        $ready->update(['title' => 'Ready To Order']);
+
+        $needsRights = $this->createApprovedSubmission($advertiser);
+        $needsRights->update([
+            'title' => 'Needs Image Rights',
+            'preview_html' => '<p>Body</p><p><img src="/storage/content-articles/1/x.png" alt=""></p>',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'available']))
+            ->assertOk()
+            ->assertSee('Ready To Order')
+            ->assertDontSee('Needs Image Rights');
+    }
+
     public function test_preview_link_save_rejects_eleven_images_and_keeps_approval(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -1142,9 +1196,15 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('id="articlePreviewLinksList"', $html);
         $this->assertStringContainsString('id="articleLinksSaveBtn"', $html);
         $this->assertStringContainsString('assets/js/content-library.js', $html);
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString(
             'function openPreviewModal(title, html, links, submissionId, editable)',
-            file_get_contents(public_path('assets/js/content-library.js'))
+            $js
+        );
+        $this->assertStringContainsString('preview_html: previewModalState.html || \'\'', $js);
+        $this->assertStringNotContainsString(
+            "preview_html: document.getElementById('articlePreviewBody').innerHTML",
+            $js
         );
     }
 

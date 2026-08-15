@@ -126,14 +126,7 @@ class ContentLibraryController extends Controller
             $query->whereNull('archived_at');
 
             if ($availability === 'available') {
-                $query->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                    ->whereNull('order_id')
-                    ->whereNotNull('path')->where('path', '!=', '')
-                    ->whereNotNull('country')->where('country', '!=', '')
-                    ->whereNotNull('language')->where('language', '!=', '')
-                    ->where(function ($exp) {
-                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                    });
+                $query->orderable();
             } elseif ($availability === 'evaluating') {
                 $query->whereIn('moderation_status', [
                     ContentSubmission::STATUS_PENDING,

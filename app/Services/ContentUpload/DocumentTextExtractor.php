@@ -94,8 +94,9 @@ class DocumentTextExtractor
         $xml = preg_replace_callback(
             '/<w:pict\b[\s\S]*?<\/w:pict>/iu',
             function (array $m) use ($imageUrlsByRid): string {
-                if (preg_match('/r:embed="([^"]+)"/i', $m[0], $em) && isset($imageUrlsByRid[$em[1]])) {
-                    return '<w:r><w:t>[[IMG:'.$em[1].']]</w:t></w:r>';
+                $rid = $this->pictRelationshipId($m[0]);
+                if ($rid !== null && isset($imageUrlsByRid[$rid])) {
+                    return '<w:r><w:t>[[IMG:'.$rid.']]</w:t></w:r>';
                 }
 
                 return '';
@@ -111,6 +112,8 @@ class DocumentTextExtractor
         $text = preg_replace("/[ \t]+/", ' ', $text) ?? $text;
         $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
         $text = trim($text);
+        // Drawing + VML fallback in AlternateContent can emit the same rId twice.
+        $text = preg_replace('/(\[\[IMG:([^\]]+)\]\])(?:\s*\[\[IMG:\2\]\])+/u', '$1', $text) ?? $text;
 
         $plainForCount = trim(preg_replace('/\[\[IMG:[^\]]+\]\]/', ' ', $text) ?? $text);
         if ($plainForCount === '' && $imageUrlsByRid === []) {
@@ -138,6 +141,19 @@ class DocumentTextExtractor
             'error_code' => null,
             'error_message' => null,
         ];
+    }
+
+    protected function pictRelationshipId(string $pictXml): ?string
+    {
+        if (preg_match('/r:embed=("|\')(.*?)\1/i', $pictXml, $em)) {
+            return $em[2];
+        }
+
+        if (preg_match('/<(?:v:)?imagedata\b[^>]*\br:id=("|\')(.*?)\1/i', $pictXml, $idM)) {
+            return $idM[2];
+        }
+
+        return null;
     }
 
     /**
