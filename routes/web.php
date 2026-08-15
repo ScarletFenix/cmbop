@@ -664,7 +664,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');
+        Route::get('/moderation/logs/{log}', [AdminContentModerationController::class, 'show'])->name('moderation.show');
         Route::post('/moderation/logs/{log}/override', [AdminContentModerationController::class, 'override'])->name('moderation.override');
+        Route::post('/moderation/logs/{log}/revert', [AdminContentModerationController::class, 'revert'])->name('moderation.revert');
 
         Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
         Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');

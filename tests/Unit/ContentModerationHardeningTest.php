@@ -322,6 +322,22 @@ class ContentModerationHardeningTest extends TestCase
         }
     }
 
+    public function test_extra_keywords_are_scored_as_custom_not_gambling(): void
+    {
+        $result = $this->engine->score(
+            title: 'Pharmacy notes',
+            text: 'This briefing mentions viagra once among other over-the-counter products.',
+            links: [],
+            categories: $this->categories,
+            extraKeywords: ['viagra'],
+        );
+
+        $this->assertSame('custom', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+        $this->assertContains('viagra', $result['matched_terms']);
+        $this->assertNotSame('gambling', $result['detected_category']);
+    }
+
     public function test_merged_keywords_include_every_locale_list(): void
     {
         $merged = $this->engine->mergedKeywords($this->categories['gambling']);
