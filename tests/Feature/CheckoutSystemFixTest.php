@@ -100,11 +100,14 @@ class CheckoutSystemFixTest extends TestCase
 
         $client = Mockery::mock(ClientInterface::class);
         $client->shouldReceive('request')
-            ->twice()
-            ->andReturn(
-                [$customerBody, 200, []],
-                [$sessionBody, 200, []]
-            );
+            ->andReturnUsing(function () use ($customerBody, $sessionBody) {
+                static $n = 0;
+                $n++;
+
+                return $n === 1
+                    ? [$customerBody, 200, []]
+                    : [$sessionBody, 200, []];
+            });
         ApiRequestor::setHttpClient($client);
     }
 

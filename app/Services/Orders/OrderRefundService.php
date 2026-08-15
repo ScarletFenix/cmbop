@@ -334,11 +334,10 @@ class OrderRefundService
             $share = min($reserved, max(0, round($reserved * ($failedTotal / $pool), 2)));
         }
 
-        // Cap to this reference's leftover. Dumping the whole wallet bucket
-        // stole another in-flight checkout's promo when this row had none.
         if ($peek > 0) {
             $share = min($share, $peek);
-        } elseif ($openTotal <= 0) {
+        } elseif ($failed->isEmpty() || $openTotal <= 0 || $this->otherOpenCheckoutExists($userId, $referenceCode)) {
+            // Unknown bonus for this ref — do not unlock another checkout's reserve.
             $share = 0.0;
         }
 
@@ -396,6 +395,23 @@ class OrderRefundService
         if ($reduce > 0) {
             $intents->decrementBonus($userId, $reference, $reduce);
         }
+    }
+
+    /**
+     * Another checkout still has paid/pending rows that may hold reserved promo.
+     */
+    private function otherOpenCheckoutExists(int $userId, string $reference): bool
+    {
+        if ($userId <= 0) {
+            return false;
+        }
+
+        return Order::query()
+            ->where('user_id', $userId)
+            ->when($reference !== '', fn ($q) => $q->where('reference_code', '!=', $reference))
+            ->whereIn('payment_status', ['paid', 'pending'])
+            ->whereNotIn('status', ['completed', 'cancelled'])
+            ->exists();
     }
 
     /**

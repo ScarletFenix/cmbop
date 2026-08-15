@@ -178,6 +178,29 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertTrue($secondPass->every(fn (Order $order) => $order->payment_status === 'paid'));
     }
 
+    public function test_stale_stripe_session_credits_wallet_instead_of_materializing_new_cart(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $this->advertiserWallet($advertiser, 0);
+        $publisher = $this->makeUser('publisher');
+        $currentSite = $this->makeSite($publisher, 'stale-current.example', 80);
+        $ref = 'STALE-SESSION-1';
+        $payments = app(OrderPaymentService::class);
+        $package = $this->package($advertiser, [$this->lineFor($currentSite, 80)], 80);
+        $package['stripe_session_id'] = 'cs_test_current_package';
+        $payments->storePendingCheckout($ref, $package);
+
+        $stale = $this->paidSession($ref, 40, 'cs_test_stale_session');
+        $stale->metadata->user_id = (string) $advertiser->id;
+
+        $created = $payments->finalizeStripeFirstCheckout($ref, $stale);
+
+        $this->assertTrue($created->isEmpty());
+        $this->assertSame(0, Order::where('reference_code', $ref)->count());
+        $this->assertEqualsWithDelta(40.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+    }
+
     public function test_payment_intent_amount_mismatch_refuses_to_mark_paid(): void
     {
         $advertiser = $this->makeUser('advertiser');

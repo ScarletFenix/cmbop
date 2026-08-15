@@ -202,6 +202,53 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $this->assertNotNull(Cache::get('pending_card_checkout:'.$newRef));
     }
 
+    public function test_card_checkout_rotates_reference_when_open_stripe_session_exists(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = $this->activeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $cart = [[
+            'id' => $site->id,
+            'name' => $site->site_name,
+            'quantity' => 1,
+            'price' => 100,
+            'sensitive_type' => null,
+        ]];
+        $payload = [
+            'payment_method' => 'card',
+            'reference_code' => 'CARD42',
+            'publication_mode' => 'immediate',
+            'content_submissions' => [
+                $site->id => [$submission->id],
+            ],
+        ];
+
+        $this->fakeStripeCheckoutSession('cs_test_open_first');
+        $this->actingAs($advertiser)
+            ->withSession(['cart' => $cart])
+            ->postJson(route('advertiser.checkout.process'), $payload)
+            ->assertOk()
+            ->assertJsonPath('reference_code', 'CARD42');
+
+        $this->fakeStripeCheckoutSession('cs_test_open_second');
+        $second = $this->actingAs($advertiser)
+            ->withSession(['cart' => $cart])
+            ->postJson(route('advertiser.checkout.process'), $payload)
+            ->assertOk()
+            ->assertJson(['success' => true, 'requires_payment' => true]);
+
+        $newRef = (string) $second->json('reference_code');
+        $this->assertNotSame('CARD42', $newRef);
+        $this->assertNotNull(Cache::get('pending_card_checkout:CARD42'));
+        $this->assertNotNull(Cache::get('pending_card_checkout:'.$newRef));
+        $this->assertSame('cs_test_open_first', Cache::get('pending_card_checkout:CARD42')['stripe_session_id'] ?? null);
+    }
+
     public function test_card_checkout_rolls_back_pending_orders_when_stripe_fails(): void
     {
         config(['content_moderation.enabled' => false]);
