@@ -204,6 +204,7 @@ class CuratedBlogWriter
                 ->where('locale', $locale)
                 ->value('slug');
             $slug = is_string($existingSlug) && $existingSlug !== ''
+                && ! self::translationSlugTaken($existingSlug, $blog->id, $locale)
                 ? $existingSlug
                 : self::uniqueTranslationSlug($slug, $blog->id, $locale);
         }

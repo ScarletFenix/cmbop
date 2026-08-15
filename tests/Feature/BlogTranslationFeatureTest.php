@@ -463,6 +463,65 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertDatabaseHas('blog_translations', ['blog_id' => $blog->id, 'locale' => 'de', 'title' => 'Geaenderter Deutscher Titel']);
     }
 
+    public function test_store_uses_primary_locale_slug_as_public_fallback(): void
+    {
+        $this->actingAs($this->adminUser())->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'primary_locale' => 'de',
+            'translations' => [
+                'en' => [
+                    'title' => 'English Primary Slug Post',
+                    'slug' => 'english-primary-slug-post',
+                    'excerpt' => 'English excerpt',
+                    'content' => '<p>English body</p>',
+                ],
+                'de' => [
+                    'title' => 'Deutscher Primary Slug Beitrag',
+                    'slug' => 'deutscher-primary-slug-beitrag',
+                    'excerpt' => 'Deutscher Auszug',
+                    'content' => '<p>Deutscher Inhalt</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog = Blog::query()->where('slug', 'deutscher-primary-slug-beitrag')->firstOrFail();
+        $this->assertSame('de', $blog->primary_locale);
+        $this->assertSame('english-primary-slug-post', $blog->translations()->where('locale', 'en')->value('slug'));
+        $this->assertSame('deutscher-primary-slug-beitrag', $blog->translations()->where('locale', 'de')->value('slug'));
+    }
+
+    public function test_update_keeps_de_primary_slug_instead_of_replacing_it_with_english(): void
+    {
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $catalog = GastbeitraegeEuropaBlogPost::SLUG;
+        $blog = Blog::query()->where('curated_key', $catalog)->orWhere('slug', $catalog)->firstOrFail();
+
+        $this->actingAs($this->adminUser())->put(route('admin.blogs.update', $blog->id), [
+            'status' => 'published',
+            'primary_locale' => 'de',
+            'translations' => [
+                'en' => [
+                    'title' => 'Buy guest posts in Europe',
+                    'slug' => 'buy-guest-posts-in-europe-admin-save',
+                    'excerpt' => 'English excerpt',
+                    'content' => '<p>English body</p>',
+                ],
+                'de' => [
+                    'title' => (string) $blog->title,
+                    'slug' => $catalog,
+                    'excerpt' => (string) $blog->excerpt,
+                    'content' => (string) $blog->content,
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog->refresh();
+        $this->assertSame($catalog, $blog->slug);
+        $this->assertSame('buy-guest-posts-in-europe-admin-save', $blog->translations()->where('locale', 'en')->value('slug'));
+        $this->assertSame($catalog, $blog->translations()->where('locale', 'de')->value('slug'));
+    }
+
     public function test_public_blog_heals_missing_translations_table(): void
     {
         $blog = Blog::factory()->published()->create([

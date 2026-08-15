@@ -147,15 +147,15 @@ class BlogController extends Controller
             }
             $en = $translations['en'];
             $enSlug = $this->uniquePublicSlug($en['slug'] ?: Str::slug($en['title']));
-            $legacySlug = $enSlug;
             $legacyExcerpt = filled($en['excerpt'])
                 ? Str::limit(trim((string) $en['excerpt']), 300)
                 : Str::limit(strip_tags((string) $en['content']), 160);
+            $primaryLocale = $this->requestedPrimaryLocale($request);
 
-            $blog = DB::transaction(function () use ($request, $featuredImage, $tags, $translations, $en, $enSlug, $legacySlug, $legacyExcerpt) {
+            $blog = DB::transaction(function () use ($request, $featuredImage, $tags, $translations, $en, $enSlug, $legacyExcerpt, $primaryLocale) {
                 $blog = Blog::create([
                     'title' => $en['title'],
-                    'slug' => $legacySlug,
+                    'slug' => $enSlug,
                     'primary_locale' => $request->input('primary_locale') ?: null,
                     'excerpt' => $legacyExcerpt,
                     'content' => $en['content'],
@@ -169,10 +169,12 @@ class BlogController extends Controller
                     'manually_edited_at' => now(),
                 ]);
 
+                $slugsByLocale = [];
                 foreach ($translations as $locale => $data) {
                     $slug = $locale === 'en'
                         ? $enSlug
                         : $this->uniquePublicSlug($data['slug'] ?: Str::slug($data['title']));
+                    $slugsByLocale[$locale] = $slug;
 
                     BlogTranslation::create(array_merge(
                         $this->translationAttributes($data, $slug),
@@ -181,6 +183,11 @@ class BlogController extends Controller
                             'locale' => $locale,
                         ]
                     ));
+                }
+
+                $primarySlug = $slugsByLocale[$primaryLocale] ?? $enSlug;
+                if ($primarySlug !== $enSlug) {
+                    $blog->update(['slug' => $primarySlug]);
                 }
 
                 return $blog;
@@ -298,7 +305,23 @@ class BlogController extends Controller
                 $blog->id,
                 $existingEn?->id
             );
-            $data['slug'] = $enSlug;
+            $primaryLocale = $this->requestedPrimaryLocale($request);
+            $slugsByLocale = ['en' => $enSlug];
+            $reservedSlugs = [$enSlug];
+            foreach ($translations as $locale => $translationData) {
+                if ($locale === 'en') {
+                    continue;
+                }
+                $existing = $blog->translations->firstWhere('locale', $locale);
+                $slugsByLocale[$locale] = $this->uniquePublicSlug(
+                    $translationData['slug'] ?: Str::slug($translationData['title']),
+                    $blog->id,
+                    $existing?->id,
+                    $reservedSlugs
+                );
+                $reservedSlugs[] = $slugsByLocale[$locale];
+            }
+            $data['slug'] = $slugsByLocale[$primaryLocale] ?? $enSlug;
 
             if ($request->hasFile('featured_image')) {
                 $newFeaturedImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
@@ -319,22 +342,13 @@ class BlogController extends Controller
                 Log::info('Blog published', ['blog_id' => $id]);
             }
 
-            DB::transaction(function () use ($blog, $data, $translations, $enSlug) {
+            DB::transaction(function () use ($blog, $data, $translations, $slugsByLocale) {
                 $blog->update($data);
 
                 foreach ($translations as $locale => $translationData) {
-                    $existing = $blog->translations()->where('locale', $locale)->first();
-                    $slug = $locale === 'en'
-                        ? $enSlug
-                        : $this->uniquePublicSlug(
-                            $translationData['slug'] ?: Str::slug($translationData['title']),
-                            $blog->id,
-                            $existing?->id
-                        );
-
                     $blog->translations()->updateOrCreate(
                         ['locale' => $locale],
-                        $this->translationAttributes($translationData, $slug)
+                        $this->translationAttributes($translationData, $slugsByLocale[$locale])
                     );
                 }
 
@@ -769,16 +783,27 @@ class BlogController extends Controller
      * Both tables must share one namespace or a new translation can steal
      * a legacy post's URL.
      */
+    private function requestedPrimaryLocale(Request $request): string
+    {
+        $locale = (string) $request->input('primary_locale');
+
+        return PublicI18n::isSupported($locale) ? $locale : 'en';
+    }
+
+    /**
+     * @param  list<string>  $reserved
+     */
     private function uniquePublicSlug(
         string $slug,
         ?int $ignoreBlogId = null,
-        ?int $ignoreTranslationId = null
+        ?int $ignoreTranslationId = null,
+        array $reserved = []
     ): string {
         $base = Str::slug($slug) ?: Str::random(8);
         $candidate = $base;
         $counter = 1;
 
-        while ($this->publicSlugTaken($candidate, $ignoreBlogId, $ignoreTranslationId)) {
+        while ($this->publicSlugTaken($candidate, $ignoreBlogId, $ignoreTranslationId, $reserved)) {
             $candidate = $base.'-'.$counter;
             $counter++;
         }
@@ -789,8 +814,13 @@ class BlogController extends Controller
     private function publicSlugTaken(
         string $candidate,
         ?int $ignoreBlogId = null,
-        ?int $ignoreTranslationId = null
+        ?int $ignoreTranslationId = null,
+        array $reserved = []
     ): bool {
+        if (in_array($candidate, $reserved, true)) {
+            return true;
+        }
+
         $blogTaken = Blog::query()
             ->when($ignoreBlogId, fn ($query) => $query->where('id', '!=', $ignoreBlogId))
             ->where('slug', $candidate)

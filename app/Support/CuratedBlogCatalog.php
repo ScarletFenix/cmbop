@@ -137,12 +137,26 @@ class CuratedBlogCatalog
                 return $html;
             }
 
-            $map = Blog::query()
+            $locale = function_exists('public_locale') ? public_locale() : 'en';
+            $pillars = Blog::query()
                 ->whereNotNull('curated_key')
                 ->where('curated_key', '!=', '')
-                ->whereColumn('curated_key', '!=', 'slug')
-                ->pluck('slug', 'curated_key')
-                ->all();
+                ->with(['translations' => function ($query) {
+                    $query->where('is_published', true);
+                }])
+                ->get();
+
+            $map = [];
+            foreach ($pillars as $pillar) {
+                $catalog = (string) $pillar->curated_key;
+                if ($catalog === '') {
+                    continue;
+                }
+                $live = $pillar->displayTranslation($locale, 'en')?->slug ?: $pillar->slug;
+                if (is_string($live) && $live !== '' && strcasecmp($live, $catalog) !== 0) {
+                    $map[$catalog] = $live;
+                }
+            }
         } catch (\Throwable) {
             return $html;
         }

@@ -500,6 +500,46 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertDontSee('href="/blog/'.$slug.'"', false);
     }
 
+    public function test_catalog_link_rewrite_uses_display_translation_slug(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+        $pillar = Blog::query()->where('curated_key', $slug)->firstOrFail();
+        $pillar->translations()->where('locale', 'en')->update([
+            'slug' => 'live-link-checklist-en-live',
+        ]);
+
+        $linker = Blog::factory()->published()->create([
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-en-live',
+            'content' => '<p><a href="/blog/'.$slug.'">Checklist</a></p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $linker->id,
+            'locale' => 'en',
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-en-live',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><a href="/blog/'.$slug.'">Checklist</a></p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/blog/linker-to-en-live')
+            ->assertOk()
+            ->assertSee('href="/blog/live-link-checklist-en-live"', false)
+            ->assertDontSee('href="/blog/'.$slug.'"', false);
+    }
+
     public function test_custom_post_occupying_catalog_slug_does_not_inherit_pillar_faq(): void
     {
         $slug = LiveLinkChecklistBlogPost::SLUG;
