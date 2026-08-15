@@ -554,6 +554,48 @@ class AdminContentLibraryTest extends TestCase
             ->assertSee('Completed/LIVE');
     }
 
+    public function test_paid_item_only_live_placement_is_completed_not_needs_fix(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Live']);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $item = $this->claimByItemOnly($submission, $order, $site);
+        $item->update([
+            'live_url' => 'https://live.example/item-only-admin',
+            'live_url_submitted_at' => now(),
+            'publisher_status' => 'completed',
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertSame('published', $fresh->libraryAvailability());
+        $this->assertSame('https://live.example/item-only-admin', $fresh->liveUrl());
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Live')
+            ->assertSee('Completed/LIVE');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertDontSee('Paid Item Only Live');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertSee('https://live.example/item-only-admin')
+            ->assertSee((string) $order->id);
+    }
+
     public function test_user_id_filter_survives_chip_and_view_links(): void
     {
         $admin = $this->admin();
