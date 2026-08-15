@@ -2,6 +2,7 @@
 
 namespace App\Support;
 
+use App\Models\EmailLog;
 use Carbon\Carbon;
 
 class MailJobPayload
@@ -67,6 +68,30 @@ class MailJobPayload
         }
 
         return self::emails($payload) !== [];
+    }
+
+    public static function matchesEmailLog(string $payload, EmailLog $log): bool
+    {
+        if (! self::isQueuedMailable($payload)) {
+            return false;
+        }
+
+        $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
+        $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
+        if ($class !== '' && ! self::containsMailable($payload, $class)) {
+            return false;
+        }
+
+        if (self::containsToken($payload, (string) $log->to_email)
+            || self::containsToken($payload, (string) $log->dedupe_key)) {
+            return true;
+        }
+
+        $to = (string) $log->to_email;
+        $dedupe = (string) $log->dedupe_key;
+        $logHasIdentity = ($to !== '' && strcasecmp($to, 'unknown') !== 0) || $dedupe !== '';
+
+        return ! ($logHasIdentity && self::looksIdentified($payload));
     }
 
     public static function dedupeKey(string $payload): ?string
