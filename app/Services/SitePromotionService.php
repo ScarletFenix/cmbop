@@ -10,6 +10,7 @@ use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -339,15 +340,18 @@ class SitePromotionService
         ?string $stripeSessionId = null
     ): Site {
         $starts = now();
-        $base = $site->featured_until && $site->featured_until->isFuture()
-            ? $site->featured_until->copy()
+        $currentUntil = $site->safeFeaturedUntil();
+        $base = $currentUntil && $currentUntil->isFuture()
+            ? Carbon::instance($currentUntil)
             : $starts->copy();
         $ends = $base->copy()->addDays($days);
 
-        $site->forceFill([
+        // Query-builder write: Eloquent save() casts leftover featured_until
+        // when diffing originals and 422s the wallet feature purchase.
+        Site::query()->whereKey($site->id)->update([
             'featured_until' => $ends,
             'featured_purchased_at' => $starts,
-        ])->save();
+        ]);
 
         SiteFeaturePurchase::create([
             'site_id' => $site->id,
@@ -396,24 +400,24 @@ class SitePromotionService
         $days = max(1, min($maxDays, $days));
 
         $starts = now();
-        $site->forceFill([
+        Site::query()->whereKey($site->id)->update([
             'custom_discount_percent' => $percent,
             'custom_discount_starts_at' => $starts,
             'custom_discount_ends_at' => $starts->copy()->addDays($days),
             'custom_discount_notified_at' => null,
-        ])->save();
+        ]);
 
         return $site->fresh();
     }
 
     public function clearCustomDiscount(Site $site): Site
     {
-        $site->forceFill([
+        Site::query()->whereKey($site->id)->update([
             'custom_discount_percent' => null,
             'custom_discount_starts_at' => null,
             'custom_discount_ends_at' => null,
             'custom_discount_notified_at' => null,
-        ])->save();
+        ]);
 
         return $site->fresh();
     }
@@ -436,9 +440,12 @@ class SitePromotionService
         foreach ($sites as $site) {
             $publisher = $site->publisher;
             $percent = (float) $site->custom_discount_percent;
-            $endedAt = $site->custom_discount_ends_at;
+            $endedAt = $site->safeCustomDiscountEndsAt();
+            $endedAt = $endedAt instanceof \DateTimeInterface
+                ? Carbon::instance($endedAt)
+                : null;
 
-            if ($publisher?->email) {
+            if ($publisher?->email && $endedAt) {
                 try {
                     Mail::to($publisher->email)->send(new SiteDiscountEnded($site, $publisher, $percent, $endedAt));
                     $sent++;
@@ -447,11 +454,11 @@ class SitePromotionService
                 }
             }
 
-            $site->forceFill([
+            Site::query()->whereKey($site->id)->update([
                 'custom_discount_notified_at' => now(),
                 'custom_discount_percent' => null,
                 'custom_discount_starts_at' => null,
-            ])->save();
+            ]);
         }
 
         return $sent;
