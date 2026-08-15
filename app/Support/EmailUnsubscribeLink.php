@@ -25,9 +25,19 @@ class EmailUnsubscribeLink
         return ($from ?? now())->copy()->addDays(self::expireDays());
     }
 
+    public static function previewUrl(): string
+    {
+        return rtrim(app_public_url(), '/').'/email/unsubscribe/preview-id';
+    }
+
     public static function url(User|int $user): string
     {
         $userId = $user instanceof User ? (int) $user->id : (int) $user;
+
+        if ($userId === EmailCatalog::PREVIEW_ID
+            || ($user instanceof User && EmailCatalog::isPreviewUser($user))) {
+            return self::previewUrl();
+        }
 
         $relative = URL::temporarySignedRoute(
             'email.unsubscribe',

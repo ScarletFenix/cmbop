@@ -98,6 +98,11 @@ class EmailCatalog
         return rtrim(app_public_url(), '/').'/email/verify/preview-id/preview-hash';
     }
 
+    public static function previewUser(): User
+    {
+        return self::sampleUser();
+    }
+
     /**
      * @return array<string, array<string, mixed>>
      */

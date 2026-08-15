@@ -9,21 +9,31 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
 1. Compose subject, HTML body, optional CTA, audience, and the two checkboxes
    (`respect_preferences`, `include_unverified`).
 2. Confirm uses `GET /admin/campaigns/recipient-count` so the dialog shows the
-   live count (and how many unverified were excluded).
+   live count (and how many unverified were excluded). The submit button must
+   **not** carry `data-slb-confirm` — that would let `slb-confirm.js` (document
+   capture) run first and skip the count (or loop). Confirm is imperative
+   `slbConfirm()` from the form script.
 3. `POST /admin/campaigns/send` creates an `email_campaigns` row (`queued`),
    inserts `email_campaign_recipients` (`pending`) in one transaction, logs
    `campaign.queued`, then dispatches `SendEmailCampaignJob` on the **`emails`**
    queue. Flash: **Campaign queued for N recipient(s).**
-4. The job marks the campaign `sending`, preference-skips or queues
+4. The job claims only a `queued` row (`queued` → `sending`) so a second
+   worker cannot re-send. It then preference-skips or queues
    `AudienceCampaignMail`, then finalizes `sent` (if any mail left the job) or
    `failed`. A thrown handle (or timeout) fails leftover **pending** rows,
    recounts, and marks the campaign `failed` (not stuck `sending`). Already
    queued mail can still deliver afterward.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
-   (`error`) and recount. A late `marketing_emails` opt-out, before the queued
-   mail actually sends, is honored when `respect_preferences` is on. If Email
-   Center disables the `audience_campaign` type, pending rows are skipped
-   (`disabled`) and the campaign ends `failed`.
+   (`error`) and recount. If a `sent` campaign later has no queued/delivered
+   rows left, status is downgraded to `failed`. A late `marketing_emails`
+   opt-out, before the queued mail actually sends, is honored when
+   `respect_preferences` is on. If Email Center disables the
+   `audience_campaign` type, pending rows are skipped (`disabled`) and the
+   campaign ends `failed`.
+6. Preview renders a catalog stand-in (not the admin) and a placeholder
+   unsubscribe URL. The preview iframe is sandboxed so a click cannot opt
+   the operator out. Job dispatch is unique per campaign; a dispatch failure
+   marks the campaign `failed` instead of leaving it stuck `queued`.
 
 Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
@@ -66,7 +76,9 @@ and add-site / deposit reminders keep their own queries.
 - One-click (`List-Unsubscribe=One-Click` or JSON) returns empty **200**.
 - CSRF is excepted for `email/unsubscribe/*` (Gmail POSTs have no token).
 - Campaign markdown footer + `List-Unsubscribe` / `List-Unsubscribe-Post`
-  headers share one cached signed URL. Order receipts do **not** get this footer.
+  headers share one cached signed URL. Email Center / compose previews use
+  `/email/unsubscribe/preview-id` (not a signed live link). Order receipts
+  do **not** get this footer.
 
 ## Queue / ops
 

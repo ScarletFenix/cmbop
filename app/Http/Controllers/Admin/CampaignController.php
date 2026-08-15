@@ -10,6 +10,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
 use App\Support\CampaignHtml;
+use App\Support\EmailCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -56,7 +57,7 @@ class CampaignController extends Controller
             'audience' => 'selected',
         ]);
 
-        $mailable = new AudienceCampaignMail($campaign, auth()->user());
+        $mailable = new AudienceCampaignMail($campaign, EmailCatalog::previewUser());
         $mailable->skipUserPreference = true;
 
         return response($mailable->render());
@@ -122,7 +123,9 @@ class CampaignController extends Controller
                 'subject' => $data['subject'],
                 'body_html' => CampaignHtml::sanitize($data['body_html']),
                 'audience' => $data['audience'],
-                'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
+                'selected_user_ids' => $data['audience'] === 'selected'
+                    ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                    : null,
                 'cta_label' => $data['cta_label'] ?? null,
                 'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
                 'recipients_count' => $count,
@@ -165,7 +168,28 @@ class CampaignController extends Controller
             ]);
         }
 
-        SendEmailCampaignJob::dispatch($campaign->id);
+        try {
+            SendEmailCampaignJob::dispatch($campaign->id);
+        } catch (\Throwable $e) {
+            Log::error('Campaign job dispatch failed', [
+                'campaign_id' => $campaign->id,
+                'error' => $e->getMessage(),
+            ]);
+            EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaign->id)
+                ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_FAILED,
+                    'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+                ]);
+            $campaign->refresh()->recountRecipientTotals();
+            $campaign->update([
+                'status' => EmailCampaign::STATUS_FAILED,
+                'sent_at' => now(),
+            ]);
+
+            return back()->withInput()->with('error', 'Campaign was saved but could not be queued. Try again.');
+        }
 
         return redirect()
             ->route('admin.campaigns.index')

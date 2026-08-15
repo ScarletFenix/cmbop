@@ -51,7 +51,7 @@ class ActionConfirmDialogsTest extends TestCase
             // Confirm copy is assigned to $cancelConfirm, then bound via data-slb-confirm="{{ $cancelConfirm }}".
             resource_path('views/advertiser/scheduled-orders.blade.php') => 'Cancel this scheduled order?',
             resource_path('views/advertiser/saved-sites.blade.php') => 'window.slbConfirm',
-            resource_path('views/admin/emails/index.blade.php') => 'data-slb-confirm="Retry failed queue jobs',
+            resource_path('views/admin/emails/index.blade.php') => 'data-slb-confirm="Retry failed mail queue jobs',
             resource_path('views/admin/invoices/show.blade.php') => 'data-slb-confirm="Cancel this invoice?',
             resource_path('views/admin/promotions/banners/index.blade.php') => 'data-slb-confirm="Delete this banner?',
             resource_path('views/admin/promotions/announcements/index.blade.php') => 'data-slb-confirm="Delete this announcement?',
