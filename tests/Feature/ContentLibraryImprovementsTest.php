@@ -214,6 +214,7 @@ class ContentLibraryImprovementsTest extends TestCase
             'site_name' => $site->site_name,
             'site_url' => $site->site_url,
             'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
             'content_submission_id' => $submission->id,
             'live_url' => 'https://live.example/old-post',
             'live_url_submitted_at' => now(),
@@ -262,6 +263,7 @@ class ContentLibraryImprovementsTest extends TestCase
             'site_name' => $oldSite->site_name,
             'site_url' => $oldSite->site_url,
             'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
             'content_submission_id' => $submission->id,
             'live_url' => 'https://live.example/old-post',
             'live_url_submitted_at' => now(),
@@ -275,6 +277,7 @@ class ContentLibraryImprovementsTest extends TestCase
             'site_name' => $newSite->site_name,
             'site_url' => $newSite->site_url,
             'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
             'content_submission_id' => $submission->id,
         ]);
         $submission->update([
