@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Mail\AudienceCampaignMail;
+use App\Mail\PlatformMailable;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailNotificationPreference;
@@ -216,10 +217,7 @@ class SendEmailCampaignJob implements ShouldQueue
 
     protected function mailSendsInline(): bool
     {
-        $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
-
-        return $mail === '' || $mail === 'sync'
-            || config("queue.connections.{$mail}.driver") === 'sync';
+        return PlatformMailable::sendsInline();
     }
 
     protected function runsOnWorker(): bool

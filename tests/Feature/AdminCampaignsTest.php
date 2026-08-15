@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\PlatformMailable;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -1287,6 +1288,63 @@ class AdminCampaignsTest extends TestCase
 
         $job = new SendEmailCampaignJob($campaign->id);
         $this->assertSame('database', $job->connection);
+        $job->handle();
+
+        $this->assertSame(
+            SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_QUEUED)->count()
+        );
+        $this->assertSame(
+            3,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_PENDING)->count()
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_job_uses_a_smaller_batch_when_mail_queue_table_is_missing(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        config([
+            'queue.default' => 'database',
+            'email_notifications.queue_connection' => 'mail',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+            'queue.connections.mail' => [
+                'driver' => 'database',
+                'table' => 'jobs_that_do_not_exist',
+                'queue' => 'emails',
+            ],
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $users = [];
+        for ($i = 0; $i < SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE + 3; $i++) {
+            $users[] = $this->makeUser('advertiser');
+        }
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Missing mail table',
+            'subject' => 'Missing mail table',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => count($users),
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        foreach ($users as $user) {
+            EmailCampaignRecipient::create([
+                'email_campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => EmailCampaignRecipient::STATUS_PENDING,
+            ]);
+        }
+
+        $job = new SendEmailCampaignJob($campaign->id);
+        $this->assertSame('database', $job->connection);
+        $this->assertTrue(PlatformMailable::sendsInline());
         $job->handle();
 
         $this->assertSame(
