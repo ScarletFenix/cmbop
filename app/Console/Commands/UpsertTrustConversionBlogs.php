@@ -12,6 +12,7 @@ use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\GuestPostBriefBlogPost;
 use App\Support\LiveLinkRemovedBlogPost;
 use App\Support\MarketplaceVsOutreachBlogPost;
+use App\Support\PublicI18n;
 use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -105,7 +106,7 @@ class UpsertTrustConversionBlogs extends Command
             return;
         }
 
-        $locale = in_array($blog->primary_locale, ['en', 'de', 'fr', 'nl'], true)
+        $locale = PublicI18n::isSupported($blog->primary_locale)
             ? $blog->primary_locale
             : 'en';
 

@@ -121,6 +121,18 @@ class BlogController extends Controller
     public function store(StoreBlogRequest $request)
     {
         try {
+            $this->hydrateLegacyTranslationInput($request);
+            $request->validate([
+                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'tags' => 'nullable|string',
+                'status' => 'required|in:draft,published',
+                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
+            ] + $this->translationValidationRules());
+
+            if (! auth()->check()) {
+                throw new \Exception('You must be logged in to create a blog post.');
+            }
+
             $featuredImage = null;
             if ($request->hasFile('featured_image')) {
                 $featuredImage = $request->file('featured_image')->store('blogs/featured', 'public');
@@ -242,6 +254,14 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::findOrFail($id);
+
+            $request->validate([
+                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'remove_featured_image' => 'nullable|boolean',
+                'tags' => 'nullable|string',
+                'status' => 'required|in:draft,published',
+                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
+            ] + $this->translationValidationRules());
 
             $tags = null;
             if ($request->tags) {
@@ -496,49 +516,22 @@ class BlogController extends Controller
         return $path;
     }
 
-    private function deleteStoredBlogImages(Blog $blog): void
+    /**
+     * @return array<string, string>
+     */
+    private function translationValidationRules(): array
     {
-        $paths = [];
-        if (filled($blog->featured_image)) {
-            $paths[] = (string) $blog->featured_image;
+        $rules = [];
+
+        foreach (PublicI18n::supported() as $locale) {
+            $required = $locale === 'en' ? 'required' : 'nullable';
+            $rules["translations.{$locale}.title"] = $required.'|string|max:255';
+            $rules["translations.{$locale}.slug"] = 'nullable|string|max:255';
+            $rules["translations.{$locale}.excerpt"] = 'nullable|string|max:300';
+            $rules["translations.{$locale}.content"] = $required.'|string';
         }
 
-        $html = (string) $blog->content;
-        foreach ($blog->translations as $translation) {
-            $html .= ' '.$translation->content;
-        }
-
-        if (preg_match_all('#(?:/storage/)?(blogs/(?:content|featured)/[^"\'\s>]+)#', $html, $matches)) {
-            $paths = array_merge($paths, $matches[1]);
-        }
-
-        foreach (array_unique($paths) as $path) {
-            $resolved = $this->blogStoragePathFromUrl($path);
-            if ($resolved === null) {
-                continue;
-            }
-
-            $usedElsewhere = Blog::query()
-                ->where('id', '!=', $blog->id)
-                ->where(function ($query) use ($resolved) {
-                    $query->where('featured_image', $resolved)
-                        ->orWhere('content', 'like', '%'.$resolved.'%');
-                })
-                ->exists()
-                || BlogTranslation::query()
-                    ->where('blog_id', '!=', $blog->id)
-                    ->where('content', 'like', '%'.$resolved.'%')
-                    ->exists();
-
-            if ($usedElsewhere) {
-                continue;
-            }
-
-            if (Storage::disk('public')->exists($resolved)) {
-                Storage::disk('public')->delete($resolved);
-                Log::info('Blog image deleted with post', ['path' => $resolved]);
-            }
-        }
+        return $rules;
     }
 
     private function sanitizeTranslations(array $translations, bool $requireEnglish): array
