@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
@@ -490,6 +491,62 @@ class AdminCampaignsTest extends TestCase
             ->assertSee($abandoned->email, false)
             ->assertDontSee($paid->email, false)
             ->assertSee(route('admin.campaigns.index', ['audience' => 'advertisers_no_paid_orders'], false), false);
+    }
+
+    public function test_send_hydrates_inventory_audiences_that_count_already_shows(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $paid = $this->makeUser('advertiser');
+        $funded = $this->makeUser('advertiser');
+        $draftPublisher = $this->makeUser('publisher');
+
+        Order::create([
+            'user_id' => $paid->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-SEND-PAID-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        DepositRequest::create([
+            'user_id' => $funded->id,
+            'reference_code' => (string) random_int(100000, 999999),
+            'amount' => 50,
+            'payment_method' => 'wise',
+            'status' => 'completed',
+        ]);
+
+        $inventory = app(AudienceInventoryService::class);
+        foreach ([
+            'advertisers_paid_orders' => $paid->id,
+            'advertisers_deposited_no_orders' => $funded->id,
+            'publishers_no_active_sites' => $draftPublisher->id,
+        ] as $audience => $userId) {
+            $ids = $inventory->collect($audience)->pluck('id')->sort()->values()->all();
+            $rowIds = $inventory->collectRecipientRows($audience)->pluck('id')->sort()->values()->all();
+            $this->assertSame($ids, $rowIds, $audience);
+            $this->assertSame(count($ids), $inventory->count($audience), $audience);
+            $this->assertContains($userId, $rowIds, $audience);
+        }
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'audience' => 'advertisers_paid_orders',
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertSame('advertisers_paid_orders', $campaign->audience);
+        $this->assertSame(1, $campaign->recipients_count);
+        $this->assertTrue($campaign->recipients()->where('user_id', $paid->id)->exists());
     }
 
     public function test_http_send_queues_job_without_sending_mail(): void

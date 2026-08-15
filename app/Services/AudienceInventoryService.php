@@ -425,21 +425,22 @@ class AudienceInventoryService
      */
     public function collectRecipientRows(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        return match ($audience) {
-            self::AUDIENCE_ADVERTISERS => $this->recipientRowQuery($this->queryForRole('advertiser'), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS => $this->recipientRowQuery($this->queryForRole('publisher'), $includeUnverified)->get(),
-            self::AUDIENCE_BOTH => $this->recipientRowQuery($this->queryForRole('advertiser'), $includeUnverified)
-                ->get()
-                ->merge($this->recipientRowQuery($this->queryForRole('publisher'), $includeUnverified)->get())
-                ->unique('id')
-                ->values(),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->recipientRowQuery($this->queryAdvertisersNoOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->recipientRowQuery($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->recipientRowQuery($this->queryPublishersNoSites(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->recipientRowQuery($this->queryAdvertisersNeverDeposited(), $includeUnverified)->get(),
-            self::AUDIENCE_SELECTED => $this->recipientRowQuery($this->querySelected($selectedIds, $includeUnverified), $includeUnverified, alreadyScoped: true)->get(),
-            default => collect(),
-        };
+        if ($audience === self::AUDIENCE_SELECTED) {
+            return $this->recipientRowQuery(
+                $this->querySelected($selectedIds, $includeUnverified),
+                $includeUnverified,
+                alreadyScoped: true
+            )->get();
+        }
+
+        if (! in_array($audience, self::audienceKeys(), true)) {
+            return collect();
+        }
+
+        // Same query as inventory / count — a second match here previously
+        // dropped paid_orders, no_active_sites, and deposited_no_orders, so
+        // compose counted them and send returned "No recipients found".
+        return $this->recipientRowQuery($this->queryForAudienceKey($audience), $includeUnverified)->get();
     }
 
     /**

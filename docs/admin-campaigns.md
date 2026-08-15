@@ -45,8 +45,10 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
    of leaving it stuck `queued`. Do **not** use `ShouldBeUnique` on the send
    job — a stale unique lock silently drops the only dispatch. The `queued` →
    `sending` claim plus per-row `pending` → `queued` is the mutex. Send
-   hydrates `id`+`email` only (`collectRecipientRows`) so a large audience
-   cannot OOM the compose request. `user_ids` are integers capped at
+   hydrates `id`+`email` only (`collectRecipientRows` via
+   `queryForAudienceKey`) so a large audience cannot OOM the compose
+   request and a new inventory key cannot count N then send nobody.
+   `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).
 

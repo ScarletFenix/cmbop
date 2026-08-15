@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
+use App\Services\AudienceInventoryService;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
