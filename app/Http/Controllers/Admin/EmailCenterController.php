@@ -669,7 +669,7 @@ class EmailCenterController extends Controller
 
     protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool
     {
-        if ($log->status !== EmailLog::STATUS_FAILED || ! $this->isOneShotCampaignLog($log)) {
+        if ($log->status !== EmailLog::STATUS_FAILED || ! filled($log->dedupe_key)) {
             return false;
         }
 
@@ -691,10 +691,14 @@ class EmailCenterController extends Controller
             return false;
         }
 
-        // Generic default keys are per email, not per campaign. A prior
-        // campaign delivery to the same address must not swallow a later
-        // campaign's leftover — retry would never fire.
-        if (! $this->deliveredSiblingIsSameCampaignSend($log, $delivered)) {
+        if ($this->isOneShotCampaignLog($log)) {
+            // Generic default keys are per email, not per campaign. A prior
+            // campaign delivery to the same address must not swallow a later
+            // campaign's leftover — retry would never fire.
+            if (! $this->deliveredSiblingIsSameCampaignSend($log, $delivered)) {
+                return false;
+            }
+        } elseif (! $this->isSameAttemptLeftover($log, $delivered)) {
             return false;
         }
 
@@ -773,6 +777,31 @@ class EmailCenterController extends Controller
         return 0;
     }
 
+    /**
+     * A worker timeout after SMTP invents a leftover failed Welcome /
+     * order row. created_at (or updated_at when failed() reused the
+     * pending row) sits next to that delivery. A later real failure
+     * is hours or days after the old Welcome and must still retry.
+     */
+    protected function isSameAttemptLeftover(EmailLog $leftover, EmailLog $delivered): bool
+    {
+        $deliveredAt = $delivered->sent_at ?? $delivered->created_at;
+        if (! $deliveredAt) {
+            return false;
+        }
+
+        $minutes = (int) config('email_notifications.dedupe_window_minutes', 10);
+        $window = max(60, $minutes * 60);
+
+        foreach ([$leftover->created_at, $leftover->updated_at] as $at) {
+            if ($at && abs((int) $at->diffInSeconds($deliveredAt)) <= $window) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     protected function payloadAlreadyDelivered(string $payload): bool
     {
         if ($payload === '') {
@@ -803,31 +832,56 @@ class EmailCenterController extends Controller
         // Leftover jobs may only serialize ModelIdentifier ids, or the
         // shared generic key. That key is per email, not per campaign —
         // only campaign+user identity is safe.
-        if (! str_contains($payload, 'AudienceCampaignMail')
-            && ! str_contains($payload, 'audience_campaign')) {
+        if (str_contains($payload, 'AudienceCampaignMail')
+            || str_contains($payload, 'audience_campaign')) {
+            $campaignIds = MailJobPayload::modelIdentifierIds($payload, EmailCampaign::class);
+            if (preg_match_all('/audience_campaign:(\d+):user:(\d+)/', $payload, $pairs, PREG_SET_ORDER)) {
+                foreach ($pairs as $pair) {
+                    $campaignIds[] = (int) $pair[1];
+                }
+            }
+            $campaignIds = array_values(array_unique(array_filter(
+                $campaignIds,
+                static fn (int $id): bool => $id > 0
+            )));
+
+            foreach ($campaignIds as $campaignId) {
+                foreach (MailJobPayload::campaignMailUserIds($payload, $campaignId) as $userId) {
+                    if (EmailLog::latestDeliveredForCampaignUser($campaignId, $userId)) {
+                        return true;
+                    }
+                }
+            }
+
             return false;
         }
 
-        $campaignIds = MailJobPayload::modelIdentifierIds($payload, EmailCampaign::class);
-        if (preg_match_all('/audience_campaign:(\d+):user:(\d+)/', $payload, $pairs, PREG_SET_ORDER)) {
-            foreach ($pairs as $pair) {
-                $campaignIds[] = (int) $pair[1];
-            }
-        }
-        $campaignIds = array_values(array_unique(array_filter(
-            $campaignIds,
-            static fn (int $id): bool => $id > 0
-        )));
-
-        foreach ($campaignIds as $campaignId) {
-            foreach (MailJobPayload::campaignMailUserIds($payload, $campaignId) as $userId) {
-                if (EmailLog::latestDeliveredForCampaignUser($campaignId, $userId)) {
-                    return true;
-                }
-            }
+        if (! is_string($dedupe) || $dedupe === '') {
+            return false;
         }
 
-        return false;
+        $delivered = EmailLog::latestDeliveredByDedupe($dedupe);
+        if (! $delivered) {
+            return false;
+        }
+
+        return $this->payloadQueuedAtAlreadyDelivered($payload, $delivered);
+    }
+
+    /**
+     * Unstamped leftover Welcome jobs still retry after the leftover
+     * log is closed. Skip when this job attempt already delivered
+     * (sent_at >= queuedAt). An older Welcome must still retry.
+     */
+    protected function payloadQueuedAtAlreadyDelivered(string $payload, EmailLog $delivered): bool
+    {
+        $queuedAt = MailJobPayload::queuedAt($payload);
+        $deliveredAt = $delivered->sent_at ?? $delivered->created_at;
+        if (! $queuedAt || ! $deliveredAt) {
+            return false;
+        }
+
+        return $deliveredAt->greaterThanOrEqualTo($queuedAt->copy()->subSeconds(5));
     }
 
     protected function isOneShotCampaignLog(EmailLog $log): bool
