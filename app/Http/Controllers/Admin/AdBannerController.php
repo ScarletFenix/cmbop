@@ -106,7 +106,9 @@ class AdBannerController extends Controller
         }
 
         $banner->update($data);
-        $this->log('banner.updated', $banner, 'updated banner');
+        if ($request->hasFile('image') || $banner->wasChanged()) {
+            $this->log('banner.updated', $banner, 'updated banner');
+        }
 
         $warning = $this->unwiredWarning($data['placement'] ?? '');
 
@@ -181,13 +183,23 @@ class AdBannerController extends Controller
         $copy = $banner->replicate(['impressions', 'clicks', 'deleted_at']);
         $copy->name = $banner->name.' (copy)';
         $copy->is_active = false;
-        $copy->impressions = 0;
-        $copy->clicks = 0;
+        if ($this->bannersHaveColumn('impressions')) {
+            $copy->impressions = 0;
+        }
+        if ($this->bannersHaveColumn('clicks')) {
+            $copy->clicks = 0;
+        }
         $copy->created_by = auth()->id();
 
         $copy->image_path = $this->copyStoredImage($banner->image_path);
 
-        $copy->save();
+        try {
+            $copy->save();
+        } catch (\Throwable) {
+            return redirect()
+                ->route(staff_route_prefix().'promotions.banners.index')
+                ->with('error', 'Banner could not be duplicated.');
+        }
         $this->log('banner.duplicated', $copy, 'duplicated banner', ['source_id' => $banner->id]);
 
         return redirect()
@@ -333,6 +345,15 @@ class AdBannerController extends Controller
         }
 
         return 'This placement is not mounted on any layout. The banner will not appear.';
+    }
+
+    private function bannersHaveColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn('ad_banners', $column);
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function log(string $action, AdBanner $banner, string $verb, array $extra = []): void

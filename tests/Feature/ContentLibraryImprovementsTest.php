@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ContentEvaluationResult;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -13,6 +15,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -394,6 +397,104 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue(
             ContentSubmission::query()->whereKey($waitingArticle->id)->inProgressInLibrary()->exists()
         );
+    }
+
+    public function test_paid_item_only_leftover_with_live_url_is_completed(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'paid-item-live');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Live']);
+        $order = $this->makeOrder($advertiser);
+        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+            'live_url' => 'https://live.example/item-only-post',
+            'live_url_submitted_at' => now(),
+            'publisher_status' => 'completed',
+        ]);
+        $submission->update(['order_id' => null, 'order_item_id' => null]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItem']);
+        $this->assertFalse($fresh->isInUse());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertTrue($fresh->isPublished());
+        $this->assertSame('https://live.example/item-only-post', $fresh->liveUrl());
+        $this->assertSame('published', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->withCurrentLivePlacement()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Live')
+            ->assertSee('https://live.example/item-only-post')
+            ->assertSee('>Order:</strong> #'.$order->id, false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertDontSee('Paid Item Only Live');
+    }
+
+    public function test_paid_item_only_leftover_without_live_url_is_in_progress(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'paid-item-wait');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Waiting']);
+        $order = $this->makeOrder($advertiser);
+        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+        ]);
+        $submission->update(['order_id' => null, 'order_item_id' => null]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItem']);
+        $this->assertFalse($fresh->isInUse());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertFalse($fresh->isPublished());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $order->id));
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Waiting')
+            ->assertSee('Order #'.$order->id)
+            ->assertSee('View order');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertDontSee('Paid Item Only Waiting');
     }
 
     public function test_approved_chip_excludes_completed_and_in_progress(): void
@@ -1034,11 +1135,17 @@ class ContentLibraryImprovementsTest extends TestCase
                 'title' => 'Fixed Leftover Piece',
             ])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('approved', true)
+            ->assertJsonPath('submission.ready', false)
+            ->assertJsonPath('submission.can_order', false)
+            ->assertJsonPath('submission.availability', 'in_progress')
+            ->assertJsonPath('submission.editor_notice', ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE);
 
         $fixed = $submission->fresh();
         $this->assertTrue($fixed->isReadyToFulfill((int) $leftover->id));
         $this->assertSame('in_progress', $fixed->libraryAvailability());
+        $this->assertSame(ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE, $fixed->editorNotice());
         $this->assertFalse(
             ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
         );
@@ -1085,7 +1192,12 @@ class ContentLibraryImprovementsTest extends TestCase
                 'title' => 'Fixed Expired Leftover',
             ])
             ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('approved', true)
+            ->assertJsonPath('submission.ready', false)
+            ->assertJsonPath('submission.can_order', false)
+            ->assertJsonPath('submission.availability', 'needs_fix')
+            ->assertJsonPath('submission.editor_notice', ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE);
 
         $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $leftover->id));
 
@@ -1206,6 +1318,54 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringNotContainsString('2 unused article', $html);
     }
 
+    public function test_paid_item_only_leftover_shows_view_order_in_needs_corrections(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'paid-item-only-view');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Piece']);
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertNull($fresh->order_id);
+        $this->assertTrue($fresh->isClaimedByAnotherOrder());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertFalse($fresh->canReplaceUnpaidLeftover());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertNotNull($fresh->libraryOrder());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Piece', false)
+            ->assertSee('View order');
+    }
+
     public function test_library_js_prefers_server_editor_notice_over_link_guess(): void
     {
         $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
@@ -1215,6 +1375,25 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotFalse($noticePos);
         $this->assertNotFalse($linkGuessPos);
         $this->assertLessThan($linkGuessPos, $noticePos);
+    }
+
+    public function test_library_js_does_not_treat_leftover_claim_as_moderation_failure(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('function libraryModerationPassed', $js);
+        $this->assertStringContainsString('const stillApproved = libraryModerationPassed(data, sub);', $js);
+        $this->assertStringContainsString('libraryModerationPassed(data, saved)', $js);
+        $this->assertStringContainsString('goToLibraryResult(saved, saved.editor_notice || \'\', passed)', $js);
+        $this->assertStringNotContainsString('goToLibraryResult(saved, \'\', !!saved.ready)', $js);
+        $this->assertStringNotContainsString('!!data.submission.ready', $js);
+        $this->assertStringNotContainsString(
+            'data.approved === true && !sub.needs_image_rights && sub.can_order === true && sub.ready === true',
+            $js
+        );
+        $this->assertStringNotContainsString(
+            'data.approved === true && !sub.needs_image_rights && sub.ready === true',
+            $js
+        );
     }
 
     public function test_owned_leftover_missing_image_rights_is_needs_fix_not_in_progress(): void
@@ -2313,7 +2492,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('preview_html: previewModalState.html || \'\'', $js);
         $this->assertStringContainsString('const html = previewModalState.html || \'\'', $js);
         $this->assertStringContainsString('let previewOpenedFromEditor = false', $js);
-        $this->assertStringContainsString('data.approved === true && !sub.needs_image_rights', $js);
+        $this->assertStringContainsString('const stillApproved = libraryModerationPassed(data, sub);', $js);
         $this->assertStringNotContainsString('data.approved !== false', $js);
         $this->assertStringNotContainsString(
             "preview_html: document.getElementById('articlePreviewBody').innerHTML",
@@ -2508,9 +2687,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('submission.ready === false', $js);
-        $this->assertStringContainsString('sub.ready === true', $js);
+        $this->assertStringContainsString('if (stillApproved && sub.ready)', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
-        $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.ready)', $js);
+        $this->assertStringContainsString('function libraryModerationPassed', $js);
+        $this->assertStringContainsString('goToLibraryResult(saved, saved.editor_notice || \'\', passed)', $js);
         $this->assertStringContainsString('libraryResultFlash', $js);
         $this->assertStringContainsString('function applyLibraryResultFocus', $js);
         $this->assertStringNotContainsString('window.location.reload()', $js);

@@ -101,6 +101,14 @@ class OrderPaymentService
                     $referenceCode,
                     (float) ($meta['bonus_applied'] ?? 0)
                 );
+                $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
+                if ($appliedCredit > 0.009) {
+                    $this->consumeUnfulfilledCardCreditForLeftover(
+                        (int) $newlyPaid->first()->user_id,
+                        $referenceCode,
+                        $appliedCredit
+                    );
+                }
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -191,6 +199,14 @@ class OrderPaymentService
                     $referenceCode,
                     (float) ($meta['bonus_applied'] ?? 0)
                 );
+                $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
+                if ($appliedCredit > 0.009) {
+                    $this->consumeUnfulfilledCardCreditForLeftover(
+                        (int) $newlyPaid->first()->user_id,
+                        $referenceCode,
+                        $appliedCredit
+                    );
+                }
             }
 
             // Keep leftover checkout bonus reserved until approve/reject.
@@ -989,6 +1005,138 @@ class OrderPaymentService
             ->sum('amount'), 2);
     }
 
+    public static function unfulfilledCardCreditApplyReference(string $referenceCode): string
+    {
+        return 'UNFULFILLED-CARD-APPLY-'.$referenceCode;
+    }
+
+    /**
+     * Cash from an earlier unfulfilled leftover capture that Pay again can
+     * spend toward this package. Capped by what is still withdrawable.
+     */
+    public function unfulfilledCardCreditToApply(int $userId, string $referenceCode, float $packageTotal): float
+    {
+        $packageTotal = round($packageTotal, 2);
+        $credited = $this->unfulfilledCardCreditAmount($referenceCode);
+        if ($userId <= 0 || $packageTotal <= 0.009 || $credited <= 0.009) {
+            return 0.0;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        $wallet = $roleId
+            ? Wallet::query()->where('user_id', $userId)->where('role_id', $roleId)->first()
+            : null;
+        $withdrawable = $wallet ? $wallet->withdrawableBalance() : 0.0;
+
+        return round(min($credited, $packageTotal, $withdrawable), 2);
+    }
+
+    /**
+     * Spend leftover card credit so Pay again cannot keep the refund and
+     * still receive the placement. Idempotent per reference.
+     */
+    public function consumeUnfulfilledCardCreditForLeftover(int $userId, string $referenceCode, float $amount): float
+    {
+        $amount = round($amount, 2);
+        if ($userId <= 0 || $amount <= 0.009) {
+            return 0.0;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId) {
+            return 0.0;
+        }
+
+        $reference = self::unfulfilledCardCreditApplyReference($referenceCode);
+
+        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode) {
+            $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+            if (Schema::hasTable((new WalletTransaction)->getTable())
+                && WalletTransaction::query()
+                    ->where('wallet_id', $wallet->id)
+                    ->where('direction', 'debit')
+                    ->where('reference', $reference)
+                    ->exists()) {
+                return 0.0;
+            }
+
+            $apply = round(min($amount, $wallet->withdrawableBalance()), 2);
+            if ($apply <= 0.009) {
+                return 0.0;
+            }
+
+            $wallet->debit($apply);
+            app(WalletLedgerService::class)->recordAdjustment(
+                $wallet,
+                $apply,
+                'debit',
+                null,
+                $reference,
+                'Applied leftover card credit toward Pay again',
+                ['reference_code' => $referenceCode]
+            );
+
+            return $apply;
+        });
+    }
+
+    /**
+     * Pay again when the leftover card credit already covers the package.
+     *
+     * @return Collection<int, Order>
+     */
+    public function settleFailedCardLeftoversFromAppliedCredit(
+        string $referenceCode,
+        int $userId,
+        float $applied
+    ): Collection {
+        $applied = round($applied, 2);
+        if ($userId <= 0 || $applied <= 0.009) {
+            return collect();
+        }
+
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $userId, $applied) {
+            $consumed = $this->consumeUnfulfilledCardCreditForLeftover($userId, $referenceCode, $applied);
+            if ($consumed <= 0.009) {
+                return collect();
+            }
+
+            $orders = Order::with('items')
+                ->where('reference_code', $referenceCode)
+                ->where('user_id', $userId)
+                ->where('payment_method', 'card')
+                ->lockForUpdate()
+                ->get();
+
+            $newlyPaid = collect();
+            foreach ($orders as $order) {
+                $settled = $this->settleExistingCardOrder($order, [
+                    'paid_at' => now(),
+                    'payment_status' => 'paid',
+                    'status' => 'pending',
+                ]);
+                if ($settled) {
+                    $newlyPaid->push($settled);
+                }
+            }
+
+            return $newlyPaid;
+        });
+
+        if ($newlyPaid->isNotEmpty()) {
+            $this->recordAdvertiserPurchaseForPaidCheckout(
+                $referenceCode,
+                $newlyPaid,
+                0.0,
+                (float) $newlyPaid->sum(fn (Order $order) => (float) $order->total_amount)
+            );
+            $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
+            $this->notifyPublishersOfPaidOrders($newlyPaid);
+        }
+
+        return $newlyPaid;
+    }
+
     /**
      * This Stripe capture was already returned as wallet cash (bonus gone,
      * listing gone, or amount mismatch). A later webhook/success URL must
@@ -1145,8 +1293,16 @@ class OrderPaymentService
 
         // Fail/cancel already released the live hold. Keep a snapshot-only
         // package so admin mark-paid can re-reserve THIS leftover's promo
-        // instead of minting it as cash on a later reject.
-        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package)) {
+        // instead of minting it as cash on a later reject. Do not snapshot
+        // after a paid leftover — Pay again / full-card settle must not
+        // leave bonus_applied for clawback to treat as promo.
+        $alreadyPaid = $userId > 0 && Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('user_id', $userId)
+            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled')
+            ->exists();
+        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package) && ! $alreadyPaid) {
             $intents->storeLeftoverBonusSnapshot($referenceCode, $userId, $package, $snapshotBonus);
         }
     }
@@ -1805,8 +1961,9 @@ class OrderPaymentService
             ->filter(fn (Order $order) => ! in_array((string) $order->status, ['cancelled', 'completed'], true))
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
+        $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
 
-        return round(max(0, $total - $bonus), 2);
+        return round(max(0, $total - $bonus - $appliedCredit), 2);
     }
 
     /**

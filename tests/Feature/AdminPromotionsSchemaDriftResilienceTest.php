@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\AdBanner;
 use App\Models\Role;
 use App\Models\SiteAnnouncement;
 use App\Models\User;
+use App\Models\WelcomeBonusClaim;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
@@ -226,5 +228,89 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
         $this->assertStringContainsString('(copy)', $copy->title);
         $this->assertFalse($copy->is_active);
         $this->assertNull($copy->safeEndsAt());
+    }
+
+    public function test_restore_heals_unparseable_deleted_at(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Leftover trash',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'deleted_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($announcement->fresh()->trashed());
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.announcements.restore', $announcement->id))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $raw = DB::table('site_announcements')->where('id', $announcement->id)->value('deleted_at');
+        $this->assertNull($raw);
+        $this->assertTrue(SiteAnnouncement::query()->whereKey($announcement->id)->exists());
+    }
+
+    public function test_hub_ok_when_latest_welcome_bonus_claim_date_is_unparseable(): void
+    {
+        $claim = WelcomeBonusClaim::query()->create([
+            'user_id' => $this->admin->id,
+            'ip_address' => '203.0.113.10',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        DB::table('welcome_bonus_claims')->where('id', $claim->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('welcome credit', false)
+            ->assertSee(scalar_text($this->admin->email), false)
+            ->assertSee('0 claims this week', false)
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_banner_duplicate_ok_when_counter_columns_are_missing(): void
+    {
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.banners.store'), [
+                'name' => 'Counter drift',
+                'size_key' => 'leaderboard',
+                'placement' => 'header',
+                'audience' => 'all',
+                'image_url' => 'https://example.com/banner.png',
+                'link_url' => '/advertiser/catalog',
+                'is_active' => 1,
+                'priority' => 10,
+            ])
+            ->assertRedirect(route('admin.promotions.banners.index'));
+
+        $banner = AdBanner::query()->firstOrFail();
+
+        Schema::table('ad_banners', function ($table) {
+            if (Schema::hasColumn('ad_banners', 'impressions')) {
+                $table->dropColumn('impressions');
+            }
+            if (Schema::hasColumn('ad_banners', 'clicks')) {
+                $table->dropColumn('clicks');
+            }
+        });
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.banners.duplicate', $banner))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $copy = AdBanner::query()->where('id', '!=', $banner->id)->first();
+        $this->assertNotNull($copy);
+        $this->assertStringContainsString('(copy)', $copy->name);
     }
 }

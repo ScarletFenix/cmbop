@@ -4672,7 +4672,9 @@ document.addEventListener('click', async function (e) {
  * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
  * Always bind: CatalogConfig.inCatalogHideMode goes stale after an admin lift
  * or hide expiry while this tab stays open (live search then paints real URLs).
- * The server ignores copies while hide mode is actually on.
+ * The server ignores copies while hide mode is actually on. Do not latch a
+ * client-side "stop reporting" flag after hide_mode — a missed reload would
+ * silence the next wave after lift/expiry.
  * Entering hide_mode mid-session reloads so Blade paints masks + eyes.
  */
 (function trackCatalogDomainCopies() {
@@ -4682,10 +4684,9 @@ document.addEventListener('click', async function (e) {
     const recentKeys = new Set();
     let warningShown = false;
     let hideToastShown = false;
-    let trackingStopped = false;
 
     function extractDomainish(text) {
-        const tokens = String(text || '').split(/\s+/);
+        const tokens = String(text || '').split(/[\s,;|]+/);
         const hits = [];
         const seen = {};
         for (let i = 0; i < tokens.length; i++) {
@@ -4746,13 +4747,17 @@ document.addEventListener('click', async function (e) {
         CatalogConfig.inCatalogHideMode = data.in_hide_mode;
         if (!data.in_hide_mode) {
             CatalogConfig.catalogHideUntil = null;
+            // Hide-mode toast set these so the tab would reload. If the reload
+            // never happens (or an admin lifts / the window expires) the next
+            // wave must still report and be allowed to toast + reload again.
+            warningShown = false;
+            hideToastShown = false;
         } else if (data.hide_until) {
             CatalogConfig.catalogHideUntil = data.hide_until;
         }
     }
 
     async function reportCopy(text, siteId) {
-        if (trackingStopped) return;
 
         const key = String(siteId || '') + '|' + String(text).toLowerCase();
         if (recentKeys.has(key)) return;
@@ -4785,7 +4790,6 @@ document.addEventListener('click', async function (e) {
                 });
             } else if (data.status === 'hide_mode' && !hideToastShown) {
                 hideToastShown = true;
-                trackingStopped = true;
                 if (CatalogConfig) {
                     CatalogConfig.inCatalogHideMode = true;
                     CatalogConfig.catalogHideUntil = data.hide_until || CatalogConfig.catalogHideUntil;
@@ -4805,7 +4809,6 @@ document.addEventListener('click', async function (e) {
     }
 
     function onCatalogCopy() {
-        if (trackingStopped) return;
         const hit = selectionInsideCatalog();
         if (!hit) return;
         reportCopy(hit.text, hit.siteId);

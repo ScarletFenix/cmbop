@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\Catalog\CatalogCopyStrikeGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -126,6 +128,8 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertNotNull($user->catalog_copy_warned_at);
         $this->assertNull($user->catalog_hide_until);
         $this->assertFalse($user->inCatalogHideMode());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'catalog_copy_warned')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'catalog_hide_applied')->count());
     }
 
     public function test_second_threshold_after_warning_sets_hide_mode_24h(): void
@@ -159,6 +163,8 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertTrue($user->catalog_hide_until->lessThanOrEqualTo(now()->addHours(24)->addMinute()));
         $this->assertStringContainsString('24 hours', $last['message']);
         $this->assertSame(10, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'catalog_copy_warned')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'catalog_hide_applied')->count());
     }
 
     public function test_second_wave_of_the_same_sites_still_reaches_hide_mode(): void
@@ -391,6 +397,25 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
     }
 
+    public function test_comma_separated_dump_counts_each_host(): void
+    {
+        $user = $this->advertiser();
+        $guard = app(CatalogCopyStrikeGuard::class);
+        $dump = implode(',', [
+            'https://csv-1.example',
+            'https://csv-2.example',
+            'https://csv-3.example',
+            'https://csv-4.example',
+            'https://csv-5.example',
+        ]);
+
+        $result = $guard->record($user, null, $dump);
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_WARNING, $result['status']);
+        $this->assertSame(5, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
+    }
+
     public function test_whole_row_text_with_one_url_counts_once(): void
     {
         $user = $this->advertiser();
@@ -406,6 +431,31 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
         $this->assertSame($site->id, (int) CatalogCopyEvent::first()->site_id);
+    }
+
+    public function test_unparseable_copy_event_dates_do_not_count_toward_threshold(): void
+    {
+        $user = $this->advertiser();
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        for ($i = 1; $i <= 4; $i++) {
+            $event = CatalogCopyEvent::create([
+                'user_id' => $user->id,
+                'site_id' => $this->site("garbage-copy-{$i}.example")->id,
+                'normalized_host' => "garbage-copy-{$i}.example",
+                'created_at' => now(),
+            ]);
+            DB::table('catalog_copy_events')->where('id', $event->id)->update([
+                'created_at' => 'not-a-date',
+            ]);
+        }
+
+        $site = $this->site('real-copy.example');
+        $result = $guard->record($user, $site->id, 'https://real-copy.example');
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
+        $this->assertSame(0, (int) $user->fresh()->catalog_copy_strike_count);
+        $this->assertSame(1, $result['distinct_in_window']);
     }
 
     public function test_copy_tracking_pauses_while_hide_mode_is_active(): void
@@ -441,5 +491,22 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
         $this->assertFalse($result['in_hide_mode']);
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
+    }
+
+    public function test_reused_site_id_with_rotating_hosts_still_reaches_the_threshold(): void
+    {
+        $user = $this->advertiser();
+        $pinned = $this->site('pinned-row.example');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $last = null;
+        for ($i = 1; $i <= 5; $i++) {
+            $last = $guard->record($user->fresh(), $pinned->id, 'rotate-'.$i.'.example');
+        }
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_WARNING, $last['status']);
+        $this->assertSame(5, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(0, CatalogCopyEvent::where('user_id', $user->id)->whereNotNull('site_id')->count());
+        $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
     }
 }

@@ -12,10 +12,12 @@ use App\Models\Wallet;
 use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
+use App\Services\StripeCustomerService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Mockery;
 use Stripe\ApiRequestor;
+use Stripe\Checkout\Session;
 use Stripe\HttpClient\ClientInterface;
 use Tests\TestCase;
 
