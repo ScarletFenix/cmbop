@@ -3906,7 +3906,11 @@ class CatalogController extends Controller
                 ]],
                 'mode' => 'payment',
                 'success_url' => route('advertiser.checkout.process').'?session_id={CHECKOUT_SESSION_ID}&ref='.urlencode($referenceCode),
-                'cancel_url' => route('advertiser.orders').'?payment_status=failed&retry=canceled',
+                'cancel_url' => route('advertiser.orders', [
+                    'payment_status' => 'failed',
+                    'retry' => 'canceled',
+                    'ref' => $referenceCode,
+                ]),
                 'metadata' => [
                     'type' => 'order_payment',
                     'reference_code' => $referenceCode,
@@ -4050,8 +4054,12 @@ class CatalogController extends Controller
     /**
      * Orders page
      */
-    public function orders()
+    public function orders(Request $request)
     {
+        if (search_text((string) $request->query('retry')) === 'canceled') {
+            $this->failPayAgainAfterStripeCancel($request);
+        }
+
         return view('advertiser.orders');
     }
 
@@ -5576,21 +5584,24 @@ class CatalogController extends Controller
             return;
         }
 
-        // Legacy path: pending order rows existed before Stripe redirect.
-        $stillPending = $canceled->where('payment_status', 'pending');
+        // Card leftovers stay failed+pending for Pay again. Customer cancel
+        // must fail an in-flight retry, not release the article or cancel the row.
+        $stillPending = $canceled->where('payment_status', 'pending')
+            ->where('status', 'pending');
         if ($stillPending->isNotEmpty()) {
             $paymentService->markOrdersFailedFromReference(
                 $referenceCode,
                 'Checkout canceled by customer'
             );
             $canceled = Order::with('items')
-                ->where('user_id', auth()->id())
+                ->where('user_id', $userId)
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
                 ->where('payment_status', 'failed')
+                ->where('status', 'pending')
                 ->get();
         } else {
-            $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
+            $this->refundCheckoutBonus($userId, $referenceCode);
         }
 
         $paymentService->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
@@ -5599,11 +5610,6 @@ class CatalogController extends Controller
         $submissionId = session('checkout_content_submission_id');
 
         foreach ($canceled as $order) {
-            $this->releaseContentSubmissionsForOrder($order);
-            if ($order->status !== 'cancelled') {
-                $order->update(['status' => 'cancelled']);
-            }
-
             foreach ($order->items as $item) {
                 if (! $item->site_id) {
                     continue;
@@ -5632,10 +5638,44 @@ class CatalogController extends Controller
         }
         session()->forget('pending_card_reference');
 
-        Log::info('Cancelled unpaid card orders after Stripe cancel', [
+        Log::info('Kept Pay again leftovers after Stripe cancel', [
             'reference_code' => $referenceCode,
             'order_count' => $canceled->count(),
         ]);
+    }
+
+    /**
+     * Pay again cancel_url lands on Orders. Mark the leftover failed again
+     * without cancelling it so Pay again stays available.
+     */
+    private function failPayAgainAfterStripeCancel(Request $request): void
+    {
+        $referenceCode = search_text((string) $request->query(
+            'ref',
+            (string) session('pending_card_reference', '')
+        ));
+        if ($referenceCode === '') {
+            return;
+        }
+
+        $userId = (int) auth()->id();
+        $owned = Order::query()
+            ->where('user_id', $userId)
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('payment_status', 'pending')
+            ->where('status', 'pending')
+            ->exists();
+        if (! $owned) {
+            return;
+        }
+
+        app(OrderPaymentService::class)->markOrdersFailedFromReference(
+            $referenceCode,
+            'Pay again canceled',
+            $userId
+        );
+        session()->forget('pending_card_reference');
     }
 
     /**
