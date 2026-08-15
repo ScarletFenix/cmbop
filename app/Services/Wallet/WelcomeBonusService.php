@@ -231,6 +231,14 @@ class WelcomeBonusService
     }
 
     /**
+     * Shared signup flood key for form register and Google new-user create.
+     */
+    public function registerRateLimitKey(Request $request): string
+    {
+        return 'register:'.$this->placeKey($request);
+    }
+
+    /**
      * @return list<string>
      */
     private function ipClaimKeys(string $ip): array

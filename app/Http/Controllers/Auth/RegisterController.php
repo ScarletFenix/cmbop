@@ -37,7 +37,7 @@ class RegisterController extends Controller
      */
     public function register(Request $request)
     {
-        $key = 'register:'.app(WelcomeBonusService::class)->placeKey($request);
+        $key = app(WelcomeBonusService::class)->registerRateLimitKey($request);
         if (RateLimiter::tooManyAttempts($key, 5)) {
             return response()->json([
                 'status' => 'error',

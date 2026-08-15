@@ -241,6 +241,7 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame('unknown', $this->service->placeKey(
             $this->request('not-an-ip-address')
         ));
+        $this->assertSame('register:1.2.3.4', $this->service->registerRateLimitKey($spoofed));
     }
 
     public function test_invalid_ip_string_is_ignored(): void
