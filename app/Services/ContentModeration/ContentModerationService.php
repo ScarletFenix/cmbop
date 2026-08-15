@@ -1154,6 +1154,8 @@ class ContentModerationService
             }
             $report['passed_compliance'] = true;
             $report['summary'] = 'Approved by admin override.';
+            $report['matched_terms'] = [];
+            $report['blocked_urls'] = [];
         } else {
             $replaced = false;
             foreach ($checks as $i => $check) {

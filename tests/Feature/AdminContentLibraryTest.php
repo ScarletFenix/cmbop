@@ -330,6 +330,86 @@ class AdminContentLibraryTest extends TestCase
             ->assertSee('Expired Item Leftover');
     }
 
+    public function test_item_only_leftover_show_and_index_link_the_open_order(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Item Leftover Order Link']);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $this->claimByItemOnly($submission, $order, $site);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order', 'orderItems.site']);
+        $this->assertNull($fresh->order_id);
+        $this->assertSame((int) $order->id, (int) $fresh->libraryOrder()?->id);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertSee($order->order_number)
+            ->assertSee(route('admin.orders.show', $order), false)
+            ->assertSee($site->site_name);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Item Leftover Order Link')
+            ->assertSee($order->order_number)
+            ->assertSee(route('admin.orders.show', $order), false);
+    }
+
+    public function test_expired_item_only_leftover_stays_editable_and_staff_can_retry(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Item Retry',
+            'expires_at' => now()->subDay(),
+        ]);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $this->claimByItemOnly($submission, $order, $site);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->canEditArticle());
+        $this->assertTrue($fresh->canDownloadOriginal());
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.retry', $submission))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+    }
+
+    public function test_unused_expired_article_cannot_be_retried(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Unused Retry',
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->assertFalse($submission->fresh()->canEditArticle());
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.retry', $submission))
+            ->assertRedirect()
+            ->assertSessionHas('error');
+    }
+
     public function test_unused_approved_missing_file_is_needs_fix(): void
     {
         $admin = $this->admin();

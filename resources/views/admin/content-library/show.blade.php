@@ -25,8 +25,9 @@
     $advertiserUrl = $submission->user
         ? route('admin.users.index', ['user' => $submission->user->id]).'#user-'.$submission->user->id
         : null;
-    $orderUrl = $submission->order_id
-        ? route('admin.orders.show', $submission->order_id)
+    $libraryOrder = $submission->libraryOrder();
+    $orderUrl = $libraryOrder
+        ? route('admin.orders.show', $libraryOrder->id)
         : null;
     $siteName = $placement?->site_name
         ?: $placement?->site?->site_name
@@ -90,8 +91,8 @@
                         <dt class="col-5 text-muted">Order</dt>
                         <dd class="col-7">
                             @if($orderUrl)
-                                <a href="{{ $orderUrl }}">{{ $submission->order?->order_number ?: '#'.$submission->order_id }}</a>
-                                <div class="text-muted">{{ $submission->order?->status }} · {{ $submission->order?->payment_status }}</div>
+                                <a href="{{ $orderUrl }}">{{ $libraryOrder?->order_number ?: '#'.$libraryOrder?->id }}</a>
+                                <div class="text-muted">{{ $libraryOrder?->status }} · {{ $libraryOrder?->payment_status }}</div>
                             @else
                                 —
                             @endif

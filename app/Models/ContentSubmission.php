@@ -926,7 +926,7 @@ class ContentSubmission extends Model
             return false;
         }
 
-        if ($this->isInUse()) {
+        if ($this->isInUse() || $this->isLinkedToOpenOrderItem()) {
             return true;
         }
 
@@ -935,7 +935,13 @@ class ContentSubmission extends Model
 
     public function canEditArticle(): bool
     {
-        return ! $this->isLockedByPaidOrder() && ! $this->isArchived() && ! $this->isExpired();
+        if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+            return false;
+        }
+
+        // Catalog expiry is unused-inventory only. A leftover still on an
+        // open order must stay editable so Pay again can be unblocked.
+        return ! $this->isExpired() || $this->isLinkedToOpenOrderItem();
     }
 
     /**
@@ -1271,6 +1277,32 @@ class ContentSubmission extends Model
 
             return $order instanceof Order && $order->status !== 'cancelled';
         });
+    }
+
+    /**
+     * Owner order, or the leftover line still pointing here when order_id
+     * was never written. Admin library "View order" must not go blank.
+     */
+    public function libraryOrder(): ?Order
+    {
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order) {
+            return $owner;
+        }
+
+        $item = $this->placementItem();
+        if ($item) {
+            $order = $item->relationLoaded('order')
+                ? $item->order
+                : $item->order()->first();
+            if ($order instanceof Order) {
+                return $order;
+            }
+        }
+
+        $claimId = $this->activeClaimOrderId();
+
+        return $claimId ? Order::query()->find($claimId) : null;
     }
 
     public function liveUrl(): ?string
