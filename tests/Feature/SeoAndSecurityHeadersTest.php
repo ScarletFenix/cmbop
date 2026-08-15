@@ -177,6 +177,32 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('BreadcrumbList', false);
     }
 
+    public function test_blog_json_ld_escapes_script_breakout_in_title(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Break</script><script>alert(1)</script>',
+            'slug' => 'json-ld-breakout',
+            'excerpt' => 'Excerpt',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Break</script><script>alert(1)</script>',
+            'slug' => 'json-ld-breakout',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Body</p>',
+            'is_published' => true,
+        ]);
+
+        $html = $this->get(route('blog.show', ['slug' => $blog->slug]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $html);
+        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
+        $this->assertStringContainsString('BlogPosting', $html);
+    }
+
     public function test_help_widget_has_accessible_labels(): void
     {
         $this->get('/')

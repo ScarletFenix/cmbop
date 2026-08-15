@@ -96,6 +96,40 @@ class AdminBlogPublishTest extends TestCase
         $this->assertDatabaseMissing('blogs', ['slug' => 'blank-after-sanitize']);
     }
 
+    public function test_store_deletes_featured_file_when_create_transaction_fails(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+
+        $forced = false;
+        Blog::creating(function () use (&$forced) {
+            if ($forced) {
+                return;
+            }
+            $forced = true;
+            throw new \RuntimeException('forced create failure');
+        });
+
+        $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'featured_image' => UploadedFile::fake()->image('hero.jpg', 800, 450),
+                'translations' => [
+                    'en' => [
+                        'title' => 'Orphan Featured',
+                        'slug' => 'orphan-featured',
+                        'content' => '<p>Valid body that should persist if create worked.</p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.create'))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('blogs', ['slug' => 'orphan-featured']);
+        $this->assertSame([], Storage::disk('public')->allFiles('blogs/featured'));
+    }
+
     public function test_store_does_not_write_featured_file_when_content_sanitizes_blank(): void
     {
         Storage::fake('public');

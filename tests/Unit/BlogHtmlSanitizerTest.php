@@ -115,6 +115,30 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertStringNotContainsString('alert(1)', $encoded);
     }
 
+    public function test_invalid_utf8_does_not_bypass_event_handler_stripping(): void
+    {
+        $dirty = "<p onclick=\"alert(1)\">Hi\x80</p>"
+            .'<img src="/media/blogs/content/a.png" onerror="alert(1)">';
+
+        $clean = $this->sanitizer->sanitize($dirty);
+
+        $this->assertStringNotContainsString('onclick', $clean);
+        $this->assertStringNotContainsString('onerror', $clean);
+        $this->assertStringNotContainsString('alert(1)', $clean);
+        $this->assertStringContainsString('/media/blogs/content/a.png', $clean);
+    }
+
+    public function test_encode_for_editor_keeps_invalid_utf8_body(): void
+    {
+        $encoded = BlogHtmlSanitizer::encodeForEditor("<p>Hello\x80 world</p>");
+        $decoded = json_decode($encoded, true);
+
+        $this->assertIsString($decoded);
+        $this->assertNotSame('', $decoded);
+        $this->assertStringContainsString('Hello', $decoded);
+        $this->assertStringContainsString('world', $decoded);
+    }
+
     public function test_legacy_asset_blog_images_are_rewritten_not_stripped(): void
     {
         $html = '<p>Keep</p><img src="/assets/img/blog/gastbeitraege-europa-sprachen.jpg" alt="A">';

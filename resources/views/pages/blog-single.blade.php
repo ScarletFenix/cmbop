@@ -56,7 +56,7 @@
         : [asset('assets/brand/web/og-share-1200x630.png')],
     'mainEntityOfPage' => $blogCanonical,
     'url' => $blogCanonical,
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @if(!empty($blogFaq))
 <script type="application/ld+json">
@@ -71,7 +71,7 @@
             'text' => $item['answer'],
         ],
     ], $blogFaq),
-], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE) !!}
+], JSON_UNESCAPED_SLASHES|JSON_UNESCAPED_UNICODE|JSON_HEX_TAG|JSON_INVALID_UTF8_SUBSTITUTE) ?: '{}' !!}
 </script>
 @endif
 @endpush

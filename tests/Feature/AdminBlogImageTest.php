@@ -378,12 +378,26 @@ class AdminBlogImageTest extends TestCase
 
     public function test_featured_image_url_rewrites_legacy_asset_paths(): void
     {
+        Storage::fake('public');
+
         $blog = new Blog([
             'featured_image' => '/assets/img/blog/gastbeitraege-europa-featured.jpg',
         ]);
 
         $this->assertSame(
+            '/media/blogs/featured/gastbeitraege-europa-featured.jpg',
+            $blog->featuredImageUrl()
+        );
+
+        Storage::disk('public')->put('blogs/content/gastbeitraege-europa-featured.jpg', 'content-copy');
+        $this->assertSame(
             '/media/blogs/content/gastbeitraege-europa-featured.jpg',
+            $blog->featuredImageUrl()
+        );
+
+        Storage::disk('public')->put('blogs/featured/gastbeitraege-europa-featured.jpg', 'featured-copy');
+        $this->assertSame(
+            '/media/blogs/featured/gastbeitraege-europa-featured.jpg',
             $blog->featuredImageUrl()
         );
     }

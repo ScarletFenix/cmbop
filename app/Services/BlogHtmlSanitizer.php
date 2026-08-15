@@ -64,10 +64,12 @@ class BlogHtmlSanitizer
      */
     public static function encodeForScript(?string $html): string
     {
-        return json_encode(
-            (string) $html,
-            JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
-        ) ?: '""';
+        $encoded = json_encode(
+            self::utf8((string) $html),
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_INVALID_UTF8_SUBSTITUTE
+        );
+
+        return is_string($encoded) ? $encoded : '""';
     }
 
     /**
@@ -114,7 +116,7 @@ class BlogHtmlSanitizer
             return '';
         }
 
-        $html = self::rewritePublicBlogUrls(trim((string) $html));
+        $html = self::rewritePublicBlogUrls(self::utf8(trim((string) $html)));
 
         // strip_tags keeps inner text, so remove these elements with their contents first.
         $html = preg_replace('/<(script|style|noscript|template)\b[^>]*>.*?<\/\1>/isu', '', $html) ?? $html;
@@ -214,5 +216,24 @@ class BlogHtmlSanitizer
         }
 
         return trim(html_entity_decode($m[2], ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+    }
+
+    /**
+     * /u preg_replace returns null on invalid UTF-8, and `?? $html` would keep
+     * the dirty markup (event handlers, javascript: URLs). Scrub first.
+     */
+    private static function utf8(string $html): string
+    {
+        if (function_exists('mb_scrub')) {
+            return mb_scrub($html, 'UTF-8');
+        }
+
+        if (mb_check_encoding($html, 'UTF-8')) {
+            return $html;
+        }
+
+        $converted = @iconv('UTF-8', 'UTF-8//IGNORE', $html);
+
+        return is_string($converted) ? $converted : '';
     }
 }
