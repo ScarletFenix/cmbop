@@ -343,10 +343,85 @@ class AdminEmailCenterTest extends TestCase
 
     public function test_catalog_keys_match_notification_config(): void
     {
-        $this->assertEqualsCanonicalizing(
-            array_keys(config('email_notifications.types')),
-            array_keys(EmailCatalog::all())
-        );
+        $configKeys = array_keys(config('email_notifications.types'));
+
+        $this->assertEqualsCanonicalizing($configKeys, array_keys(EmailCatalog::all()));
+        $this->assertSame($configKeys, array_keys(EmailCatalog::templates()));
+        $this->assertArrayHasKey('spend_budget_alert', EmailCatalog::templates());
+        foreach ([
+            'email_verification',
+            'content_evaluation_result',
+            'site_discount_ended',
+            'payout_profile_updated',
+            'bulk_site_request_submitted',
+            'bulk_sites_seeded',
+            'admin_assigned_site',
+            'audience_campaign',
+            'bulk_request_cancelled',
+            'bulk_request_items_rejected',
+            'spend_budget_alert',
+        ] as $key) {
+            $this->assertArrayHasKey($key, EmailCatalog::templates());
+            $this->assertNotSame('', EmailCatalog::templates()[$key]['description'] ?? '');
+            $this->assertNotSame('Other', EmailCatalog::templates()[$key]['category'] ?? 'Other');
+        }
+    }
+
+    public function test_email_center_lists_templates_from_config_including_spend_budget_alert(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->assertSee('Spend Budget Alert', false)
+            ->assertSee('Email Verification', false)
+            ->assertSee('Content Evaluation Result', false)
+            ->assertSee('Site Discount Ended', false)
+            ->assertSee('Payout Profile Updated by Support', false)
+            ->assertSee('Bulk Site Request Submitted', false)
+            ->assertSee('Bulk Sites Seeded', false)
+            ->assertSee('Admin Assigned Site', false)
+            ->assertSee('Updates & Campaigns')
+            ->assertSee('Bulk Website Request Cancelled', false)
+            ->assertSee('Bulk Request Sites Not Added', false);
+    }
+
+    public function test_key_from_subject_uses_unique_needles_longest_first(): void
+    {
+        $cases = [
+            'Welcome to SEOLinkBuildings' => 'welcome',
+            'New Withdrawal Request - €50.00' => 'withdrawal_request',
+            'Withdrawal request received (WD-12)' => 'withdrawal_requested_confirmation',
+            'Withdrawal Request Approved' => 'withdrawal_status',
+            'Withdrawal Request Completed' => 'withdrawal_status',
+            'New Order for Your Site: Example' => 'publisher_new_order',
+            'New order #ORD-1 created' => 'order_status_changed',
+            'Manual Payment Required - New Order #ORD-1' => 'admin_manual_payment',
+            'Order Accepted - #ORD-1' => 'order_accepted',
+            'Payment Confirmed for Order #ORD-1' => 'order_payment_confirmed',
+            'Payment Successful – Invoice Attached' => 'payment_successful_invoice',
+            'Deposit Approved - €100.00' => 'deposit_approved',
+            'New Deposit Request - €100.00' => 'deposit_submitted',
+            'Your site discount has ended — Sample Site' => 'site_discount_ended',
+            'Your payout details were updated' => 'payout_profile_updated',
+            'Your article was approved for publication' => 'content_evaluation_result',
+            'Article evaluation update: action needed' => 'content_evaluation_result',
+            'Bulk site request from Sample User' => 'bulk_site_request_submitted',
+            'Your sites were added to Pending sites' => 'bulk_sites_seeded',
+            'Please accept a website we added for you' => 'admin_assigned_site',
+            'Your bulk website request was cancelled' => 'bulk_request_cancelled',
+            'We did not add a site from bulk request #0' => 'bulk_request_items_rejected',
+            'Spend budget warning' => 'spend_budget_alert',
+            'Monthly spend budget reached' => 'spend_budget_alert',
+            'Low wallet balance alert' => 'spend_budget_alert',
+            'Verify your email (Test Preview)' => 'email_verification',
+            'Password Reset (Test Preview)' => 'password_reset',
+        ];
+
+        foreach ($cases as $subject => $expected) {
+            $this->assertSame($expected, EmailCatalog::keyFromSubject($subject), $subject);
+        }
     }
 
     public function test_every_notification_type_has_a_preview(): void

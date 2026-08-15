@@ -52,9 +52,8 @@ class EmailCenterController extends Controller
             ->get()
             ->keyBy('template_key');
 
-        $templates = collect(EmailCatalog::all())->map(function (array $meta, string $key) use ($templateStats) {
-            $meta['key'] = $key;
-            $row = $templateStats->get($key);
+        $templates = collect(EmailCatalog::templates())->map(function (array $meta) use ($templateStats) {
+            $row = $templateStats->get($meta['key']);
             $meta['last_sent_at'] = $row?->last_sent_at;
             $meta['sent_count'] = (int) ($row?->sent_count ?? 0);
 
@@ -158,7 +157,7 @@ class EmailCenterController extends Controller
     {
         $adminEmail = (string) $request->user()->email;
         $data = $request->validate([
-            'template' => ['required', 'string', Rule::in(array_keys(EmailCatalog::all()))],
+            'template' => ['required', 'string', Rule::in(array_keys(EmailCatalog::templates()))],
             'email' => ['required', 'email', Rule::in([$adminEmail])],
         ]);
 

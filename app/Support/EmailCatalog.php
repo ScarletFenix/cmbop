@@ -522,6 +522,37 @@ class EmailCatalog
         ];
     }
 
+    /**
+     * Email Center cards, in config order. Config is the source of truth for
+     * which types exist; the catalog supplies description / category / status.
+     *
+     * @return array<string, array<string, mixed>>
+     */
+    public static function templates(): array
+    {
+        $catalog = self::all();
+        $templates = [];
+
+        foreach (config('email_notifications.types', []) as $key => $config) {
+            $meta = $catalog[$key] ?? [];
+            $templates[$key] = [
+                'key' => $key,
+                'name' => $meta['name'] ?? ($config['name'] ?? $key),
+                'description' => $meta['description'] ?? '',
+                'category' => $meta['category'] ?? 'Other',
+                'mailable' => $meta['mailable'] ?? ($config['mailable'] ?? null),
+                'status' => $meta['status'] ?? (! empty($config['framework']) ? 'framework' : 'active'),
+                'importance' => $meta['importance'] ?? null,
+                'audience' => $config['audience'] ?? 'user',
+                'preference' => $config['preference'] ?? null,
+                'framework' => (bool) ($config['framework'] ?? false),
+                'default_enabled' => (bool) ($config['default_enabled'] ?? true),
+            ];
+        }
+
+        return $templates;
+    }
+
     public static function get(string $key): ?array
     {
         $all = self::all();
@@ -548,19 +579,88 @@ class EmailCatalog
     {
         $subject = strtolower($subject);
         $map = [
-            'payment confirmed' => 'order_payment_confirmed',
-            'welcome' => 'welcome',
+            'payment confirmed for order' => 'order_payment_confirmed',
+            'payment successful' => 'payment_successful_invoice',
+            'payment pending verification' => 'payment_pending',
+            'payment failed' => 'payment_failed',
+            'payment update for order' => 'order_status_changed',
+            'welcome to' => 'welcome',
             'temporary password' => 'google_temp_password',
-            'trustpilot' => 'trustpilot_review',
+            'how was your experience' => 'trustpilot_review',
             'reset password' => 'password_reset',
             'password reset' => 'password_reset',
+            'verify your email' => 'email_verification',
             'deposit approved' => 'deposit_approved',
-            'deposit rejected' => 'deposit_rejected',
-            'withdrawal' => 'withdrawal_status',
-            'new order' => 'publisher_new_order',
-            'order accepted' => 'order_accepted',
-            'live url' => 'live_url_submitted',
+            'wallet topped up' => 'deposit_approved',
+            'deposit request update' => 'deposit_rejected',
+            'new deposit request' => 'deposit_submitted',
+            'payment reported' => 'deposit_marked_paid',
+            'new withdrawal request' => 'withdrawal_request',
+            'withdrawal request received' => 'withdrawal_requested_confirmation',
+            'withdrawal request ' => 'withdrawal_status',
+            'new order for your site' => 'publisher_new_order',
+            'manual payment required' => 'admin_manual_payment',
+            'order accepted -' => 'order_accepted',
+            'order rejected -' => 'order_rejected',
+            'order approved by advertiser' => 'order_completed',
+            'live url submitted' => 'live_url_submitted',
+            'modification requested for order' => 'modification_requested',
+            'publisher requested a revised article' => 'content_revision_requested',
+            'revised article ready' => 'content_revision_fulfilled',
+            'your article was approved' => 'content_evaluation_result',
+            'article evaluation update' => 'content_evaluation_result',
+            'your site discount has ended' => 'site_discount_ended',
+            'your payout details were updated' => 'payout_profile_updated',
+            'bulk site request from' => 'bulk_site_request_submitted',
+            'your sites were added to pending sites' => 'bulk_sites_seeded',
+            'please accept a website we added' => 'admin_assigned_site',
+            'your bulk website request was cancelled' => 'bulk_request_cancelled',
+            'we did not add' => 'bulk_request_items_rejected',
+            'spend budget' => 'spend_budget_alert',
+            'low wallet balance alert' => 'spend_budget_alert',
+            'new site submitted for review' => 'new_site',
+            'site updated - requires review' => 'new_site',
+            'your site has been' => 'site_status',
+            'site status update' => 'site_status',
+            'your site verification' => 'site_status',
+            'your site submission was not accepted' => 'site_status',
+            'your site was archived' => 'site_status',
+            'site claim:' => 'site_claim_submitted',
+            'claim approved' => 'site_claim_reviewed',
+            'claim update' => 'site_claim_reviewed',
+            'ownership transferred' => 'site_claim_ownership_transferred',
+            'website suggestion' => 'website_suggestion_reviewed',
+            'new message regarding order' => 'chat_message',
+            'refund receipt' => 'refund_receipt',
+            'refund credited' => 'dispute_refund_advertiser',
+            'clawback on order' => 'dispute_clawback_publisher',
+            'new order #' => 'order_status_changed',
+            'order #' => 'order_status_changed',
+            'list your first website' => 'publisher_add_site_reminder',
+            'finish setup' => 'publisher_add_site_reminder',
+            'your €20 credit is waiting' => 'deposit_reminder',
+            'add funds to place your first guest post' => 'deposit_reminder',
+            'a paid order is waiting on you' => 'publisher_accept_nudge',
+            'is still unaccepted' => 'publisher_accept_nudge',
+            'waiting to be published' => 'publisher_publish_nudge',
+            'due soon: publish order' => 'publisher_publish_nudge',
+            'past its turnaround' => 'publisher_publish_nudge',
+            'still overdue: order' => 'publisher_publish_nudge',
+            'needs publishing' => 'publisher_publish_nudge',
+            'your link is live' => 'advertiser_review_nudge',
+            '1 day left to review order' => 'auto_approve_reminder',
+            'we are chasing your order' => 'advertiser_order_stalled',
+            '[admin] order' => 'admin_stalled_order',
+            'new advertiser registered' => 'admin_new_user',
+            'new publisher registered' => 'admin_new_user',
+            'new user registered' => 'admin_new_user',
+            'new sites in the catalog' => 'new_sites_digest',
+            'new sites just added' => 'new_sites_digest',
+            'weekly activity summary' => 'weekly_activity_summary',
+            'your spending summary' => 'monthly_spending_summary',
         ];
+
+        uksort($map, static fn (string $a, string $b): int => strlen($b) <=> strlen($a));
 
         foreach ($map as $needle => $key) {
             if (str_contains($subject, $needle)) {
