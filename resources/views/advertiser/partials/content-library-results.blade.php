@@ -398,8 +398,7 @@
                                     @endif
                                 @endif
                                 @if($availability === 'in_progress'
-                                    || $submission->activeClaimOrderId()
-                                    || ($submission->canReplaceUnpaidLeftover() && ! $submission->isReadyForCheckout()))
+                                    || ($submission->libraryOrder() && ! $submission->isPublished() && $availability !== 'available'))
                                     <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.orders', absolute: false) }}">View order</a>
                                 @endif
 
