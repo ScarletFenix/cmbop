@@ -532,6 +532,136 @@ if (! function_exists('marketing_task_label')) {
     }
 }
 
+if (! function_exists('activity_action_labels')) {
+    /**
+     * Friendly labels for the admin activity history (includes marketing tasks).
+     *
+     * @return array<string, string>
+     */
+    function activity_action_labels(): array
+    {
+        return marketing_task_labels() + [
+            'site.approved' => 'Approved site',
+            'site.rejected' => 'Rejected site',
+            'site.verified_file' => 'Verified site (file)',
+            'site.verified_manual' => 'Verified site (manual)',
+            'site.archived' => 'Archived site',
+            'site.deleted' => 'Deleted site',
+            'site.claim_submitted' => 'Submitted site claim',
+            'site.claim_approved' => 'Approved site claim',
+            'site.claim_rejected' => 'Rejected site claim',
+            'site.assignment_accepted' => 'Accepted site assignment',
+            'site.featured' => 'Featured site',
+            'site.featured_stripe' => 'Featured site (Stripe)',
+            'site.discount_set' => 'Set site discount',
+            'site.bulk_imported' => 'Bulk-imported site',
+            'site.rating_saved' => 'Saved site rating',
+            'site.rating_updated' => 'Updated site rating',
+            'site.rating_deleted' => 'Deleted site rating',
+            'site.metrics_api_unlocked' => 'Allowed API overwrite',
+            'agency_import.submitted' => 'Submitted agency import',
+            'bulk_request.created' => 'Created bulk request',
+            'user.company_updated' => 'Updated company name',
+            'user.payout_profile_updated' => 'Updated payout profile',
+            'user.marketing_granted' => 'Granted marketing access',
+            'user.marketing_revoked' => 'Revoked marketing access',
+            'deposit.approved' => 'Approved deposit',
+            'deposit.rejected' => 'Rejected deposit',
+            'withdrawal.status_updated' => 'Updated withdrawal',
+            'payment.status_updated' => 'Updated payment',
+            'order.status_overridden' => 'Overrode order status',
+            'order.publisher_reminded' => 'Reminded publisher',
+            'finance.debt_cleared' => 'Cleared wallet debt',
+            'invoice.generated' => 'Generated invoice',
+            'invoice.cancelled' => 'Cancelled invoice',
+            'invoice.resent' => 'Resent invoice',
+            'campaign.queued' => 'Queued campaign',
+            'audience.exported' => 'Exported audience',
+            'welcome_bonus.toggled' => 'Toggled welcome bonus',
+            'welcome_bonus.amount_changed' => 'Changed welcome bonus',
+            'moderation.overridden' => 'Overrode moderation',
+            'moderation.override_reverted' => 'Reverted moderation override',
+            'moderation.settings_updated' => 'Updated moderation settings',
+            'content_library.override' => 'Overrode content library',
+            'feedback.problem' => 'Reported a problem',
+            'feedback.suggestion' => 'Sent a suggestion',
+            'website.suggested' => 'Suggested a website',
+            'catalog_activity.exempt_toggled' => 'Toggled catalog pace exemption',
+            'catalog_activity.copy_hide_cleared' => 'Cleared catalog copy hide',
+            'blog.published' => 'Published blog',
+            'blog.unpublished' => 'Unpublished blog',
+            'blog.deleted' => 'Deleted blog',
+            'email_center.test_sent' => 'Sent test email',
+            'announcement.created' => 'Created announcement',
+            'announcement.updated' => 'Updated announcement',
+            'announcement.deleted' => 'Deleted announcement',
+            'announcement.restored' => 'Restored announcement',
+            'announcement.toggled' => 'Toggled announcement',
+            'announcement.duplicated' => 'Duplicated announcement',
+            'banner.created' => 'Created banner',
+            'banner.updated' => 'Updated banner',
+            'banner.deleted' => 'Deleted banner',
+            'banner.restored' => 'Restored banner',
+            'banner.toggled' => 'Toggled banner',
+            'banner.duplicated' => 'Duplicated banner',
+        ];
+    }
+}
+
+if (! function_exists('activity_action_label')) {
+    /**
+     * Human-readable title for an admin activity action code.
+     */
+    function activity_action_label(?string $action): string
+    {
+        $action = (string) $action;
+        $labels = activity_action_labels();
+        if (isset($labels[$action])) {
+            return $labels[$action];
+        }
+
+        if (str_starts_with($action, 'site.verified_')) {
+            $method = substr($action, strlen('site.verified_'));
+
+            return $method !== '' ? 'Verified site ('.$method.')' : 'Verified site';
+        }
+
+        return $action;
+    }
+}
+
+if (! function_exists('activity_action_actions_matching')) {
+    /**
+     * Action codes whose friendly label or raw code starts with the search needle as a word.
+     *
+     * @return list<string>
+     */
+    function activity_action_actions_matching(?string $q): array
+    {
+        $needle = mb_strtolower(trim((string) $q));
+        if ($needle === '' || mb_strlen($needle) < 2) {
+            return [];
+        }
+
+        // Word-start only: "activate" hits Activated, not Deactivated.
+        $pattern = '/\b'.preg_quote($needle, '/').'/u';
+        $matched = [];
+        foreach (activity_action_labels() as $code => $label) {
+            $codeRaw = strtolower((string) $code);
+            $codeWords = str_replace(['.', '_'], ' ', $codeRaw);
+            if (
+                preg_match($pattern, strtolower((string) $label))
+                || preg_match($pattern, $codeRaw)
+                || preg_match($pattern, $codeWords)
+            ) {
+                $matched[] = $code;
+            }
+        }
+
+        return $matched;
+    }
+}
+
 if (! function_exists('marketing_task_actions_matching')) {
     /**
      * Action codes whose friendly label or raw code starts with the search needle as a word.

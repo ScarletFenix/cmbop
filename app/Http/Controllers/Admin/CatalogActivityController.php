@@ -9,7 +9,6 @@ use App\Models\Order;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\ActivityLogger;
-use App\Services\Catalog\CatalogCopyStrikeGuard;
 use App\Services\Catalog\RevealPaceGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -267,16 +266,17 @@ class CatalogActivityController extends Controller
         }
         $model->save();
 
-        CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
-        $this->logActivity(
-            'catalog_hide_cleared',
-            $model->email.' hide mode lifted and strikes reset. Copy history is kept.',
+        ActivityLogger::tryLog(
+            'catalog_activity.copy_hide_cleared',
+            (auth()->user()?->name ?? 'Admin').' cleared catalog copy hide for '.$model->email,
             $model,
-            [
-                'hide_until_was' => $hideUntilWas?->toIso8601String(),
-                'strikes_were' => $strikesWere,
-            ]
+            ['user_id' => $model->id],
+            $model->name
         );
+
+        if (Schema::hasTable('catalog_copy_events')) {
+            CatalogCopyEvent::query()->where('user_id', $model->id)->delete();
+        }
 
         return back()->with(
             'success',
@@ -560,83 +560,34 @@ class CatalogActivityController extends Controller
             ->groupBy('user_id')
             ->pluck('total', 'user_id');
 
-        $hostOnly = CatalogCopyEvent::query()
-            ->select('user_id', DB::raw('COUNT(DISTINCT normalized_host) as total'))
-            ->whereIn('user_id', $userIds)
-            ->where('created_at', '>=', $since)
-            ->whereNull('site_id')
-            ->groupBy('user_id')
-            ->pluck('total', 'user_id');
+            ActivityLogger::tryLog(
+                'catalog_activity.exempt_toggled',
+                (auth()->user()?->name ?? 'Admin').' ended catalog pace exemption for '.$model->email,
+                $model,
+                ['exempt' => false, 'user_id' => $model->id],
+                $model->name
+            );
 
-        $totals = collect();
-        foreach ($userIds as $id) {
-            $totals[(int) $id] = (int) ($withSite[$id] ?? 0) + (int) ($hostOnly[$id] ?? 0);
+            return back()->with(
+                'success',
+                $model->email.' is back under the usual pace checks.'
+            );
         }
 
         return $totals;
     }
 
-    private function parseDbTimestamp(mixed $value): ?Carbon
-    {
-        if ($value instanceof Carbon) {
-            return $value;
-        }
+        ActivityLogger::tryLog(
+            'catalog_activity.exempt_toggled',
+            (auth()->user()?->name ?? 'Admin').' granted catalog pace exemption for '.$model->email,
+            $model,
+            ['exempt' => true, 'until' => $until->toIso8601String(), 'user_id' => $model->id],
+            $model->name
+        );
 
-        if ($value instanceof \DateTimeInterface) {
-            return Carbon::parse($value->format('Y-m-d H:i:s'), 'UTC');
-        }
-
-        $raw = trim((string) $value);
-        if ($raw === '') {
-            return null;
-        }
-
-        return Carbon::parse($raw, 'UTC');
-    }
-
-    /**
-     * @param  array<string, mixed>  $properties
-     */
-    private function logActivity(string $action, string $description, User $subject, array $properties = []): void
-    {
-        try {
-            ActivityLogger::log($action, $description, $subject, $properties);
-        } catch (\Throwable $e) {
-            Log::warning('Catalog activity log failed', [
-                'action' => $action,
-                'user_id' => $subject->id,
-                'error' => $e->getMessage(),
-            ]);
-        }
-    }
-
-    private function hideRemainingLabel(?Carbon $until): ?string
-    {
-        if (! $until || ! $until->isFuture()) {
-            return null;
-        }
-
-        $minutes = max(1, (int) ceil(now()->diffInMinutes($until, false)));
-
-        if ($minutes >= 120) {
-            return (int) round($minutes / 60).'h left';
-        }
-
-        return $minutes.'m left';
-    }
-
-    private function userUrl(int $userId): string
-    {
-        return route('admin.users.index', ['user' => $userId]).'#user-'.$userId;
-    }
-
-    private function copyStrikeColumnsReady(): bool
-    {
-        try {
-            return Schema::hasColumn('users', 'catalog_copy_strike_count')
-                && Schema::hasColumn('users', 'catalog_hide_until');
-        } catch (\Throwable) {
-            return false;
-        }
+        return back()->with(
+            'success',
+            $model->email.' is trusted until '.$until->timezone(config('app.timezone'))->format('H:i').' ('.$minutes.' minutes).'
+        );
     }
 }
