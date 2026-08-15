@@ -355,7 +355,7 @@ class FinanceOverviewService
         $this->applyCreatedWindow($ledgerEarnings, $start, $end);
 
         $paidWithdrawals = Withdrawal::where('status', 'completed');
-        $this->applyCoalesceWindow($paidWithdrawals, $start, $end, 'processed_at', 'updated_at');
+        $this->applyCoalesceWindow($paidWithdrawals, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
 
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
 
@@ -395,7 +395,7 @@ class FinanceOverviewService
         $gmvCompleted = (float) $completedPaid->sum('total_amount');
 
         $withdrawalFees = Withdrawal::where('status', 'completed');
-        $this->applyCoalesceWindow($withdrawalFees, $start, $end, 'processed_at', 'updated_at');
+        $this->applyCoalesceWindow($withdrawalFees, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
         $withdrawalFeeSum = (float) (clone $withdrawalFees)->sum('fee');
 
         $refundOrders = Order::where('payment_status', 'refunded');
@@ -451,7 +451,7 @@ class FinanceOverviewService
         );
 
         $cashOutQuery = Withdrawal::where('status', 'completed');
-        $this->applyCoalesceWindow($cashOutQuery, $start, $end, 'processed_at', 'updated_at');
+        $this->applyCoalesceWindow($cashOutQuery, $start, $end, 'withdrawals.processed_at', 'withdrawals.updated_at');
         $cashOut = (float) $cashOutQuery->sum('net_amount');
 
         return [
@@ -587,29 +587,30 @@ class FinanceOverviewService
     private function applyPaidWindow($query, ?Carbon $start, Carbon $end): void
     {
         if ($this->ordersHaveColumn('paid_at')) {
-            $this->applyCoalesceWindow($query, $start, $end, 'paid_at', 'created_at');
+            $this->applyCoalesceWindow($query, $start, $end, 'orders.paid_at', 'orders.created_at');
         } else {
-            $this->applyCreatedWindow($query, $start, $end);
+            $this->applyCoalesceWindow($query, $start, $end, 'orders.created_at', 'orders.created_at');
         }
     }
 
     private function applyCompletedWindow($query, ?Carbon $start, Carbon $end): void
     {
         if ($this->ordersHaveColumn('completed_at')) {
-            $this->applyCoalesceWindow($query, $start, $end, 'completed_at', 'updated_at');
+            $this->applyCoalesceWindow($query, $start, $end, 'orders.completed_at', 'orders.updated_at');
         } else {
-            $this->applyCoalesceWindow($query, $start, $end, 'updated_at', 'updated_at');
+            $this->applyCoalesceWindow($query, $start, $end, 'orders.updated_at', 'orders.updated_at');
         }
     }
 
     private function applyRefundWindow($query, ?Carbon $start, Carbon $end): void
     {
-        $this->applyCoalesceWindow($query, $start, $end, 'updated_at', 'updated_at');
+        $this->applyCoalesceWindow($query, $start, $end, 'orders.updated_at', 'orders.updated_at');
     }
 
     private function applyCreatedOrPaidWindow($query, ?Carbon $start, Carbon $end, string $preferred): void
     {
-        $this->applyCoalesceWindow($query, $start, $end, $preferred, 'created_at');
+        $table = $query->getModel()->getTable();
+        $this->applyCoalesceWindow($query, $start, $end, $table.'.'.$preferred, $table.'.created_at');
     }
 
     /**

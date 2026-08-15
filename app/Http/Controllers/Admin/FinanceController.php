@@ -54,8 +54,8 @@ class FinanceController extends Controller
         if ($request->filled('direction')) {
             $query->where('direction', $request->direction);
         }
-        if ($request->filled('search')) {
-            $search = $request->search;
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('reference', 'like', "%{$search}%")
                     ->orWhere('description', 'like', "%{$search}%")
@@ -69,11 +69,15 @@ class FinanceController extends Controller
         if ($request->filled('user_id')) {
             $query->where('user_id', (int) $request->user_id);
         }
-        if ($request->filled('date_from')) {
-            $query->whereDate('created_at', '>=', $request->date_from);
+        $dates = $request->validate([
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+        ]);
+        if (! empty($dates['date_from'])) {
+            $query->whereDate('created_at', '>=', $dates['date_from']);
         }
-        if ($request->filled('date_to')) {
-            $query->whereDate('created_at', '<=', $request->date_to);
+        if (! empty($dates['date_to'])) {
+            $query->whereDate('created_at', '<=', $dates['date_to']);
         }
 
         $transactions = $query->paginate(40)->withQueryString();

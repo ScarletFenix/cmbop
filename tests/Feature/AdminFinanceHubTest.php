@@ -15,6 +15,7 @@ use App\Services\Admin\FinanceOverviewService;
 use App\Services\Wallet\WalletLedgerService;
 use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class AdminFinanceHubTest extends TestCase
@@ -382,6 +383,38 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString("routeIs('admin.finance.user')", $blade);
     }
 
+    public function test_completed_window_qualifies_order_columns_for_where_has(): void
+    {
+        $service = app(FinanceOverviewService::class);
+        $method = new ReflectionMethod(FinanceOverviewService::class, 'applyCompletedWindow');
+        $method->setAccessible(true);
+
+        $query = OrderItem::query()->whereHas('order', function ($inner) use ($method, $service) {
+            $method->invoke($service, $inner, Carbon::parse('2026-08-01'), Carbon::parse('2026-08-31')->endOfDay());
+        });
+
+        $sql = $query->toSql();
+        $this->assertStringContainsString('orders.completed_at', $sql);
+        $this->assertStringContainsString('orders.updated_at', $sql);
+        $this->assertStringNotContainsString('COALESCE(completed_at, updated_at)', $sql);
+    }
+
+    public function test_ledger_rejects_invalid_dates_and_array_search(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->from(route('admin.finance.ledger'))
+            ->get(route('admin.finance.ledger', ['date_from' => 'nope']))
+            ->assertRedirect(route('admin.finance.ledger'))
+            ->assertSessionHasErrors('date_from');
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => ['oops']]))
+            ->assertOk()
+            ->assertSee('Wallet ledger', false);
+    }
+
     public function test_finance_page_uses_fee_margin_copy(): void
     {
         $admin = $this->makeUser('admin');
@@ -392,7 +425,8 @@ class AdminFinanceHubTest extends TestCase
             ->assertSee('Est. fee margin', false)
             ->assertSee('Dated by paid date', false)
             ->assertSee('Dated by completed date', false)
-            ->assertSee('Dated by refund date', false);
+            ->assertSee('Dated by refund date', false)
+            ->assertSee('Fees − fee reversals − bonuses', false);
     }
 
     /**
