@@ -1345,4 +1345,171 @@ class BulkDoneRejectRowsTest extends TestCase
             ->getContent();
         $this->assertStringNotContainsString($site->domain, $html);
     }
+
+    public function test_done_rejects_www_variant_of_an_existing_domain(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'www-collide');
+        $this->existingListing('www.'.$items[0]->domain, [
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error')
+            ->assertSessionHas('seed_failures', function ($failures) use ($items) {
+                return is_array($failures)
+                    && collect($failures)->contains(function ($row) use ($items) {
+                        $errors = $row['errors'] ?? [];
+
+                        return collect($errors)->contains(
+                            fn ($error) => str_contains((string) $error, 'Domain already registered: '.$items[0]->domain)
+                        );
+                    });
+            });
+
+        $this->assertNull($items[0]->fresh()->site_id);
+        $this->assertSame(1, Site::query()->where('domain', 'www.'.$items[0]->domain)->count());
+        $this->assertDatabaseMissing('sites', [
+            'domain' => $items[0]->domain,
+            'bulk_site_request_id' => $bulk->id,
+        ]);
+    }
+
+    public function test_publisher_bulk_rejects_www_variant_already_registered(): void
+    {
+        $this->existingListing('www.bulk-taken.example', [
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://bulk-taken.example', 'price' => 40],
+                    ['url' => 'https://bulk-fresh.example', 'price' => 50],
+                ],
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHasErrors('sites.0.url');
+
+        $this->assertSame(0, BulkSiteRequest::query()->count());
+    }
+
+    public function test_legacy_archived_only_sheet_still_blocks_publisher(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_SHEET_SENT,
+            'estimated_count' => 6,
+            'sheet_sent_at' => now(),
+        ]);
+        $this->existingListing('legacy-arch-only.example', [
+            'bulk_site_request_id' => $bulk->id,
+            'archived_at' => now(),
+        ]);
+
+        $this->assertTrue($bulk->fresh()->canAddDraftSites());
+        $this->assertTrue(
+            BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+        );
+        $this->assertTrue(
+            MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists()
+        );
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://legacy-new-a.example', 'price' => 40],
+                    ['url' => 'https://legacy-new-b.example', 'price' => 50],
+                ],
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHas('error');
+    }
+
+    public function test_show_heals_awaiting_publisher_when_all_sites_are_archived(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'heal-arch');
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $site = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $site->forceFill(['archived_at' => now(), 'active' => 0])->save();
+        $bulk->forceFill(['status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER])->save();
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Completed — ready to verify', false);
+
+        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        $this->assertFalse(
+            MarketingOpsQueues::bulkWaitingOnPublisher()->whereKey($bulk->id)->exists()
+        );
+        $this->assertFalse(
+            BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+        );
+    }
+
+    public function test_active_tab_hides_cancelled_bulk_live_leftover(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'cancel-active');
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $site = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $site->forceFill([
+            'verified' => true,
+            'verified_at' => now(),
+            'active' => true,
+            'onboarding_status' => null,
+        ])->save();
+        $bulk->forceFill(['status' => BulkSiteRequest::STATUS_CANCELLED])->save();
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString($site->domain, $html);
+        $this->assertStringContainsString('data-active="0"', $html);
+    }
+
+    /**
+     * @param  array<string, mixed>  $overrides
+     */
+    private function existingListing(string $domain, array $overrides = []): Site
+    {
+        return Site::query()->create(array_merge([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Existing '.$domain,
+            'site_url' => 'https://'.$domain,
+            'domain' => $domain,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Existing listing description. ', 3),
+            'verified' => false,
+            'active' => false,
+        ], $overrides));
+    }
 }

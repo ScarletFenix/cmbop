@@ -2037,9 +2037,7 @@ class SiteController extends Controller
 
     private function domainAlreadyRegisteredMessage(Site $existing): string
     {
-        return $existing->isArchived()
-            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
-            : 'This website domain is already registered.';
+        return $existing->occupyingDomainMessage();
     }
 
     /**
@@ -2048,32 +2046,7 @@ class SiteController extends Controller
      */
     private function findSiteByDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?Site
     {
-        $candidates = $this->domainLookupCandidates($domain);
-        if ($candidates === []) {
-            return null;
-        }
-
-        $normalized = $this->normalizeDomain($domain);
-        $query = Site::query()->where(function ($q) use ($candidates, $normalized) {
-            $q->whereIn('domain', $candidates);
-            if ($normalized !== '') {
-                $escaped = addcslashes($normalized, '%_\\');
-                $q->orWhere('domain', 'like', $escaped.':%')
-                    ->orWhere('domain', 'like', 'www.'.$escaped.':%');
-            }
-        });
-        if ($exceptId !== null) {
-            $query->where('id', '!=', $exceptId);
-        }
-        if (Site::hasSitesColumn('archived_at')) {
-            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
-        }
-        $query->orderBy('id');
-        if ($lock) {
-            $query->lockForUpdate();
-        }
-
-        return $query->first();
+        return Site::findOccupyingDomain($domain, $exceptId, $lock);
     }
 
     private function isDomainUniqueConstraintFailure(\Throwable $e): bool
@@ -2365,22 +2338,7 @@ class SiteController extends Controller
      */
     private function normalizeDomain(string $host): string
     {
-        $domain = strtolower(trim($host));
-        $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
-        $domain = rtrim($domain, '.');
-        if ($domain !== '' && ! str_starts_with($domain, '[') && str_contains($domain, ':')) {
-            $domain = explode(':', $domain, 2)[0];
-        }
-
-        $domain = rtrim($domain, '.');
-        if ($domain !== '' && function_exists('idn_to_ascii') && ! filter_var($domain, FILTER_VALIDATE_IP) && ! str_starts_with($domain, '[')) {
-            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if (is_string($ascii) && $ascii !== '') {
-                $domain = strtolower($ascii);
-            }
-        }
-
-        return $domain;
+        return Site::normalizeMarketplaceDomain($host);
     }
 
     private function isMarketplaceHost(string $host): bool
@@ -2441,38 +2399,6 @@ class SiteController extends Controller
         $exampleHost = $this->urlHost($exampleUrl);
 
         return $siteHost !== '' && $exampleHost !== '' && $siteHost !== $exampleHost;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function domainLookupCandidates(string $host): array
-    {
-        $normalized = $this->normalizeDomain($host);
-        if ($normalized === '') {
-            return [];
-        }
-
-        $candidates = [
-            $normalized,
-            'www.'.$normalized,
-            $normalized.'.',
-            'www.'.$normalized.'.',
-            $normalized.':80',
-            $normalized.':443',
-            'www.'.$normalized.':80',
-            'www.'.$normalized.':443',
-        ];
-        if (function_exists('idn_to_utf8')) {
-            $utf8 = idn_to_utf8($normalized, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if (is_string($utf8) && $utf8 !== '' && strtolower($utf8) !== $normalized) {
-                $utf8 = strtolower($utf8);
-                $candidates[] = $utf8;
-                $candidates[] = 'www.'.$utf8;
-            }
-        }
-
-        return array_values(array_unique($candidates));
     }
 
     /**

@@ -66,10 +66,16 @@ class BulkSiteRequestController extends Controller
         // only URL+price rows remain (status still says waiting on publisher).
         $hasPendingItems = $bulkRequest->items->whereNull('site_id')->isNotEmpty();
         $needsHeal = $bulkRequest->status !== BulkSiteRequest::STATUS_CANCELLED
-            && $hasPendingItems
             && (
-                $bulkRequest->status === BulkSiteRequest::STATUS_COMPLETED
-                || $bulkRequest->sites->isEmpty()
+                ($hasPendingItems && (
+                    $bulkRequest->status === BulkSiteRequest::STATUS_COMPLETED
+                    || $bulkRequest->sites->isEmpty()
+                ))
+                || ($bulkRequest->sites->isEmpty()
+                    && in_array($bulkRequest->status, [
+                        BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+                        BulkSiteRequest::STATUS_SEEDED,
+                    ], true))
             );
         if ($needsHeal) {
             $bulkRequest->refreshProgressStatus();
@@ -631,20 +637,14 @@ class BulkSiteRequestController extends Controller
             foreach ($rows as $row) {
                 $domain = $row['domain'];
 
-                $existing = Site::query()
-                    ->where('domain', $domain)
-                    ->when(Site::hasSitesColumn('archived_at'), function ($q) {
-                        $q->orderByRaw('case when archived_at is null then 0 else 1 end');
-                    })
-                    ->orderBy('id')
-                    ->first();
+                $existing = Site::findOccupyingDomain($domain);
 
                 if ($existing) {
                     $failures[] = [
                         'line' => $row['line'],
                         'url' => $row['site_url'],
                         'errors' => [$existing->isArchived()
-                            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+                            ? $existing->occupyingDomainMessage()
                             : 'Domain already registered: '.$domain],
                     ];
 

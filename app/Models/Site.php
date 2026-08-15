@@ -669,6 +669,102 @@ class Site extends Model
     }
 
     /**
+     * Strip www, trailing dots, ports, and case so example.com:443 matches example.com.
+     */
+    public static function normalizeMarketplaceDomain(string $host): string
+    {
+        $domain = strtolower(trim($host));
+        $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && ! str_starts_with($domain, '[') && str_contains($domain, ':')) {
+            $domain = explode(':', $domain, 2)[0];
+        }
+
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && function_exists('idn_to_ascii') && ! filter_var($domain, FILTER_VALIDATE_IP) && ! str_starts_with($domain, '[')) {
+            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $domain = strtolower($ascii);
+            }
+        }
+
+        return $domain;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function domainLookupCandidates(string $host): array
+    {
+        $normalized = static::normalizeMarketplaceDomain($host);
+        if ($normalized === '') {
+            return [];
+        }
+
+        $candidates = [
+            $normalized,
+            'www.'.$normalized,
+            $normalized.'.',
+            'www.'.$normalized.'.',
+            $normalized.':80',
+            $normalized.':443',
+            'www.'.$normalized.':80',
+            'www.'.$normalized.':443',
+        ];
+        if (function_exists('idn_to_utf8')) {
+            $utf8 = idn_to_utf8($normalized, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($utf8) && $utf8 !== '' && strtolower($utf8) !== $normalized) {
+                $utf8 = strtolower($utf8);
+                $candidates[] = $utf8;
+                $candidates[] = 'www.'.$utf8;
+            }
+        }
+
+        return array_values(array_unique($candidates));
+    }
+
+    /**
+     * Prefer a live listing when legacy duplicates exist so the restore copy
+     * is not shown while a non-archived row already occupies the domain.
+     */
+    public static function findOccupyingDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?self
+    {
+        $candidates = static::domainLookupCandidates($domain);
+        if ($candidates === []) {
+            return null;
+        }
+
+        $normalized = static::normalizeMarketplaceDomain($domain);
+        $query = static::query()->where(function ($q) use ($candidates, $normalized) {
+            $q->whereIn('domain', $candidates);
+            if ($normalized !== '') {
+                $escaped = addcslashes($normalized, '%_\\');
+                $q->orWhere('domain', 'like', $escaped.':%')
+                    ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+            }
+        });
+        if ($exceptId !== null) {
+            $query->where('id', '!=', $exceptId);
+        }
+        if (static::hasSitesColumn('archived_at')) {
+            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
+        }
+        $query->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    public function occupyingDomainMessage(): string
+    {
+        return $this->isArchived()
+            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+            : 'This website domain is already registered.';
+    }
+
+    /**
      * Hide leftover drafts from a cancelled bulk (older cancels did not delete them).
      *
      * @param  Builder<self>  $query

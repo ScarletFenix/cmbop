@@ -384,6 +384,41 @@ class PublisherSitesPageTest extends TestCase
         $this->assertStringNotContainsString('another publisher', implode(' ', $errors));
     }
 
+    public function test_store_rejects_www_variant_of_own_domain(): void
+    {
+        $this->makeSite($this->publisher, [
+            'site_url' => 'https://www.mine-www.example',
+            'domain' => 'www.mine-www.example',
+        ]);
+
+        $category = Category::query()->firstOrFail();
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Mine Www Again',
+                'siteUrl' => 'https://mine-www.example',
+                'exampleUrl' => 'https://mine-www.example/post',
+                'da' => 10,
+                'dr' => 10,
+                'traffic' => 100,
+                'country' => 'de',
+                'language' => 'de',
+                'categories' => [$category->name],
+                'price' => 50,
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Duplicate www domain validation description. ', 4),
+                'site_tag' => 'as_you_prefer',
+            ])
+            ->assertRedirect()
+            ->assertSessionHasErrors('siteUrl');
+
+        $this->assertStringContainsString('already added', session('errors')->first('siteUrl'));
+        $this->assertDatabaseMissing('sites', ['domain' => 'mine-www.example']);
+    }
+
     public function test_store_accepts_html_checkbox_on_for_sensitive_crypto(): void
     {
         $category = Category::query()->firstOrFail();

@@ -201,15 +201,24 @@ class SiteController extends Controller
         });
 
         $validator->after(function ($validator) use ($domain) {
-            if (Site::where('publisher_id', auth()->id())->where('domain', $domain)->exists()) {
+            $existing = Site::findOccupyingDomain($domain);
+            if (! $existing) {
+                return;
+            }
+
+            if ($existing->isArchived()) {
+                $validator->errors()->add('siteUrl', $existing->occupyingDomainMessage());
+
+                return;
+            }
+
+            if ((int) $existing->publisher_id === (int) auth()->id()) {
                 $validator->errors()->add('siteUrl', 'You have already added this website.');
 
                 return;
             }
 
-            if (Site::where('domain', $domain)->where('publisher_id', '!=', auth()->id())->exists()) {
-                $validator->errors()->add('siteUrl', 'This website domain is already registered by another publisher. If you own it, use “Claim a website” on this page so we can verify the listing name and transfer ownership.');
-            }
+            $validator->errors()->add('siteUrl', 'This website domain is already registered by another publisher. If you own it, use “Claim a website” on this page so we can verify the listing name and transfer ownership.');
         });
 
         $validator->after(function ($validator) use ($request) {
@@ -356,7 +365,7 @@ class SiteController extends Controller
             $pendingCount = $sitePendingCount + $waitingItemsCount;
             $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
 
-            $activeQuery = (clone $acceptedBase)->notArchived()->where(function ($q) {
+            $activeQuery = (clone $acceptedBase)->notArchived()->notFromCancelledBulk()->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
             });
             $activeCount = (clone $activeQuery)->count();
@@ -388,9 +397,10 @@ class SiteController extends Controller
                             ->where('active', 0)->where('verified', 0);
                     })
                     ->when($status === 'active', function ($q) {
-                        $q->where(function ($inner) {
-                            $inner->where('active', 1)->orWhere('verified', 1);
-                        });
+                        $q->notFromCancelledBulk()
+                            ->where(function ($inner) {
+                                $inner->where('active', 1)->orWhere('verified', 1);
+                            });
                     });
             }
 

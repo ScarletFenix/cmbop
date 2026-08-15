@@ -87,8 +87,14 @@ class BulkSiteRequestController extends Controller
                 }
                 $seenDomains[$domain] = true;
 
-                if (Site::where('domain', $domain)->exists()) {
-                    $validator->errors()->add("sites.$index.url", "Already registered: {$domain}");
+                $existing = Site::findOccupyingDomain($domain);
+                if ($existing) {
+                    $validator->errors()->add(
+                        "sites.$index.url",
+                        $existing->isArchived()
+                            ? $existing->occupyingDomainMessage()
+                            : "Already registered: {$domain}"
+                    );
 
                     continue;
                 }

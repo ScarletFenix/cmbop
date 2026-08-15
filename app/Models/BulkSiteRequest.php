@@ -233,7 +233,7 @@ class BulkSiteRequest extends Model
                             ->orWhere(function ($legacy) {
                                 $legacy->where('estimated_count', '>', 0)
                                     ->whereDoesntHave('items')
-                                    ->whereDoesntHave('sites');
+                                    ->whereDoesntHave('sites', fn ($sites) => $sites->notArchived());
                             });
                     });
             })->orWhere(function ($completedPending) {
