@@ -3,6 +3,7 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Mail\PlatformMailable;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Support\EmailCatalog;
@@ -14,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class EmailCenterController extends Controller
 {
@@ -129,9 +131,10 @@ class EmailCenterController extends Controller
 
     public function sendTest(Request $request)
     {
+        $adminEmail = (string) $request->user()->email;
         $data = $request->validate([
-            'template' => 'required|string',
-            'email' => 'required|email',
+            'template' => ['required', 'string', Rule::in(array_keys(EmailCatalog::all()))],
+            'email' => ['required', 'email', Rule::in([$adminEmail])],
         ]);
 
         $key = $data['template'];
@@ -143,43 +146,35 @@ class EmailCenterController extends Controller
                 $html = $this->renderMarkdown('emails.password-reset-preview', [
                     'resetUrl' => url('/password/reset/preview-token'),
                 ]);
-                Mail::html($html, function ($message) use ($data) {
-                    $message->to($data['email'])
+                Mail::html($html, function ($message) use ($adminEmail) {
+                    $message->to($adminEmail)
                         ->subject('Password Reset (Test Preview)');
+                    if (method_exists($message, 'getSymfonyMessage')) {
+                        $message->getSymfonyMessage()->getHeaders()
+                            ->addTextHeader('X-Platform-Notification-Type', 'password_reset');
+                    }
                 });
             } else {
                 $mailable = EmailCatalog::makeMailable($key);
                 abort_unless($mailable, 404);
-                Mail::to($data['email'])->send($mailable);
+                if ($mailable instanceof PlatformMailable) {
+                    $mailable->forceSend = true;
+                    $mailable->skipUserPreference = true;
+                    $mailable->dedupeKey = 'email_center_test:'.$key.':'.(string) Str::uuid();
+                }
+                Mail::to($adminEmail)->sendNow($mailable);
             }
 
-            // MessageSent listener logs successful deliveries; ensure test marker if listener missed it
-            $logged = EmailLog::query()
-                ->where('to_email', $data['email'])
-                ->where('created_at', '>=', now()->subMinute())
-                ->exists();
-
-            if (! $logged) {
-                EmailLog::create([
-                    'uuid' => (string) Str::uuid(),
-                    'mailable' => $template['mailable'] ?? null,
-                    'template_key' => $key,
-                    'to_email' => $data['email'],
-                    'subject' => ($template['name'] ?? $key).' (Test)',
-                    'status' => EmailLog::STATUS_DELIVERED,
-                    'attempts' => 1,
-                    'meta' => ['source' => 'email_center_test', 'mailer' => config('mail.default')],
-                    'sent_at' => now(),
-                ]);
-            }
-
-            return back()->with('success', 'Test email sent to '.$data['email'].'.');
+            return back()->with(
+                'success',
+                'Test email sent to '.$adminEmail.' (synthetic preview — ignores global disable).'
+            );
         } catch (\Throwable $e) {
             EmailLog::create([
                 'uuid' => (string) Str::uuid(),
                 'mailable' => $template['mailable'] ?? null,
                 'template_key' => $key,
-                'to_email' => $data['email'],
+                'to_email' => $adminEmail,
                 'subject' => ($template['name'] ?? $key).' (Test)',
                 'status' => EmailLog::STATUS_FAILED,
                 'error' => $e->getMessage(),

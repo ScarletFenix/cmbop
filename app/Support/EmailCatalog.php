@@ -66,6 +66,25 @@ use Illuminate\Support\Str;
 
 class EmailCatalog
 {
+    public const PREVIEW_ID = 0;
+
+    public const PREVIEW_EMAIL = 'sample@example.com';
+
+    public static function isPreviewUser(?User $user): bool
+    {
+        if (! $user) {
+            return false;
+        }
+
+        return (int) $user->id === self::PREVIEW_ID
+            || $user->email === self::PREVIEW_EMAIL;
+    }
+
+    public static function previewVerificationUrl(): string
+    {
+        return rtrim(app_public_url(), '/').'/email/verify/preview-id/preview-hash';
+    }
+
     /**
      * @return array<string, array<string, mixed>>
      */
@@ -451,6 +470,7 @@ class EmailCatalog
             'temporary password' => 'google_temp_password',
             'trustpilot' => 'trustpilot_review',
             'reset password' => 'password_reset',
+            'password reset' => 'password_reset',
             'deposit approved' => 'deposit_approved',
             'deposit rejected' => 'deposit_rejected',
             'withdrawal' => 'withdrawal_status',
@@ -602,19 +622,19 @@ class EmailCatalog
 
     protected static function sampleUser(): User
     {
-        return User::query()->first() ?? new User([
+        $user = new User([
             'name' => 'Sample User',
-            'email' => 'sample@example.com',
+            'email' => self::PREVIEW_EMAIL,
         ]);
+        $user->id = self::PREVIEW_ID;
+        $user->exists = false;
+        $user->setRelation('roles', collect());
+
+        return $user;
     }
 
     protected static function sampleOrder(): Order
     {
-        $order = Order::query()->with(['user', 'items.site'])->latest('id')->first();
-        if ($order) {
-            return $order;
-        }
-
         $user = self::sampleUser();
         $order = new Order([
             'order_number' => 'ORD-PREVIEW',
@@ -625,10 +645,13 @@ class EmailCatalog
             'status' => 'completed',
             'payment_method' => 'wallet',
         ]);
-        $order->id = 0;
-        $order->user_id = $user->id ?? 0;
+        $order->id = self::PREVIEW_ID;
+        $order->exists = false;
+        $order->user_id = $user->id;
         $order->setRelation('user', $user);
-        $order->setRelation('items', collect());
+        $item = self::sampleOrderItem();
+        $item->order_id = $order->id;
+        $order->setRelation('items', collect([$item]));
         $order->created_at = now();
 
         return $order;
@@ -636,11 +659,6 @@ class EmailCatalog
 
     protected static function sampleOrderItem(): OrderItem
     {
-        $item = OrderItem::query()->with('site')->latest('id')->first();
-        if ($item) {
-            return $item;
-        }
-
         $item = new OrderItem([
             'site_name' => 'Sample Publisher Site',
             'site_url' => 'https://example.com',
@@ -651,6 +669,8 @@ class EmailCatalog
             'social_channels' => ['facebook', 'x'],
             'content_link' => 'https://example.com/content.docx',
         ]);
+        $item->id = self::PREVIEW_ID;
+        $item->exists = false;
         $item->setRelation('site', self::sampleSite());
 
         return $item;
@@ -661,8 +681,8 @@ class EmailCatalog
         $order = self::sampleOrder();
         $item = self::sampleOrderItem();
         $dispute = new OrderItemDispute([
-            'order_id' => $order->id ?? 0,
-            'order_item_id' => $item->id ?? 0,
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
             'status' => OrderItemDispute::STATUS_UPHELD,
             'reason' => 'The live article was removed after completion (preview).',
             'admin_notes' => 'Confirmed 404. Sample clawback notes for preview.',
@@ -670,7 +690,8 @@ class EmailCatalog
             'advertiser_credited' => 115.00,
             'debt_created' => 0,
         ]);
-        $dispute->id = 0;
+        $dispute->id = self::PREVIEW_ID;
+        $dispute->exists = false;
         $dispute->setRelation('order', $order);
         $dispute->setRelation('orderItem', $item);
 
@@ -679,20 +700,17 @@ class EmailCatalog
 
     protected static function sampleSite(): Site
     {
-        $site = Site::query()->with('publisher')->latest('id')->first();
-        if ($site) {
-            return $site;
-        }
-
         $user = self::sampleUser();
         $site = new Site([
             'site_name' => 'Sample Site',
             'site_url' => 'https://example.com',
-            'publisher_id' => $user->id ?? 0,
+            'domain' => 'example.com',
+            'publisher_id' => $user->id,
             'verified' => true,
             'active' => true,
         ]);
-        $site->id = 0;
+        $site->id = self::PREVIEW_ID;
+        $site->exists = false;
         $site->setRelation('publisher', $user);
 
         return $site;
@@ -700,26 +718,22 @@ class EmailCatalog
 
     protected static function sampleSiteClaim(string $status = 'pending'): SiteClaim
     {
-        $claim = SiteClaim::query()->with(['site', 'claimer'])->latest('id')->first();
-        if ($claim) {
-            return $claim;
-        }
-
         $site = self::sampleSite();
         $user = self::sampleUser();
         $claim = new SiteClaim([
             'site_id' => $site->id,
-            'claimer_id' => $user->id ?? 0,
+            'claimer_id' => $user->id,
             'website_name' => $site->site_name ?: 'Sample Site',
             'website_url' => $site->site_url ?: 'https://example.com',
             'domain' => $site->domain ?: 'example.com',
             'name_matches' => true,
             'proof_message' => 'Sample ownership proof for email preview.',
-            'contact_email' => $user->email ?? 'sample@example.com',
+            'contact_email' => $user->email,
             'status' => $status,
             'admin_notes' => $status === 'approved' ? 'Verified via domain email (preview).' : null,
         ]);
-        $claim->id = 0;
+        $claim->id = self::PREVIEW_ID;
+        $claim->exists = false;
         $claim->setRelation('site', $site);
         $claim->setRelation('claimer', $user);
 
@@ -728,22 +742,18 @@ class EmailCatalog
 
     protected static function sampleProblemReport(): ProblemReport
     {
-        $report = ProblemReport::query()->with('user')->latest('id')->first();
-        if ($report) {
-            return $report;
-        }
-
         $user = self::sampleUser();
         $report = new ProblemReport([
-            'user_id' => $user->id ?? 0,
-            'name' => $user->name ?? 'Sample User',
-            'email' => $user->email ?? 'sample@example.com',
+            'user_id' => $user->id,
+            'name' => $user->name,
+            'email' => $user->email,
             'subject' => 'Checkout button on mobile',
             'message' => 'Sample problem report for email preview.',
             'status' => 'resolved',
             'admin_notes' => 'Fixed the mobile CTA (preview).',
         ]);
-        $report->id = 0;
+        $report->id = self::PREVIEW_ID;
+        $report->exists = false;
         $report->setRelation('user', $user);
 
         return $report;
@@ -751,21 +761,17 @@ class EmailCatalog
 
     protected static function sampleWebsiteSuggestion(): WebsiteSuggestion
     {
-        $suggestion = WebsiteSuggestion::query()->with('user')->latest('id')->first();
-        if ($suggestion) {
-            return $suggestion;
-        }
-
         $user = self::sampleUser();
         $suggestion = new WebsiteSuggestion([
-            'user_id' => $user->id ?? 0,
+            'user_id' => $user->id,
             'website_name' => 'Sample Tech Blog',
             'website_url' => 'https://sample-tech.example',
             'domain' => 'sample-tech.example',
             'status' => 'accepted',
             'admin_notes' => 'We will try to add this listing (preview).',
         ]);
-        $suggestion->id = 0;
+        $suggestion->id = self::PREVIEW_ID;
+        $suggestion->exists = false;
         $suggestion->setRelation('user', $user);
 
         return $suggestion;
@@ -773,38 +779,27 @@ class EmailCatalog
 
     protected static function sampleDeposit(): DepositRequest
     {
-        $deposit = DepositRequest::query()->with('user')->latest('id')->first();
-        if ($deposit) {
-            return $deposit;
-        }
-
+        $user = self::sampleUser();
         $deposit = new DepositRequest([
+            'user_id' => $user->id,
             'amount' => 100,
-            'status' => 'pending',
+            'status' => 'approved',
             'payment_method' => 'bank_transfer',
             'reference_code' => 'DEP-PREVIEW',
         ]);
-        $deposit->id = 1;
+        $deposit->id = self::PREVIEW_ID;
+        $deposit->exists = false;
         $deposit->created_at = now();
         $deposit->updated_at = now();
         $deposit->approved_at = now();
         $deposit->rejected_at = now();
-        $deposit->setRelation('user', self::sampleUser());
+        $deposit->setRelation('user', $user);
 
         return $deposit;
     }
 
     protected static function sampleTaxInvoice(): Invoice
     {
-        $invoice = Invoice::query()
-            ->where('type', Invoice::TYPE_TAX_INVOICE)
-            ->with(['user', 'order'])
-            ->latest('id')
-            ->first();
-        if ($invoice) {
-            return $invoice;
-        }
-
         $user = self::sampleUser();
         $order = self::sampleOrder();
         $invoice = new Invoice([
@@ -818,7 +813,8 @@ class EmailCatalog
             'customer_name' => $user->name,
             'customer_email' => $user->email,
         ]);
-        $invoice->id = 0;
+        $invoice->id = self::PREVIEW_ID;
+        $invoice->exists = false;
         $invoice->setRelation('user', $user);
         $invoice->setRelation('order', $order);
 
@@ -827,15 +823,6 @@ class EmailCatalog
 
     protected static function sampleFailureDocument(): Invoice
     {
-        $invoice = Invoice::query()
-            ->where('type', Invoice::TYPE_PAYMENT_FAILURE)
-            ->with(['user', 'order'])
-            ->latest('id')
-            ->first();
-        if ($invoice) {
-            return $invoice;
-        }
-
         $user = self::sampleUser();
         $order = self::sampleOrder();
         $invoice = new Invoice([
@@ -851,7 +838,8 @@ class EmailCatalog
             'customer_name' => $user->name,
             'customer_email' => $user->email,
         ]);
-        $invoice->id = 0;
+        $invoice->id = self::PREVIEW_ID;
+        $invoice->exists = false;
         $invoice->setRelation('user', $user);
         $invoice->setRelation('order', $order);
 
@@ -860,15 +848,6 @@ class EmailCatalog
 
     protected static function sampleRefundDocument(): Invoice
     {
-        $invoice = Invoice::query()
-            ->where('type', Invoice::TYPE_REFUND_RECEIPT)
-            ->with(['user', 'order', 'parentInvoice'])
-            ->latest('id')
-            ->first();
-        if ($invoice) {
-            return $invoice;
-        }
-
         $user = self::sampleUser();
         $order = self::sampleOrder();
         $parent = self::sampleTaxInvoice();
@@ -885,7 +864,8 @@ class EmailCatalog
             'customer_name' => $user->name,
             'customer_email' => $user->email,
         ]);
-        $invoice->id = 0;
+        $invoice->id = self::PREVIEW_ID;
+        $invoice->exists = false;
         $invoice->setRelation('user', $user);
         $invoice->setRelation('order', $order);
         $invoice->setRelation('parentInvoice', $parent);
@@ -895,23 +875,21 @@ class EmailCatalog
 
     protected static function sampleWithdrawal(): Withdrawal
     {
-        $withdrawal = Withdrawal::query()->with('user')->latest('id')->first();
-        if ($withdrawal) {
-            return $withdrawal;
-        }
-
+        $user = self::sampleUser();
         $withdrawal = new Withdrawal([
+            'user_id' => $user->id,
             'amount' => 50,
             'fee' => 0,
             'net_amount' => 50,
             'status' => 'pending',
             'payment_method' => 'paypal',
         ]);
-        $withdrawal->id = 1;
+        $withdrawal->id = self::PREVIEW_ID;
+        $withdrawal->exists = false;
         $withdrawal->created_at = now();
         $withdrawal->updated_at = now();
         $withdrawal->processed_at = now();
-        $withdrawal->setRelation('user', self::sampleUser());
+        $withdrawal->setRelation('user', $user);
 
         return $withdrawal;
     }

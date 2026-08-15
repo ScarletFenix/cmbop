@@ -74,6 +74,10 @@ class DepositApproved extends PlatformMailable
 
     protected function resolveReceipt(DepositRequest $deposit): ?Invoice
     {
+        if ((int) $deposit->id === 0 || $deposit->reference_code === 'DEP-PREVIEW') {
+            return null;
+        }
+
         try {
             return app(DepositReceiptService::class)->issue($deposit);
         } catch (\Throwable) {

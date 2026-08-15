@@ -70,9 +70,10 @@ class LogSentEmail
             'subject' => $subject,
             'status' => EmailLog::STATUS_DELIVERED,
             'attempts' => 1,
-            'meta' => [
+            'meta' => array_filter([
                 'mailer' => config('mail.default'),
-            ],
+                'source' => $meta['source'] ?? null,
+            ]),
             'sent_at' => now(),
         ]);
     }

@@ -164,8 +164,9 @@
                         </div>
                         <div class="mb-2">
                             <label class="form-label small mb-1">Send to</label>
-                            <input type="email" name="email" class="form-control form-control-sm" value="{{ auth()->user()->email }}" required>
+                            <input type="email" name="email" class="form-control form-control-sm" value="{{ auth()->user()->email }}" readonly required>
                         </div>
+                        <p class="small text-muted mb-2">Sends a synthetic preview to your admin inbox — not a live customer email.</p>
                         <button class="btn btn-primary btn-sm w-100" type="submit">
                             <i class="fa fa-paper-plane me-1"></i> Send Test Email
                         </button>
