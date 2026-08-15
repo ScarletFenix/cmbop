@@ -282,9 +282,15 @@ class EmailCenterController extends Controller
             return back()->with('success', 'No failed mail jobs to retry.');
         }
 
+        $payloads = $this->failedJobPayloadsByUuid($uuids);
+
         try {
             foreach ($uuids as $uuid) {
                 $this->refreshFailedJobQueuedAt($uuid);
+                $fresh = DB::table('failed_jobs')->where('uuid', $uuid)->value('payload');
+                if (is_string($fresh) && $fresh !== '') {
+                    $payloads[$uuid] = $fresh;
+                }
             }
             Artisan::call('queue:retry', ['id' => $uuids]);
         } catch (\Throwable $e) {
@@ -295,7 +301,7 @@ class EmailCenterController extends Controller
             return back()->with('error', 'Could not retry mail jobs. Please try again.');
         }
 
-        $this->markRetriedMailLogsPending($this->actuallyRetriedJobUuids($uuids));
+        $this->markRetriedMailLogsPending($this->actuallyRetriedJobUuids($uuids), $payloads);
 
         return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
     }
@@ -401,29 +407,72 @@ class EmailCenterController extends Controller
 
     /**
      * @param  list<string>  $uuids
+     * @return array<string, string>
      */
-    protected function markRetriedMailLogsPending(array $uuids): void
+    protected function failedJobPayloadsByUuid(array $uuids): array
+    {
+        if ($uuids === [] || ! Schema::hasTable('failed_jobs')) {
+            return [];
+        }
+
+        return DB::table('failed_jobs')
+            ->whereIn('uuid', $uuids)
+            ->pluck('payload', 'uuid')
+            ->map(fn ($payload) => (string) $payload)
+            ->all();
+    }
+
+    /**
+     * @param  list<string>  $uuids
+     * @param  array<string, string>  $payloadsByUuid
+     */
+    protected function markRetriedMailLogsPending(array $uuids, array $payloadsByUuid = []): void
     {
         if ($uuids === []) {
             return;
         }
 
-        EmailLog::query()
+        $failed = EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
-            ->where(function ($q) use ($uuids) {
-                foreach ($uuids as $uuid) {
-                    $q->orWhere('meta->failed_job_uuid', $uuid);
-                }
-            })
-            ->get()
-            ->each(function (EmailLog $log) {
-                $log->update([
-                    'status' => EmailLog::STATUS_PENDING,
-                    'error' => null,
-                    'attempts' => max(1, (int) $log->attempts) + 1,
-                ]);
-                $this->requeueFailedCampaignRecipient($log);
-            });
+            ->get();
+        $marked = [];
+
+        foreach ($failed as $log) {
+            $stored = (string) data_get($log->meta, 'failed_job_uuid');
+            if ($stored !== '' && in_array($stored, $uuids, true)) {
+                $this->pendingMarkRetriedLog($log);
+                $marked[$log->id] = true;
+            }
+        }
+
+        foreach ($uuids as $uuid) {
+            $payload = (string) ($payloadsByUuid[$uuid] ?? '');
+            if ($payload === '') {
+                continue;
+            }
+
+            $matches = $failed->filter(
+                fn (EmailLog $log) => empty($marked[$log->id])
+                    && MailJobPayload::matchesEmailLog($payload, $log)
+            );
+            if ($matches->count() !== 1) {
+                continue;
+            }
+
+            $log = $matches->first();
+            $this->pendingMarkRetriedLog($log);
+            $marked[$log->id] = true;
+        }
+    }
+
+    protected function pendingMarkRetriedLog(EmailLog $log): void
+    {
+        $log->update([
+            'status' => EmailLog::STATUS_PENDING,
+            'error' => null,
+            'attempts' => max(1, (int) $log->attempts) + 1,
+        ]);
+        $this->requeueFailedCampaignRecipient($log);
     }
 
     protected function requeueFailedCampaignRecipient(EmailLog $log): void
@@ -456,7 +505,14 @@ class EmailCenterController extends Controller
                 ]);
 
             if ($updated) {
-                EmailCampaign::query()->find($campaignId)?->recountRecipientTotals();
+                $campaign = EmailCampaign::query()->find($campaignId);
+                if ($campaign?->status === EmailCampaign::STATUS_FAILED) {
+                    $campaign->update([
+                        'status' => EmailCampaign::STATUS_SENDING,
+                        'sent_at' => null,
+                    ]);
+                }
+                $campaign?->recountRecipientTotals();
             }
         } catch (\Throwable) {
             // Delivery sync on success still flips failed → delivered.

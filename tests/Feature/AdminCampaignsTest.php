@@ -141,6 +141,26 @@ class AdminCampaignsTest extends TestCase
             ->assertJsonValidationErrors(['body_html']);
     }
 
+    public function test_send_rejects_whitespace_only_body_after_sanitize(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->from(route('admin.campaigns.index'))
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'body_html' => '   ',
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHasErrors('body_html');
+
+        $this->assertSame(0, EmailCampaign::query()->count());
+        Mail::assertNothingQueued();
+    }
+
     public function test_recipient_count_matches_collect_for_core_audiences(): void
     {
         $admin = $this->makeUser('admin');
