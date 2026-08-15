@@ -2,11 +2,13 @@
 
 namespace Tests\Feature;
 
+use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\Suggestion;
 use App\Models\User;
+use App\Models\WebsiteSuggestion;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -218,5 +220,159 @@ class CommunityFeedbackTest extends TestCase
             ->assertJsonFragment([
                 'message' => 'We already have this website on file. It is not currently available in the catalog.',
             ]);
+    }
+
+    public function test_admin_can_resolve_a_problem_but_not_mark_it_accepted(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $report = ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+            'admin_notes' => 'Fixed the mobile CTA.',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame('resolved', $report->fresh()->status);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'accepted',
+        ])->assertStatus(422)->assertJsonValidationErrors(['status']);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'approved',
+        ])->assertStatus(422)->assertJsonValidationErrors(['status']);
+    }
+
+    public function test_admin_can_accept_a_website_suggestion_but_not_approve_it(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $suggestion = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://fresh-tech.example',
+            'domain' => 'fresh-tech.example',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.websites.update', $suggestion->id), [
+            'status' => 'accepted',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame('accepted', $suggestion->fresh()->status);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.websites.update', $suggestion->id), [
+            'status' => 'approved',
+        ])->assertStatus(422)->assertJsonValidationErrors(['status']);
+    }
+
+    public function test_claims_filter_includes_approved_and_ignores_accepted(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('publisher');
+        $site = $this->siteFor($owner);
+
+        SiteClaim::create([
+            'site_id' => $site->id,
+            'claimer_id' => $claimer->id,
+            'website_name' => $site->site_name,
+            'website_url' => $site->site_url,
+            'domain' => $site->domain,
+            'name_matches' => true,
+            'proof_message' => 'Approved-claim WHOIS proof for filter test.',
+            'contact_email' => $claimer->email,
+            'status' => 'approved',
+        ]);
+        SiteClaim::create([
+            'site_id' => $site->id,
+            'claimer_id' => $this->userWithRole('publisher')->id,
+            'website_name' => $site->site_name,
+            'website_url' => $site->site_url,
+            'domain' => $site->domain,
+            'name_matches' => false,
+            'proof_message' => 'Pending-claim registrar screenshots for filter test.',
+            'contact_email' => 'other@example.com',
+            'status' => 'pending',
+        ]);
+
+        $approvedHtml = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'claims', 'status' => 'approved']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<option value="approved"[^>]*\bselected\b/', $approvedHtml);
+        $this->assertStringNotContainsString('value="accepted"', $approvedHtml);
+        $this->assertStringContainsString('Approved-claim WHOIS proof for filter test.', $approvedHtml);
+        $this->assertStringNotContainsString('Pending-claim registrar screenshots for filter test.', $approvedHtml);
+
+        $acceptedFilter = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'claims', 'status' => 'accepted']))
+            ->assertOk()
+            ->getContent();
+
+        // Invalid for claims → treated as All, so both rows render.
+        $this->assertStringContainsString('Pending-claim registrar screenshots for filter test.', $acceptedFilter);
+        $this->assertStringContainsString('Approved-claim WHOIS proof for filter test.', $acceptedFilter);
+        $this->assertStringNotContainsString('value="accepted"', $acceptedFilter);
+    }
+
+    public function test_problems_filter_omits_approved_and_tab_switch_drops_it(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('value="resolved"', $html);
+        $this->assertStringNotContainsString('value="approved"', $html);
+        $this->assertStringNotContainsString('value="accepted"', $html);
+        $this->assertStringNotContainsString('${btn.dataset.notes', $html);
+        $this->assertStringContainsString('notes.value = btn.dataset.notes', $html);
+        $this->assertStringContainsString('Network error', $html);
+        $this->assertStringNotContainsString("data.message || 'Done'", $html);
+
+        $fromClaims = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'claims', 'status' => 'approved']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(
+            route('admin.community.index', ['tab' => 'problems']),
+            $fromClaims
+        );
+        $this->assertStringNotContainsString(
+            route('admin.community.index', ['tab' => 'problems', 'status' => 'approved']),
+            $fromClaims
+        );
+    }
+
+    public function test_status_modal_does_not_embed_admin_notes_in_markup(): void
+    {
+        $admin = $this->userWithRole('admin');
+        ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'XSS check',
+            'message' => 'Notes should not be interpolated into SweetAlert html.',
+            'status' => 'pending',
+            'admin_notes' => '</textarea><img src=x onerror=alert(1)>',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('</textarea><img src=x onerror=alert(1)>', $html);
+        $this->assertStringContainsString('&lt;/textarea&gt;', $html);
     }
 }

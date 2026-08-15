@@ -9,7 +9,9 @@ use App\Models\Suggestion;
 use App\Models\WebsiteSuggestion;
 use App\Services\ActivityLogger;
 use App\Services\SiteClaimTransferService;
+use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class CommunityFeedbackController extends Controller
@@ -18,13 +20,15 @@ class CommunityFeedbackController extends Controller
 
     public function index(Request $request)
     {
-        $tab = $request->get('tab', 'problems');
-        if (! in_array($tab, ['problems', 'suggestions', 'websites', 'claims'], true)) {
-            $tab = 'problems';
-        }
-
-        $status = $request->get('status');
+        $tab = CommunityInbox::normalizeTab($request->get('tab'));
+        $status = CommunityInbox::normalizeStatus($tab, $request->get('status'));
         $q = search_text($request->get('q'));
+        $statuses = CommunityInbox::statusesFor($tab);
+        $tabs = CommunityInbox::TABS;
+        $tabQueries = [];
+        foreach (array_keys($tabs) as $key) {
+            $tabQueries[$key] = CommunityInbox::tabQuery($key, $q, $request->get('status'));
+        }
 
         $problems = ProblemReport::query()
             ->with(['user:id,name,email', 'reviewer:id,name'])
@@ -111,6 +115,10 @@ class CommunityFeedbackController extends Controller
 
         return view('admin.community.index', compact(
             'tab',
+            'tabs',
+            'status',
+            'statuses',
+            'tabQueries',
             'problems',
             'suggestions',
             'websites',
@@ -123,17 +131,32 @@ class CommunityFeedbackController extends Controller
 
     public function updateProblem(Request $request, int $id)
     {
-        return $this->updateStatus(ProblemReport::findOrFail($id), $request, 'problem.report_updated');
+        return $this->updateStatus(
+            ProblemReport::findOrFail($id),
+            $request,
+            'problem.report_updated',
+            CommunityInbox::TAB_PROBLEMS
+        );
     }
 
     public function updateSuggestion(Request $request, int $id)
     {
-        return $this->updateStatus(Suggestion::findOrFail($id), $request, 'suggestion.updated');
+        return $this->updateStatus(
+            Suggestion::findOrFail($id),
+            $request,
+            'suggestion.updated',
+            CommunityInbox::TAB_SUGGESTIONS
+        );
     }
 
     public function updateWebsiteSuggestion(Request $request, int $id)
     {
-        return $this->updateStatus(WebsiteSuggestion::findOrFail($id), $request, 'website.suggestion_updated');
+        return $this->updateStatus(
+            WebsiteSuggestion::findOrFail($id),
+            $request,
+            'website.suggestion_updated',
+            CommunityInbox::TAB_WEBSITES
+        );
     }
 
     public function approveClaim(Request $request, int $id)
@@ -194,10 +217,10 @@ class CommunityFeedbackController extends Controller
         ]);
     }
 
-    private function updateStatus($model, Request $request, string $activityType)
+    private function updateStatus($model, Request $request, string $activityType, string $tab)
     {
         $data = $request->validate([
-            'status' => 'required|in:pending,reviewed,resolved,rejected,accepted',
+            'status' => ['required', 'string', Rule::in(CommunityInbox::statusesFor($tab))],
             'admin_notes' => 'nullable|string|max:2000',
         ]);
 

@@ -8,15 +8,10 @@
     </div>
 
     <ul class="nav nav-pills gap-2 mb-3 flex-wrap">
-        @foreach([
-            'problems' => 'Problem reports',
-            'suggestions' => 'Suggestion box',
-            'websites' => 'Website suggestions',
-            'claims' => 'Site claims',
-        ] as $key => $label)
+        @foreach($tabs as $key => $label)
             <li class="nav-item">
                 <a class="nav-link {{ $tab === $key ? 'active' : '' }}"
-                   href="{{ route('admin.community.index', ['tab' => $key] + request()->except('tab')) }}">
+                   href="{{ route('admin.community.index', $tabQueries[$key] ?? ['tab' => $key]) }}">
                     {{ $label }}
                     @if(($counts[$key] ?? 0) > 0)
                         <span class="badge bg-warning text-dark ms-1">{{ $counts[$key] }}</span>
@@ -36,8 +31,8 @@
                 <label class="form-label small text-muted mb-1">Status</label>
                 <select name="status" class="form-select form-select-sm">
                     <option value="">All</option>
-                    @foreach(['pending','reviewed','resolved','accepted','rejected'] as $st)
-                        <option value="{{ $st }}" @selected(request('status') === $st)>{{ ucfirst($st) }}</option>
+                    @foreach($statuses as $st)
+                        <option value="{{ $st }}" @selected($status === $st)>{{ ucfirst($st) }}</option>
                     @endforeach
                 </select>
             </div>
@@ -78,6 +73,7 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary btn-status"
                                             data-url="{{ route('admin.community.problems.update', $item->id) }}"
                                             data-status="{{ $item->status }}"
+                                            data-statuses="{{ implode(',', $statuses) }}"
                                             data-notes="{{ e($item->admin_notes) }}">Update</button>
                                 </td>
                             </tr>
@@ -114,6 +110,7 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary btn-status"
                                             data-url="{{ route('admin.community.suggestions.update', $item->id) }}"
                                             data-status="{{ $item->status }}"
+                                            data-statuses="{{ implode(',', $statuses) }}"
                                             data-notes="{{ e($item->admin_notes) }}">Update</button>
                                 </td>
                             </tr>
@@ -156,8 +153,8 @@
                                     <button type="button" class="btn btn-sm btn-outline-primary btn-status"
                                             data-url="{{ route('admin.community.websites.update', $item->id) }}"
                                             data-status="{{ $item->status }}"
-                                            data-notes="{{ e($item->admin_notes) }}"
-                                            data-accept="1">Update</button>
+                                            data-statuses="{{ implode(',', $statuses) }}"
+                                            data-notes="{{ e($item->admin_notes) }}">Update</button>
                                 </td>
                             </tr>
                         @empty
@@ -236,35 +233,62 @@
 <script>
 const csrf = document.querySelector('meta[name="csrf-token"]')?.content || '{{ csrf_token() }}';
 
+function communityFetchMessage(res, data, fallback) {
+    if (data.message) {
+        return data.message;
+    }
+    if (data.errors && typeof data.errors === 'object') {
+        const first = Object.values(data.errors).flat()[0];
+        if (first) {
+            return first;
+        }
+    }
+    return res.ok ? fallback : 'Network error';
+}
+
 document.querySelectorAll('.btn-status').forEach(btn => {
     btn.addEventListener('click', async () => {
-        const allowAccept = btn.dataset.accept === '1';
-        const statuses = allowAccept
-            ? ['pending', 'reviewed', 'accepted', 'rejected']
-            : ['pending', 'reviewed', 'resolved', 'rejected'];
+        const statuses = (btn.dataset.statuses || '')
+            .split(',')
+            .map(s => s.trim())
+            .filter(s => /^[a-z]+$/.test(s));
+        const current = /^[a-z]+$/.test(btn.dataset.status || '') ? btn.dataset.status : '';
         const { value: form } = await Swal.fire({
             title: 'Update status',
             html: `<select id="swal-status" class="swal2-select">
-                     ${statuses.map(s => `<option value="${s}" ${s === btn.dataset.status ? 'selected' : ''}>${s}</option>`).join('')}
+                     ${statuses.map(s => `<option value="${s}" ${s === current ? 'selected' : ''}>${s}</option>`).join('')}
                    </select>
-                   <textarea id="swal-notes" class="swal2-textarea" placeholder="Admin notes">${btn.dataset.notes || ''}</textarea>`,
+                   <textarea id="swal-notes" class="swal2-textarea" placeholder="Admin notes"></textarea>`,
             showCancelButton: true,
             confirmButtonText: 'Save',
+            didOpen: () => {
+                const notes = document.getElementById('swal-notes');
+                if (notes) {
+                    notes.value = btn.dataset.notes || '';
+                }
+            },
             preConfirm: () => ({
                 status: document.getElementById('swal-status').value,
                 admin_notes: document.getElementById('swal-notes').value,
             }),
         });
         if (!form) return;
-        const res = await fetch(btn.dataset.url, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
-            body: JSON.stringify(form),
-        });
-        const data = await res.json().catch(() => ({}));
-        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' }).then(() => {
-            if (data.success) location.reload();
-        });
+        try {
+            const res = await fetch(btn.dataset.url, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify(form),
+            });
+            const data = await res.json().catch(() => ({}));
+            const ok = res.ok && data.success;
+            await Swal.fire({
+                icon: ok ? 'success' : 'error',
+                title: ok ? (data.message || 'Updated.') : communityFetchMessage(res, data, 'Update failed'),
+            });
+            if (ok) location.reload();
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: 'Network error' });
+        }
     });
 });
 
@@ -292,15 +316,22 @@ document.querySelectorAll('.btn-claim-action').forEach(btn => {
             customClass: { confirmButton: approve ? '' : 'slb-swal-danger' },
         });
         if (!isConfirmed || blocked) return;
-        const res = await fetch(btn.dataset.url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
-            body: JSON.stringify({ admin_notes: notes || null }),
-        });
-        const data = await res.json().catch(() => ({}));
-        Swal.fire({ icon: data.success ? 'success' : 'error', title: data.message || 'Done' }).then(() => {
-            if (data.success) location.reload();
-        });
+        try {
+            const res = await fetch(btn.dataset.url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Accept': 'application/json', 'X-CSRF-TOKEN': csrf },
+                body: JSON.stringify({ admin_notes: notes || null }),
+            });
+            const data = await res.json().catch(() => ({}));
+            const ok = res.ok && data.success;
+            await Swal.fire({
+                icon: ok ? 'success' : 'error',
+                title: ok ? (data.message || 'Updated.') : communityFetchMessage(res, data, 'Update failed'),
+            });
+            if (ok) location.reload();
+        } catch (e) {
+            Swal.fire({ icon: 'error', title: 'Network error' });
+        }
     });
 });
 </script>
