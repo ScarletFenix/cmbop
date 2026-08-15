@@ -1480,6 +1480,13 @@ class CatalogController extends Controller
             ], 422);
         }
 
+        if (! $submission->isReadyForCheckout()) {
+            return response()->json([
+                'success' => false,
+                'error' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
+            ], 422);
+        }
+
         if ($this->cartUsesSubmissionId($cart, $submissionId, $lineKey, $copyIndex)) {
             return response()->json([
                 'success' => false,
