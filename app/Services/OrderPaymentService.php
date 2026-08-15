@@ -424,6 +424,16 @@ class OrderPaymentService
         $reference = self::unfulfilledCardCreditReference($referenceCode, $settlementKey);
 
         return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode) {
+            if (! User::query()->whereKey($userId)->exists()) {
+                Log::warning('Cannot credit unfulfilled card capture; user missing', [
+                    'user_id' => $userId,
+                    'reference_code' => $referenceCode,
+                    'amount' => $amount,
+                ]);
+
+                return 0.0;
+            }
+
             $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
             if (Schema::hasTable((new WalletTransaction)->getTable())
                 && WalletTransaction::query()
