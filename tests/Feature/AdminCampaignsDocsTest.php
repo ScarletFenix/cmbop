@@ -37,6 +37,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('reconciled against `email_logs`', $body);
         $this->assertStringContainsString('must **not** finalize as sent', $body);
         $this->assertStringContainsString('reclaims them to `pending`', $body);
+        $this->assertStringContainsString('must still reclaim even if the unused', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);

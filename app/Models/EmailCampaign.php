@@ -293,8 +293,12 @@ class EmailCampaign extends Model
 
                         continue;
                     }
-                    $campaign->clearFailStreak();
                 }
+                // Give-up stored the streak that parked this campaign.
+                // Leaving it at MAX would send us back to failed before
+                // the new send job can run (FAILED + leftover pending
+                // after a crash between reclaim and this update).
+                $campaign->clearFailStreak();
                 $campaign->update([
                     'status' => self::STATUS_SENDING,
                     'sent_at' => null,
@@ -410,6 +414,7 @@ class EmailCampaign extends Model
 
         $ids = [];
         $sawUnscoped = false;
+        $mailScannedOk = false;
         $prefix = 'audience_campaign:'.$campaignId.':user:';
 
         $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
@@ -420,6 +425,8 @@ class EmailCampaign extends Model
             // queue.default must not block a healthy database mail queue.
             return null;
         }
+
+        $mailNeedsScan = $mail !== '' && $mail !== 'sync' && $mailDriver === 'database';
 
         foreach (self::sendJobQueueConnections() as $connection) {
             try {
@@ -433,8 +440,12 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // Same trap as hasQueuedSendJob: SQLite can return an empty
+                // set for a missing payload column. Aborting the whole scan
+                // here parked orphans for 72h whenever the unused default
+                // table was the broken one.
                 if (! Schema::hasColumn($table, 'payload')) {
-                    return null;
+                    continue;
                 }
 
                 DB::table($table)
@@ -465,12 +476,24 @@ class EmailCampaign extends Model
 
                         return true;
                     });
+
+                if ($connection === $mail) {
+                    $mailScannedOk = true;
+                }
             } catch (\Throwable) {
-                return null;
+                // A lock-timeout on the unused default table must not
+                // discard a successful mail-queue scan.
             }
         }
 
         if ($sawUnscoped) {
+            return null;
+        }
+
+        // Mailables live on the mail connection. If that table could not
+        // be read, fail-closed — the unused default being healthy/empty
+        // must not look like "nothing in flight".
+        if ($mailNeedsScan && ! $mailScannedOk) {
             return null;
         }
 
