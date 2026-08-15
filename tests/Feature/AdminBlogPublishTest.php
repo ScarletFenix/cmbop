@@ -120,6 +120,65 @@ class AdminBlogPublishTest extends TestCase
         $this->assertStringNotContainsString('onclick="alert(1)"', $html);
     }
 
+    public function test_destroy_deletes_unreferenced_content_images(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = UploadedFile::fake()->image('inline-cleanup.jpg')->store('blogs/content', 'public');
+
+        $blog = Blog::factory()->create([
+            'title' => 'Cleanup Post',
+            'slug' => 'cleanup-post',
+            'content' => '<p><img src="/storage/'.$path.'"></p>',
+            'created_by' => $admin->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Cleanup Post',
+            'slug' => 'cleanup-post',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/storage/'.$path.'"></p>',
+            'is_published' => true,
+        ]);
+
+        Storage::disk('public')->assertExists($path);
+
+        $this->actingAs($admin)
+            ->delete(route('admin.blogs.destroy', $blog->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_admin_can_filter_blogs_by_search_and_set_author(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+            'status' => 'draft',
+            'author' => 'Ada Lovelace',
+            'translations' => [
+                'en' => [
+                    'title' => 'Unique Filter Title XYZ',
+                    'slug' => 'unique-filter-title-xyz',
+                    'content' => '<p>Body</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $this->actingAs($admin)
+            ->get(route('admin.blogs.index', ['q' => 'Unique Filter Title XYZ', 'status' => 'draft', 'kind' => 'custom']))
+            ->assertOk()
+            ->assertSee('Unique Filter Title XYZ', false)
+            ->assertSee('Ada Lovelace', false);
+
+        $this->assertDatabaseHas('blogs', [
+            'slug' => 'unique-filter-title-xyz',
+            'author' => 'Ada Lovelace',
+        ]);
+    }
+
     public function test_invalid_editor_image_upload_returns_422(): void
     {
         Storage::fake('public');

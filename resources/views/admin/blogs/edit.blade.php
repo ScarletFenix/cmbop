@@ -191,6 +191,14 @@
                             @enderror
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Author</label>
+                            <input type="text" name="author" class="form-control @error('author') is-invalid @enderror" value="{{ old_text('author', $blog->author) }}" maxlength="120">
+                            @error('author')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
                         <!-- Tags -->
                         <div class="mb-3">
                             <label class="form-label fw-semibold">Tags</label>
