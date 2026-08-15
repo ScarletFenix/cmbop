@@ -144,6 +144,23 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertNotNull($user->catalog_hide_until);
         $this->assertTrue($user->catalog_hide_until->greaterThan(now()->addHours(23)));
         $this->assertTrue($user->catalog_hide_until->lessThanOrEqualTo(now()->addHours(24)->addMinute()));
+        $this->assertStringContainsString('24 hours', $last['message']);
+    }
+
+    public function test_hide_mode_message_uses_configured_hours(): void
+    {
+        config(['catalog.copy_strikes.hide_hours' => 12, 'catalog.copy_strikes.threshold' => 2]);
+
+        $user = $this->advertiser(['catalog_copy_strike_count' => 1]);
+        $guard = app(CatalogCopyStrikeGuard::class);
+        $last = null;
+        for ($i = 1; $i <= 2; $i++) {
+            $last = $guard->record($user->fresh(), $this->site("cfg-hide-{$i}.example")->id, "cfg-hide-{$i}.example");
+        }
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_HIDE_MODE, $last['status']);
+        $this->assertStringContainsString('12 hours', $last['message']);
+        $this->assertStringNotContainsString('24 hours', $last['message']);
     }
 
     public function test_warning_and_hide_can_fire_in_the_same_second(): void
