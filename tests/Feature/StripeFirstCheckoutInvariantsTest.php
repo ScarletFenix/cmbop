@@ -555,6 +555,36 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
+    public function test_finalize_releases_bonus_share_for_listing_that_left_the_catalog(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'bonus-left-catalog.example', 80);
+        $live = $this->makeSite($publisher, 'bonus-still-live.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'BONUS-LEFT-CATALOG-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+            $this->lineFor($live, 40),
+        ], 100, 20));
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 100, 'cs_bonus_left_catalog')
+        );
+
+        $this->assertCount(1, $created);
+        $this->assertEqualsWithDelta(40.0, (float) $created->first()->total_amount, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(round(20 * (40 / 120), 2), (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(round(20 - (20 * (40 / 120)), 2), (float) $wallet->bonus_balance, 0.01);
+    }
+
     public function test_finalize_creates_no_orders_when_every_line_left_the_catalog(): void
     {
         $advertiser = $this->makeUser('advertiser');
@@ -1279,5 +1309,124 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $created->first()->total_amount, 0.01);
         $wallet->refresh();
         $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+    }
+
+    public function test_second_session_after_paid_orders_credits_card_once(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'dup-session.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'DUP-SESSION-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 80));
+
+        $first = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_dup_first')
+        );
+        $this->assertCount(1, $first);
+        $this->assertNull($payments->getPendingCheckout($ref));
+
+        $second = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_dup_second')
+        );
+        $this->assertCount(0, $second);
+        $this->assertSame(1, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+
+        $replay = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_dup_first')
+        );
+        $this->assertCount(0, $replay);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_webhook_credits_second_session_after_orders_exist(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'wh-dup-session.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'WH-DUP-SESSION-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 80));
+
+        $payments->finalizeStripeFirstCheckout($ref, $this->paidSession($ref, 80, 'cs_wh_dup_first'));
+        $this->assertNull($payments->getPendingCheckout($ref));
+
+        $this->signedWebhook([
+            'id' => 'evt_wh_dup_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_wh_dup_second',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_wh_dup_second',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(1, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_unfulfilled_credit_is_not_doubled_on_success_url_after_webhook(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'double-credit.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'DOUBLE-CREDIT-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+        ], 80));
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $session = $this->paidSession($ref, 80, 'cs_double_credit');
+        $this->assertCount(0, $payments->finalizeStripeFirstCheckout($ref, $session));
+        $this->assertCount(0, $payments->finalizeStripeFirstCheckout($ref, $session));
+
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_suffixed_unfulfilled_credit_does_not_stack_on_legacy_unsuffixed_row(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'LEGACY-UNFULFILLED-1';
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(60.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 60), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 60, 'cs_legacy_unfulfilled'), 0.01);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 }

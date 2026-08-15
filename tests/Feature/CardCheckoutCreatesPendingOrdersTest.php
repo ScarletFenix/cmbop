@@ -450,12 +450,14 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        $this->actingAs($advertiser)->withSession($session)
+        $retry = $this->actingAs($advertiser)->withSession($session)
             ->postJson(route('advertiser.checkout.process'), $payload)
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        $package = app(OrderPaymentService::class)->getPendingCheckout('BONUS1');
+        $reference = (string) $retry->json('reference_code');
+        $this->assertNotSame('', $reference);
+        $package = app(OrderPaymentService::class)->getPendingCheckout($reference);
         $this->assertNotNull($package);
         $this->assertEqualsWithDelta(20.0, (float) ($package['bonus_applied'] ?? 0), 0.01);
         $this->assertEqualsWithDelta(

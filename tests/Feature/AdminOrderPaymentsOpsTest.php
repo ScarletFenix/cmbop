@@ -976,4 +976,27 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $blade);
         $this->assertStringContainsString("route('admin.payments.data', absolute: false)", $blade);
     }
+
+    public function test_cannot_mark_paid_when_listing_left_the_catalog(): void
+    {
+        $admin = $this->makeUser('admin');
+        $site = $this->makeSite($this->makeUser('publisher'), 'hidden-mark-paid');
+        $order = $this->makeOrder($this->makeUser('advertiser'), $site, [
+            'order_number' => 'PAY-HIDDEN-1',
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $site->update(['verified' => false, 'active' => false]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertNull($order->fresh()->paid_at);
+    }
 }

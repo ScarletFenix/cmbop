@@ -217,6 +217,13 @@ class PaymentController extends Controller
                         'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.'
                     );
                 }
+                if (! $order->hasCatalogVisibleFulfillment()) {
+                    return $this->abortPaymentUpdate(
+                        (int) $id,
+                        $sendNotification,
+                        'This order cannot be marked paid. The listing left the catalog and is no longer fulfillable.'
+                    );
+                }
             }
 
             if ($oldStatus === 'paid' && $newStatus === 'pending') {

@@ -90,7 +90,8 @@ class CheckoutIntentService
     }
 
     /**
-     * Reserved bonus still recorded for this reference (cache + durable row).
+     * Bonus still held for this reference (cache / intent row, not the package snapshot).
+     * After takeBonus the package JSON may still list bonus_applied; that is not a live hold.
      */
     public function heldBonus(int $userId, string $referenceCode): float
     {
@@ -98,11 +99,15 @@ class CheckoutIntentService
             return 0.0;
         }
 
-        return $this->peekBonus($userId, $referenceCode);
+        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
+        $intent = $this->findIntent($referenceCode);
+        $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
+
+        return max($fromCache, $fromRow);
     }
 
     /**
-     * Reserved bonus recorded for this reference (cache, durable row, then fallback).
+     * Read leftover checkout bonus for this reference without consuming it.
      */
     public function peekBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
