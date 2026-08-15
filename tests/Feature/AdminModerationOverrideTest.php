@@ -740,6 +740,60 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame('failed', $order->fresh()->payment_status);
     }
 
+    public function test_admin_mark_paid_blocks_a_silent_title_edit_and_keeps_the_reject(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $site = $this->publisherSite();
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-OVR-MARKPAID',
+            'reference_code' => 'REF-OVR-MARKPAID',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'content_link' => route('advertiser.content-submissions.download', $submission),
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'title' => 'Best online casino bonus guide',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertNull($order->fresh()->paid_at);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     private function publisherSite(): Site
     {
         $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
