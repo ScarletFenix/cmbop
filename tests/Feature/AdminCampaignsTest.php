@@ -2027,6 +2027,48 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
+    public function test_queued_recipient_with_a_delivered_log_fk_is_reconciled_to_delivered(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => $advertiser->email,
+            'subject' => 'Delivered attach',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(80),
+        ]);
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Delivered fk',
+            'subject' => 'Delivered fk',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+            'email_log_id' => $log->id,
+        ]);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
+        $this->assertNull($row->fresh()->skip_reason);
+        $this->assertSame($log->id, $row->fresh()->email_log_id);
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+    }
+
     public function test_queued_recipient_with_a_pending_log_fk_is_not_expired(): void
     {
         $admin = $this->makeUser('admin');
