@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\WelcomeEmail;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -1030,9 +1031,23 @@ class AdminCampaignsTest extends TestCase
 
     public function test_recover_does_not_crash_when_recipients_table_is_missing(): void
     {
+        $admin = $this->makeUser('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'welcome:'.$admin->id,
+            'to_email' => $admin->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 2,
+        ]);
+        $log->forceFill(['updated_at' => now()->subHours(25)])->save();
+
         Schema::drop('email_campaign_recipients');
 
         $this->assertSame(0, EmailCampaign::recoverStalled());
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
     }
 
     public function test_log_sync_updates_open_dedupe_row_instead_of_duplicating(): void

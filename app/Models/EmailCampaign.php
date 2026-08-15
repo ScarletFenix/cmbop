@@ -237,6 +237,14 @@ class EmailCampaign extends Model
         self::expireOrphanedQueuedRecipients();
         self::expireOrphanedPendingLogs();
 
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return 0;
+            }
+        } catch (\Throwable) {
+            return 0;
+        }
+
         $stale = now()->subMinutes(max(1, $staleMinutes));
         $dispatched = 0;
 
