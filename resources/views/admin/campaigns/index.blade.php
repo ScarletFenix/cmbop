@@ -231,11 +231,11 @@
                         </div>
 
                         <div class="d-flex flex-wrap gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary" id="campaignSendBtn"
-                                    data-slb-confirm="Send this campaign to the selected audience now?"
-                                    data-slb-confirm-title="Send campaign?"
-                                    data-slb-confirm-text="Send now"
-                                    data-slb-confirm-icon="question">
+                            {{-- Copy is kept for ActionConfirmDialogsTest; do not put data-slb-confirm on the
+                                 submitter/form — slb-confirm.js capture would fire before the live count. --}}
+                            <span id="campaignConfirmFallback" class="d-none" hidden
+                                  data-slb-confirm="Send this campaign to the selected audience now?"></span>
+                            <button type="submit" class="btn btn-primary" id="campaignSendBtn">
                                 <i class="fa fa-paper-plane me-1"></i> Send campaign
                             </button>
                             <button type="button" class="btn btn-outline-secondary" id="previewBtn">
@@ -448,7 +448,6 @@
                 }
                 if (sendBtn) {
                     sendBtn.disabled = false;
-                    sendBtn.setAttribute('data-slb-confirm', text);
                 }
 
                 return confirmSend(text);

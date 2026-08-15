@@ -38,13 +38,21 @@ class SendEmailCampaignJob implements ShouldBeUnique, ShouldQueue
 
     public function handle(): void
     {
+        $claimed = EmailCampaign::query()
+            ->whereKey($this->campaignId)
+            ->where('status', EmailCampaign::STATUS_QUEUED)
+            ->update(['status' => EmailCampaign::STATUS_SENDING]);
+
+        if ($claimed === 0) {
+            return;
+        }
+
         $campaign = EmailCampaign::query()->find($this->campaignId);
         if (! $campaign) {
             return;
         }
 
         try {
-            $campaign->update(['status' => EmailCampaign::STATUS_SENDING]);
             $this->processPending($campaign);
             $this->finalize($campaign);
         } catch (\Throwable $e) {

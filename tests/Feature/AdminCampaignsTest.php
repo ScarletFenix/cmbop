@@ -86,6 +86,7 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('name="respect_preferences" value="0"', false)
             ->assertSee('id="previewStatus"', false)
             ->assertSee('data-slb-confirm="Send this campaign', false)
+            ->assertSee('id="campaignConfirmFallback"', false)
             ->assertSee('id="previewFrame"', false)
             ->assertSee('sandbox', false)
             ->assertSee('requestSubmit() throws if the submitter is disabled', false)
@@ -93,6 +94,17 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('name="include_unverified" value="0"', false)
             ->assertSee('Advertisers: never checked out', false)
             ->assertSee('value="advertisers_no_paid_orders"', false);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.campaigns.index'))
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression(
+            '/<button[^>]*id="campaignSendBtn"[^>]*>/',
+            $html
+        );
+        preg_match('/<button[^>]*id="campaignSendBtn"[^>]*>/', $html, $button);
+        $this->assertStringNotContainsString('data-slb-confirm', $button[0] ?? '');
     }
 
     public function test_preview_returns_html_for_valid_payload(): void
@@ -356,6 +368,31 @@ class AdminCampaignsTest extends TestCase
             ->assertSessionHas('error', 'No recipients found for that audience.');
 
         Mail::assertNothingQueued();
+    }
+
+    public function test_selected_audience_stores_marketplace_ids_only(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'audience' => 'selected',
+                'user_ids' => [$admin->id, $advertiser->id],
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertEquals([$advertiser->id], array_map('intval', $campaign->selected_user_ids ?? []));
+        $this->assertEquals(
+            [$advertiser->id],
+            $campaign->recipients()->pluck('user_id')->map(fn ($id) => (int) $id)->all()
+        );
+        Mail::assertQueued(AudienceCampaignMail::class, 1);
     }
 
     public function test_no_paid_orders_excludes_paid_but_keeps_abandoned_checkout(): void
@@ -883,5 +920,40 @@ class AdminCampaignsTest extends TestCase
             EmailCampaignRecipient::SKIP_DISABLED,
             $campaign->recipients()->where('user_id', $advertiser->id)->value('skip_reason')
         );
+    }
+
+    public function test_job_does_not_reprocess_a_finished_campaign(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Already sent',
+            'subject' => 'Already sent',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        (new SendEmailCampaignJob($campaign->id))->handle();
+
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Mail::assertNothingQueued();
     }
 }

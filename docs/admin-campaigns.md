@@ -9,12 +9,16 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
 1. Compose subject, HTML body, optional CTA, audience, and the two checkboxes
    (`respect_preferences`, `include_unverified`).
 2. Confirm uses `GET /admin/campaigns/recipient-count` so the dialog shows the
-   live count (and how many unverified were excluded).
+   live count (and how many unverified were excluded). The submit button must
+   **not** carry `data-slb-confirm` — that would let `slb-confirm.js` (document
+   capture) run first and skip the count (or loop). Confirm is imperative
+   `slbConfirm()` from the form script.
 3. `POST /admin/campaigns/send` creates an `email_campaigns` row (`queued`),
    inserts `email_campaign_recipients` (`pending`) in one transaction, logs
    `campaign.queued`, then dispatches `SendEmailCampaignJob` on the **`emails`**
    queue. Flash: **Campaign queued for N recipient(s).**
-4. The job marks the campaign `sending`, preference-skips or queues
+4. The job claims only a `queued` row (`queued` → `sending`) so a second
+   worker cannot re-send. It then preference-skips or queues
    `AudienceCampaignMail`, then finalizes `sent` (if any mail left the job) or
    `failed`. A thrown handle (or timeout) fails leftover **pending** rows,
    recounts, and marks the campaign `failed` (not stuck `sending`). Already

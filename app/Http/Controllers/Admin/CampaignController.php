@@ -123,7 +123,9 @@ class CampaignController extends Controller
                 'subject' => $data['subject'],
                 'body_html' => CampaignHtml::sanitize($data['body_html']),
                 'audience' => $data['audience'],
-                'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
+                'selected_user_ids' => $data['audience'] === 'selected'
+                    ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                    : null,
                 'cta_label' => $data['cta_label'] ?? null,
                 'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
                 'recipients_count' => $count,
