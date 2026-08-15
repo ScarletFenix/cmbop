@@ -140,7 +140,7 @@
                                         <label class="form-label fw-semibold">Content {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
                                         <div id="quillEditor-{{ $locale }}" class="border rounded bg-white" style="height: 320px;"></div>
                                         <input type="hidden" name="translations[{{ $locale }}][content]" id="contentInput-{{ $locale }}">
-                                        <script type="application/json" id="existingContent-{{ $locale }}">{!! \App\Services\BlogHtmlSanitizer::encodeForScript(old('translations.'.$locale.'.content', '')) !!}</script>
+                                        <script type="application/json" id="existingContent-{{ $locale }}">{!! \App\Services\BlogHtmlSanitizer::encodeForEditor(old('translations.'.$locale.'.content', '')) !!}</script>
                                         @error($prefix.'.content')
                                             <div class="text-danger small mt-1">{{ $message }}</div>
                                         @enderror

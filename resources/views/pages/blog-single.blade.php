@@ -163,7 +163,7 @@
                 @endif
                 
                 <div class="blog-content">
-                    {!! app(\App\Services\BlogHtmlSanitizer::class)->sanitize(\App\Support\BlogInlineImages::rewriteLegacyAssetUrls($resolvedContent)) !!}
+                    {!! app(\App\Services\BlogHtmlSanitizer::class)->sanitize($resolvedContent) !!}
                 </div>
                 
                 <!-- Share Section -->

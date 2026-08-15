@@ -332,9 +332,16 @@ class BlogController extends Controller
                     ->delete();
             });
 
-            $blog->refresh()->load('translations');
-            foreach (array_diff($oldImagePaths, $this->collectStoredBlogImagePaths($blog)) as $stalePath) {
-                $this->deletePublicBlogPath($stalePath, $blog->id);
+            try {
+                $blog->refresh()->load('translations');
+                foreach (array_diff($oldImagePaths, $this->collectStoredBlogImagePaths($blog)) as $stalePath) {
+                    $this->deletePublicBlogPath($stalePath, $blog->id);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Blog image cleanup after update failed', [
+                    'blog_id' => $blog->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             Log::info('Blog updated successfully', [
@@ -366,11 +373,24 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::with('translations')->findOrFail($id);
-            $this->deleteStoredBlogImages($blog);
-
+            $imagePaths = $this->collectStoredBlogImagePaths($blog);
             $blogTitle = $blog->title;
-            CuratedBlogWriter::rememberDeleted($blog);
-            $blog->delete();
+
+            DB::transaction(function () use ($blog) {
+                CuratedBlogWriter::rememberDeleted($blog);
+                $blog->delete();
+            });
+
+            try {
+                foreach ($imagePaths as $path) {
+                    $this->deletePublicBlogPath($path);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Blog image cleanup after delete failed', [
+                    'title' => $blogTitle,
+                    'error' => $e->getMessage(),
+                ]);
+            }
 
             Log::info('Blog deleted successfully', [
                 'blog_id' => $id,
@@ -598,14 +618,6 @@ class BlogController extends Controller
         return array_values(array_unique($resolved));
     }
 
-    private function deleteStoredBlogImages(Blog $blog): void
-    {
-        foreach ($this->collectStoredBlogImagePaths($blog) as $path) {
-            $this->deletePublicBlogPath($path, $blog->id);
-            Log::info('Blog image deleted with post', ['path' => $path]);
-        }
-    }
-
     /**
      * Persist a blog image as WebP when GD can convert; otherwise keep the original file.
      */
@@ -650,6 +662,9 @@ class BlogController extends Controller
             $content = BlogHtmlSanitizer::isBlank($rawContent)
                 ? ''
                 : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
+            if (BlogHtmlSanitizer::isBlank($content)) {
+                $content = '';
+            }
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {

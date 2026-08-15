@@ -110,8 +110,12 @@ articleImagesManager = new AdminBlogImages({
 var form = document.getElementById('blogForm');
 if (form) form.addEventListener('submit', function (e) {
     Object.keys(quills).forEach(function (locale) {
+        var input = document.getElementById('contentInput-' + locale);
+        if (!input) {
+            return;
+        }
         var content = quills[locale].root.innerHTML.trim();
-        document.getElementById('contentInput-' + locale).value = isEmptyQuillHtml(content) ? '' : content;
+        input.value = isEmptyQuillHtml(content) ? '' : content;
     });
 
     var enContent = (document.getElementById('contentInput-en')?.value || '').trim();

@@ -28,15 +28,29 @@ class BlogInlineImages
         }
 
         $storagePath = self::STORAGE_DIR.'/'.$filename;
-        $source = public_path(self::PUBLIC_DIR.'/'.$filename);
 
-        if (File::isFile($source)) {
-            Storage::disk('public')->put($storagePath, File::get($source));
+        try {
+            $disk = Storage::disk('public');
+            if ($disk->exists($storagePath) && $disk->size($storagePath) > 0) {
+                return true;
+            }
 
-            return true;
+            $source = public_path(self::PUBLIC_DIR.'/'.$filename);
+            if (File::isFile($source)) {
+                $disk->put($storagePath, File::get($source));
+
+                return $disk->exists($storagePath);
+            }
+
+            return $disk->exists($storagePath);
+        } catch (\Throwable $e) {
+            Log::warning('Blog inline image publish failed', [
+                'file' => $filename,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
         }
-
-        return Storage::disk('public')->exists($storagePath);
     }
 
     /**
@@ -56,22 +70,36 @@ class BlogInlineImages
             return false;
         }
 
-        $candidates = array_values(array_unique(array_filter([
-            $publicAsset ? public_path($publicAsset) : null,
-            public_path(self::PUBLIC_DIR.'/'.$filename),
-        ])));
-
-        foreach ($candidates as $source) {
-            if (! File::isFile($source)) {
-                continue;
+        try {
+            $disk = Storage::disk('public');
+            if ($disk->exists($storagePath) && $disk->size($storagePath) > 0) {
+                return true;
             }
 
-            Storage::disk('public')->put($storagePath, File::get($source));
+            $candidates = array_values(array_unique(array_filter([
+                $publicAsset ? public_path($publicAsset) : null,
+                public_path(self::PUBLIC_DIR.'/'.$filename),
+            ])));
 
-            return true;
+            foreach ($candidates as $source) {
+                if (! File::isFile($source)) {
+                    continue;
+                }
+
+                $disk->put($storagePath, File::get($source));
+
+                return $disk->exists($storagePath);
+            }
+
+            return $disk->exists($storagePath);
+        } catch (\Throwable $e) {
+            Log::warning('Blog featured image publish failed', [
+                'path' => $storagePath,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
         }
-
-        return Storage::disk('public')->exists($storagePath);
     }
 
     /**
@@ -150,14 +178,19 @@ class BlogInlineImages
 
     /**
      * Rewrite legacy /assets/img/blog/... (and absolute variants) to /storage/blogs/content/...
-     * and ensure the target file is published when the public asset exists.
+     * String-only: page views and sanitize must not write the public disk.
      */
     public static function rewriteLegacyAssetUrls(string $html): string
     {
         $rewritten = preg_replace_callback(
             '#(?:https?://[^"\']+)?/assets/img/blog/([^"\'?\s>]+)#i',
             static function (array $matches): string {
-                return self::publicUrl($matches[1]);
+                $filename = basename($matches[1]);
+                if ($filename === '' || $filename === '.' || $filename === '..') {
+                    return $matches[0];
+                }
+
+                return '/storage/'.self::STORAGE_DIR.'/'.$filename;
             },
             $html
         );

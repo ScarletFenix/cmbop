@@ -376,6 +376,18 @@ class AdminBlogImageTest extends TestCase
         $this->assertSame('/media/blogs/featured/hero.jpg', $blog->featuredImageUrl());
     }
 
+    public function test_featured_image_url_rewrites_legacy_asset_paths(): void
+    {
+        $blog = new Blog([
+            'featured_image' => '/assets/img/blog/gastbeitraege-europa-featured.jpg',
+        ]);
+
+        $this->assertSame(
+            '/media/blogs/content/gastbeitraege-europa-featured.jpg',
+            $blog->featuredImageUrl()
+        );
+    }
+
     public function test_store_converts_featured_jpeg_to_webp(): void
     {
         if (! function_exists('imagewebp')) {

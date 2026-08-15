@@ -74,6 +74,51 @@ class AdminBlogPublishTest extends TestCase
         $this->assertTrue($republished->published_at->isSameSecond($publishedAt));
     }
 
+    public function test_store_rejects_content_that_sanitizes_to_blank(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => 'Blank After Sanitize',
+                        'slug' => 'blank-after-sanitize',
+                        'content' => '<p><img src="javascript:alert(1)"></p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.create'))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseMissing('blogs', ['slug' => 'blank-after-sanitize']);
+    }
+
+    public function test_create_redisplay_rewrites_legacy_asset_images(): void
+    {
+        $admin = $this->adminUser();
+
+        $html = $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->followingRedirects()
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => '',
+                        'content' => '<p><img src="/assets/img/blog/gastbeitraege-europa-sprachen.jpg" alt="A"></p>',
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('/media/blogs/content/gastbeitraege-europa-sprachen.jpg', $html);
+        $this->assertStringNotContainsString('/assets/img/blog/gastbeitraege-europa-sprachen.jpg', $html);
+    }
+
     public function test_store_sanitizes_script_tags_before_persist(): void
     {
         $admin = $this->adminUser();
@@ -144,6 +189,51 @@ class AdminBlogPublishTest extends TestCase
 
         $blog->refresh();
         $this->assertStringContainsString('/storage/blogs/content/legacy.jpg', $blog->content);
+    }
+
+    public function test_admin_save_rewrites_legacy_asset_images_instead_of_stripping_them(): void
+    {
+        $admin = $this->adminUser();
+        $html = '<p>Keep this paragraph.</p><p><img src="/assets/img/blog/gastbeitraege-europa-sprachen.jpg" alt="A"></p>';
+
+        $blog = Blog::factory()->create([
+            'title' => 'Legacy Asset Save',
+            'slug' => 'legacy-asset-save',
+            'content' => $html,
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Legacy Asset Save',
+            'slug' => 'legacy-asset-save',
+            'excerpt' => 'Excerpt',
+            'content' => $html,
+            'is_published' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.blogs.update', $blog->id), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => 'Legacy Asset Save',
+                        'slug' => 'legacy-asset-save',
+                        'content' => $html,
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $blog->refresh();
+        $this->assertStringContainsString('Keep this paragraph.', $blog->content);
+        $this->assertStringContainsString('/media/blogs/content/gastbeitraege-europa-sprachen.jpg', $blog->content);
+        $this->assertStringNotContainsString('/assets/img/blog/', $blog->content);
+        $this->assertStringContainsString(
+            '/media/blogs/content/gastbeitraege-europa-sprachen.jpg',
+            $blog->translations()->where('locale', 'en')->value('content')
+        );
     }
 
     public function test_destroy_deletes_unreferenced_content_images(): void
