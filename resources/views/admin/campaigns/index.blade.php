@@ -3,7 +3,10 @@
 @section('content')
 @php
     $preselect = request('audience', 'advertisers');
-    if (!in_array($preselect, ['advertisers', 'publishers', 'both', 'selected', 'advertisers_no_orders', 'publishers_no_sites', 'advertisers_never_deposited'], true)) {
+    if ($preselect === 'advertisers_never_checked_out') {
+        $preselect = 'advertisers_no_orders';
+    }
+    if (!in_array($preselect, \App\Services\AudienceInventoryService::audienceKeys(), true)) {
         $preselect = 'advertisers';
     }
 @endphp
@@ -57,8 +60,16 @@
         <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Advertisers: no orders</div>
-                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_orders'] ?? 0) }}</h3>
+                    <div class="text-muted small">Advertisers: never checked out</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0) }}</h3>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">Advertisers: no paid orders</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_paid_orders'] ?? 0) }}</h3>
                 </div>
             </div>
         </div>
@@ -101,7 +112,10 @@
                                     <option value="publishers" @selected(old('audience', $preselect) === 'publishers')>All Publishers ({{ $stats['publishers'] }})</option>
                                     <option value="both" @selected(old('audience', $preselect) === 'both')>Advertisers + Publishers ({{ $stats['both_unique'] }} unique)</option>
                                     <option value="advertisers_no_orders" @selected(old('audience', $preselect) === 'advertisers_no_orders')>
-                                        Advertisers: no orders ({{ $stats['advertisers_no_orders'] ?? 0 }})
+                                        Advertisers: never checked out ({{ $stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0 }})
+                                    </option>
+                                    <option value="advertisers_no_paid_orders" @selected(old('audience', $preselect) === 'advertisers_no_paid_orders')>
+                                        Advertisers: no paid orders ({{ $stats['advertisers_no_paid_orders'] ?? 0 }})
                                     </option>
                                     <option value="publishers_no_sites" @selected(old('audience', $preselect) === 'publishers_no_sites')>
                                         Publishers: no sites ({{ $stats['publishers_no_sites'] ?? 0 }})
@@ -152,7 +166,12 @@
                                         </div>
                                     </div>
                                 </div>
-                                <div class="form-text"><span id="selectedCount">0</span> user(s) selected</div>
+                                <div class="form-text">
+                                    <span id="selectedCount">0</span> user(s) selected
+                                    @if(!empty($pickerCapped))
+                                        <span class="d-block">Showing the first {{ \App\Services\AudienceInventoryService::PICKER_LIMIT }} per role. Use Audience Inventory to email a full segment.</span>
+                                    @endif
+                                </div>
                             </div>
 
                             <div class="col-12">
@@ -198,6 +217,14 @@
                                         @checked(filter_var(old('respect_preferences', true), FILTER_VALIDATE_BOOLEAN))>
                                     <label class="form-check-label" for="respect_preferences">
                                         Respect user “Marketing Emails” preference (recommended)
+                                    </label>
+                                </div>
+                                <div class="form-check mt-2">
+                                    <input type="hidden" name="include_unverified" value="0">
+                                    <input class="form-check-input" type="checkbox" name="include_unverified" value="1" id="include_unverified"
+                                        @checked(filter_var(old('include_unverified', false), FILTER_VALIDATE_BOOLEAN))>
+                                    <label class="form-check-label" for="include_unverified">
+                                        Include unverified email addresses
                                     </label>
                                 </div>
                             </div>
@@ -335,9 +362,15 @@
         });
     }
 
+    function includeUnverified() {
+        const box = document.getElementById('include_unverified');
+        return !!(box && box.checked);
+    }
+
     async function fetchRecipientCount() {
         const params = new URLSearchParams();
         params.set('audience', audience.value);
+        params.set('include_unverified', includeUnverified() ? '1' : '0');
         if (audience.value === 'selected') {
             selectedUserIds().forEach(function (id) {
                 params.append('user_ids[]', id);
@@ -404,7 +437,11 @@
                     });
                 }
 
-                const text = 'Send to ' + count.toLocaleString() + ' recipient' + (count === 1 ? '' : 's') + ' (' + label + ')?';
+                let text = 'Send to ' + count.toLocaleString() + ' recipient' + (count === 1 ? '' : 's') + ' (' + label + ')?';
+                const excluded = Number(data.unverified_excluded || 0);
+                if (excluded > 0) {
+                    text += ' ' + excluded.toLocaleString() + ' unverified excluded.';
+                }
                 if (sendBtn) {
                     sendBtn.disabled = false;
                     sendBtn.setAttribute('data-slb-confirm', text);

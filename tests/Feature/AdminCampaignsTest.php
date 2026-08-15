@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\AudienceCampaignMail;
 use App\Models\EmailCampaign;
 use App\Models\EmailNotificationPreference;
+use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\AudienceInventoryService;
@@ -79,7 +80,10 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('id="previewStatus"', false)
             ->assertSee('data-slb-confirm="Send this campaign', false)
             ->assertSee('requestSubmit() throws if the submitter is disabled', false)
-            ->assertSee("Accept': 'application/json, text/html'", false);
+            ->assertSee("Accept': 'application/json, text/html'", false)
+            ->assertSee('name="include_unverified" value="0"', false)
+            ->assertSee('Advertisers: never checked out', false)
+            ->assertSee('value="advertisers_no_paid_orders"', false);
     }
 
     public function test_preview_returns_html_for_valid_payload(): void
@@ -125,6 +129,7 @@ class AdminCampaignsTest extends TestCase
             ->assertJson([
                 'count' => $inventory->collect('advertisers')->count(),
                 'label' => 'Advertisers',
+                'unverified_excluded' => 0,
             ]);
 
         $this->actingAs($admin)
@@ -239,5 +244,155 @@ class AdminCampaignsTest extends TestCase
         $this->assertContains('throttle:20,1', $preview->gatherMiddleware());
         $this->assertContains('throttle:6,1', $send->gatherMiddleware());
         $this->assertContains('throttle:30,1', $count->gatherMiddleware());
+    }
+
+    public function test_preview_strips_javascript_links(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.preview'), [
+                'subject' => 'Safe preview',
+                'body_html' => '<p>Go <a href="javascript:alert(1)">here</a></p>',
+            ])
+            ->assertOk()
+            ->assertDontSee('javascript:', false)
+            ->assertSee('here', false);
+    }
+
+    public function test_preview_rejects_javascript_cta_url(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.preview'), [
+                'subject' => 'Bad CTA',
+                'body_html' => '<p>Hello</p>',
+                'cta_label' => 'Click',
+                'cta_url' => 'javascript:alert(1)',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['cta_url']);
+    }
+
+    public function test_unverified_advertisers_are_excluded_by_default(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $verified = $this->makeUser('advertiser');
+        $unverified = $this->makeUser('advertiser');
+        $unverified->forceFill(['email_verified_at' => null])->save();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.campaigns.recipient-count', ['audience' => 'advertisers']))
+            ->assertOk()
+            ->assertJson([
+                'count' => 1,
+                'unverified_excluded' => 1,
+            ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+                'include_unverified' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'));
+
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($verified->email));
+        Mail::assertNotQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($unverified->email));
+    }
+
+    public function test_include_unverified_sends_to_unverified_users(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $unverified = $this->makeUser('advertiser');
+        $unverified->forceFill(['email_verified_at' => null])->save();
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+                'include_unverified' => '1',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($unverified->email));
+    }
+
+    public function test_selected_audience_rejects_admin_ids(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $otherAdmin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'audience' => 'selected',
+                'user_ids' => [$otherAdmin->id],
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('error', 'No recipients found for that audience.');
+
+        Mail::assertNothingQueued();
+    }
+
+    public function test_no_paid_orders_excludes_paid_but_keeps_abandoned_checkout(): void
+    {
+        $admin = $this->makeUser('admin');
+        $neverCheckedOut = $this->makeUser('advertiser');
+        $abandoned = $this->makeUser('advertiser');
+        $paid = $this->makeUser('advertiser');
+
+        Order::create([
+            'user_id' => $abandoned->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ABANDON-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        Order::create([
+            'user_id' => $paid->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+
+        $inventory = app(AudienceInventoryService::class);
+
+        $neverIds = $inventory->collect('advertisers_never_checked_out')->pluck('id')->all();
+        $this->assertContains($neverCheckedOut->id, $neverIds);
+        $this->assertNotContains($abandoned->id, $neverIds);
+        $this->assertNotContains($paid->id, $neverIds);
+        $this->assertSame(
+            $inventory->collect('advertisers_no_orders')->pluck('id')->all(),
+            $neverIds
+        );
+
+        $noPaidIds = $inventory->collect('advertisers_no_paid_orders')->pluck('id')->all();
+        $this->assertContains($neverCheckedOut->id, $noPaidIds);
+        $this->assertContains($abandoned->id, $noPaidIds);
+        $this->assertNotContains($paid->id, $noPaidIds);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'no_paid_orders']))
+            ->assertOk()
+            ->assertSee($abandoned->email, false)
+            ->assertDontSee($paid->email, false)
+            ->assertSee(route('admin.campaigns.index', ['audience' => 'advertisers_no_paid_orders'], false), false);
     }
 }

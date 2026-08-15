@@ -11,13 +11,17 @@ class AudienceController extends Controller
     public function index(Request $request, AudienceInventoryService $inventory)
     {
         $tab = $request->get('tab', 'advertisers');
-        if (! in_array($tab, ['advertisers', 'publishers', 'no_orders', 'no_sites', 'never_deposited'], true)) {
+        if (! in_array($tab, ['advertisers', 'publishers', 'no_orders', 'never_checked_out', 'no_paid_orders', 'no_sites', 'never_deposited'], true)) {
             $tab = 'advertisers';
+        }
+        if ($tab === 'never_checked_out') {
+            $tab = 'no_orders';
         }
 
         $audienceKey = match ($tab) {
             'publishers' => AudienceInventoryService::AUDIENCE_PUBLISHERS,
             'no_orders' => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            'no_paid_orders' => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
             'no_sites' => AudienceInventoryService::AUDIENCE_PUBLISHERS_NO_SITES,
             'never_deposited' => AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
             default => AudienceInventoryService::AUDIENCE_ADVERTISERS,
@@ -36,7 +40,8 @@ class AudienceController extends Controller
         $audience = $request->get('audience', 'advertisers');
         $audienceKey = match ($audience) {
             'publishers' => AudienceInventoryService::AUDIENCE_PUBLISHERS,
-            'no_orders', AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            'no_orders', 'never_checked_out', AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS, AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            'no_paid_orders', AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => AudienceInventoryService::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
             'no_sites', AudienceInventoryService::AUDIENCE_PUBLISHERS_NO_SITES => AudienceInventoryService::AUDIENCE_PUBLISHERS_NO_SITES,
             'never_deposited', AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => AudienceInventoryService::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
             default => AudienceInventoryService::AUDIENCE_ADVERTISERS,

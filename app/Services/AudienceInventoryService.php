@@ -21,9 +21,15 @@ class AudienceInventoryService
 
     public const AUDIENCE_ADVERTISERS_NO_ORDERS = 'advertisers_no_orders';
 
+    public const AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT = 'advertisers_never_checked_out';
+
+    public const AUDIENCE_ADVERTISERS_NO_PAID_ORDERS = 'advertisers_no_paid_orders';
+
     public const AUDIENCE_PUBLISHERS_NO_SITES = 'publishers_no_sites';
 
     public const AUDIENCE_ADVERTISERS_NEVER_DEPOSITED = 'advertisers_never_deposited';
+
+    public const PICKER_LIMIT = 200;
 
     /**
      * @return list<string>
@@ -36,34 +42,41 @@ class AudienceInventoryService
             self::AUDIENCE_BOTH,
             self::AUDIENCE_SELECTED,
             self::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT,
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
             self::AUDIENCE_PUBLISHERS_NO_SITES,
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
         ];
     }
 
-    public function advertiserCount(): int
+    public function advertiserCount(bool $includeUnverified = true): int
     {
-        return $this->queryForRole('advertiser')->count();
+        return $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->count();
     }
 
-    public function publisherCount(): int
+    public function publisherCount(bool $includeUnverified = true): int
     {
-        return $this->queryForRole('publisher')->count();
+        return $this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->count();
     }
 
-    public function advertisersNoOrdersCount(): int
+    public function advertisersNoOrdersCount(bool $includeUnverified = true): int
     {
-        return $this->queryAdvertisersNoOrders()->count();
+        return $this->applyRecipientScope($this->queryAdvertisersNoOrders(), $includeUnverified)->count();
     }
 
-    public function publishersNoSitesCount(): int
+    public function advertisersNoPaidOrdersCount(bool $includeUnverified = true): int
     {
-        return $this->queryPublishersNoSites()->count();
+        return $this->applyRecipientScope($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->count();
     }
 
-    public function advertisersNeverDepositedCount(): int
+    public function publishersNoSitesCount(bool $includeUnverified = true): int
     {
-        return $this->queryAdvertisersNeverDeposited()->count();
+        return $this->applyRecipientScope($this->queryPublishersNoSites(), $includeUnverified)->count();
+    }
+
+    public function advertisersNeverDepositedCount(bool $includeUnverified = true): int
+    {
+        return $this->applyRecipientScope($this->queryAdvertisersNeverDeposited(), $includeUnverified)->count();
     }
 
     public function queryForRole(string $roleName): Builder
@@ -84,11 +97,30 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers who have never placed an order.
+     * Advertisers who have never placed an order row (including abandoned checkout).
      */
     public function queryAdvertisersNoOrders(): Builder
     {
         return $this->queryForRole('advertiser')->whereDoesntHave('orders');
+    }
+
+    /**
+     * Alias of queryAdvertisersNoOrders() — never started checkout.
+     */
+    public function queryAdvertisersNeverCheckedOut(): Builder
+    {
+        return $this->queryAdvertisersNoOrders();
+    }
+
+    /**
+     * Advertisers who have never completed a paid order.
+     */
+    public function queryAdvertisersNoPaidOrders(): Builder
+    {
+        return $this->queryForRole('advertiser')
+            ->whereDoesntHave('orders', function (Builder $q) {
+                $q->where('payment_status', 'paid');
+            });
     }
 
     /**
@@ -136,7 +168,8 @@ class AudienceInventoryService
         return match ($audienceKey) {
             self::AUDIENCE_ADVERTISERS, 'advertiser' => $this->queryForRole('advertiser'),
             self::AUDIENCE_PUBLISHERS, 'publisher' => $this->queryForRole('publisher'),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->queryAdvertisersNoOrders(),
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->queryAdvertisersNoPaidOrders(),
             self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites(),
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited(),
             default => User::query()->whereRaw('1 = 0'),
@@ -161,24 +194,21 @@ class AudienceInventoryService
     /**
      * @return Collection<int, User>
      */
-    public function collect(string $audience, ?array $selectedIds = null): Collection
+    public function collect(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
         return match ($audience) {
-            self::AUDIENCE_ADVERTISERS => $this->queryForRole('advertiser')->get(),
-            self::AUDIENCE_PUBLISHERS => $this->queryForRole('publisher')->get(),
-            self::AUDIENCE_BOTH => $this->queryForRole('advertiser')
+            self::AUDIENCE_ADVERTISERS => $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->get(),
+            self::AUDIENCE_PUBLISHERS => $this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->get(),
+            self::AUDIENCE_BOTH => $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)
                 ->get()
-                ->merge($this->queryForRole('publisher')->get())
+                ->merge($this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->get())
                 ->unique('id')
                 ->values(),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders()->get(),
-            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites()->get(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited()->get(),
-            self::AUDIENCE_SELECTED => User::query()
-                ->whereIn('id', $selectedIds ?: [])
-                ->whereNotNull('email')
-                ->orderBy('name')
-                ->get(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->applyRecipientScope($this->queryAdvertisersNoOrders(), $includeUnverified)->get(),
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->get(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->applyRecipientScope($this->queryPublishersNoSites(), $includeUnverified)->get(),
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->applyRecipientScope($this->queryAdvertisersNeverDeposited(), $includeUnverified)->get(),
+            self::AUDIENCE_SELECTED => $this->querySelected($selectedIds, $includeUnverified)->get(),
             default => collect(),
         };
     }
@@ -188,52 +218,92 @@ class AudienceInventoryService
      *
      * @param  array<int, int|string>|null  $selectedIds
      */
-    public function count(string $audience, ?array $selectedIds = null): int
+    public function count(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): int
     {
         return match ($audience) {
-            self::AUDIENCE_ADVERTISERS => $this->advertiserCount(),
-            self::AUDIENCE_PUBLISHERS => $this->publisherCount(),
-            self::AUDIENCE_BOTH => $this->bothUniqueCount(),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->advertisersNoOrdersCount(),
-            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->publishersNoSitesCount(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->advertisersNeverDepositedCount(),
-            self::AUDIENCE_SELECTED => $this->selectedCount($selectedIds),
+            self::AUDIENCE_ADVERTISERS => $this->advertiserCount($includeUnverified),
+            self::AUDIENCE_PUBLISHERS => $this->publisherCount($includeUnverified),
+            self::AUDIENCE_BOTH => $this->bothUniqueCount($includeUnverified),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->advertisersNoOrdersCount($includeUnverified),
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->advertisersNoPaidOrdersCount($includeUnverified),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->publishersNoSitesCount($includeUnverified),
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->advertisersNeverDepositedCount($includeUnverified),
+            self::AUDIENCE_SELECTED => $this->querySelected($selectedIds, $includeUnverified)->count(),
             default => 0,
         };
     }
 
-    public function bothUniqueCount(): int
+    public function bothUniqueCount(bool $includeUnverified = true): int
     {
-        $roleIds = Role::query()
-            ->whereIn('name', ['advertiser', 'publisher'])
-            ->pluck('id');
+        $roleIds = $this->marketplaceRoleIds();
 
         if ($roleIds->isEmpty()) {
             return 0;
         }
 
-        return User::query()
+        $query = User::query()
             ->whereNotNull('email')
             ->where('email', '!=', '')
-            ->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds))
-            ->count();
+            ->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds));
+
+        return $this->applyRecipientScope($query, $includeUnverified)->count();
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    public function pickerUsers(string $roleName, int $limit = self::PICKER_LIMIT): Collection
+    {
+        return $this->queryForRole($roleName)
+            ->setEagerLoads([])
+            ->limit($limit)
+            ->get(['id', 'name', 'email']);
     }
 
     /**
      * @param  array<int, int|string>|null  $selectedIds
      */
-    protected function selectedCount(?array $selectedIds): int
+    protected function querySelected(?array $selectedIds, bool $includeUnverified): Builder
     {
         $ids = array_values(array_filter(array_map('intval', $selectedIds ?: [])));
+        $roleIds = $this->marketplaceRoleIds();
 
         if ($ids === []) {
-            return 0;
+            return User::query()->whereRaw('1 = 0');
         }
 
-        return User::query()
+        $query = User::query()
             ->whereIn('id', $ids)
             ->whereNotNull('email')
-            ->count();
+            ->where('email', '!=', '')
+            ->orderBy('name');
+
+        if ($roleIds->isEmpty()) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        $query->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds));
+
+        return $this->applyRecipientScope($query, $includeUnverified);
+    }
+
+    protected function applyRecipientScope(Builder $query, bool $includeUnverified): Builder
+    {
+        if (! $includeUnverified) {
+            $query->whereNotNull('email_verified_at');
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return Collection<int, int>
+     */
+    protected function marketplaceRoleIds(): Collection
+    {
+        return Role::query()
+            ->whereIn('name', ['advertiser', 'publisher'])
+            ->pluck('id');
     }
 
     public function exportCsv(string $audienceKey): StreamedResponse
@@ -273,15 +343,19 @@ class AudienceInventoryService
         ]);
     }
 
-    public function stats(): array
+    public function stats(bool $includeUnverified = true): array
     {
+        $neverCheckedOut = $this->advertisersNoOrdersCount($includeUnverified);
+
         return [
-            'advertisers' => $this->advertiserCount(),
-            'publishers' => $this->publisherCount(),
-            'both_unique' => $this->bothUniqueCount(),
-            'advertisers_no_orders' => $this->advertisersNoOrdersCount(),
-            'publishers_no_sites' => $this->publishersNoSitesCount(),
-            'advertisers_never_deposited' => $this->advertisersNeverDepositedCount(),
+            'advertisers' => $this->advertiserCount($includeUnverified),
+            'publishers' => $this->publisherCount($includeUnverified),
+            'both_unique' => $this->bothUniqueCount($includeUnverified),
+            'advertisers_no_orders' => $neverCheckedOut,
+            'advertisers_never_checked_out' => $neverCheckedOut,
+            'advertisers_no_paid_orders' => $this->advertisersNoPaidOrdersCount($includeUnverified),
+            'publishers_no_sites' => $this->publishersNoSitesCount($includeUnverified),
+            'advertisers_never_deposited' => $this->advertisersNeverDepositedCount($includeUnverified),
         ];
     }
 }

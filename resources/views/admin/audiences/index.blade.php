@@ -49,9 +49,18 @@
         <div class="col-md-6 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">No orders</div>
-                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_orders'] ?? 0) }}</h3>
-                    <div class="small text-muted mt-1">Advertisers who never ordered</div>
+                    <div class="text-muted small">Never checked out</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0) }}</h3>
+                    <div class="small text-muted mt-1">Advertisers with no order row</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-6 col-xl">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-body">
+                    <div class="text-muted small">No paid orders</div>
+                    <h3 class="mb-0">{{ number_format($stats['advertisers_no_paid_orders'] ?? 0) }}</h3>
+                    <div class="small text-muted mt-1">Advertisers who never paid</div>
                 </div>
             </div>
         </div>
@@ -93,8 +102,15 @@
         <li class="nav-item">
             <a class="nav-link {{ $tab === 'no_orders' ? 'active' : '' }}"
                href="{{ route('admin.audiences.index', ['tab' => 'no_orders', 'q' => $search]) }}">
-                <i class="fa fa-shopping-bag me-1"></i> No orders
-                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_no_orders'] ?? 0 }}</span>
+                <i class="fa fa-shopping-bag me-1"></i> Never checked out
+                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_never_checked_out'] ?? $stats['advertisers_no_orders'] ?? 0 }}</span>
+            </a>
+        </li>
+        <li class="nav-item">
+            <a class="nav-link {{ $tab === 'no_paid_orders' ? 'active' : '' }}"
+               href="{{ route('admin.audiences.index', ['tab' => 'no_paid_orders', 'q' => $search]) }}">
+                <i class="fa fa-receipt me-1"></i> No paid orders
+                <span class="badge bg-primary-subtle text-primary ms-1">{{ $stats['advertisers_no_paid_orders'] ?? 0 }}</span>
             </a>
         </li>
         <li class="nav-item">
@@ -126,7 +142,8 @@
                 @php
                     $exportLabel = match ($tab) {
                         'publishers' => 'Publishers',
-                        'no_orders' => 'No orders',
+                        'no_orders' => 'Never checked out',
+                        'no_paid_orders' => 'No paid orders',
                         'no_sites' => 'No sites',
                         'never_deposited' => 'Never deposited',
                         default => 'Advertisers',
