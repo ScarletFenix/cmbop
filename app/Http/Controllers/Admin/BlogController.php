@@ -124,8 +124,11 @@ class BlogController extends Controller
      */
     public function store(StoreBlogRequest $request)
     {
+        $featuredImage = null;
+
         try {
-            $featuredImage = null;
+            $translations = $this->sanitizeTranslations((array) $request->input('translations', []), true);
+
             if ($request->hasFile('featured_image')) {
                 $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
                 if ($featuredImage === null) {
@@ -142,8 +145,6 @@ class BlogController extends Controller
                 $tags = array_filter($tags);
                 $tags = array_values($tags);
             }
-
-            $translations = $this->sanitizeTranslations((array) $request->input('translations', []), true);
             $en = $translations['en'];
             $enSlug = $this->uniqueTranslationSlug($en['slug'] ?: Str::slug($en['title']));
             $legacySlug = $this->uniqueBlogSlug($enSlug);
@@ -193,10 +194,13 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blog->title.'" created successfully!');
         } catch (ValidationException $e) {
+            $this->deleteOrphanedBlogUpload($featuredImage);
+
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
         } catch (\Throwable $e) {
+            $this->deleteOrphanedBlogUpload($featuredImage);
             Log::error('Blog creation failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
@@ -213,7 +217,10 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::with('translations')->findOrFail($id);
-            $safeContent = app(BlogHtmlSanitizer::class)->sanitize($blog->content);
+            $en = $blog->translations->firstWhere('locale', 'en');
+            $safeContent = app(BlogHtmlSanitizer::class)->sanitize(
+                filled($en?->content) ? $en->content : $blog->content
+            );
 
             return view('admin.blogs.show', compact('blog', 'safeContent'));
         } catch (ModelNotFoundException $e) {
@@ -255,6 +262,8 @@ class BlogController extends Controller
      */
     public function update(UpdateBlogRequest $request, $id)
     {
+        $newFeaturedImage = null;
+
         try {
             $blog = Blog::with('translations')->findOrFail($id);
             $oldImagePaths = $this->collectStoredBlogImagePaths($blog);
@@ -290,15 +299,15 @@ class BlogController extends Controller
             $data['slug'] = $this->uniqueBlogSlug($enSlug, $blog->id);
 
             if ($request->hasFile('featured_image')) {
-                $stored = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
-                if ($stored === null) {
+                $newFeaturedImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+                if ($newFeaturedImage === null) {
                     throw ValidationException::withMessages([
                         'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
                     ]);
                 }
 
-                $data['featured_image'] = $stored;
-                Log::info('New featured image uploaded', ['path' => $stored]);
+                $data['featured_image'] = $newFeaturedImage;
+                Log::info('New featured image uploaded', ['path' => $newFeaturedImage]);
             } elseif ($request->boolean('remove_featured_image')) {
                 $data['featured_image'] = null;
             }
@@ -353,10 +362,13 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blog->title.'" updated successfully!');
         } catch (ValidationException $e) {
+            $this->deleteOrphanedBlogUpload($newFeaturedImage);
+
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
         } catch (\Throwable $e) {
+            $this->deleteOrphanedBlogUpload($newFeaturedImage);
             Log::error('Blog update failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
@@ -552,6 +564,22 @@ class BlogController extends Controller
         return $path;
     }
 
+    private function deleteOrphanedBlogUpload(?string $path): void
+    {
+        if (! is_string($path) || $path === '') {
+            return;
+        }
+
+        try {
+            $this->deletePublicBlogPath($path);
+        } catch (\Throwable $e) {
+            Log::error('Orphaned blog upload cleanup failed', [
+                'path' => $path,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     private function deletePublicBlogPath(?string $path, ?int $exceptBlogId = null): void
     {
         $resolved = $this->blogStoragePathFromUrl((string) $path);
@@ -576,6 +604,7 @@ class BlogController extends Controller
             ->when($exceptBlogId, fn ($query) => $query->where('id', '!=', $exceptBlogId))
             ->where(function ($query) use ($path, $like) {
                 $query->where('featured_image', $path)
+                    ->orWhere('featured_image', 'like', $like)
                     ->orWhere('content', 'like', $like);
             })
             ->exists();

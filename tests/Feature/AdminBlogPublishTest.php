@@ -96,6 +96,65 @@ class AdminBlogPublishTest extends TestCase
         $this->assertDatabaseMissing('blogs', ['slug' => 'blank-after-sanitize']);
     }
 
+    public function test_store_deletes_featured_file_when_create_transaction_fails(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+
+        $forced = false;
+        Blog::creating(function () use (&$forced) {
+            if ($forced) {
+                return;
+            }
+            $forced = true;
+            throw new \RuntimeException('forced create failure');
+        });
+
+        $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'featured_image' => UploadedFile::fake()->image('hero.jpg', 800, 450),
+                'translations' => [
+                    'en' => [
+                        'title' => 'Orphan Featured',
+                        'slug' => 'orphan-featured',
+                        'content' => '<p>Valid body that should persist if create worked.</p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.create'))
+            ->assertSessionHas('error');
+
+        $this->assertDatabaseMissing('blogs', ['slug' => 'orphan-featured']);
+        $this->assertSame([], Storage::disk('public')->allFiles('blogs/featured'));
+    }
+
+    public function test_store_does_not_write_featured_file_when_content_sanitizes_blank(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'featured_image' => UploadedFile::fake()->image('hero.jpg', 800, 450),
+                'translations' => [
+                    'en' => [
+                        'title' => 'No Persist Featured',
+                        'slug' => 'no-persist-featured',
+                        'content' => '<p><img src="javascript:alert(1)"></p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.create'))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseMissing('blogs', ['slug' => 'no-persist-featured']);
+        $this->assertSame([], Storage::disk('public')->allFiles('blogs/featured'));
+    }
+
     public function test_create_redisplay_rewrites_legacy_asset_images(): void
     {
         $admin = $this->adminUser();
@@ -265,6 +324,53 @@ class AdminBlogPublishTest extends TestCase
             ->assertRedirect(route('admin.blogs.index'));
 
         Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_destroy_keeps_featured_image_referenced_with_media_prefix(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = UploadedFile::fake()->image('shared-hero.jpg')->store('blogs/featured', 'public');
+
+        $keep = Blog::factory()->create([
+            'title' => 'Keeps Featured',
+            'slug' => 'keeps-featured',
+            'content' => '<p>Keep</p>',
+            'featured_image' => '/media/'.$path,
+            'created_by' => $admin->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $keep->id,
+            'locale' => 'en',
+            'title' => 'Keeps Featured',
+            'slug' => 'keeps-featured',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Keep</p>',
+            'is_published' => true,
+        ]);
+
+        $gone = Blog::factory()->create([
+            'title' => 'Drops Featured',
+            'slug' => 'drops-featured',
+            'content' => '<p>Gone</p>',
+            'featured_image' => $path,
+            'created_by' => $admin->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $gone->id,
+            'locale' => 'en',
+            'title' => 'Drops Featured',
+            'slug' => 'drops-featured',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Gone</p>',
+            'is_published' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->delete(route('admin.blogs.destroy', $gone->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        Storage::disk('public')->assertExists($path);
     }
 
     public function test_destroy_deletes_unreferenced_media_content_images(): void

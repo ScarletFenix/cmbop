@@ -8,6 +8,7 @@ use App\Support\PublicI18n;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class Blog extends Model
@@ -204,7 +205,14 @@ class Blog extends Model
 
         $normalized = ltrim(str_replace('\\', '/', $urlPath), '/');
         if (preg_match('#(?:^|/)assets/img/blog/([^/]+)$#i', $normalized, $matches)) {
-            $path = 'blogs/content/'.$matches[1];
+            $filename = $matches[1];
+            $featured = 'blogs/featured/'.$filename;
+            $content = 'blogs/content/'.$filename;
+            $disk = Storage::disk('public');
+            // Leftover featured_image values are hero files; prefer featured/,
+            // then the content/ copy heal also writes, so a missing featured
+            // publish does not 404 the card image.
+            $path = $disk->exists($featured) ? $featured : ($disk->exists($content) ? $content : $featured);
         } elseif (preg_match('#(?:storage|media)/(blogs/(?:content|featured)/.+)$#i', $normalized, $matches)) {
             $path = $matches[1];
         }
