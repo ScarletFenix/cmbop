@@ -499,6 +499,7 @@ class ContentSubmission extends Model
     public function scopeExpiredUnused($query)
     {
         return $query->withoutOpenOwnerOrder()
+            ->withoutOpenOrderItemLink()
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', now());
     }
@@ -674,6 +675,14 @@ class ContentSubmission extends Model
                         ->withoutOpenOwnerOrder()
                         ->whereNull('archived_at')
                         ->withActiveOrderClaim();
+                })->orWhere(function ($incomplete) {
+                    $incomplete->where('moderation_status', self::STATUS_APPROVED)
+                        ->withoutOpenOwnerOrder()
+                        ->where(function ($gap) {
+                            $gap->whereNull('path')->orWhere('path', '')
+                                ->orWhereNull('country')->orWhere('country', '')
+                                ->orWhereNull('language')->orWhere('language', '');
+                        });
                 });
             })
             ->where(function ($exp) {
@@ -681,6 +690,8 @@ class ContentSubmission extends Model
                     $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
                 })->orWhere(function ($owned) {
                     $owned->withOpenOwnerOrder();
+                })->orWhere(function ($claimed) {
+                    $claimed->withActiveOrderClaim();
                 });
             });
 
@@ -915,16 +926,26 @@ class ContentSubmission extends Model
             return false;
         }
 
-        if ($this->isInUse()) {
-            return true;
-        }
-
-        return ! $this->isExpired();
+        return ! $this->isUnusedExpired();
     }
 
     public function canEditArticle(): bool
     {
-        return ! $this->isLockedByPaidOrder() && ! $this->isArchived() && ! $this->isExpired();
+        if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+            return false;
+        }
+
+        // Catalog expiry is unused-inventory only. A leftover still on an
+        // open order must stay editable so Pay again can be unblocked.
+        return ! $this->isUnusedExpired();
+    }
+
+    /**
+     * Retention clock for unused inventory. Claimed leftovers are not this.
+     */
+    public function isUnusedExpired(): bool
+    {
+        return $this->isExpired() && ! $this->isLinkedToOpenOrderItem();
     }
 
     /**
@@ -1262,6 +1283,50 @@ class ContentSubmission extends Model
         });
     }
 
+    /**
+     * Owner order, or the leftover line still pointing here when order_id
+     * was never written. Admin library "View order" must not go blank.
+     */
+    public function libraryOrder(): ?Order
+    {
+        $claimId = $this->activeClaimOrderId();
+        if ($claimId) {
+            $owner = $this->relatedOwnerOrder();
+            if ($owner instanceof Order && (int) $owner->id === $claimId) {
+                return $owner;
+            }
+
+            $item = $this->placementItem();
+            if ($item && (int) $item->order_id === $claimId) {
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+                if ($order instanceof Order) {
+                    return $order;
+                }
+            }
+
+            return Order::query()->find($claimId);
+        }
+
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order && $owner->status !== 'cancelled') {
+            return $owner;
+        }
+
+        $item = $this->placementItem();
+        if ($item) {
+            $order = $item->relationLoaded('order')
+                ? $item->order
+                : $item->order()->first();
+            if ($order instanceof Order && $order->status !== 'cancelled') {
+                return $order;
+            }
+        }
+
+        return null;
+    }
+
     public function liveUrl(): ?string
     {
         if (! $this->isInUse()) {
@@ -1400,11 +1465,22 @@ class ContentSubmission extends Model
             return 'in_progress';
         }
 
+        // Item-only leftover (order_id never written). Not unused inventory —
+        // Expired / purge must not treat it as a dead row.
+        if ($this->isClaimedByAnotherOrder()) {
+            return 'needs_fix';
+        }
+
         if ($this->isExpired()) {
             return 'expired';
         }
 
         if ($this->needsCorrection()) {
+            return 'needs_fix';
+        }
+
+        if ($this->moderation_status === self::STATUS_APPROVED
+            && (! filled($this->path) || ! filled($this->country) || ! filled($this->language))) {
             return 'needs_fix';
         }
 
@@ -1792,6 +1868,87 @@ class ContentSubmission extends Model
         return $order instanceof Order ? $order : null;
     }
 
+    /**
+     * Direct order_id or a non-clawed line on this order still points here.
+     */
+    public function isOwnedByOrder(?int $orderId): bool
+    {
+        if ($orderId === null || $orderId <= 0) {
+            return false;
+        }
+
+        if ((int) $this->order_id === (int) $orderId) {
+            return true;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            return $this->orderItems->contains(function (OrderItem $item) use ($orderId) {
+                if ($item->isClawedBack() || (int) $item->order_id !== (int) $orderId) {
+                    return false;
+                }
+
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+
+                return $order instanceof Order && $order->status !== 'cancelled';
+            });
+        }
+
+        return $this->orderItems()
+            ->where('order_id', $orderId)
+            ->whereHas('order', function ($order) {
+                $order->where('status', '!=', 'cancelled');
+            })
+            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
+            ->exists();
+    }
+
+    /**
+     * Open owner order, or the first paid/pending/failed leftover still pointing here.
+     */
+    public function activeClaimOrderId(): ?int
+    {
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order && $this->orderLooksLikeActiveClaim($owner)) {
+            return (int) $owner->id;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return null;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            foreach ($this->orderItems as $item) {
+                if ($item->isClawedBack()) {
+                    continue;
+                }
+
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+                if ($order instanceof Order && $this->orderLooksLikeActiveClaim($order)) {
+                    return (int) $order->id;
+                }
+            }
+
+            return null;
+        }
+
+        $item = $this->orderItems()
+            ->whereHas('order', function ($order) {
+                $this->constrainActiveOrderClaim($order);
+            })
+            ->tap(fn ($row) => $this->excludeClawedBackItems($row))
+            ->first();
+
+        return $item ? (int) $item->order_id : null;
+    }
+
     protected function ownerOrderBlocksOrdering(): bool
     {
         $owner = $this->relatedOwnerOrder();
@@ -1814,7 +1971,7 @@ class ContentSubmission extends Model
         // Expiry is a catalog-reuse clock. Once this order already owns the
         // row, Pay again / fulfill must not fail just because unused retention
         // elapsed — nightly purge clears `path` when the file is actually gone.
-        $ownedByThisOrder = $orderId !== null && (int) $this->order_id === (int) $orderId;
+        $ownedByThisOrder = $this->isOwnedByOrder($orderId);
 
         return $this->moderation_status === self::STATUS_APPROVED
             && filled($this->path)
@@ -1838,8 +1995,13 @@ class ContentSubmission extends Model
         }
 
         $ownerId = (int) ($this->order_id ?? 0);
+        if ($ownerId > 0 && $this->isReadyToFulfill($ownerId)) {
+            return true;
+        }
 
-        return $ownerId > 0 && $this->isReadyToFulfill($ownerId);
+        $claimId = $this->activeClaimOrderId();
+
+        return $claimId !== null && $this->isReadyToFulfill($claimId);
     }
 
     /**

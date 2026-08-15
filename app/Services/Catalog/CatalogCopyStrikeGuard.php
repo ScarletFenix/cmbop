@@ -18,17 +18,16 @@ use Illuminate\Support\Str;
  *   strike 1 — warning only; catalog stays fully visible
  *   strike 2 — catalog_hide_until = now + hide_hours
  *
- * Warning-wave rows are kept (admin forensics). The next wave counts only
- * event ids above catalog_copy_after_id so same-second MySQL timestamps
- * cannot restage the same burst.
+ * Warning-wave and hide-wave rows are kept (admin forensics). The next wave
+ * inserts and counts only event ids above catalog_copy_after_id so the same
+ * listings — or same-second MySQL timestamps — cannot restage the burst.
  *
  * While hide mode is active, tracking is paused (identity is already masked /
- * eye-gated). Tracking resumes after the window expires or an admin clears it.
+ * eye-gated). Tracking resumes after the window expires or an admin lifts it.
  *
  * Threshold is “~5 pages” of distinct domains inside a short window
- * (defaults: 100 copies / 120 seconds). After a warning the copy window is
- * cleared so a second full wave is required for hide mode (and so MySQL
- * second-precision timestamps cannot stall strike 2).
+ * (defaults: 100 copies / 120 seconds). After a warning, hide, lift, or
+ * strike reset the watermark advances so a second full wave is required.
  */
 class CatalogCopyStrikeGuard
 {
@@ -79,7 +78,7 @@ class CatalogCopyStrikeGuard
         $windowSeconds = $cfg['window_seconds'];
         $threshold = $cfg['threshold'];
 
-        return DB::transaction(function () use ($user, $siteId, $host, $windowSeconds, $threshold, $cfg) {
+        $result = DB::transaction(function () use ($user, $siteId, $host, $windowSeconds, $threshold, $cfg) {
             /** @var User $locked */
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
@@ -107,19 +106,15 @@ class CatalogCopyStrikeGuard
                 $locked->catalog_copy_strike_count = 1;
                 $locked->catalog_copy_warned_at = now();
                 // Keep the warning-wave rows for admin forensics. Strike 2
-                // counts only ids above this cutoff so same-second MySQL
-                // timestamps cannot restage the same burst.
-                if ($this->afterIdColumnReady()) {
-                    $locked->catalog_copy_after_id = (int) (CatalogCopyEvent::query()
-                        ->where('user_id', $locked->id)
-                        ->max('id') ?? 0);
-                } else {
+                // inserts/counts only ids above this cutoff so the same
+                // listings cannot restage the burst.
+                self::watermarkEvents($locked);
+                if (! $this->afterIdColumnReady()) {
                     CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
                 }
                 $locked->save();
 
                 $fresh = $locked->fresh();
-                $this->announce($fresh, self::STATUS_WARNING, $distinct);
 
                 return $this->payload(
                     $fresh,
@@ -130,15 +125,17 @@ class CatalogCopyStrikeGuard
                 );
             }
 
-            // Strike 2: another full threshold after the post-warning clear.
+            // Strike 2: another full threshold after the post-warning watermark.
             if ($strikes < 2) {
                 $locked->catalog_copy_strike_count = 2;
             }
             $locked->catalog_hide_until = now()->addHours($cfg['hide_hours']);
+            // Advance again so a lift (or expiry + first copy) cannot restage
+            // this hide wave as an instant re-hide.
+            self::watermarkEvents($locked);
             $locked->save();
 
             $fresh = $locked->fresh();
-            $this->announce($fresh, self::STATUS_HIDE_MODE, $distinct);
 
             return $this->payload(
                 $fresh,
@@ -147,6 +144,16 @@ class CatalogCopyStrikeGuard
                 $this->hideModeUserMessage($cfg['hide_hours'])
             );
         });
+
+        if (in_array($result['status'], [self::STATUS_WARNING, self::STATUS_HIDE_MODE], true)) {
+            $this->announce(
+                User::query()->find($user->id) ?? $user,
+                $result['status'],
+                (int) $result['distinct_in_window']
+            );
+        }
+
+        return $result;
     }
 
     public function inHideMode(User $user): bool
@@ -235,13 +242,36 @@ class CatalogCopyStrikeGuard
         }
     }
 
+    /**
+     * Ignore existing copy rows for future strike counts. Events stay on file.
+     *
+     * Used after a warning/hide wave and after admin lift/reset so the same
+     * listings cannot immediately restage the next strike.
+     */
+    public static function watermarkEvents(User $user): void
+    {
+        try {
+            if (! Schema::hasColumn('users', 'catalog_copy_after_id')) {
+                return;
+            }
+        } catch (\Throwable) {
+            return;
+        }
+
+        $user->catalog_copy_after_id = (int) (CatalogCopyEvent::query()
+            ->where('user_id', $user->id)
+            ->max('id') ?? 0);
+    }
+
     private function insertIfNew(User $user, ?int $siteId, string $host, int $windowSeconds): void
     {
         $since = now()->subSeconds($windowSeconds);
+        $afterId = $this->copyAfterId($user);
 
         $exists = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
+            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
             ->when(
                 $siteId !== null,
                 fn ($q) => $q->where('site_id', $siteId),
@@ -264,9 +294,7 @@ class CatalogCopyStrikeGuard
     private function distinctCount(User $user, int $windowSeconds): int
     {
         $since = now()->subSeconds($windowSeconds);
-        $afterId = $this->afterIdColumnReady()
-            ? (int) ($user->catalog_copy_after_id ?? 0)
-            : 0;
+        $afterId = $this->copyAfterId($user);
 
         // Prefer site_id identity; fall back to host for copies without a row id.
         $withSite = CatalogCopyEvent::query()
@@ -286,6 +314,13 @@ class CatalogCopyStrikeGuard
             ->count('normalized_host');
 
         return $withSite + $hostOnly;
+    }
+
+    private function copyAfterId(User $user): int
+    {
+        return $this->afterIdColumnReady()
+            ? (int) ($user->catalog_copy_after_id ?? 0)
+            : 0;
     }
 
     public static function noticeCacheKey(int $userId, string $status): string

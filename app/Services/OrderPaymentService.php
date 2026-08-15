@@ -267,10 +267,7 @@ class OrderPaymentService
             return round($cap, 2);
         }
 
-        $package = $this->getPendingCheckout($reference);
-        $snapshot = is_array($package)
-            ? round((float) ($package['bonus_applied'] ?? 0), 2)
-            : 0.0;
+        $snapshot = $this->leftoverPackageBonusSnapshot($order);
         if ($snapshot > 0.009) {
             return $snapshot;
         }
@@ -286,6 +283,29 @@ class OrderPaymentService
             ->first();
 
         return $wallet ? max(0, round((float) $wallet->bonus_reserved, 2)) : 0.0;
+    }
+
+    /**
+     * Fail/cancel snapshot for THIS leftover. leftoverBonusForPurchaseLedger
+     * returns 0 when another checkout exists so reject cannot steal that
+     * hold — but admin mark-paid still has to try to re-reserve this
+     * leftover's own promo from the snapshot.
+     */
+    public function leftoverBonusToRereserve(Order $order): float
+    {
+        return max(
+            $this->leftoverBonusForPurchaseLedger($order),
+            $this->leftoverPackageBonusSnapshot($order)
+        );
+    }
+
+    public function leftoverPackageBonusSnapshot(Order $order): float
+    {
+        $package = $this->getPendingCheckout((string) ($order->reference_code ?? ''));
+
+        return is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
     }
 
     /**
@@ -411,6 +431,22 @@ class OrderPaymentService
     {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
+            return;
+        }
+
+        // Do not cancel Pay again just to discover the article cannot start a
+        // new catalog order (expired, rejected, missing file/links).
+        $submissionIds = ContentSubmission::query()
+            ->where('user_id', $userId)
+            ->whereIn('id', $submissionIds)
+            ->with(['order', 'orderItems.order'])
+            ->get()
+            ->filter(fn (ContentSubmission $submission) => $submission->isAvailableForPicker())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+        if ($submissionIds === []) {
             return;
         }
 
@@ -1527,9 +1563,7 @@ class OrderPaymentService
 
     protected function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user): bool
     {
-        $result = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $user);
-
-        return (bool) ($result['ok'] ?? false);
+        return app(ContentModerationService::class)->submissionPassesLivePolicy($submission, $user);
     }
 
     public function refreshOrderItemLibraryFields(Order $order): void

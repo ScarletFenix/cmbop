@@ -62,6 +62,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             substr_count($matches[1], 'try {'),
             'hasQueuedSendJob must not leave an extra unclosed try around the connection loop'
         );
+        $this->assertStringContainsString('$scanFailed = true;', $matches[1]);
+        $this->assertStringContainsString('return $scanFailed;', $matches[1]);
     }
 
     public function test_merge_sensitive_campaign_files_parse_without_duplicate_methods(): void
