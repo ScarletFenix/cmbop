@@ -267,10 +267,56 @@ class ContentSubmission extends Model
                 $q->where(function ($noImages) {
                     $noImages->whereNull('preview_html')
                         ->orWhere('preview_html', 'not like', '%<img%');
-                })->orWhereIn('image_rights', [
-                    self::IMAGE_RIGHTS_OWN,
-                    self::IMAGE_RIGHTS_LICENSED,
-                ]);
+                })->orWhere('image_rights', self::IMAGE_RIGHTS_OWN)
+                    ->orWhere(function ($licensed) {
+                        $licensed->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
+                            ->whereNotNull('image_rights_source')
+                            ->where('image_rights_source', '!=', '');
+                    });
+            });
+
+        return $query;
+    }
+
+    /**
+     * Rejected / error articles, plus approved articles that still need image rights.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNeedsLibraryFix($query)
+    {
+        $query
+            ->where(function ($q) {
+                $q->whereIn('moderation_status', [
+                    self::STATUS_NEEDS_IMPROVEMENT,
+                    self::STATUS_REJECTED,
+                    self::STATUS_ERROR,
+                ])->orWhere(function ($rights) {
+                    $rights->where('moderation_status', self::STATUS_APPROVED)
+                        ->whereNull('order_id')
+                        ->where(function ($img) {
+                            $img->where('preview_html', 'like', '%<img%')
+                                ->orWhere('preview_html', 'like', '%<IMG%');
+                        })
+                        ->where(function ($claim) {
+                            $claim->whereNull('image_rights')
+                                ->orWhereNotIn('image_rights', [
+                                    self::IMAGE_RIGHTS_OWN,
+                                    self::IMAGE_RIGHTS_LICENSED,
+                                ])
+                                ->orWhere(function ($licensedNoSource) {
+                                    $licensedNoSource->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
+                                        ->where(function ($src) {
+                                            $src->whereNull('image_rights_source')
+                                                ->orWhere('image_rights_source', '');
+                                        });
+                                });
+                        });
+                });
+            })
+            ->where(function ($exp) {
+                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
 
         return $query;
@@ -417,7 +463,12 @@ class ContentSubmission extends Model
             return true;
         }
 
-        return in_array($this->image_rights, [self::IMAGE_RIGHTS_OWN, self::IMAGE_RIGHTS_LICENSED], true);
+        if ($this->image_rights === self::IMAGE_RIGHTS_OWN) {
+            return true;
+        }
+
+        return $this->image_rights === self::IMAGE_RIGHTS_LICENSED
+            && filled($this->image_rights_source);
     }
 
     public function isInUse(): bool
@@ -536,6 +587,19 @@ class ContentSubmission extends Model
         $summary = trim(scalar_text($report['summary'] ?? ''));
 
         return $summary !== '' ? $summary : 'Fix issues and resubmit.';
+    }
+
+    /**
+     * Library Needs corrections copy. Do not show the approval/order sentence
+     * when the only blocker is undeclared image rights.
+     */
+    public function libraryFixSummary(): string
+    {
+        if ($this->hasImages() && ! $this->imageRightsCoverContent() && ! $this->needsCorrection()) {
+            return $this->editorNotice();
+        }
+
+        return $this->evaluationSummary();
     }
 
     /**
@@ -750,6 +814,12 @@ class ContentSubmission extends Model
             return 'needs_fix';
         }
 
+        if ($this->moderation_status === self::STATUS_APPROVED
+            && $this->hasImages()
+            && ! $this->imageRightsCoverContent()) {
+            return 'needs_fix';
+        }
+
         if ($this->isEvaluating()) {
             return 'evaluating';
         }
@@ -933,17 +1003,18 @@ class ContentSubmission extends Model
     public function detectedLinks(): array
     {
         $payload = is_array($this->draft_payload) ? $this->draft_payload : [];
+        $hasStoredList = array_key_exists('detected_links', $payload);
         $stored = is_array($payload['detected_links'] ?? null) ? $payload['detected_links'] : [];
         $links = ArticleDetectedLinks::normalizeList($stored);
 
-        if ($links === [] && $this->hasLink()) {
+        if ($links === [] && ! $hasStoredList && $this->hasLink()) {
             $links = [[
                 'anchor' => trim((string) $this->anchor_text),
                 'url' => trim((string) $this->target_url),
             ]];
         }
 
-        if ($links === [] && filled($this->preview_html)) {
+        if ($links === [] && ! $hasStoredList && filled($this->preview_html)) {
             $links = ArticleDetectedLinks::fromHtml((string) $this->preview_html);
         }
 

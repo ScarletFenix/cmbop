@@ -115,6 +115,13 @@ class ContentSubmissionController extends Controller
                     'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
                 ], 422);
             }
+            if ($replace?->isArchived()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Archived',
+                    'message' => 'Restore this article before replacing it.',
+                ], 422);
+            }
         }
 
         try {
@@ -212,12 +219,19 @@ class ContentSubmissionController extends Controller
             ], 422);
         }
 
+        $previousRights = [
+            'image_rights' => $submission->image_rights,
+            'image_rights_source' => $submission->image_rights_source,
+            'image_rights_declared_at' => $submission->image_rights_declared_at,
+        ];
+        $rightsApplied = false;
         if (! empty($data['image_rights'])) {
             $submission->update([
                 'image_rights' => $incoming->image_rights,
                 'image_rights_source' => $incoming->image_rights_source,
                 'image_rights_declared_at' => now(),
             ]);
+            $rightsApplied = true;
         }
 
         try {
@@ -227,6 +241,9 @@ class ContentSubmissionController extends Controller
                 $data['title'] ?? null,
             );
         } catch (\Throwable $e) {
+            if ($rightsApplied) {
+                $submission->update($previousRights);
+            }
             Log::error('Content article save failed', [
                 'submission_id' => $submission->id,
                 'error' => $e->getMessage(),
@@ -239,6 +256,10 @@ class ContentSubmissionController extends Controller
         }
 
         if (! $result['ok']) {
+            if ($rightsApplied) {
+                $submission->update($previousRights);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => $result['message'] ?? 'Could not save article.',
@@ -465,6 +486,20 @@ class ContentSubmissionController extends Controller
 
         unset($data['scheduled_date'], $data['scheduled_time']);
 
+        // Reject empty bodies before flipping approved → processing. Otherwise a
+        // 422 leaves the row stuck in Evaluating and not orderable.
+        if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
+            $pendingClean = ArticlePreviewHtml::normalize(
+                (new ArticleHtmlSanitizer)->sanitize($data['preview_html'])
+            );
+            if ($pendingClean === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Article content cannot be empty.',
+                ], 422);
+            }
+        }
+
         if ($contentChanged && $submission->isApproved()) {
             $submission->forceFill([
                 'moderation_status' => ContentSubmission::STATUS_PROCESSING,
@@ -474,17 +509,35 @@ class ContentSubmissionController extends Controller
 
         if (array_key_exists('links', $data)) {
             $links = ArticleDetectedLinks::normalizeList($data['links'] ?? [], $anchorMax);
-            $html = array_key_exists('preview_html', $data)
-                ? (string) $data['preview_html']
-                : (string) ($submission->preview_html ?? '');
+            if (array_key_exists('preview_html', $data)) {
+                $clean = ArticlePreviewHtml::normalize(
+                    (new ArticleHtmlSanitizer)->sanitize((string) $data['preview_html'])
+                );
+                if ($clean === '') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Article content cannot be empty.',
+                    ], 422);
+                }
+                $html = $clean;
+            } else {
+                $html = (string) ($submission->preview_html ?? '');
+            }
             $submission->syncDetectedLinks($links, $html !== '' ? $html : null);
             unset($data['links'], $data['preview_html']);
             // Primary pair already synced; avoid overwriting with stale single fields if absent.
             unset($data['anchor_text'], $data['target_url']);
-        }
-
-        if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
-            $data['preview_html'] = (new ArticleHtmlSanitizer)->sanitize($data['preview_html']);
+        } elseif (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
+            $sanitizer = new ArticleHtmlSanitizer;
+            $clean = ArticlePreviewHtml::normalize($sanitizer->sanitize($data['preview_html']));
+            if ($clean === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Article content cannot be empty.',
+                ], 422);
+            }
+            $submission->syncDetectedLinks($sanitizer->extractLinksFromHtml($clean), $clean);
+            unset($data['preview_html'], $data['anchor_text'], $data['target_url']);
         }
 
         $submission->fill($data)->save();
@@ -718,6 +771,8 @@ class ContentSubmissionController extends Controller
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
             'image_rights_covers' => $s->imageRightsCoverContent(),
+            'editor_notice' => $s->editorNotice(),
+            'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),

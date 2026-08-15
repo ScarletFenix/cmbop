@@ -53,6 +53,23 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertStringNotContainsString('src="/media/content-articles/1/a.png"', $clean);
     }
 
+    public function test_html_sanitizer_strips_preview_download_chrome(): void
+    {
+        $sanitizer = new ArticleHtmlSanitizer;
+        $clean = $sanitizer->sanitize(
+            '<p>Body</p><div class="article-img-wrap">'
+            .'<img src="/storage/content-articles/1/a.png" alt="Chart">'
+            .'<button type="button" class="article-img-download btn btn-sm btn-dark">'
+            .'<i class="fa fa-download me-1"></i>Download</button></div>'
+        );
+
+        $this->assertStringContainsString('src="/storage/content-articles/1/a.png"', $clean);
+        $this->assertStringContainsString('Body', $clean);
+        $this->assertStringNotContainsString('article-img-wrap', $clean);
+        $this->assertStringNotContainsString('Download', $clean);
+        $this->assertStringNotContainsString('<button', $clean);
+    }
+
     public function test_html_sanitizer_counts_img_tags(): void
     {
         $sanitizer = new ArticleHtmlSanitizer;

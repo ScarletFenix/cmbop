@@ -19,6 +19,8 @@ class ArticleHtmlSanitizer
             return '';
         }
 
+        $html = $this->stripPreviewChrome($html);
+
         $clean = strip_tags($html, self::ALLOWED);
 
         // Drop event handlers / javascript: URLs from remaining tags
@@ -77,6 +79,24 @@ class ArticleHtmlSanitizer
         ) ?? $clean;
 
         return trim($clean);
+    }
+
+    /**
+     * Preview injects Download buttons around images. Those must not persist.
+     */
+    private function stripPreviewChrome(string $html): string
+    {
+        $html = preg_replace(
+            '/<button\b[^>]*article-img-download[^>]*>[\s\S]*?<\/button>/iu',
+            '',
+            $html
+        ) ?? $html;
+
+        return preg_replace(
+            '/<div\b[^>]*article-img-wrap[^>]*>([\s\S]*?)<\/div>/iu',
+            '$1',
+            $html
+        ) ?? $html;
     }
 
     public function htmlToPlainText(string $html): string

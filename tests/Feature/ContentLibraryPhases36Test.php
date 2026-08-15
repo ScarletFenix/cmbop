@@ -442,4 +442,26 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertSee('Low Score Still Ok')
             ->assertSee('Advisory — still orderable');
     }
+
+    public function test_low_score_approved_row_does_not_say_orderable_when_rights_are_missing(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Low Score Needs Rights',
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'uniqueness_score' => 20,
+            'quality_score' => 30,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('Low Score Needs Rights')
+            ->assertDontSee('Advisory — still orderable');
+    }
 }
