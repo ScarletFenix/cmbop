@@ -1049,6 +1049,70 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(120.0, $payments->walletCreditForUnfulfillableCardCheckout($ref), 0.01);
     }
 
+    public function test_taken_library_line_plus_hidden_leftover_with_bonus_credits_full_card(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $takenSite = $this->makeSite($publisher, 'taken-bonus-article.example', 80);
+        $hidden = $this->makeSite($publisher, 'taken-bonus-hidden.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+
+        $prior = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'PRIOR-TAKEN-BONUS-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+        $priorItem = OrderItem::create([
+            'order_id' => $prior->id,
+            'site_id' => $takenSite->id,
+            'site_name' => $takenSite->site_name,
+            'site_url' => $takenSite->site_url,
+            'content_link' => 'https://example.com/prior-bonus',
+            'price' => 80,
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser, $takenSite->id);
+        $submission->update([
+            'order_id' => $prior->id,
+            'order_item_id' => $priorItem->id,
+        ]);
+
+        $ref = 'TAKEN-BONUS-HIDDEN-1';
+        $payments = app(OrderPaymentService::class);
+        $takenLine = $this->lineFor($takenSite, 80);
+        $takenLine['content_submission_id'] = $submission->id;
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $takenLine,
+            $this->lineFor($hidden, 40),
+        ], 100, 20));
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 100, 'cs_taken_bonus_hidden')
+        );
+
+        $this->assertCount(0, $created);
+        $this->assertSame(1, Order::query()
+            ->where('reference_code', $ref)
+            ->where('payment_status', 'refunded')
+            ->count());
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(100.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, $wallet->lockedBonusBalance(), 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(40.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
     public function test_unready_content_library_line_is_refunded_on_finalize(): void
     {
         $advertiser = $this->makeUser('advertiser');
