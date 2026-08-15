@@ -126,6 +126,7 @@ class AdminPaymentsNamedRoutesNotificationTest extends TestCase
         $this->assertStringNotContainsString("url: '/admin/payments/data'", $html);
         $this->assertStringNotContainsString('href="/admin/orders/\' + order.id', $html);
         $this->assertStringNotContainsString('`/admin/payments/${', $html);
+        $this->assertStringContainsString('sendNotification ? 1 : 0', $html);
     }
 
     public function test_mark_paid_without_send_notification_field_still_emails_customer(): void
@@ -203,6 +204,64 @@ class AdminPaymentsNamedRoutesNotificationTest extends TestCase
             'type' => InAppNotificationService::TYPE_PAYMENT_FAILED,
             'related_id' => $order->id,
         ]);
+    }
+
+    public function test_invalid_send_notification_is_unprocessable_not_a_server_error(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher')));
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+                'send_notification' => 'maybe',
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['send_notification']);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
+
+    public function test_form_encoded_false_string_skips_customer_mail(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->makeOrder($advertiser, $this->makeSite($publisher));
+
+        Mail::fake();
+
+        $this->actingAs($admin)
+            ->post(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+                'send_notification' => 'false',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('paid', $order->fresh()->payment_status);
+        $this->assertNoCustomerMail($advertiser);
+    }
+
+    public function test_payments_data_ignores_array_search_and_invalid_dates(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher')), [
+            'order_number' => 'PAY-ARRAY-1',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', [
+                'search' => ['injected'],
+                'payment_status' => ['paid'],
+                'date_from' => 'not-a-date',
+                'date_to' => ['2026-01-01'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonFragment(['order_number' => 'PAY-ARRAY-1']);
     }
 
     public function test_mark_refunded_with_send_notification_false_still_credits_wallet(): void

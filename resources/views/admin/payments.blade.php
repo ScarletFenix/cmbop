@@ -298,7 +298,7 @@ $(document).ready(function() {
             data: {
                 payment_status: newStatus,
                 notes: notes,
-                send_notification: sendNotification,
+                send_notification: sendNotification ? 1 : 0,
                 _token: '{{ csrf_token() }}'
             },
             success: function(response) {
