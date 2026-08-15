@@ -6,6 +6,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\CuratedBlogSync;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -134,6 +135,30 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertSee('English title', false)
             ->assertSee('translation is not yet available', false)
             ->assertSee('rel="canonical" href="'.url('/blog/english-fallback').'"', false);
+    }
+
+    public function test_canonical_url_falls_back_to_primary_locale_when_english_is_missing(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English leftover title',
+            'slug' => 'english-leftover-canonical',
+            'content' => '<p>English leftover body</p>',
+            'primary_locale' => 'de',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'deutscher-canonical-titel',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertSame(
+            url('/de/blog/deutscher-canonical-titel'),
+            $blog->canonicalUrl('en')
+        );
     }
 
     public function test_admin_can_create_english_only_post_when_other_locales_submit_empty_quill_html(): void
@@ -476,6 +501,49 @@ class BlogTranslationFeatureTest extends TestCase
         $this->get('/sitemap-en.xml')
             ->assertOk()
             ->assertSee('/blog/heal-me-post', false);
+    }
+
+    public function test_translation_backfill_does_not_steal_another_blogs_public_slug(): void
+    {
+        $other = Blog::factory()->published()->create([
+            'title' => 'Other Host',
+            'slug' => 'other-heal-host',
+            'content' => '<p>Other body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $other->id,
+            'locale' => 'en',
+            'title' => 'Other Host',
+            'slug' => 'hello-heal-base',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Other body</p>',
+            'is_published' => true,
+        ]);
+
+        $older = Blog::factory()->published()->create([
+            'title' => 'Older Heal Post',
+            'slug' => 'hello-heal-base',
+            'content' => '<p>Older body</p>',
+        ]);
+        $newer = Blog::factory()->published()->create([
+            'title' => 'Newer Heal Post',
+            'slug' => 'hello-heal-base-1',
+            'content' => '<p>Newer body</p>',
+        ]);
+
+        CuratedBlogSync::backfillTranslationsFromBlogs();
+
+        $this->assertNotSame(
+            'hello-heal-base-1',
+            $older->translations()->where('locale', 'en')->value('slug')
+        );
+
+        $html = $this->get('/blog/hello-heal-base-1')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Newer Heal Post\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Older Heal Post\s*<\/h1>/', $html);
     }
 
     public function test_sitemap_contains_only_localized_blog_urls(): void

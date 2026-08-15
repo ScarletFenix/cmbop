@@ -194,7 +194,7 @@ class Blog extends Model
             $preferredLocale = $fallbackLocale;
         }
 
-        $translation = $preferredLocale ? $this->translationFor($preferredLocale, $fallbackLocale) : null;
+        $translation = $preferredLocale ? $this->displayTranslation($preferredLocale, $fallbackLocale) : null;
         $slug = $translation?->slug ?: $this->slug;
         $canonicalLocale = $translation?->locale ?: $preferredLocale;
 
