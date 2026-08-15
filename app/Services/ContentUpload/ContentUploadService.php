@@ -258,6 +258,8 @@ class ContentUploadService
         $this->reconcileImageRightsAfterParse($fresh, $imageRights, $imageRightsSource);
         $fresh = $fresh->fresh();
         $result = $this->presentEvaluationResult($fresh, $result);
+        $this->persistPresentedEvaluationReport($fresh, $result);
+        $fresh = $fresh->fresh();
         $this->notifyAdvertiserOfEvaluation($fresh, $result);
 
         // Upload was accepted into the library; approval is separate.
@@ -268,7 +270,7 @@ class ContentUploadService
             'submission' => $fresh,
             'title' => $result['title'],
             'message' => $result['message'],
-            'report' => $report,
+            'report' => $result['report'] ?? $report,
             'links' => $links,
             'has_link' => $firstLink !== null,
         ];
@@ -333,8 +335,6 @@ class ContentUploadService
                 Mail::to($user->email)->send($mailable);
             }
 
-            $this->notifyInApp($user, $submission, $result);
-
             $report = $submission->evaluation_report ?? [];
             if (! is_array($report)) {
                 $report = [];
@@ -344,6 +344,15 @@ class ContentUploadService
                 'approval_notified_at' => now(),
                 'evaluation_report' => $report,
             ]);
+
+            try {
+                $this->notifyInApp($user, $submission, $result);
+            } catch (\Throwable $e) {
+                Log::warning('Content evaluation in-app notification failed', [
+                    'submission_id' => $submission->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         } catch (\Throwable $e) {
             Log::warning('Content evaluation notification failed', [
                 'submission_id' => $submission->id,
@@ -372,6 +381,10 @@ class ContentUploadService
             $result['title'] = 'Confirm image rights';
             $result['message'] = $submission->editorNotice();
             $result['notify_status'] = 'needs_image_rights';
+            if (! isset($result['report']) || ! is_array($result['report'])) {
+                $result['report'] = [];
+            }
+            $result['report']['summary'] = $result['message'];
 
             return $result;
         }
@@ -406,6 +419,29 @@ class ContentUploadService
         }
 
         return $report;
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function persistPresentedEvaluationReport(ContentSubmission $submission, array $result): void
+    {
+        if (($result['notify_status'] ?? null) !== 'needs_image_rights') {
+            return;
+        }
+
+        $summary = trim((string) ($result['message'] ?? ''));
+        if ($summary === '') {
+            return;
+        }
+
+        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+        if (($report['summary'] ?? null) === $summary) {
+            return;
+        }
+
+        $report['summary'] = $summary;
+        $submission->update(['evaluation_report' => $report]);
     }
 
     /**
@@ -504,6 +540,9 @@ class ContentUploadService
         if ($firstLink) {
             $attrs['anchor_text'] = $firstLink['anchor'];
             $attrs['target_url'] = $firstLink['url'];
+        } else {
+            $attrs['anchor_text'] = null;
+            $attrs['target_url'] = null;
         }
 
         $payload = $submission->draft_payload ?? [];
@@ -579,6 +618,8 @@ class ContentUploadService
 
         $fresh = $submission->fresh();
         $result = $this->presentEvaluationResult($fresh, $result);
+        $this->persistPresentedEvaluationReport($fresh, $result);
+        $fresh = $fresh->fresh();
         if ($notify) {
             $this->notifyAdvertiserOfEvaluation($fresh, $result);
         }
@@ -588,7 +629,7 @@ class ContentUploadService
             'submission' => $fresh,
             'title' => $result['title'] ?? null,
             'message' => (string) ($result['message'] ?? ''),
-            'report' => $report,
+            'report' => $result['report'] ?? $report,
             'moderation_status' => (string) ($result['moderation_status'] ?? $fresh->moderation_status),
             'notify_status' => (string) ($result['notify_status'] ?? $result['moderation_status'] ?? $fresh->moderation_status),
         ];

@@ -172,6 +172,6 @@ class PostApprovalModerationRecheckTest extends TestCase
 
         $js = file_get_contents(public_path('assets/js/content-library.js'));
         $this->assertStringContainsString('Saving and re-checking content moderation', $js);
-        $this->assertStringContainsString('data.approved !== false', $js);
+        $this->assertStringContainsString('data.approved === true', $js);
     }
 }

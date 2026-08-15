@@ -352,6 +352,13 @@ class ContentImageRightsTest extends TestCase
         $submission->image_rights = ContentSubmission::IMAGE_RIGHTS_OWN;
         $this->assertTrue($submission->imageRightsCoverContent());
 
+        $submission->image_rights = ContentSubmission::IMAGE_RIGHTS_LICENSED;
+        $submission->image_rights_source = null;
+        $this->assertFalse($submission->imageRightsCoverContent());
+
+        $submission->image_rights_source = 'https://unsplash.com/photos/abc';
+        $this->assertTrue($submission->imageRightsCoverContent());
+
         $this->assertTrue(ContentSubmission::imageRightsNeedsSource(ContentSubmission::IMAGE_RIGHTS_LICENSED));
         $this->assertFalse(ContentSubmission::imageRightsNeedsSource(ContentSubmission::IMAGE_RIGHTS_OWN));
     }
@@ -377,6 +384,10 @@ class ContentImageRightsTest extends TestCase
         $this->assertFalse($first['approved']);
         $this->assertSame('needs_image_rights', $first['notify_status'] ?? null);
         $this->assertStringContainsString('Confirm you own them', (string) $first['message']);
+        $this->assertStringContainsString(
+            'Confirm you own them',
+            (string) ($first['report']['summary'] ?? $submission->fresh()->evaluation_report['summary'] ?? '')
+        );
         $this->assertNotNull($submission->fresh()->approval_notified_at);
         $this->assertSame('needs_image_rights', $submission->fresh()->evaluation_report['notified_status'] ?? null);
         Mail::assertQueued(ContentEvaluationResult::class, 1);
@@ -461,6 +472,79 @@ class ContentImageRightsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('submission.editor_notice', '')
             ->assertJsonPath('submission.needs_image_rights', false);
+    }
+
+    public function test_failed_empty_save_does_not_keep_a_new_rights_declaration(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p></p>',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertStatus(422);
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->image_rights);
+        $this->assertNull($fresh->image_rights_declared_at);
+        $this->assertStringContainsString('<img', (string) $fresh->preview_html);
+    }
+
+    public function test_editor_save_clears_stale_checkout_links_when_none_remain(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $this->assertSame('best software tools', $submission->anchor_text);
+        $this->assertSame('https://example.com/tools', $submission->target_url);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Updated article body with no outbound links for digital teams worldwide.</p>',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('has_link', false)
+            ->assertJsonPath('submission.detected_links', []);
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->anchor_text);
+        $this->assertNull($fresh->target_url);
+        $this->assertSame([], $fresh->detectedLinks());
+        $this->assertFalse($fresh->hasLink());
+    }
+
+    public function test_licensed_without_a_source_is_not_orderable(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            'image_rights_source' => null,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $this->assertFalse($submission->fresh()->canBeOrdered());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertSame('needs_fix', $submission->fresh()->libraryAvailability());
     }
 
     public function test_library_upload_modal_defers_rights_until_the_editor(): void

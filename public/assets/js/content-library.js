@@ -899,7 +899,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
         }
         const sub = data.submission || {};
         const html = sub.preview_html || previewModalState.html;
-        const stillApproved = data.approved !== false;
+        const stillApproved = data.approved === true && !sub.needs_image_rights && sub.can_order !== false;
         const editable = stillApproved;
         openPreviewModal(sub.title || previewModalState.title, html, sub.detected_links || links, previewModalState.submissionId, editable);
         if (!stillApproved) {
@@ -909,7 +909,7 @@ document.getElementById('articleLinksSaveBtn')?.addEventListener('click', async 
             return;
         }
         tools.toast(data.message || 'Links saved — content re-checked and approved');
-        if (data.approved === true) {
+        if (stillApproved && sub.can_order) {
             const dest = libraryChipParams(sub);
             const here = new URL(window.location.href);
             const hereAvail = here.searchParams.get('availability') || 'available';
@@ -1706,13 +1706,14 @@ async function saveArticleEditor() {
             btn.disabled = false;
             return;
         }
-        const stillApproved = data.approved !== false;
+        const sub = data.submission || { id: articleEditorSubmissionId };
+        const stillApproved = data.approved === true && !sub.needs_image_rights && !!sub.can_order;
         const msg = data.message
             || (stillApproved
                 ? 'Article saved and re-approved.'
                 : 'Article saved, but content moderation failed. Fix restricted links/keywords before ordering.');
         setFeedbackHtml(feedback, stillApproved, msg);
-        goToLibraryResult(data.submission || { id: articleEditorSubmissionId }, msg, stillApproved);
+        goToLibraryResult(sub, msg, stillApproved);
     } catch (e) {
         setFeedbackHtml(feedback, false, 'Network error while saving.');
         btn.disabled = false;

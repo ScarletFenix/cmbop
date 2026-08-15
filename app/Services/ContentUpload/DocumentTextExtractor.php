@@ -154,7 +154,7 @@ class DocumentTextExtractor
         }
 
         $ids = [];
-        if (preg_match_all('/r:embed=("|\')(.*?)\1/i', $source, $embeds)) {
+        if (preg_match_all('/r:(?:embed|link)=("|\')(.*?)\1/i', $source, $embeds)) {
             foreach ($embeds[2] as $id) {
                 if ($id !== '' && isset($imageUrlsByRid[$id])) {
                     $ids[$id] = true;

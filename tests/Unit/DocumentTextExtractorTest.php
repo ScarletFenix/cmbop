@@ -209,6 +209,46 @@ class DocumentTextExtractorTest extends TestCase
         $this->assertSame(1, preg_match_all('/<img\b/i', (string) $result['html']));
     }
 
+    public function test_linked_blip_images_are_extracted_when_the_file_is_in_the_package(): void
+    {
+        $path = sys_get_temp_dir().'/cmbop-rlink-'.uniqid('', true).'.docx';
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            .'Target="media/image1.png"/>'
+            .'</Relationships>');
+        $zip->addFromString('word/media/image1.png', $png);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+            .'<w:body><w:p><w:r><w:t>Intro paragraph before the linked figure for image extraction coverage.</w:t></w:r></w:p>'
+            .'<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData>'
+            .'<a:blip r:link="rIdImg1"/>'
+            .'</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
+            .'<w:p><w:r><w:t>Closing paragraph after the linked figure continues the article body text.</w:t></w:r></w:p>'
+            .'</w:body></w:document>');
+        $zip->close();
+
+        $result = (new DocumentTextExtractor)->extract(
+            $path,
+            'docx',
+            function (): string {
+                return 'https://cdn.example.test/articles/linked.png';
+            }
+        );
+        @unlink($path);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(1, preg_match_all('/<img\b/i', (string) $result['html']));
+        $this->assertStringContainsString('<img src="https://cdn.example.test/articles/linked.png"', (string) $result['html']);
+    }
+
     public function test_grouped_drawing_with_two_embeds_keeps_both_images(): void
     {
         $path = sys_get_temp_dir().'/cmbop-group-'.uniqid('', true).'.docx';

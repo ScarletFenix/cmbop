@@ -239,10 +239,12 @@ class ContentSubmission extends Model
                 $q->where(function ($noImages) {
                     $noImages->whereNull('preview_html')
                         ->orWhere('preview_html', 'not like', '%<img%');
-                })->orWhereIn('image_rights', [
-                    self::IMAGE_RIGHTS_OWN,
-                    self::IMAGE_RIGHTS_LICENSED,
-                ]);
+                })->orWhere('image_rights', self::IMAGE_RIGHTS_OWN)
+                    ->orWhere(function ($licensed) {
+                        $licensed->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
+                            ->whereNotNull('image_rights_source')
+                            ->where('image_rights_source', '!=', '');
+                    });
             });
 
         return $query;
@@ -274,7 +276,14 @@ class ContentSubmission extends Model
                                 ->orWhereNotIn('image_rights', [
                                     self::IMAGE_RIGHTS_OWN,
                                     self::IMAGE_RIGHTS_LICENSED,
-                                ]);
+                                ])
+                                ->orWhere(function ($licensedNoSource) {
+                                    $licensedNoSource->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
+                                        ->where(function ($src) {
+                                            $src->whereNull('image_rights_source')
+                                                ->orWhere('image_rights_source', '');
+                                        });
+                                });
                         });
                 });
             })
@@ -426,7 +435,12 @@ class ContentSubmission extends Model
             return true;
         }
 
-        return in_array($this->image_rights, [self::IMAGE_RIGHTS_OWN, self::IMAGE_RIGHTS_LICENSED], true);
+        if ($this->image_rights === self::IMAGE_RIGHTS_OWN) {
+            return true;
+        }
+
+        return $this->image_rights === self::IMAGE_RIGHTS_LICENSED
+            && filled($this->image_rights_source);
     }
 
     public function isInUse(): bool
@@ -891,10 +905,11 @@ class ContentSubmission extends Model
     public function detectedLinks(): array
     {
         $payload = is_array($this->draft_payload) ? $this->draft_payload : [];
+        $hasStoredList = array_key_exists('detected_links', $payload);
         $stored = is_array($payload['detected_links'] ?? null) ? $payload['detected_links'] : [];
         $links = ArticleDetectedLinks::normalizeList($stored);
 
-        if ($links === [] && $this->hasLink()) {
+        if ($links === [] && ! $hasStoredList && $this->hasLink()) {
             $links = [[
                 'anchor' => trim((string) $this->anchor_text),
                 'url' => trim((string) $this->target_url),

@@ -213,12 +213,19 @@ class ContentSubmissionController extends Controller
             ], 422);
         }
 
+        $previousRights = [
+            'image_rights' => $submission->image_rights,
+            'image_rights_source' => $submission->image_rights_source,
+            'image_rights_declared_at' => $submission->image_rights_declared_at,
+        ];
+        $rightsApplied = false;
         if (! empty($data['image_rights'])) {
             $submission->update([
                 'image_rights' => $incoming->image_rights,
                 'image_rights_source' => $incoming->image_rights_source,
                 'image_rights_declared_at' => now(),
             ]);
+            $rightsApplied = true;
         }
 
         try {
@@ -228,6 +235,9 @@ class ContentSubmissionController extends Controller
                 $data['title'] ?? null,
             );
         } catch (\Throwable $e) {
+            if ($rightsApplied) {
+                $submission->update($previousRights);
+            }
             Log::error('Content article save failed', [
                 'submission_id' => $submission->id,
                 'error' => $e->getMessage(),
@@ -240,6 +250,10 @@ class ContentSubmissionController extends Controller
         }
 
         if (! $result['ok']) {
+            if ($rightsApplied) {
+                $submission->update($previousRights);
+            }
+
             return response()->json([
                 'success' => false,
                 'message' => $result['message'] ?? 'Could not save article.',

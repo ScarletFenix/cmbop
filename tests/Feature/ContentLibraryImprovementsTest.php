@@ -1232,6 +1232,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('preview_html: previewModalState.html || \'\'', $js);
         $this->assertStringContainsString('const html = previewModalState.html || \'\'', $js);
         $this->assertStringContainsString('let previewOpenedFromEditor = false', $js);
+        $this->assertStringContainsString('data.approved === true && !sub.needs_image_rights', $js);
+        $this->assertStringNotContainsString('data.approved !== false', $js);
         $this->assertStringNotContainsString(
             "preview_html: document.getElementById('articlePreviewBody').innerHTML",
             $js
