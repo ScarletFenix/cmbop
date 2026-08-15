@@ -34,6 +34,14 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public function __construct(public int $campaignId, public int $failStreak = 0)
     {
+        // Same connection as AudienceCampaignMail / drain / hasQueuedSendJob.
+        // Queue name alone left the job on queue.default, so MAIL_QUEUE_CONNECTION
+        // =sync (inline mail) plus QUEUE_CONNECTION=database made recover miss
+        // the row and enqueue another job on every stale window.
+        $this->onConnection((string) config(
+            'email_notifications.queue_connection',
+            config('queue.default')
+        ));
         $this->onQueue(config('email_notifications.queue', 'emails'));
     }
 
@@ -125,7 +133,7 @@ class SendEmailCampaignJob implements ShouldQueue
     protected function deliverOne(EmailCampaign $campaign, EmailCampaignRecipient $row): void
     {
         $user = $row->user;
-        if (! $user) {
+        if (! $user || trim((string) $user->email) === '') {
             $this->claimPending($row, EmailCampaignRecipient::STATUS_FAILED, EmailCampaignRecipient::SKIP_ERROR);
 
             return;

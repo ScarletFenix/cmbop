@@ -333,6 +333,10 @@ class EmailCampaign extends Model
     /**
      * Recover used to dispatch without bumping updated_at, so a backed-up
      * emails queue made every page view / drain enqueue another send job.
+     *
+     * The send job used to ride `queue.default` while this check only looked
+     * at MAIL_QUEUE_CONNECTION. Scan both so a mismatch cannot flood.
+     * Database-queue rows JSON-escape the serialized command.
      */
     protected static function hasQueuedSendJob(int $campaignId): bool
     {
@@ -341,27 +345,45 @@ class EmailCampaign extends Model
         }
 
         try {
-            $connection = (string) config(
-                'email_notifications.queue_connection',
-                config('queue.default')
-            );
-            if ($connection === 'sync'
-                || config("queue.connections.{$connection}.driver") !== 'database') {
-                return false;
-            }
+            foreach (self::sendJobQueueConnections() as $connection) {
+                if ($connection === 'sync'
+                    || config("queue.connections.{$connection}.driver") !== 'database') {
+                    continue;
+                }
 
-            $table = (string) config("queue.connections.{$connection}.table", 'jobs');
-            if (! Schema::hasTable($table)) {
-                return false;
-            }
+                $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
 
-            return DB::table($table)
-                ->where('payload', 'like', '%SendEmailCampaignJob%')
-                ->where('payload', 'like', '%campaignId";i:'.$campaignId.';%')
-                ->exists();
+                $found = DB::table($table)
+                    ->where('payload', 'like', '%SendEmailCampaignJob%')
+                    ->pluck('payload')
+                    ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
+                        (string) $payload,
+                        $campaignId
+                    ));
+
+                if ($found) {
+                    return true;
+                }
+            }
         } catch (\Throwable) {
             return false;
         }
+
+        return false;
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected static function sendJobQueueConnections(): array
+    {
+        return array_values(array_unique(array_filter([
+            (string) config('email_notifications.queue_connection', config('queue.default')),
+            (string) config('queue.default'),
+        ])));
     }
 
     /**

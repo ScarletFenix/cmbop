@@ -22,6 +22,23 @@ class MailJobPayload
     }
 
     /**
+     * Database-queue payloads JSON-escape the serialized command, so
+     * `campaignId";i:12;` does not appear as a literal. `i:12;` must not
+     * match campaign 123.
+     */
+    public static function containsSendCampaignJob(string $payload, int $campaignId): bool
+    {
+        if ($campaignId < 1 || ! str_contains($payload, 'SendEmailCampaignJob')) {
+            return false;
+        }
+
+        $suffix = ';i:'.$campaignId.';';
+
+        return str_contains($payload, '"campaignId"'.$suffix)
+            || str_contains($payload, '\\"campaignId\\"'.$suffix);
+    }
+
+    /**
      * Match a recipient or dedupe key without treating "welcome:1" as "welcome:10".
      */
     public static function containsToken(string $payload, string $token): bool

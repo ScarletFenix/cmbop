@@ -344,6 +344,16 @@ class AdminAudienceInventoryTest extends TestCase
             ->assertSee('No users match these filters', false);
     }
 
+    public function test_unknown_audience_key_is_empty_for_count_collect_and_send(): void
+    {
+        $this->makeUser('advertiser');
+        $inventory = app(AudienceInventoryService::class);
+
+        $this->assertSame(0, $inventory->count('not-a-segment'));
+        $this->assertSame([], $inventory->collect('not-a-segment')->pluck('id')->all());
+        $this->assertSame([], $inventory->collectRecipientRows('not-a-segment')->pluck('id')->all());
+    }
+
     public function test_collect_accepts_tab_slug_aliases(): void
     {
         $neverCheckedOut = $this->makeUser('advertiser');

@@ -1443,13 +1443,6 @@ class AdminEmailCenterTest extends TestCase
             'respect_preferences' => false,
             'created_by' => $admin->id,
         ]);
-        $row = EmailCampaignRecipient::create([
-            'email_campaign_id' => $campaign->id,
-            'user_id' => $advertiser->id,
-            'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_FAILED,
-            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
-        ]);
         $log = EmailLog::create([
             'uuid' => (string) Str::uuid(),
             'mailable' => AudienceCampaignMail::class,
@@ -1465,6 +1458,14 @@ class AdminEmailCenterTest extends TestCase
                 'campaign_id' => $campaign->id,
                 'user_id' => $advertiser->id,
             ],
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            'email_log_id' => $log->id,
         ]);
 
         DB::table('failed_jobs')->insert([
@@ -1491,6 +1492,7 @@ class AdminEmailCenterTest extends TestCase
         $fresh = $row->fresh();
         $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $fresh->status);
         $this->assertNull($fresh->skip_reason);
+        $this->assertNull($fresh->email_log_id);
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
         $this->assertSame(1, $campaign->fresh()->sent_count);
         $this->assertSame(0, $campaign->fresh()->skipped_count);
@@ -1514,13 +1516,6 @@ class AdminEmailCenterTest extends TestCase
             'respect_preferences' => false,
             'created_by' => $admin->id,
         ]);
-        $row = EmailCampaignRecipient::create([
-            'email_campaign_id' => $campaign->id,
-            'user_id' => $advertiser->id,
-            'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_FAILED,
-            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
-        ]);
         $log = EmailLog::create([
             'uuid' => (string) Str::uuid(),
             'mailable' => AudienceCampaignMail::class,
@@ -1537,6 +1532,14 @@ class AdminEmailCenterTest extends TestCase
                 'campaign_id' => $campaign->id,
                 'user_id' => $advertiser->id,
             ],
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            'email_log_id' => $log->id,
         ]);
         $unlinked = EmailLog::create([
             'uuid' => (string) Str::uuid(),
@@ -1573,6 +1576,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
         $this->assertSame(EmailLog::STATUS_FAILED, $unlinked->fresh()->status);
         $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertNull($row->fresh()->email_log_id);
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 

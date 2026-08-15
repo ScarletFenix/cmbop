@@ -417,12 +417,7 @@ class AudienceInventoryService
      */
     public function collect(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        $key = self::canonicalAudienceKey($audience) ?? $audience;
-        if ($key === self::AUDIENCE_SELECTED) {
-            return $this->querySelected($selectedIds, $includeUnverified)->get();
-        }
-
-        return $this->applyRecipientScope($this->queryForAudienceKey($key), $includeUnverified)->get();
+        return $this->recipientBuilder($audience, $selectedIds, $includeUnverified)->get();
     }
 
     /**
@@ -434,25 +429,11 @@ class AudienceInventoryService
      */
     public function collectRecipientRows(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        $key = self::canonicalAudienceKey($audience);
-        if ($key === null) {
-            return collect();
-        }
-
-        if ($key === self::AUDIENCE_SELECTED) {
-            return $this->recipientRowQuery(
-                $this->querySelected($selectedIds, $includeUnverified),
-                $includeUnverified,
-                alreadyScoped: true
-            )->get();
-        }
-
-        // Same query as inventory / count — a second match here previously
-        // dropped paid_orders, no_active_sites, and deposited_no_orders, so
-        // compose counted them and send returned "No recipients found".
-        // Tab slugs (no_orders, …) must canonicalize first or count() and
-        // send diverge when a caller skips the controller merge.
-        return $this->recipientRowQuery($this->queryForAudienceKey($key), $includeUnverified)->get();
+        return $this->recipientRowQuery(
+            $this->recipientBuilder($audience, $selectedIds, $includeUnverified),
+            $includeUnverified,
+            alreadyScoped: true
+        )->get();
     }
 
     /**
@@ -462,12 +443,27 @@ class AudienceInventoryService
      */
     public function count(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): int
     {
-        $key = self::canonicalAudienceKey($audience) ?? $audience;
-        if ($key === self::AUDIENCE_SELECTED) {
-            return $this->querySelected($selectedIds, $includeUnverified)->count();
+        return $this->recipientBuilder($audience, $selectedIds, $includeUnverified)->count();
+    }
+
+    /**
+     * Shared query for count / collect / send. Unknown keys are empty so
+     * the three cannot drift (tab slugs canonicalize first).
+     *
+     * @param  array<int, int|string>|null  $selectedIds
+     */
+    protected function recipientBuilder(string $audience, ?array $selectedIds, bool $includeUnverified): Builder
+    {
+        $key = self::canonicalAudienceKey($audience);
+        if ($key === null) {
+            return User::query()->whereRaw('1 = 0');
         }
 
-        return $this->applyRecipientScope($this->queryForAudienceKey($key), $includeUnverified)->count();
+        if ($key === self::AUDIENCE_SELECTED) {
+            return $this->querySelected($selectedIds, $includeUnverified);
+        }
+
+        return $this->applyRecipientScope($this->queryForAudienceKey($key), $includeUnverified);
     }
 
     public function bothUniqueCount(bool $includeUnverified = true): int
