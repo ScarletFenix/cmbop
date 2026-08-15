@@ -413,6 +413,21 @@ class CheckoutCancelBonusGuardTest extends TestCase
             app(OrderPaymentService::class)->unfulfilledCardCreditAmount('REF-BONUS-SPENT'),
             0.01
         );
+
+        $wallet->refundReserved(20, 20);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-CART');
+
+        $paidAgain = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession('REF-BONUS-SPENT', $session);
+        $this->assertTrue($paidAgain->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(
+            60.0,
+            app(OrderPaymentService::class)->unfulfilledCardCreditAmount('REF-BONUS-SPENT'),
+            0.01
+        );
     }
 
     public function test_leftover_first_finalize_credits_when_package_bonus_was_spent(): void
@@ -481,6 +496,17 @@ class CheckoutCancelBonusGuardTest extends TestCase
             0.01
         );
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-LEFTOVER-BONUS-SPENT'), 0.01);
+
+        $wallet->refundReserved(20, 20);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-PACKAGE');
+
+        $createdAgain = $payments->finalizeStripeFirstCheckout('REF-LEFTOVER-BONUS-SPENT', $session);
+        $this->assertTrue($createdAgain->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertSame(1, Order::query()->where('reference_code', 'REF-LEFTOVER-BONUS-SPENT')->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
     }
 
     public function test_second_cancel_does_not_steal_another_checkouts_reserved_bonus(): void
