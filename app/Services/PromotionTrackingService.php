@@ -113,7 +113,7 @@ class PromotionTrackingService
         $live = method_exists($subject, 'isCurrentlyLive') && $subject->isCurrentlyLive();
 
         if (! $live || $href === null) {
-            return redirect()->to('/');
+            return redirect()->away('/');
         }
 
         if (! $this->looksLikeUserNavigation($request)) {
@@ -192,6 +192,12 @@ class PromotionTrackingService
 
         $accept = strtolower((string) $request->headers->get('Accept', ''));
         if ($accept !== '' && str_starts_with($accept, 'image/')) {
+            return false;
+        }
+
+        // curl / scripts omit Sec-Fetch-* and often send */*. Real browsers
+        // and Laravel HTTP tests send text/html on top-level GET.
+        if ($dest === '' && $mode === '' && ($accept === '' || ! str_contains($accept, 'text/html'))) {
             return false;
         }
 
