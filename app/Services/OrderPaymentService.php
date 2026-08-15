@@ -853,11 +853,13 @@ class OrderPaymentService
 
         $reference = self::unfulfilledCardCreditReference($referenceCode, $settlementKey);
         $aliases = [$reference];
-        if (is_string($settlementKey) && $settlementKey !== '') {
-            $aliases[] = self::unfulfilledCardCreditReference($referenceCode);
+        $unkeyed = ! is_string($settlementKey) || $settlementKey === '';
+        $prefix = self::unfulfilledCardCreditReference($referenceCode);
+        if (! $unkeyed) {
+            $aliases[] = $prefix;
         }
 
-        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases) {
+        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases, $unkeyed, $prefix) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -872,7 +874,15 @@ class OrderPaymentService
             if (Schema::hasTable((new WalletTransaction)->getTable())
                 && WalletTransaction::query()
                     ->where('wallet_id', $wallet->id)
-                    ->whereIn('reference', $aliases)
+                    ->where(function ($query) use ($aliases, $unkeyed, $prefix) {
+                        $query->whereIn('reference', $aliases);
+                        // Hidden-line leftover credit is unkeyed. A prior
+                        // session-keyed credit for this leftover is the same
+                        // capture — stacking it minted the card cash twice.
+                        if ($unkeyed) {
+                            $query->orWhere('reference', 'like', $prefix.'-%');
+                        }
+                    })
                     ->exists()) {
                 return 0.0;
             }
@@ -932,7 +942,11 @@ class OrderPaymentService
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $expected = $this->capturedStripeEurosForCredit($orders, $meta);
         $unfulfilled = round(max(0, $expected - $paidTotal), 2);
-        if ($userId > 0 && $unfulfilled > 0.009) {
+        // Same leftover may already have a session-keyed credit (#831 bonus
+        // fail, amount mismatch). An unkeyed top-up here paid the capture
+        // twice after the listing left the catalog and the webhook retried.
+        $alreadyCredited = $this->unfulfilledCardCreditAmount($referenceCode) > 0.009;
+        if ($userId > 0 && $unfulfilled > 0.009 && ! $alreadyCredited) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
         }
 
