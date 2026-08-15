@@ -311,8 +311,10 @@ class OrderPaymentService
             }
             // Legacy rows can be marked paid later. Stripe-first has no rows yet —
             // keep the package so a late paid webhook can still settle.
+            // Paid siblings on this ref still need the leftover hold for
+            // approve/reject — a full forget made cardLeftoverBonusCap return 0.
             if ($marked->isNotEmpty()) {
-                $this->forgetPendingCheckout($referenceCode);
+                $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $resolvedUserId);
             }
 
             if ($marked->isNotEmpty()) {
@@ -344,6 +346,92 @@ class OrderPaymentService
         }
 
         return $failed;
+    }
+
+    /**
+     * Drop this advertiser's unpaid pending leftovers for these articles so a
+     * new checkout can claim them. Failed card leftovers stay for Pay again.
+     *
+     * @param  array<int, int|string>  $submissionIds
+     */
+    public function replaceUnpaidLeftoversForSubmissions(int $userId, array $submissionIds): void
+    {
+        $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
+        if ($userId <= 0 || $submissionIds === []) {
+            return;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            Log::warning('Skipping unpaid leftover replace: order_items.content_submission_id missing');
+
+            return;
+        }
+
+        $itemOrderIds = OrderItem::query()
+            ->whereIn('content_submission_id', $submissionIds)
+            ->whereHas('order', function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                    ->where('status', 'pending')
+                    ->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+                    });
+            })
+            ->pluck('order_id');
+
+        $ownedOrderIds = ContentSubmission::query()
+            ->whereIn('id', $submissionIds)
+            ->where('user_id', $userId)
+            ->whereNotNull('order_id')
+            ->pluck('order_id');
+
+        $orderIds = $itemOrderIds->merge($ownedOrderIds)->unique()->filter()->map(fn ($id) => (int) $id)->all();
+        if ($orderIds === []) {
+            return;
+        }
+
+        $orders = Order::query()
+            ->whereIn('id', $orderIds)
+            ->where('user_id', $userId)
+            ->where('status', 'pending')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+            })
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $cardRefs = $orders->where('payment_method', 'card')
+            ->pluck('reference_code')
+            ->unique()
+            ->filter();
+        foreach ($cardRefs as $referenceCode) {
+            $this->markOrdersFailedFromReference(
+                (string) $referenceCode,
+                'Replaced by a new checkout',
+                $userId
+            );
+        }
+
+        $refunds = app(OrderRefundService::class);
+        foreach ($orders as $order) {
+            if ((string) $order->payment_method !== 'card') {
+                $refunds->releaseReservedCheckoutBonus($order);
+                $order->update([
+                    'payment_status' => 'failed',
+                    'status' => 'cancelled',
+                ]);
+            }
+
+            ContentSubmission::releaseAllForOrder((int) $order->id);
+            $fresh = $order->fresh();
+            if ($fresh && $fresh->status !== 'cancelled') {
+                $fresh->update(['status' => 'cancelled']);
+            }
+        }
     }
 
     /**
@@ -720,6 +808,22 @@ class OrderPaymentService
     }
 
     /**
+     * Drop the package but keep leftover promo so approve/reject can cap this
+     * ref. Used after fail/cancel when a paid sibling on the same checkout
+     * still owns reserved bonus.
+     */
+    public function forgetPendingCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
+    {
+        $held = $userId > 0
+            ? app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode)
+            : 0.0;
+        $this->forgetPendingCheckout($referenceCode);
+        if ($userId > 0 && $held > 0.009) {
+            app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $held);
+        }
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function getPendingCheckout(string $referenceCode): ?array
@@ -1029,7 +1133,10 @@ class OrderPaymentService
             if ($existing->isNotEmpty()) {
                 $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
                 if ($marked->isNotEmpty()) {
-                    $this->forgetPendingCheckout($referenceCode);
+                    $this->forgetSettledCheckoutKeepLeftoverHold(
+                        $referenceCode,
+                        (int) ($marked->first()->user_id ?? $package['user_id'] ?? 0)
+                    );
 
                     return $marked;
                 }
@@ -1090,7 +1197,7 @@ class OrderPaymentService
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
         }
 
-        $this->forgetPendingCheckout($referenceCode);
+        $this->forgetSettledCheckoutKeepLeftoverHold($referenceCode, $userId);
 
         Log::info('Materialized Stripe-first card orders after payment', [
             'reference_code' => $referenceCode,

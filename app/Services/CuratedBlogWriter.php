@@ -8,6 +8,7 @@ use App\Models\CuratedBlogTombstone;
 use App\Models\User;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class CuratedBlogWriter
 {
@@ -22,19 +23,26 @@ class CuratedBlogWriter
 
     public static function rememberDeleted(Blog $blog): void
     {
-        $slug = $blog->curated_key ?: $blog->slug;
-        if ($slug === '') {
+        $catalogSlug = filled($blog->curated_key)
+            ? (string) $blog->curated_key
+            : (string) $blog->slug;
+        if ($catalogSlug === '') {
             return;
         }
 
-        $isCurated = filled($blog->curated_key)
-            || in_array($slug, CuratedBlogSync::curatedSlugs(), true);
+        // Only tombstone a real pillar. A custom post that reused a catalog
+        // slug must not block later upserts of the curated article.
+        $isCuratedPillar = filled($blog->curated_key)
+            || (
+                in_array($catalogSlug, CuratedBlogSync::curatedSlugs(), true)
+                && ! $blog->manually_edited_at
+            );
 
-        if (! $isCurated || ! Schema::hasTable('curated_blog_tombstones')) {
+        if (! $isCuratedPillar || ! Schema::hasTable('curated_blog_tombstones')) {
             return;
         }
 
-        CuratedBlogTombstone::query()->updateOrCreate(['slug' => $slug]);
+        CuratedBlogTombstone::query()->updateOrCreate(['slug' => $catalogSlug]);
     }
 
     /**
@@ -74,6 +82,9 @@ class CuratedBlogWriter
         if (! $existing) {
             $data['published_at'] = $data['published_at'] ?? now();
             $data['created_by'] = $authorUserId;
+            if (isset($data['slug'])) {
+                $data['slug'] = self::uniquePublicSlug((string) $data['slug']);
+            }
         } else {
             $data['published_at'] = $existing->published_at ?? now();
             $data['created_by'] = $existing->created_by ?? $authorUserId;
@@ -124,7 +135,27 @@ class CuratedBlogWriter
             ->exists();
     }
 
-    private static function findExisting(string $slug): ?Blog
+    private static function uniquePublicSlug(string $slug, ?int $ignoreBlogId = null): string
+    {
+        $base = Str::slug($slug) ?: Str::random(8);
+        $candidate = $base;
+        $counter = 1;
+
+        while (self::publicSlugTakenByAnother($candidate, $ignoreBlogId ?? 0)) {
+            $candidate = $base.'-'.$counter;
+            $counter++;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Resolve the pillar row for a catalog slug.
+     *
+     * Prefers curated_key. A custom admin post that only happens to reuse the
+     * catalog slug is not adopted — callers should create a new uniquified row.
+     */
+    public static function findExisting(string $slug): ?Blog
     {
         if (Schema::hasColumn('blogs', 'curated_key')) {
             $byKey = Blog::query()->where('curated_key', $slug)->first();
@@ -133,7 +164,22 @@ class CuratedBlogWriter
             }
         }
 
-        return Blog::query()->where('slug', $slug)->first();
+        $bySlug = Blog::query()->where('slug', $slug)->first();
+        if (! $bySlug) {
+            return null;
+        }
+
+        // A custom admin post can reuse a catalog slug. Do not adopt it as the
+        // pillar — create a new row with a uniquified slug instead.
+        if ($bySlug->manually_edited_at && ! filled($bySlug->curated_key)) {
+            return null;
+        }
+
+        if (filled($bySlug->curated_key) && $bySlug->curated_key !== $slug) {
+            return null;
+        }
+
+        return $bySlug;
     }
 
     /**
@@ -152,21 +198,15 @@ class CuratedBlogWriter
             : 'en';
 
         $slug = $blog->slug ?: 'post-'.$blog->id;
-        $slugTaken = BlogTranslation::query()
-            ->where('slug', $slug)
-            ->where(function ($query) use ($blog, $locale) {
-                $query->where('blog_id', '!=', $blog->id)
-                    ->orWhere('locale', '!=', $locale);
-            })
-            ->exists();
-        if ($slugTaken) {
+        if (self::translationSlugTaken($slug, $blog->id, $locale)) {
             $existingSlug = BlogTranslation::query()
                 ->where('blog_id', $blog->id)
                 ->where('locale', $locale)
                 ->value('slug');
             $slug = is_string($existingSlug) && $existingSlug !== ''
+                && ! self::translationSlugTaken($existingSlug, $blog->id, $locale)
                 ? $existingSlug
-                : $slug.'-'.$locale;
+                : self::uniqueTranslationSlug($slug, $blog->id, $locale);
         }
 
         BlogTranslation::query()->updateOrCreate(
@@ -182,5 +222,34 @@ class CuratedBlogWriter
                 'is_published' => $blog->status === 'published',
             ]
         );
+    }
+
+    private static function translationSlugTaken(string $slug, int $blogId, string $locale): bool
+    {
+        // Public /blog/{slug} resolves translations first, then blogs.slug.
+        // A uniquified {slug}-{locale} must not steal another post's fallback URL.
+        if (self::publicSlugTakenByAnother($slug, $blogId)) {
+            return true;
+        }
+
+        return BlogTranslation::query()
+            ->where('blog_id', $blogId)
+            ->where('locale', '!=', $locale)
+            ->where('slug', $slug)
+            ->exists();
+    }
+
+    private static function uniqueTranslationSlug(string $slug, int $blogId, string $locale): string
+    {
+        $base = $slug !== '' ? $slug : 'post-'.$blogId;
+        $candidate = $base.'-'.$locale;
+        $counter = 1;
+
+        while (self::translationSlugTaken($candidate, $blogId, $locale)) {
+            $candidate = $base.'-'.$locale.'-'.$counter;
+            $counter++;
+        }
+
+        return $candidate;
     }
 }

@@ -5,6 +5,7 @@ namespace App\Services\Admin;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
@@ -101,7 +102,7 @@ class FinanceOverviewService
                 'deposits' => 'approved_at',
                 'orders_paid' => 'paid_at',
                 'completed' => 'completed_at',
-                'refunds' => 'updated_at',
+                'refunds' => 'refund_ledger_or_updated_at',
                 'withdrawals_paid' => 'processed_at',
                 'ledger' => 'created_at',
             ],
@@ -396,6 +397,7 @@ class FinanceOverviewService
             // Bank still has this cash after a wallet refund (no Stripe refund).
             'stripe_card_collected' => $this->sumExternalOrdersCollected($start, $end, $this->cardOrderMethods()),
             'manual_collected' => $this->sumExternalOrdersCollected($start, $end, $this->manualOrderMethods()),
+            'failed_external_collected' => $this->sumFailedExternalCollected($start, $end),
             'site_feature_stripe' => $this->siteFeatureStripeCash($start, $end),
         ];
     }
@@ -406,6 +408,7 @@ class FinanceOverviewService
     public function moneyOut(?Carbon $start, Carbon $end): array
     {
         $earningsQuery = OrderItem::query()
+            ->recognizedForFinance()
             ->whereHas('order', function ($q) use ($start, $end) {
                 $q->where('status', 'completed')->where('payment_status', 'paid');
                 $this->applyCompletedWindow($q, $start, $end);
@@ -446,6 +449,11 @@ class FinanceOverviewService
      */
     public function platform(?Carbon $start, Carbon $end): array
     {
+        // Completed lines keep their recognized fee even after a later partial
+        // clawback; the clawed slice is reversed in refunded_order_fees (same
+        // recognize-then-reverse as a completed-then-refunded sale). Using
+        // recognizedForFinance() here would drop the fee twice and also pull a
+        // later clawback out of the completion month.
         $feeItems = OrderItem::query()
             ->whereHas('order', function ($q) use ($start, $end) {
                 $this->constrainRecognizedCompleted($q);
@@ -464,7 +472,10 @@ class FinanceOverviewService
 
         $refundOrders = Order::where('payment_status', 'refunded');
         $this->applyRefundWindow($refundOrders, $start, $end);
-        $refundOrderSum = (float) (clone $refundOrders)->sum('total_amount');
+        $failedRefundOrders = $this->failedExternalOrdersWithWalletReturn($start, $end);
+        $refundOrderSum = (float) (clone $refundOrders)->sum('total_amount')
+            + (float) (clone $failedRefundOrders)->sum('total_amount')
+            + $this->partialClawbackAdvertiserCredits($start, $end);
         $refundedFeeItems = OrderItem::query()
             ->whereHas('order', function ($q) use ($start, $end) {
                 // Only reverse fees that were recognized on a completed sale.
@@ -473,7 +484,8 @@ class FinanceOverviewService
                 $q->where('payment_status', 'refunded');
                 $this->applyRefundWindow($q, $start, $end);
             });
-        $refundedOrderFees = (float) (clone $refundedFeeItems)->sum(OrderItem::platformFeeSqlExpression());
+        $refundedOrderFees = (float) (clone $refundedFeeItems)->sum(OrderItem::platformFeeSqlExpression())
+            + $this->partialClawbackRecognizedFees($start, $end);
 
         $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND);
         $this->applyCreatedWindow($walletRefunds, $start, $end);
@@ -488,7 +500,9 @@ class FinanceOverviewService
             'withdrawal_fee_percent' => (float) config('billing.withdrawal_fee_percent', 0),
             'refunds' => round($refundOrderSum, 2),
             'refunded_order_fees' => round($refundedOrderFees, 2),
-            'refund_orders_count' => (clone $refundOrders)->count(),
+            'refund_orders_count' => (clone $refundOrders)->count()
+                + (clone $failedRefundOrders)->count()
+                + $this->partialClawbackRefundOrderCount($start, $end),
             'wallet_refunds' => (float) (clone $walletRefunds)->sum('amount'),
             'bonuses_issued' => (float) (clone $bonuses)->sum('amount'),
             'payment_processor_costs_tracked' => false,
@@ -509,6 +523,7 @@ class FinanceOverviewService
             + ($in['stripe_card_collected'] ?? $in['orders_paid']['stripe_card'] ?? 0)
             + ($in['manual_collected'] ?? $in['orders_paid']['manual'] ?? 0)
             + ($in['unfulfilled_card_credits'] ?? 0)
+            + ($in['failed_external_collected'] ?? 0)
             + ($in['site_feature_stripe'] ?? 0),
             2
         );
@@ -527,7 +542,7 @@ class FinanceOverviewService
             'cash_in_bank' => $cashIn,
             'internal_only' => $internal,
             'cash_out_payouts' => round($cashOut, 2),
-            'note' => 'Cash in = Stripe/card + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe. Wallet refunds do not remove collected card/manual cash (no Stripe refund). Internal = wallet checkouts + welcome bonuses.',
+            'note' => 'Cash in = Stripe/card + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe + paid→failed captures returned to wallet. Wallet refunds do not remove collected card/manual cash (no Stripe refund). Internal = wallet checkouts + welcome bonuses.',
         ];
     }
 
@@ -556,9 +571,11 @@ class FinanceOverviewService
 
         $siteIds = DB::table('sites')->where('publisher_id', $user->id)->pluck('id');
         $earnings = $siteIds->isEmpty() ? 0.0 : (float) OrderItem::whereIn('site_id', $siteIds)
+            ->recognizedForFinance()
             ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
             ->sum(OrderItem::publisherPayoutSqlExpression());
         $feesOnTheirSales = $siteIds->isEmpty() ? 0.0 : (float) OrderItem::whereIn('site_id', $siteIds)
+            ->recognizedForFinance()
             ->whereHas('order', fn ($q) => $q->where('status', 'completed')->where('payment_status', 'paid'))
             ->sum(OrderItem::platformFeeSqlExpression());
 
@@ -623,6 +640,7 @@ class FinanceOverviewService
             ['section' => 'money_in', 'metric' => 'stripe_card_collected', 'value' => $data['money_in']['stripe_card_collected']],
             ['section' => 'money_in', 'metric' => 'manual_collected', 'value' => $data['money_in']['manual_collected']],
             ['section' => 'money_in', 'metric' => 'site_feature_stripe', 'value' => $data['money_in']['site_feature_stripe']],
+            ['section' => 'money_in', 'metric' => 'failed_external_collected', 'value' => $data['money_in']['failed_external_collected']],
             ['section' => 'money_out', 'metric' => 'earnings_credited', 'value' => $data['money_out']['earnings_credited']['amount']],
             ['section' => 'money_out', 'metric' => 'withdrawals_paid_net', 'value' => $data['money_out']['withdrawals_paid']['net']],
             ['section' => 'money_out', 'metric' => 'withdrawals_open_net', 'value' => $data['money_out']['withdrawals_open']['net']],
@@ -692,6 +710,99 @@ class FinanceOverviewService
     }
 
     /**
+     * Admin paid→failed clears paid_at but credits the wallet (capture stays
+     * in the bank). Count those orders once when a refund ledger row exists.
+     * Dated by the refund write — paid_at is gone.
+     */
+    private function sumFailedExternalCollected(?Carbon $start, Carbon $end): float
+    {
+        return round((float) $this->failedExternalOrdersWithWalletReturn($start, $end)->sum('total_amount'), 2);
+    }
+
+    private function failedExternalOrdersWithWalletReturn(?Carbon $start, Carbon $end)
+    {
+        $methods = array_merge($this->cardOrderMethods(), $this->manualOrderMethods());
+        $morph = (new Order)->getMorphClass();
+
+        $query = Order::query()
+            ->where('payment_status', 'failed')
+            ->whereIn('payment_method', $methods)
+            ->whereExists(function ($exists) use ($morph, $start, $end) {
+                $exists->select(DB::raw('1'))
+                    ->from('wallet_transactions')
+                    ->whereColumn('wallet_transactions.related_id', 'orders.id')
+                    ->where('wallet_transactions.related_type', $morph)
+                    ->where('wallet_transactions.type', WalletTransaction::TYPE_REFUND)
+                    ->where('wallet_transactions.direction', 'credit');
+                if ($start) {
+                    $exists->whereBetween('wallet_transactions.created_at', [$start, $end]);
+                } else {
+                    $exists->where('wallet_transactions.created_at', '<=', $end);
+                }
+            });
+
+        return $query;
+    }
+
+    /**
+     * Advertiser credits from upheld disputes while the order is still paid.
+     */
+    private function partialClawbackAdvertiserCredits(?Carbon $start, Carbon $end): float
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0.0;
+        }
+
+        $query = OrderItemDispute::query()
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'));
+        $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
+
+        return round((float) $query->sum('advertiser_credited'), 2);
+    }
+
+    /**
+     * Distinct still-paid orders that returned advertiser credit this window.
+     */
+    private function partialClawbackRefundOrderCount(?Carbon $start, Carbon $end): int
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0;
+        }
+
+        $query = OrderItemDispute::query()
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->where('advertiser_credited', '>', 0)
+            ->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'));
+        $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
+
+        return $query->pluck('order_id')->unique()->count();
+    }
+
+    /**
+     * Platform fees on clawed lines that are still on a paid completed sale.
+     * Dated by dispute resolution, not the original completion date.
+     */
+    private function partialClawbackRecognizedFees(?Carbon $start, Carbon $end): float
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0.0;
+        }
+
+        $query = OrderItem::query()
+            ->clawedBackOnPaidSale()
+            ->whereHas('order', function ($q) {
+                $q->where('status', 'completed')->where('payment_status', 'paid');
+            })
+            ->whereHas('disputes', function ($disputes) use ($start, $end) {
+                $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                $this->applyCreatedOrPaidWindow($disputes, $start, $end, 'resolved_at');
+            });
+
+        return round((float) $query->sum(OrderItem::platformFeeSqlExpression()), 2);
+    }
+
+    /**
      * Publisher featured-site Stripe charges (including leftover stripe_credit
      * when the listing could not be featured after capture).
      */
@@ -755,9 +866,35 @@ class FinanceOverviewService
         }
     }
 
+    /**
+     * Prefer the last wallet-refund write for this order so a later admin
+     * note / save does not move the refund into another period.
+     */
     private function applyRefundWindow($query, ?Carbon $start, Carbon $end): void
     {
-        $this->applyCoalesceWindow($query, $start, $end, 'orders.updated_at', 'orders.updated_at');
+        if (! Schema::hasTable('wallet_transactions')) {
+            $this->applyCoalesceWindow($query, $start, $end, 'orders.updated_at', 'orders.updated_at');
+
+            return;
+        }
+
+        $refundAt = '(SELECT MAX(wallet_transactions.created_at) FROM wallet_transactions'
+            .' WHERE wallet_transactions.related_id = orders.id'
+            .' AND wallet_transactions.related_type = ?'
+            .' AND wallet_transactions.type = ?'
+            .' AND wallet_transactions.direction = ?)';
+        $expr = 'COALESCE('.$refundAt.', orders.updated_at)';
+        $bindings = [
+            (new Order)->getMorphClass(),
+            WalletTransaction::TYPE_REFUND,
+            'credit',
+        ];
+
+        if ($start) {
+            $query->whereRaw($expr.' BETWEEN ? AND ?', [...$bindings, $start, $end]);
+        } else {
+            $query->whereRaw($expr.' <= ?', [...$bindings, $end]);
+        }
     }
 
     private function applyCreatedOrPaidWindow($query, ?Carbon $start, Carbon $end, string $preferred): void

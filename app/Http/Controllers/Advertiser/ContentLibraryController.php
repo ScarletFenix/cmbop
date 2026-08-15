@@ -11,6 +11,7 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
+use App\Services\OrderPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -521,6 +522,12 @@ class ContentLibraryController extends Controller
         }
 
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
+
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            (int) auth()->id(),
+            [(int) $submission->id]
+        );
+        $submission = $submission->fresh() ?? $submission;
 
         if (! $submission->canBeOrdered()) {
             $message = $submission->isExpired()

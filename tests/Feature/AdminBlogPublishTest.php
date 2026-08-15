@@ -95,6 +95,26 @@ class AdminBlogPublishTest extends TestCase
         $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*New Shared Slug\s*<\/h1>/', $html);
     }
 
+    public function test_store_stamps_manually_edited_at_so_curated_sync_cannot_adopt_it(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Brand New Custom Post',
+                    'slug' => 'brand-new-custom-post',
+                    'content' => '<p>Custom body.</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog = Blog::query()->where('slug', 'brand-new-custom-post')->firstOrFail();
+        $this->assertNotNull($blog->manually_edited_at);
+        $this->assertNull($blog->curated_key);
+    }
+
     public function test_republish_keeps_original_published_at(): void
     {
         $admin = $this->adminUser();

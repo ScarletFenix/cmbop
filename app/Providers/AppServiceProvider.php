@@ -216,10 +216,24 @@ class AppServiceProvider extends ServiceProvider
 
             try {
                 if (Schema::hasTable('blogs')) {
+                    $locale = public_locale();
                     $posts = Blog::published()
+                        ->with(['translations' => function ($query) {
+                            $query->where('is_published', true);
+                        }])
                         ->orderByDesc('published_at')
                         ->limit(4)
-                        ->get(['id', 'title', 'slug', 'published_at', 'created_at']);
+                        ->get();
+
+                    $posts->transform(function (Blog $post) use ($locale) {
+                        $translation = $post->displayTranslation($locale, 'en');
+                        if ($translation) {
+                            $post->setAttribute('title', $translation->title);
+                            $post->setAttribute('slug', $translation->slug);
+                        }
+
+                        return $post;
+                    });
                 }
             } catch (\Throwable) {
                 $posts = collect();

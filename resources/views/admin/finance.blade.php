@@ -345,7 +345,7 @@
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Order platform fees</div>
                     <div class="fs-5 fw-bold text-success">{{ $euro($d['platform']['order_fees']) }}</div>
-                    <div class="small text-muted">Your real product revenue · Dated by completed date</div>
+                    <div class="small text-muted">Recognized on completed lines · later clawbacks reverse that line’s fee on the refund date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Withdrawal fees</div>
@@ -458,7 +458,7 @@
                             <span class="text-muted small">Cash into your accounts</span>
                             <strong class="text-success">{{ $euro($d['cash_split']['cash_in_bank']) }}</strong>
                         </div>
-                        <div class="small text-muted">Stripe/card + bank/Wise/crypto + leftover card credits + featured-site Stripe. Wallet refunds do not remove collected cash.</div>
+                        <div class="small text-muted">Stripe/card + bank/Wise/crypto + leftover card credits + featured-site Stripe + paid→failed captures. Wallet refunds do not remove collected cash.</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">

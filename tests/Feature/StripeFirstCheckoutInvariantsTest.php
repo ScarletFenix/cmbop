@@ -693,123 +693,188 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(round(20 - (20 * (40 / 120)), 2), (float) $wallet->bonus_balance, 0.01);
     }
 
-    public function test_taken_library_line_plus_fulfilled_sibling_does_not_steal_other_hold(): void
+    public function test_finalize_keeps_leftover_bonus_hold_after_dropping_package(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
-        $takenSite = $this->makeSite($publisher, 'taken-fulfill-steal.example', 80);
-        $live = $this->makeSite($publisher, 'taken-fulfill-keep.example', 80);
-        $wallet = $this->advertiserWallet($advertiser, 40);
-        $wallet->reserveBonusOnly(20);
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'OTHER-HOLD-1', 20);
-        $wallet->reserveBonusOnly(20);
-
-        $prior = Order::create([
-            'user_id' => $advertiser->id,
-            'order_number' => (string) random_int(100000, 999999),
-            'reference_code' => 'PRIOR-TAKEN-FULFILL-1',
-            'subtotal' => 80,
-            'tax' => 0,
-            'total_amount' => 80,
-            'payment_method' => 'wallet',
-            'payment_status' => 'paid',
-            'status' => 'pending',
-        ]);
-        $priorItem = OrderItem::create([
-            'order_id' => $prior->id,
-            'site_id' => $takenSite->id,
-            'site_name' => $takenSite->site_name,
-            'site_url' => $takenSite->site_url,
-            'content_link' => 'https://example.com/prior-fulfill',
-            'price' => 80,
-        ]);
-        $submission = $this->createApprovedSubmission($advertiser, $takenSite->id);
-        $submission->update([
-            'order_id' => $prior->id,
-            'order_item_id' => $priorItem->id,
-        ]);
-
-        $ref = 'TAKEN-FULFILL-1';
-        $payments = app(OrderPaymentService::class);
-        $takenLine = $this->lineFor($takenSite, 80);
-        $takenLine['content_submission_id'] = $submission->id;
-        $payments->storePendingCheckout($ref, $this->package($advertiser, [
-            $takenLine,
-            $this->lineFor($live, 80),
-        ], 140, 20));
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
-
-        $created = $payments->finalizeStripeFirstCheckout(
-            $ref,
-            $this->paidSession($ref, 140, 'cs_taken_fulfill')
-        );
-
-        $this->assertCount(1, $created);
-        $this->assertEqualsWithDelta(80.0, (float) $created->first()->total_amount, 0.01);
-        $this->assertEqualsWithDelta(
-            20.0,
-            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'OTHER-HOLD-1'),
-            0.01
-        );
-
-        $wallet->refresh();
-        $this->assertEqualsWithDelta(30.0, (float) $wallet->bonus_reserved, 0.01);
-        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
-    }
-
-    public function test_taken_library_line_plus_fulfilled_sibling_keeps_fulfilled_bonus_slice(): void
-    {
-        $advertiser = $this->makeUser('advertiser');
-        $publisher = $this->makeUser('publisher');
-        $takenSite = $this->makeSite($publisher, 'taken-fulfill-keep-bonus.example', 80);
-        $live = $this->makeSite($publisher, 'taken-fulfill-live-bonus.example', 80);
+        $site = $this->makeSite($publisher, 'keep-hold-after-forget.example', 80);
         $wallet = $this->advertiserWallet($advertiser, 20);
         $wallet->reserveBonusOnly(20);
-
-        $prior = Order::create([
-            'user_id' => $advertiser->id,
-            'order_number' => (string) random_int(100000, 999999),
-            'reference_code' => 'PRIOR-TAKEN-KEEP-1',
-            'subtotal' => 80,
-            'tax' => 0,
-            'total_amount' => 80,
-            'payment_method' => 'wallet',
-            'payment_status' => 'paid',
-            'status' => 'pending',
-        ]);
-        $priorItem = OrderItem::create([
-            'order_id' => $prior->id,
-            'site_id' => $takenSite->id,
-            'site_name' => $takenSite->site_name,
-            'site_url' => $takenSite->site_url,
-            'content_link' => 'https://example.com/prior-keep',
-            'price' => 80,
-        ]);
-        $submission = $this->createApprovedSubmission($advertiser, $takenSite->id);
-        $submission->update([
-            'order_id' => $prior->id,
-            'order_item_id' => $priorItem->id,
-        ]);
-
-        $ref = 'TAKEN-FULFILL-KEEP-1';
+        $ref = 'KEEP-HOLD-1';
         $payments = app(OrderPaymentService::class);
-        $takenLine = $this->lineFor($takenSite, 80);
-        $takenLine['content_submission_id'] = $submission->id;
         $payments->storePendingCheckout($ref, $this->package($advertiser, [
-            $takenLine,
-            $this->lineFor($live, 80),
-        ], 140, 20));
+            $this->lineFor($site, 80),
+        ], 60, 20));
         app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
 
         $created = $payments->finalizeStripeFirstCheckout(
             $ref,
-            $this->paidSession($ref, 140, 'cs_taken_fulfill_keep')
+            $this->paidSession($ref, 60, 'cs_keep_hold')
         );
 
         $this->assertCount(1, $created);
+        $this->assertNull($payments->getPendingCheckout($ref));
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, $ref),
+            0.01
+        );
         $wallet->refresh();
-        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_reserved, 0.01);
-        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_finalize_existing_orders_path_keeps_leftover_bonus_hold(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'existing-keep-hold.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'EXISTING-KEEP-HOLD-1';
+        $lineKey = $ref.':site:'.$site->id.':line:0';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-EKH-1',
+            'reference_code' => $ref,
+            'checkout_line_key' => $lineKey,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 80,
+            'content_link' => 'https://example.com/article',
+        ]);
+
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
+
+        $session = $this->paidSession($ref, 60, 'cs_existing_keep_hold');
+        $session->metadata->bonus_applied = '20';
+        $session->metadata->order_total = '80';
+
+        $created = $payments->finalizeStripeFirstCheckout($ref, $session);
+
+        $this->assertCount(1, $created);
+        $this->assertSame('paid', $created->first()->fresh()->payment_status);
+        $this->assertNull($payments->getPendingCheckout($ref));
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, $ref),
+            0.01
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_reject_after_finalize_does_not_mint_cash_when_other_checkout_is_open(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'reject-after-forget.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 40);
+        $wallet->reserveBonusOnly(20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'OTHER-OPEN-HOLD-1', 20);
+        $wallet->reserveBonusOnly(20);
+
+        $ref = 'REJECT-AFTER-FORGET-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 60, 'cs_reject_after_forget')
+        );
+        $this->assertCount(1, $created);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $created->first()->items->first()->id), [
+                'reason' => 'The topic does not fit our editorial guidelines.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            0.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, $ref),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'OTHER-OPEN-HOLD-1'),
+            0.01
+        );
+    }
+
+    public function test_approve_after_finalize_consumes_leftover_when_other_checkout_is_open(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'approve-after-forget.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 40);
+        $wallet->reserveBonusOnly(20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'OTHER-OPEN-HOLD-APPROVE-1', 20);
+        $wallet->reserveBonusOnly(20);
+
+        $ref = 'APPROVE-AFTER-FORGET-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 60, 'cs_approve_after_forget')
+        );
+        $this->assertCount(1, $created);
+
+        $order = $created->first();
+        $item = $order->items->first();
+        $order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://approve-after-forget.example/live',
+            'live_url_submitted_at' => now()->subHour(),
+            'accepted_at' => now()->subHours(2),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            0.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, $ref),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'OTHER-OPEN-HOLD-APPROVE-1'),
+            0.01
+        );
     }
 
     public function test_finalize_creates_no_orders_when_every_line_left_the_catalog(): void

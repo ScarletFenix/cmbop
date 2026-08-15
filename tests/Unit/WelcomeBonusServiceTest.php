@@ -8,6 +8,8 @@ use App\Models\WelcomeBonusSetting;
 use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -76,6 +78,23 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_record_claim_rejects_a_second_claim_for_the_same_user(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertTrue($this->service->recordClaim($user, $this->request('10.1.0.1'), 20.0, 'registration'));
+        $this->assertFalse($this->service->recordClaim($user, $this->request('10.1.0.2'), 20.0, 'registration'));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_record_claim_rejects_an_amount_above_the_configured_bonus(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertFalse($this->service->recordClaim($user, $this->request('10.2.0.1'), 2000.0, 'registration'));
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
     public function test_oversized_ip_does_not_break_signup_and_does_not_grant(): void
     {
         $request = $this->request(str_repeat('1', 50));
@@ -86,6 +105,58 @@ class WelcomeBonusServiceTest extends TestCase
         $user = User::factory()->create();
         $this->assertFalse($this->service->recordClaim($user, $request, 20.0, 'registration'));
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_claims_table_has_a_unique_index_on_ip_address(): void
+    {
+        $found = false;
+        foreach (Schema::getIndexes('welcome_bonus_claims') as $index) {
+            if (! empty($index['unique']) && ($index['columns'] ?? []) === ['ip_address']) {
+                $found = true;
+                break;
+            }
+        }
+
+        $this->assertTrue($found, 'welcome_bonus_claims.ip_address must be unique');
+    }
+
+    public function test_settings_table_has_a_unique_index_on_key(): void
+    {
+        $found = false;
+        foreach (Schema::getIndexes('welcome_bonus_settings') as $index) {
+            if (! empty($index['unique']) && ($index['columns'] ?? []) === ['key']) {
+                $found = true;
+                break;
+            }
+        }
+
+        $this->assertTrue($found, 'welcome_bonus_settings.key must be unique');
+    }
+
+    public function test_record_claim_still_writes_once_when_cache_lock_is_unavailable(): void
+    {
+        Cache::shouldReceive('lock')
+            ->andThrow(new \RuntimeException('cache locks unavailable'));
+
+        $first = User::factory()->create();
+        $second = User::factory()->create();
+        $request = $this->request('10.4.0.1');
+
+        $this->assertTrue($this->service->recordClaim($first, $request, 20.0, 'registration'));
+        $this->assertFalse($this->service->recordClaim($second, $request, 20.0, 'registration'));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_cache_place_lock_is_released_when_record_claim_returns(): void
+    {
+        $user = User::factory()->create();
+        $ip = '203.0.113.50';
+
+        $this->assertTrue($this->service->recordClaim($user, $this->request($ip), 20.0, 'registration'));
+
+        $lock = Cache::lock('welcome-bonus-claim:'.$ip, 1);
+        $this->assertTrue((bool) $lock->get(), 'cache place lock leaked after recordClaim()');
+        $lock->release();
     }
 
     public function test_missing_claims_table_does_not_grant(): void
@@ -101,6 +172,26 @@ class WelcomeBonusServiceTest extends TestCase
             20.0,
             'registration'
         ));
+    }
+
+    public function test_missing_bonus_columns_do_not_grant(): void
+    {
+        Schema::table('wallets', function ($table) {
+            if (Schema::hasColumn('wallets', 'bonus_balance')) {
+                $table->dropColumn(['bonus_balance', 'bonus_reserved']);
+            }
+        });
+        $this->assertFalse(Schema::hasColumn('wallets', 'bonus_balance'));
+
+        $this->assertFalse($this->service->canGrant());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
     public function test_forwarded_for_header_cannot_spoof_the_claim_ip(): void
@@ -200,6 +291,96 @@ class WelcomeBonusServiceTest extends TestCase
         ]);
 
         $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+    }
+
+    public function test_legacy_uppercase_and_expanded_mapped_rows_block_the_ipv4_key(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::FFFF:1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+
+        WelcomeBonusClaim::query()->delete();
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '0:0:0:0:0:ffff:1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+
+        WelcomeBonusClaim::query()->delete();
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::ffff:102:304',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_ipv4_compatible_ipv6_normalizes_to_ipv4_and_leaves_loopback_as_ipv6(): void
+    {
+        $this->assertSame('1.2.3.4', $this->service->normalizedIp($this->request('::1.2.3.4')));
+        $this->assertSame('::', $this->service->normalizedIp($this->request('::1')));
+    }
+
+    public function test_legacy_ipv4_compatible_claim_row_blocks_the_ipv4_key(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_broken_cloudflare_cidr_config_does_not_throw_or_trust_spoofed_header(): void
+    {
+        config(['welcome_bonus.cloudflare_cidrs' => ['not-a-cidr', new \stdClass]]);
+
+        $request = $this->request('8.8.8.8', [], [
+            'HTTP_CF_CONNECTING_IP' => '203.0.113.10',
+        ]);
+
+        $this->assertSame('8.8.8.8', $this->service->normalizedIp($request));
+        $this->assertSame(20.0, $this->service->amountFor($request, 'advertiser'));
     }
 
     public function test_legacy_full_ipv6_claim_row_blocks_the_slash64(): void
@@ -331,6 +512,96 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertFalse(WelcomeBonusSetting::isEnabled());
         $this->assertFalse(WelcomeBonusSetting::isEnabledForGrant());
         $this->assertSame(0.0, $this->service->amountFor($this->request('5.6.7.8'), 'advertiser'));
+    }
+
+    public function test_duplicate_config_rows_prefer_an_explicit_disable(): void
+    {
+        Schema::table('welcome_bonus_settings', function ($table) {
+            $table->dropUnique(['key']);
+        });
+
+        WelcomeBonusSetting::query()->delete();
+        DB::table('welcome_bonus_settings')->insert([
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => true]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => false]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+        $this->assertFalse(WelcomeBonusSetting::isEnabledForGrant());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('10.3.0.1'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('10.3.0.1'),
+            20.0,
+            'registration'
+        ));
+    }
+
+    public function test_disable_collapses_duplicate_config_rows(): void
+    {
+        Schema::table('welcome_bonus_settings', function ($table) {
+            $table->dropUnique(['key']);
+        });
+
+        WelcomeBonusSetting::query()->delete();
+        DB::table('welcome_bonus_settings')->insert([
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => true]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => true]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->service->setEnabled(false, 7);
+
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+        $this->assertSame(1, WelcomeBonusSetting::query()->where('key', 'config')->count());
+        $this->assertFalse((bool) WelcomeBonusSetting::query()->value('value')['enabled']);
+    }
+
+    public function test_set_value_collapses_duplicate_config_rows(): void
+    {
+        Schema::table('welcome_bonus_settings', function ($table) {
+            $table->dropUnique(['key']);
+        });
+
+        WelcomeBonusSetting::query()->delete();
+        DB::table('welcome_bonus_settings')->insert([
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => true]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => false]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        WelcomeBonusSetting::setValue('config', ['enabled' => false]);
+
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+        $this->assertSame(1, WelcomeBonusSetting::query()->where('key', 'config')->count());
     }
 
     public function test_present_row_with_empty_or_null_value_fails_closed(): void

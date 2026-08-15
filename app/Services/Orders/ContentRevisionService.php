@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
+use App\Services\OrderPaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -259,19 +260,28 @@ class ContentRevisionService
                     ]);
                 }
 
+                $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
+                if (! $sameAsCurrent) {
+                    app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+                        (int) $advertiser->id,
+                        [(int) $submission->id]
+                    );
+                    $submission = $submission->fresh() ?? $submission;
+                }
+
                 if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'Confirm image rights on this article before sending it back.',
                     ]);
                 }
 
-                $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
                 $linkedElsewhere = $submission->isInUse()
                     && (int) ($submission->order_id ?? 0) !== (int) $lockedOrder->id;
                 $usedBySibling = OrderItem::query()
                     ->where('order_id', $lockedOrder->id)
                     ->where('id', '!=', $item->id)
                     ->where('content_submission_id', $submission->id)
+                    ->withoutClawback()
                     ->exists();
 
                 if (! $sameAsCurrent && (

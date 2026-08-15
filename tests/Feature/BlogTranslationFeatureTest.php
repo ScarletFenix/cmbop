@@ -6,6 +6,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\CuratedBlogSync;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
@@ -66,6 +67,50 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertDontSee('hreflang="en-GB" href="'.url('/blog/deutscher-titel').'"', false);
     }
 
+    public function test_show_resolves_translation_slug_when_blogs_slug_was_renamed(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'renamed-pillar-slug',
+            'content' => '<p>English body</p>',
+            'primary_locale' => 'de',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title-renamed-pillar',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'deutscher-titel-renamed-pillar',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/de/blog/deutscher-titel-renamed-pillar')
+            ->assertOk()
+            ->assertSee('Deutscher Titel', false)
+            ->assertSee('Deutscher Inhalt', false);
+
+        $this->get('/blog/deutscher-titel-renamed-pillar')
+            ->assertOk()
+            ->assertSee('English title', false)
+            ->assertSee('English body', false);
+
+        $this->get('/blog/renamed-pillar-slug')
+            ->assertOk()
+            ->assertSee('English title', false);
+    }
+
     public function test_missing_locale_translation_falls_back_to_english_notice(): void
     {
         $blog = Blog::factory()->published()->create([
@@ -90,6 +135,30 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertSee('English title', false)
             ->assertSee('translation is not yet available', false)
             ->assertSee('rel="canonical" href="'.url('/blog/english-fallback').'"', false);
+    }
+
+    public function test_canonical_url_falls_back_to_primary_locale_when_english_is_missing(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English leftover title',
+            'slug' => 'english-leftover-canonical',
+            'content' => '<p>English leftover body</p>',
+            'primary_locale' => 'de',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'deutscher-canonical-titel',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->assertSame(
+            url('/de/blog/deutscher-canonical-titel'),
+            $blog->canonicalUrl('en')
+        );
     }
 
     public function test_admin_can_create_english_only_post_when_other_locales_submit_empty_quill_html(): void
@@ -394,6 +463,65 @@ class BlogTranslationFeatureTest extends TestCase
         $this->assertDatabaseHas('blog_translations', ['blog_id' => $blog->id, 'locale' => 'de', 'title' => 'Geaenderter Deutscher Titel']);
     }
 
+    public function test_store_uses_primary_locale_slug_as_public_fallback(): void
+    {
+        $this->actingAs($this->adminUser())->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'primary_locale' => 'de',
+            'translations' => [
+                'en' => [
+                    'title' => 'English Primary Slug Post',
+                    'slug' => 'english-primary-slug-post',
+                    'excerpt' => 'English excerpt',
+                    'content' => '<p>English body</p>',
+                ],
+                'de' => [
+                    'title' => 'Deutscher Primary Slug Beitrag',
+                    'slug' => 'deutscher-primary-slug-beitrag',
+                    'excerpt' => 'Deutscher Auszug',
+                    'content' => '<p>Deutscher Inhalt</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog = Blog::query()->where('slug', 'deutscher-primary-slug-beitrag')->firstOrFail();
+        $this->assertSame('de', $blog->primary_locale);
+        $this->assertSame('english-primary-slug-post', $blog->translations()->where('locale', 'en')->value('slug'));
+        $this->assertSame('deutscher-primary-slug-beitrag', $blog->translations()->where('locale', 'de')->value('slug'));
+    }
+
+    public function test_update_keeps_de_primary_slug_instead_of_replacing_it_with_english(): void
+    {
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $catalog = GastbeitraegeEuropaBlogPost::SLUG;
+        $blog = Blog::query()->where('curated_key', $catalog)->orWhere('slug', $catalog)->firstOrFail();
+
+        $this->actingAs($this->adminUser())->put(route('admin.blogs.update', $blog->id), [
+            'status' => 'published',
+            'primary_locale' => 'de',
+            'translations' => [
+                'en' => [
+                    'title' => 'Buy guest posts in Europe',
+                    'slug' => 'buy-guest-posts-in-europe-admin-save',
+                    'excerpt' => 'English excerpt',
+                    'content' => '<p>English body</p>',
+                ],
+                'de' => [
+                    'title' => (string) $blog->title,
+                    'slug' => $catalog,
+                    'excerpt' => (string) $blog->excerpt,
+                    'content' => (string) $blog->content,
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog->refresh();
+        $this->assertSame($catalog, $blog->slug);
+        $this->assertSame('buy-guest-posts-in-europe-admin-save', $blog->translations()->where('locale', 'en')->value('slug'));
+        $this->assertSame($catalog, $blog->translations()->where('locale', 'de')->value('slug'));
+    }
+
     public function test_public_blog_heals_missing_translations_table(): void
     {
         $blog = Blog::factory()->published()->create([
@@ -432,6 +560,49 @@ class BlogTranslationFeatureTest extends TestCase
         $this->get('/sitemap-en.xml')
             ->assertOk()
             ->assertSee('/blog/heal-me-post', false);
+    }
+
+    public function test_translation_backfill_does_not_steal_another_blogs_public_slug(): void
+    {
+        $other = Blog::factory()->published()->create([
+            'title' => 'Other Host',
+            'slug' => 'other-heal-host',
+            'content' => '<p>Other body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $other->id,
+            'locale' => 'en',
+            'title' => 'Other Host',
+            'slug' => 'hello-heal-base',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Other body</p>',
+            'is_published' => true,
+        ]);
+
+        $older = Blog::factory()->published()->create([
+            'title' => 'Older Heal Post',
+            'slug' => 'hello-heal-base',
+            'content' => '<p>Older body</p>',
+        ]);
+        $newer = Blog::factory()->published()->create([
+            'title' => 'Newer Heal Post',
+            'slug' => 'hello-heal-base-1',
+            'content' => '<p>Newer body</p>',
+        ]);
+
+        CuratedBlogSync::backfillTranslationsFromBlogs();
+
+        $this->assertNotSame(
+            'hello-heal-base-1',
+            $older->translations()->where('locale', 'en')->value('slug')
+        );
+
+        $html = $this->get('/blog/hello-heal-base-1')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Newer Heal Post\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Older Heal Post\s*<\/h1>/', $html);
     }
 
     public function test_sitemap_contains_only_localized_blog_urls(): void
@@ -492,5 +663,49 @@ class BlogTranslationFeatureTest extends TestCase
         $this->get('/sitemap-de.xml')
             ->assertOk()
             ->assertSee('/de/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
+    }
+
+    public function test_sitemap_fallback_does_not_reuse_another_posts_translation_slug(): void
+    {
+        $listed = Blog::factory()->published()->create([
+            'title' => 'Listed English Post',
+            'slug' => 'listed-english-post',
+            'content' => '<p>Listed body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $listed->id,
+            'locale' => 'en',
+            'title' => 'Listed English Post',
+            'slug' => 'shared-fallback-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Listed body</p>',
+            'is_published' => true,
+        ]);
+
+        $deOnly = Blog::factory()->published()->create([
+            'title' => 'DE-only fallback post',
+            'slug' => 'shared-fallback-slug',
+            'content' => '<p>German body</p>',
+            'primary_locale' => 'de',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $deOnly->id,
+            'locale' => 'de',
+            'title' => 'Nur Deutscher Beitrag',
+            'slug' => 'nur-deutscher-beitrag',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $enSitemap = $this->get('/sitemap-en.xml')->assertOk()->getContent();
+        $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/shared-fallback-slug').'</loc>'));
+        $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/nur-deutscher-beitrag').'</loc>'));
+
+        $html = $this->get('/blog/shared-fallback-slug')
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Listed English Post\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Nur Deutscher Beitrag\s*<\/h1>/', $html);
     }
 }

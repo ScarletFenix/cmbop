@@ -300,6 +300,59 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Own unpaid leftover that Order / a new checkout may replace.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeReplaceableUnpaidLeftover($query)
+    {
+        return $query->where(function ($claim) {
+            $claim->whereHas('order', function ($order) {
+                $this->constrainReplaceableLeftoverOrder($order);
+            });
+
+            if (Schema::hasColumn('order_items', 'content_submission_id')) {
+                $claim->orWhereHas('orderItems', function ($item) {
+                    $item->whereHas('order', function ($order) {
+                        $this->constrainReplaceableLeftoverOrder($order);
+                    });
+                });
+            }
+        });
+    }
+
+    /**
+     * Catalog / wizard / cart pickers: free checkout-ready rows, plus this
+     * advertiser's replaceable unpaid leftovers. Failed card leftovers stay
+     * hidden so Pay again is the only path.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeAvailableForPicker($query)
+    {
+        return $query->where(function ($outer) {
+            $outer->where(function ($ready) {
+                $ready->checkoutReady();
+            })->orWhere(function ($leftover) {
+                $leftover->replaceableUnpaidLeftover()
+                    ->where('moderation_status', self::STATUS_APPROVED)
+                    ->hasCheckoutReadyLinks()
+                    ->withImageRightsCover()
+                    ->whereNotNull('path')
+                    ->where('path', '!=', '')
+                    ->whereNull('archived_at')
+                    ->whereNotNull('country')->where('country', '!=', '')
+                    ->whereNotNull('language')->where('language', '!=', '')
+                    ->where(function ($exp) {
+                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                    });
+            });
+        });
+    }
+
+    /**
      * SQL mirror of canBeOrdered() for list/exists queries (cart, checkout, dashboard).
      *
      * @param  Builder<static>  $query
@@ -464,8 +517,9 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Current owner line is live. Historical live URLs on cancelled leftovers
-     * must not keep a reused or released article in Completed.
+     * Current owner line is live. A sibling's live URL on the same order,
+     * or a historical URL on a cancelled leftover, must not keep this
+     * article in Completed.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -828,6 +882,81 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Own unpaid leftover (Wise/bank/crypto/legacy card) that Order / a new
+     * checkout may replace. Failed card leftovers stay for Pay again.
+     */
+    public function canReplaceUnpaidLeftover(): bool
+    {
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order) {
+            return $this->orderLooksLikeReplaceableLeftover($owner);
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            return $this->orderItems->contains(function (OrderItem $item) {
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+
+                return $order instanceof Order
+                    && $this->orderLooksLikeReplaceableLeftover($order);
+            });
+        }
+
+        return $this->orderItems()
+            ->whereHas('order', function ($q) {
+                $this->constrainReplaceableLeftoverOrder($q);
+            })
+            ->exists();
+    }
+
+    /**
+     * Catalog / wizard / cart may list this row. Replace runs on assign,
+     * checkout, or Order — not when the picker merely opens.
+     */
+    public function isAvailableForPicker(): bool
+    {
+        if ($this->isReadyForCheckout()) {
+            return true;
+        }
+
+        if (! $this->canReplaceUnpaidLeftover()) {
+            return false;
+        }
+
+        return $this->moderation_status === self::STATUS_APPROVED
+            && filled($this->path)
+            && ! $this->isArchived()
+            && ($this->expires_at === null || $this->expires_at->isFuture())
+            && filled($this->country)
+            && filled($this->language)
+            && $this->imageRightsCoverContent()
+            && $this->hasCheckoutReadyLinks();
+    }
+
+    /**
+     * @param  Builder<Order>|Builder  $orderQuery
+     */
+    protected function constrainReplaceableLeftoverOrder($orderQuery): void
+    {
+        $orderQuery->where('status', 'pending')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+            });
+    }
+
+    protected function orderLooksLikeReplaceableLeftover(Order $order): bool
+    {
+        return $order->status === 'pending'
+            && ! in_array((string) $order->payment_status, ['paid', 'refunded', 'failed'], true);
+    }
+
+    /**
      * Unused approved articles approaching retention purge (content:purge-expired).
      */
     public function isNearExpiry(int $withinDays = 7): bool
@@ -1012,13 +1141,20 @@ class ContentSubmission extends Model
             : $this->orderItems()->with(['site', 'order'])->orderBy('id')->get();
 
         if ($this->order_id) {
-            $onOwner = $items->firstWhere('order_id', (int) $this->order_id);
+            $onOwner = $items->first(function (OrderItem $item) {
+                return (int) $item->order_id === (int) $this->order_id
+                    && (int) ($item->content_submission_id ?? 0) === (int) $this->id;
+            });
             if ($onOwner) {
                 return $onOwner;
             }
         }
 
         return $items->first(function (OrderItem $item) {
+            if ($item->isClawedBack()) {
+                return false;
+            }
+
             $order = $item->relationLoaded('order')
                 ? $item->order
                 : $item->order()->first();
@@ -1029,6 +1165,10 @@ class ContentSubmission extends Model
 
     public function liveUrl(): ?string
     {
+        if (! $this->isInUse()) {
+            return null;
+        }
+
         $item = $this->placementItem();
         if (! $item || ! $item->hasLiveUrl()) {
             return null;
@@ -1471,7 +1611,17 @@ class ContentSubmission extends Model
     protected function constrainCurrentOwnerLiveItem($itemQuery, string $submissionTable): void
     {
         $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
+        $hasSubmissionFk = Schema::hasColumn('order_items', 'content_submission_id');
         $itemQuery->whereColumn('order_items.order_id', $submissionTable.'.order_id')
+            ->where(function ($ownerLine) use ($submissionTable, $hasSubmissionFk) {
+                $ownerLine->whereColumn('order_items.id', $submissionTable.'.order_item_id');
+                if ($hasSubmissionFk) {
+                    $ownerLine->orWhere(function ($legacy) use ($submissionTable) {
+                        $legacy->whereNull($submissionTable.'.order_item_id')
+                            ->whereColumn('order_items.content_submission_id', $submissionTable.'.id');
+                    });
+                }
+            })
             ->where(function ($q) use ($hasPublisherStatus) {
                 $q->where(function ($live) {
                     $live->whereNotNull('live_url')->where('live_url', '!=', '');

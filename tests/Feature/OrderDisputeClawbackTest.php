@@ -371,6 +371,37 @@ class OrderDisputeClawbackTest extends TestCase
             ContentSubmission::query()->whereKey($disputedArticle->id)->checkoutReady()->exists()
         );
         $this->assertFalse($siblingArticle->fresh()->isReadyForCheckout());
+        $released = $released->load(['orderItems.disputes', 'orderItems.order']);
+        $this->assertNull($released->liveUrl());
+        $this->assertNull($released->placementItem());
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $disputedArticle))
+            ->assertForbidden();
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $siblingArticle))
+            ->assertOk();
+
+        $disputedArticle->forceFill([
+            'preview_html' => '<p>Edited after clawback — clawed publisher must not see this.</p>',
+            'title' => 'Reused secret draft',
+        ])->save();
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.orders.details', $disputed->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.preview_html', null)
+            ->assertJsonPath('data.content_download_url', null)
+            ->assertJsonPath('data.content_link', null)
+            ->assertJsonMissing(['Reused secret draft'])
+            ->assertJsonMissing(['Edited after clawback']);
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.orders.details', $sibling->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.preview_html', $siblingArticle->fresh()->preview_html)
+            ->assertJsonPath('data.content_download_url', route('publisher.content.download', $siblingArticle));
 
         $this->actingAs($advertiser)
             ->deleteJson(route('advertiser.content-submissions.destroy', $disputedArticle))

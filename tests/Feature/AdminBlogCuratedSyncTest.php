@@ -3,9 +3,11 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\CuratedBlogSync;
+use App\Services\CuratedBlogWriter;
 use App\Support\AcheterGuestPostsFrBlogPost;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\ChoosePublisherSiteBlogPost;
@@ -361,5 +363,288 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->assertSame(LiveLinkChecklistBlogPost::SLUG, $intruder->fresh()->slug);
         $this->assertSame('live-link-checklist-renamed', $pillar->fresh()->slug);
         $this->assertSame(1, Blog::query()->where('curated_key', LiveLinkChecklistBlogPost::SLUG)->count());
+    }
+
+    public function test_upsert_does_not_overwrite_custom_post_that_reused_a_catalog_slug(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        $custom = Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Leave this custom article alone.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertSame('Custom Occupying Catalog Slug', $custom->fresh()->title);
+        $this->assertSame($slug, $custom->fresh()->slug);
+        $this->assertNull($custom->fresh()->curated_key);
+
+        $pillar = Blog::query()->where('curated_key', $slug)->first();
+        $this->assertNotNull($pillar);
+        $this->assertNotSame($custom->id, $pillar->id);
+        $this->assertNotSame($slug, $pillar->slug);
+        $this->assertStringContainsString('What to Check After the Live Link', (string) $pillar->title);
+    }
+
+    public function test_ensure_present_creates_missing_pillar_when_custom_post_occupies_slug(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        Cache::forget('curated_blogs_present_v1');
+        $this->get(route('blog.index'))->assertOk();
+
+        $this->assertSame('Custom Occupying Catalog Slug', Blog::query()->where('slug', $slug)->value('title'));
+        $this->assertTrue(Blog::query()->where('curated_key', $slug)->exists());
+        $this->assertNotSame(
+            $slug,
+            Blog::query()->where('curated_key', $slug)->value('slug')
+        );
+    }
+
+    public function test_deleting_custom_post_that_reused_catalog_slug_does_not_tombstone_pillar(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        $custom = Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->actingAs($this->adminUser())
+            ->delete(route('admin.blogs.destroy', $custom->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseMissing('curated_blog_tombstones', ['slug' => $slug]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertTrue(Blog::query()->where('curated_key', $slug)->exists());
+    }
+
+    public function test_uniquified_pillar_keeps_faq_schema_on_public_page(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $pillar = Blog::query()->where('curated_key', $slug)->firstOrFail();
+        $this->assertNotSame($slug, $pillar->slug);
+
+        $this->get('/blog/'.$pillar->slug)
+            ->assertOk()
+            ->assertSee('FAQPage', false)
+            ->assertSee('What to Check After the Live Link', false);
+    }
+
+    public function test_public_html_rewrites_catalog_slug_links_to_uniquified_pillar(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+        $pillar = Blog::query()->where('curated_key', $slug)->firstOrFail();
+
+        $linker = Blog::factory()->published()->create([
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-checklist',
+            'content' => '<p><a href="/blog/'.$slug.'">Checklist</a></p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $linker->id,
+            'locale' => 'en',
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-checklist',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><a href="/blog/'.$slug.'">Checklist</a></p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/blog/linker-to-checklist')
+            ->assertOk()
+            ->assertSee('href="/blog/'.$pillar->slug.'"', false)
+            ->assertDontSee('href="/blog/'.$slug.'"', false);
+    }
+
+    public function test_catalog_link_rewrite_uses_display_translation_slug(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+        $pillar = Blog::query()->where('curated_key', $slug)->firstOrFail();
+        $pillar->translations()->where('locale', 'en')->update([
+            'slug' => 'live-link-checklist-en-live',
+        ]);
+
+        $linker = Blog::factory()->published()->create([
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-en-live',
+            'content' => '<p><a href="/blog/'.$slug.'">Checklist</a></p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $linker->id,
+            'locale' => 'en',
+            'title' => 'Linker Post',
+            'slug' => 'linker-to-en-live',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><a href="/blog/'.$slug.'">Checklist</a></p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/blog/linker-to-en-live')
+            ->assertOk()
+            ->assertSee('href="/blog/live-link-checklist-en-live"', false)
+            ->assertDontSee('href="/blog/'.$slug.'"', false);
+    }
+
+    public function test_custom_post_occupying_catalog_slug_does_not_inherit_pillar_faq(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body without pillar FAQ.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->get('/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('Custom Occupying Catalog Slug', false)
+            ->assertDontSee('FAQPage', false);
+    }
+
+    public function test_sync_primary_translation_uniquifies_when_locale_suffix_is_taken(): void
+    {
+        $other = Blog::factory()->published()->create([
+            'slug' => 'other-translation-host',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $other->id,
+            'locale' => 'de',
+            'title' => 'Taken base',
+            'slug' => 'collision-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Taken base</p>',
+            'is_published' => true,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $other->id,
+            'locale' => 'en',
+            'title' => 'Taken suffix',
+            'slug' => 'collision-slug-en',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Taken suffix</p>',
+            'is_published' => true,
+        ]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Needs a free translation slug',
+            'slug' => 'collision-slug',
+            'content' => '<p>Body</p>',
+            'primary_locale' => 'en',
+        ]);
+
+        CuratedBlogWriter::syncPrimaryTranslation($blog);
+
+        $translationSlug = $blog->translations()->where('locale', 'en')->value('slug');
+        $this->assertNotSame('collision-slug', $translationSlug);
+        $this->assertNotSame('collision-slug-en', $translationSlug);
+        $this->assertSame('collision-slug-en-1', $translationSlug);
+    }
+
+    public function test_sync_primary_translation_does_not_steal_another_blogs_public_slug(): void
+    {
+        $occupant = Blog::factory()->published()->create([
+            'title' => 'Occupant Public Url',
+            'slug' => 'collision-slug-en',
+            'content' => '<p>Occupant body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $occupant->id,
+            'locale' => 'en',
+            'title' => 'Occupant Public Url',
+            'slug' => 'occupant-public-url',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Occupant body</p>',
+            'is_published' => true,
+        ]);
+
+        $blocker = Blog::factory()->published()->create([
+            'slug' => 'blocker-host',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blocker->id,
+            'locale' => 'de',
+            'title' => 'Taken base',
+            'slug' => 'collision-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Taken base</p>',
+            'is_published' => true,
+        ]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Needs a free translation slug',
+            'slug' => 'collision-slug',
+            'content' => '<p>Body</p>',
+            'primary_locale' => 'en',
+        ]);
+
+        CuratedBlogWriter::syncPrimaryTranslation($blog);
+
+        $translationSlug = $blog->translations()->where('locale', 'en')->value('slug');
+        $this->assertNotSame('collision-slug-en', $translationSlug);
+        $this->assertSame('collision-slug-en-1', $translationSlug);
+
+        $html = $this->get('/blog/collision-slug-en')
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Occupant Public Url\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Needs a free translation slug\s*<\/h1>/', $html);
     }
 }

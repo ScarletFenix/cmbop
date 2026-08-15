@@ -63,5 +63,7 @@ class PublicMediaFallbackRouteTest extends TestCase
         $this->get('/media/../sites/ok.webp')->assertNotFound();
         $this->get('/media/private/secret.txt')->assertNotFound();
         $this->get('/media/sites/missing.webp')->assertNotFound();
+        $this->get('/media/sites/%2e%2e/private/secret.txt')->assertNotFound();
+        $this->get('/media/blogs/content/%2e%2e/%2e%2e/private/secret.txt')->assertNotFound();
     }
 }
