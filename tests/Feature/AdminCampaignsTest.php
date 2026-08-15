@@ -600,7 +600,7 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailCampaignRecipient::STATUS_PENDING,
         ]);
 
-        $job = new class($campaign->id) extends SendEmailCampaignJob
+        $job = new class($campaign->id, SendEmailCampaignJob::MAX_FAIL_STREAK) extends SendEmailCampaignJob
         {
             protected function processPending(EmailCampaign $campaign): bool
             {
@@ -649,7 +649,7 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailCampaignRecipient::STATUS_PENDING,
         ]);
 
-        $job = new class($campaign->id) extends SendEmailCampaignJob
+        $job = new class($campaign->id, SendEmailCampaignJob::MAX_FAIL_STREAK) extends SendEmailCampaignJob
         {
             protected function processPending(EmailCampaign $campaign): bool
             {
@@ -1151,93 +1151,119 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
     }
 
-    public function test_suppressed_retry_marks_failed_recipient_skipped_and_closes_pending_log(): void
+    public function test_first_job_exception_redispatches_instead_of_wiping_pending(): void
     {
+        Queue::fake();
+
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
 
         $campaign = EmailCampaign::create([
-            'name' => 'Late disable',
-            'subject' => 'Late disable',
+            'name' => 'Blip',
+            'subject' => 'Blip',
             'body_html' => '<p>Hi</p>',
             'audience' => 'advertisers',
             'recipients_count' => 1,
-            'sent_count' => 0,
-            'skipped_count' => 1,
-            'status' => EmailCampaign::STATUS_FAILED,
+            'status' => EmailCampaign::STATUS_QUEUED,
             'respect_preferences' => false,
             'created_by' => $admin->id,
         ]);
-        $row = EmailCampaignRecipient::create([
+        EmailCampaignRecipient::create([
             'email_campaign_id' => $campaign->id,
             'user_id' => $advertiser->id,
             'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_FAILED,
-            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
-        ]);
-        $log = EmailLog::create([
-            'uuid' => (string) Str::uuid(),
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'dedupe_key' => 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id,
-            'to_email' => $advertiser->email,
-            'subject' => 'Late disable',
-            'status' => EmailLog::STATUS_PENDING,
-            'attempts' => 2,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
         ]);
 
-        EmailNotificationSetting::updateOrCreate(
-            ['type' => 'audience_campaign'],
-            ['enabled' => false]
+        $job = new class($campaign->id) extends SendEmailCampaignJob
+        {
+            protected function processPending(EmailCampaign $campaign): bool
+            {
+                throw new \RuntimeException('deadlock');
+            }
+        };
+        $job->handle();
+
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
         );
-        EmailNotificationSetting::flushCache('audience_campaign');
-
-        $mailable = new AudienceCampaignMail($campaign, $advertiser);
-        $mailable->skipUserPreference = true;
-        $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id;
-        $mailable->to($advertiser->email);
-
-        $this->assertNull($mailable->send(app('mailer')));
-        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->fresh()->status);
-        $this->assertSame(EmailCampaignRecipient::SKIP_DISABLED, $row->fresh()->skip_reason);
-        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
-        $this->assertSame('Suppressed: notification type disabled', $log->fresh()->error);
-        $this->assertSame('disabled', data_get($log->fresh()->meta, 'suppressed'));
-        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
-        $this->assertSame(0, $campaign->fresh()->sent_count);
-        $this->assertSame(1, $campaign->fresh()->skipped_count);
+        Queue::assertPushed(
+            SendEmailCampaignJob::class,
+            fn (SendEmailCampaignJob $queued) => $queued->campaignId === $campaign->id && $queued->failStreak === 1
+        );
     }
 
-    public function test_sent_log_write_failure_does_not_fail_the_send(): void
+    public function test_job_failed_before_claim_does_not_wipe_pending(): void
     {
+        Queue::fake();
+
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
 
         $campaign = EmailCampaign::create([
-            'name' => 'Log write fail',
-            'subject' => 'Log write fail',
+            'name' => 'Unclaimed',
+            'subject' => 'Unclaimed',
             'body_html' => '<p>Hi</p>',
             'audience' => 'advertisers',
             'recipients_count' => 1,
-            'status' => EmailCampaign::STATUS_SENDING,
+            'status' => EmailCampaign::STATUS_QUEUED,
             'respect_preferences' => false,
             'created_by' => $admin->id,
         ]);
-        $row = EmailCampaignRecipient::create([
+        EmailCampaignRecipient::create([
             'email_campaign_id' => $campaign->id,
             'user_id' => $advertiser->id,
             'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
         ]);
 
-        Schema::drop('email_logs');
+        (new SendEmailCampaignJob($campaign->id))->failed(new \RuntimeException('worker died'));
 
-        $mailable = new AudienceCampaignMail($campaign, $advertiser);
-        $mailable->skipUserPreference = true;
-        $mailable->dedupeKey = 'log-write-fail';
-        $mailable->to($advertiser->email);
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertNothingPushed();
+    }
 
-        $this->assertNotNull($mailable->send(app('mailer')));
-        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+    public function test_drain_command_recovers_stalled_campaigns_when_auto_drain_is_off(): void
+    {
+        Queue::fake();
+        config([
+            'email_notifications.auto_drain' => false,
+            'email_notifications.queue_connection' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Cron recover',
+            'subject' => 'Cron recover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->artisan('mail:drain-queue')
+            ->expectsOutputToContain('auto-drain is disabled')
+            ->assertSuccessful();
+
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
     }
 }
