@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Services\AudienceInventoryService;
+use App\Support\MailJobPayload;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -340,28 +341,47 @@ class EmailCampaign extends Model
             return false;
         }
 
-        try {
-            $connection = (string) config(
-                'email_notifications.queue_connection',
-                config('queue.default')
-            );
-            if ($connection === 'sync'
-                || config("queue.connections.{$connection}.driver") !== 'database') {
-                return false;
-            }
+        foreach (self::sendJobQueueConnections() as $connection) {
+            try {
+                if ($connection === 'sync'
+                    || config("queue.connections.{$connection}.driver") !== 'database') {
+                    continue;
+                }
 
-            $table = (string) config("queue.connections.{$connection}.table", 'jobs');
-            if (! Schema::hasTable($table)) {
-                return false;
-            }
+                $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
 
-            return DB::table($table)
-                ->where('payload', 'like', '%SendEmailCampaignJob%')
-                ->where('payload', 'like', '%campaignId";i:'.$campaignId.';%')
-                ->exists();
-        } catch (\Throwable) {
-            return false;
+                $payloads = DB::table($table)
+                    ->where('payload', 'like', '%SendEmailCampaignJob%')
+                    ->pluck('payload');
+
+                foreach ($payloads as $payload) {
+                    if (MailJobPayload::containsCampaignJob((string) $payload, $campaignId)) {
+                        return true;
+                    }
+                }
+            } catch (\Throwable) {
+            }
         }
+
+        return false;
+    }
+
+    /**
+     * The send job uses the app default connection (it does not call
+     * onConnection). Mail may use MAIL_QUEUE_CONNECTION. Check both so a
+     * sync mail connection cannot hide a database-queued send job.
+     *
+     * @return list<string>
+     */
+    protected static function sendJobQueueConnections(): array
+    {
+        return array_values(array_unique(array_filter([
+            (string) config('queue.default'),
+            (string) config('email_notifications.queue_connection', config('queue.default')),
+        ])));
     }
 
     /**

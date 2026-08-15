@@ -16,6 +16,7 @@ use App\Models\User;
 use App\Services\AudienceInventoryService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
@@ -1715,5 +1716,72 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_SENDING, $fresh->status);
         $this->assertNull($fresh->sent_at);
         Queue::assertNothingPushed();
+    }
+
+    public function test_stall_recovery_does_not_redispatch_when_send_job_is_already_queued(): void
+    {
+        config([
+            'queue.default' => 'database',
+            'email_notifications.queue_connection' => 'sync',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Already queued',
+            'subject' => 'Already queued',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        SendEmailCampaignJob::dispatch($campaign->id);
+
+        $this->assertSame(1, DB::table('jobs')->count());
+        $payload = (string) DB::table('jobs')->value('payload');
+        $this->assertStringContainsString('SendEmailCampaignJob', $payload);
+        $this->assertStringNotContainsString('campaignId";i:'.$campaign->id.';', $payload);
+
+        $other = EmailCampaign::create([
+            'name' => 'Other',
+            'subject' => 'Other',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $other->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+        $other->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(1, EmailCampaign::recoverStalled());
+        $this->assertSame(2, DB::table('jobs')->count());
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $other->fresh()->status);
+
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+        $other->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        $this->assertSame(2, DB::table('jobs')->count());
     }
 }
