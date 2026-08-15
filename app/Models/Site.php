@@ -360,10 +360,13 @@ class Site extends Model
             }
 
             if ($hasScreenshot) {
+                $missingScreenshot = function (Builder $q) {
+                    $q->whereNull('screenshot_path')->orWhere('screenshot_path', '');
+                };
                 if ($hasMetricsAt) {
-                    $inner->orWhereNull('screenshot_path');
+                    $inner->orWhere($missingScreenshot);
                 } else {
-                    $inner->whereNull('screenshot_path');
+                    $inner->where($missingScreenshot);
                 }
             }
 
@@ -381,6 +384,23 @@ class Site extends Model
                 $inner->orWhereIn('id', $placeholderIds);
             }
         });
+    }
+
+    /**
+     * Oldest / missing metrics first — shared by the stale table, Queue stale, and sites:enrich.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeOrderForStaleEnrichment(Builder $query): Builder
+    {
+        if (static::hasSitesColumn('metrics_fetched_at')) {
+            return $query->orderByRaw('metrics_fetched_at IS NULL DESC')
+                ->orderBy('metrics_fetched_at')
+                ->orderBy('id');
+        }
+
+        return $query->orderBy('id');
     }
 
     /**

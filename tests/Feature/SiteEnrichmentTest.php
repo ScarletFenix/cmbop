@@ -17,6 +17,7 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
@@ -279,6 +280,10 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame(['manual'], $result['providers_used']);
         $this->assertSame('manual', $snapshot->provider);
         $this->assertSame([], $result['errors']);
+
+        $run = app(SiteEnrichmentService::class)->refreshMetrics($site, 'test');
+        $this->assertSame('manual', $run->provider);
+        $this->assertSame('manual', $site->fresh()->metrics_provider);
     }
 
     public function test_metrics_manual_lock_skips_configured_api_providers(): void
@@ -340,6 +345,13 @@ class SiteEnrichmentTest extends TestCase
             'site_url' => 'https://from-countries.example',
         ]);
         $this->assertSame('de', SemrushMetricsProvider::databaseForSite($fromCountries));
+        $blankCountries = $this->makeSite([
+            'country' => '',
+            'countries' => ['', '  '],
+            'domain' => 'blank-countries.example',
+            'site_url' => 'https://blank-countries.example',
+        ]);
+        $this->assertSame('us', SemrushMetricsProvider::databaseForSite($blankCountries));
 
         config([
             'site_enrichment.providers.semrush.api_key' => 'semrush-key',
@@ -374,9 +386,16 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame('de', $detector->fromTld('news.de'));
         $this->assertSame('gb', $detector->fromTld('news.co.uk'));
 
-        Http::fake([
-            '*' => Http::response('<html><body>no lang</body></html>', 200),
-        ]);
+        // Callback by host: sequential Http::fake() merges and the first '*' wins.
+        Http::fake(function (Request $request) {
+            return match (parse_url($request->url(), PHP_URL_HOST)) {
+                'example.com' => Http::response('<html><body>no lang</body></html>', 200),
+                'english-com.example.com' => Http::response('<html lang="en"><body>English .com</body></html>', 200),
+                'british-com.example.com' => Http::response('<html lang="en-GB"><body>UK English</body></html>', 200),
+                'portugal-com.example.com' => Http::response('<html lang="pt-PT"><body>Portugal</body></html>', 200),
+                default => Http::response('not stubbed', 404),
+            };
+        });
 
         $site = $this->makeSite([
             'domain' => 'example.com',
@@ -390,9 +409,6 @@ class SiteEnrichmentTest extends TestCase
         $this->assertTrue(blank($site->country));
         $this->assertTrue(empty($site->countries));
 
-        Http::fake([
-            '*' => Http::response('<html lang="en"><body>English .com</body></html>', 200),
-        ]);
         $english = $this->makeSite([
             'site_name' => 'English Com',
             'domain' => 'english-com.example.com',
@@ -403,6 +419,28 @@ class SiteEnrichmentTest extends TestCase
         $detector->detectAndApply($english);
         $english->refresh();
         $this->assertTrue(blank($english->country), 'lang=en must not stamp United States');
+
+        $british = $this->makeSite([
+            'site_name' => 'British Com',
+            'domain' => 'british-com.example.com',
+            'site_url' => 'https://british-com.example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($british);
+        $british->refresh();
+        $this->assertSame('gb', $british->country);
+
+        $portugal = $this->makeSite([
+            'site_name' => 'Portugal Com',
+            'domain' => 'portugal-com.example.com',
+            'site_url' => 'https://portugal-com.example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($portugal);
+        $portugal->refresh();
+        $this->assertSame('pt', $portugal->country);
     }
 
     public function test_country_detection_does_not_overwrite_existing_country(): void
@@ -417,6 +455,22 @@ class SiteEnrichmentTest extends TestCase
         $site->refresh();
 
         $this->assertSame('de', $site->country);
+    }
+
+    public function test_blank_countries_values_do_not_skip_tld_detection(): void
+    {
+        $site = $this->makeSite([
+            'domain' => 'news.de',
+            'site_url' => 'https://news.de',
+            'country' => '',
+            'countries' => ['', '  '],
+        ]);
+
+        app(CountryDetectionService::class)->detectAndApply($site);
+        $site->refresh();
+
+        $this->assertSame('de', $site->country);
+        $this->assertSame(['de'], $site->countries);
     }
 
     public function test_allow_api_overwrite_clears_manual_lock_without_queueing(): void

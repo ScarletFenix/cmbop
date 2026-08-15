@@ -60,6 +60,7 @@ class SiteEnrichmentService
 
             $run->update([
                 'status' => $result['errors'] && ! $snapshot->hasAnyMetric() ? 'failed' : 'success',
+                'provider' => $snapshot->provider ?: $run->provider,
                 'payload' => [
                     'dr' => $snapshot->domainRating,
                     'da' => $snapshot->domainAuthority,

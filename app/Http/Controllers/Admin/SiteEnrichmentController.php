@@ -63,14 +63,8 @@ class SiteEnrichmentController extends Controller
         try {
             $staleQuery = Site::query()
                 ->where('active', 1)
-                ->staleForEnrichment();
-
-            if (Site::hasSitesColumn('metrics_fetched_at')) {
-                $staleQuery->orderByRaw('metrics_fetched_at IS NULL DESC')
-                    ->orderBy('metrics_fetched_at');
-            } else {
-                $staleQuery->orderBy('id');
-            }
+                ->staleForEnrichment()
+                ->orderForStaleEnrichment();
 
             if (Schema::hasTable('site_enrichment_runs')) {
                 $staleQuery->with('latestEnrichmentRun');
@@ -309,7 +303,7 @@ class SiteEnrichmentController extends Controller
             $ids = Site::query()
                 ->where('active', 1)
                 ->staleForEnrichment()
-                ->orderBy('id')
+                ->orderForStaleEnrichment()
                 ->limit($limit)
                 ->pluck('id');
 

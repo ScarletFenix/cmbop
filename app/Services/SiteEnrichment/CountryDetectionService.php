@@ -26,8 +26,19 @@ class CountryDetectionService
      */
     public function detectAndApply(Site $site): ?string
     {
-        if (filled($site->country) || ! empty($site->countries)) {
-            return $site->country ?: (is_array($site->countries) ? ($site->countries[0] ?? null) : null);
+        $listed = [];
+        if (is_array($site->countries)) {
+            foreach ($site->countries as $candidate) {
+                if (is_scalar($candidate) && filled($candidate)) {
+                    $listed[] = strtolower(trim((string) $candidate));
+                }
+            }
+        }
+
+        if (filled($site->country) || $listed !== []) {
+            return filled($site->country)
+                ? strtolower(trim((string) $site->country))
+                : $listed[0];
         }
 
         $code = $this->fromTld((string) ($site->domain ?: $site->site_url));
@@ -85,8 +96,19 @@ class CountryDetectionService
             }
 
             $html = $response->body();
-            if (preg_match('/<html[^>]+lang=["\']([a-z]{2})(?:-[a-zA-Z]{2})?["\']/i', $html, $m)) {
+            if (preg_match('/<html[^>]+lang=["\']([a-z]{2})(?:-([a-zA-Z]{2}))?["\']/i', $html, $m)) {
                 $lang = strtolower($m[1]);
+                $region = isset($m[2]) && $m[2] !== '' ? strtolower($m[2]) : null;
+
+                // Prefer an explicit region (en-GB, pt-PT) over a language guess.
+                if ($region !== null) {
+                    if ($region === 'uk') {
+                        return 'gb';
+                    }
+                    if (isset($this->tldMap[$region])) {
+                        return $this->tldMap[$region];
+                    }
+                }
 
                 // Weak mapping from language to likely country (only when country missing).
                 return match ($lang) {
