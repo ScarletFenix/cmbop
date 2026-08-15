@@ -556,7 +556,8 @@ class BlogController extends Controller
             }
         }
 
-        if ($path === '' || str_contains($path, '..')) {
+        $path = rawurldecode($path);
+        if ($path === '' || str_contains($path, '..') || str_contains($path, '%')) {
             return null;
         }
 

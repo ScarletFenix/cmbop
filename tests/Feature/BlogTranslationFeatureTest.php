@@ -6,6 +6,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\GastbeitraegeEuropaBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
@@ -472,5 +473,24 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertSee('/de/blog/lokalisierter-beitrag', false)
             ->assertSee('/blog/localized-post', false)
             ->assertDontSee('/de/blog/localized-post', false);
+    }
+
+    public function test_english_sitemap_includes_de_primary_post_without_en_translation(): void
+    {
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $blog = Blog::query()->where('slug', GastbeitraegeEuropaBlogPost::SLUG)->firstOrFail();
+        $this->assertFalse(
+            $blog->translations()->where('locale', 'en')->exists(),
+            'Fixture must stay DE-only so the sitemap fallback is actually tested.'
+        );
+
+        $this->get('/sitemap-en.xml')
+            ->assertOk()
+            ->assertSee('/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
+
+        $this->get('/sitemap-de.xml')
+            ->assertOk()
+            ->assertSee('/de/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
     }
 }
