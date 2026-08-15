@@ -41,6 +41,45 @@
                 </div>
             </div>
 
+            @if($submission->moderationLog)
+                <div class="card border-0 shadow-sm mb-3">
+                    <div class="card-header bg-white"><strong>Moderation</strong></div>
+                    <div class="card-body small">
+                        <div class="mb-2">
+                            Current scan
+                            <a href="{{ route('admin.moderation.show', $submission->moderationLog) }}">#{{ $submission->moderationLog->id }}</a>
+                            · {{ $submission->moderationLog->categoryLabel() }}
+                            @if($submission->moderationLog->admin_override)
+                                <span class="badge bg-warning text-dark">Override</span>
+                            @endif
+                        </div>
+                        @if($submission->moderationLog->admin_notes)
+                            <p class="mb-2">{{ $submission->moderationLog->admin_notes }}</p>
+                        @endif
+                        @if(! $submission->moderationLog->passed && $submission->moderationLog->status === 'rejected')
+                            <form method="POST" action="{{ route('admin.moderation.override', $submission->moderationLog) }}"
+                                  data-slb-confirm="Approve this submission via admin override?"
+                                  data-slb-confirm-title="Override moderation?"
+                                  data-slb-confirm-text="Approve override"
+                                  data-slb-confirm-icon="warning">
+                                @csrf
+                                <textarea name="notes" class="form-control form-control-sm mb-2" rows="2" required minlength="3" maxlength="2000" placeholder="Why this article is allowed">{{ old_text('notes') }}</textarea>
+                                <button class="btn btn-sm btn-primary" type="submit">Approve override</button>
+                            </form>
+                        @elseif($submission->moderationLog->admin_override)
+                            <form method="POST" action="{{ route('admin.moderation.revert', $submission->moderationLog) }}"
+                                  data-slb-confirm="Re-check this article and drop the override?"
+                                  data-slb-confirm-title="Revert override?"
+                                  data-slb-confirm-text="Revert"
+                                  data-slb-confirm-icon="warning">
+                                @csrf
+                                <button class="btn btn-sm btn-outline-danger" type="submit">Revert override</button>
+                            </form>
+                        @endif
+                    </div>
+                </div>
+            @endif
+
             @if(($reasons['blocking'] ?? []) !== [] || ($reasons['advisory'] ?? []) !== [])
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-header bg-white"><strong>Evaluation reasons</strong></div>

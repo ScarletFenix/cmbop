@@ -90,7 +90,7 @@ class ContentLibraryController extends Controller
 
     public function show(ContentSubmission $submission)
     {
-        $submission->load(['user:id,name,email', 'orderItem.site', 'orderItems.site']);
+        $submission->load(['user:id,name,email', 'orderItem.site', 'orderItems.site', 'moderationLog.overrider:id,name,email']);
 
         return view('admin.content-library.show', [
             'submission' => $submission,

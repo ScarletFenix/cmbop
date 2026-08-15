@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -13,10 +14,13 @@ class ContentModerationLog extends Model
 
     public const STATUS_ERROR = 'error';
 
+    public const CATEGORY_CUSTOM = 'custom';
+
     protected $fillable = [
         'user_id',
         'order_id',
         'order_item_id',
+        'content_submission_id',
         'document_url',
         'document_id',
         'status',
@@ -64,6 +68,11 @@ class ContentModerationLog extends Model
         return $this->belongsTo(User::class);
     }
 
+    public function submission(): BelongsTo
+    {
+        return $this->belongsTo(ContentSubmission::class, 'content_submission_id');
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);
@@ -77,6 +86,78 @@ class ContentModerationLog extends Model
     public function overrider(): BelongsTo
     {
         return $this->belongsTo(User::class, 'overridden_by');
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeSkipped(Builder $query): Builder
+    {
+        return $query->where('signals->moderation_disabled', true);
+    }
+
+    /**
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeNotSkipped(Builder $query): Builder
+    {
+        return $query->where(function (Builder $inner) {
+            $inner->whereNull('signals')
+                ->orWhereNull('signals->moderation_disabled')
+                ->orWhere('signals->moderation_disabled', false);
+        });
+    }
+
+    public function categoryLabel(): string
+    {
+        $key = (string) ($this->detected_category ?? '');
+        if ($key === self::CATEGORY_CUSTOM) {
+            return 'Extra prohibited keywords';
+        }
+        if ($key === '') {
+            return '—';
+        }
+
+        $label = config('content_moderation.categories.'.$key.'.label');
+
+        return is_string($label) && $label !== '' ? $label : $key;
+    }
+
+    public function articleUrl(): ?string
+    {
+        $submissionId = $this->resolvedSubmissionId();
+        if ($submissionId) {
+            return route('admin.content-library.show', $submissionId);
+        }
+
+        $url = trim((string) $this->document_url);
+        if (preg_match('#^https?://#i', $url)) {
+            return $url;
+        }
+
+        return null;
+    }
+
+    public function articleUrlIsExternal(): bool
+    {
+        $url = $this->articleUrl();
+
+        return is_string($url) && preg_match('#^https?://#i', $url) === 1;
+    }
+
+    public function resolvedSubmissionId(): ?int
+    {
+        if ($this->content_submission_id) {
+            return (int) $this->content_submission_id;
+        }
+
+        if (preg_match('/^upload:(\d+)$/', (string) $this->document_url, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
     }
 
     public function isUsableApproval(int $withinSeconds = 900): bool

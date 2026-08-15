@@ -5,22 +5,86 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
+use App\Services\ActivityLogger;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Support\PhpIniSize;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Validation\Rule;
+use Illuminate\View\View;
 
 class ContentModerationController extends Controller
 {
-    public function index(ContentModerationService $moderation, ContentUploadService $uploads)
+    public function index(Request $request, ContentModerationService $moderation, ContentUploadService $uploads): View
     {
         $cfg = $moderation->effectiveConfig();
         $uploadCfg = $uploads->effectiveConfig();
         $stats = $moderation->adminStats();
-        $logs = ContentModerationLog::query()
-            ->with('user')
-            ->latest('id')
-            ->paginate(25);
+
+        $status = strtolower(trim(scalar_text($request->query('status', 'all'))));
+        if (! in_array($status, ['all', 'approved', 'rejected', 'error', 'skipped', 'overridden'], true)) {
+            $status = 'all';
+        }
+        $search = search_text($request->query('q'));
+        $category = strtolower(trim(scalar_text($request->query('category', 'all'))));
+        $from = scalar_text($request->query('from', ''));
+        $to = scalar_text($request->query('to', ''));
+
+        $query = ContentModerationLog::query()
+            ->with(['user:id,name,email', 'submission:id,title,original_filename,user_id,moderation_status'])
+            ->latest('id');
+
+        if ($status === 'approved') {
+            $query->where('status', ContentModerationLog::STATUS_APPROVED)
+                ->notSkipped()
+                ->where('admin_override', false);
+        } elseif ($status === 'rejected') {
+            $query->where('status', ContentModerationLog::STATUS_REJECTED);
+        } elseif ($status === 'error') {
+            $query->where('status', ContentModerationLog::STATUS_ERROR);
+        } elseif ($status === 'skipped') {
+            $query->skipped();
+        } elseif ($status === 'overridden') {
+            $query->where('admin_override', true);
+        }
+
+        if ($search !== '') {
+            $like = like_contains($search);
+            $query->where(function ($q) use ($like, $search) {
+                $q->where('document_url', 'like', $like)
+                    ->orWhere('detected_category', 'like', $like)
+                    ->orWhere('error_message', 'like', $like)
+                    ->orWhereHas('user', function ($u) use ($like) {
+                        $u->where('email', 'like', $like)->orWhere('name', 'like', $like);
+                    });
+                if (ctype_digit($search)) {
+                    $q->orWhere('id', (int) $search)
+                        ->orWhere('content_submission_id', (int) $search);
+                }
+            });
+        }
+
+        if ($category !== '' && $category !== 'all') {
+            $query->where('detected_category', $category);
+        }
+
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) {
+            $query->whereDate('created_at', '>=', $from);
+        } else {
+            $from = '';
+        }
+        if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $to)) {
+            $query->whereDate('created_at', '<=', $to);
+        } else {
+            $to = '';
+        }
+
+        $page = (int) scalar_text($request->query('page', 1));
+        if ($page < 1) {
+            $page = 1;
+        }
+        $logs = $query->paginate(25, ['*'], 'page', $page)->withQueryString();
 
         $phpUploadMaxKb = PhpIniSize::uploadMaxKilobytes();
         $articleUploadMaxKb = $uploads->effectiveMaxKilobytes($uploadCfg);
@@ -30,8 +94,8 @@ class ContentModerationController extends Controller
         $exceptions = ContentModerationSetting::getValue('exceptions', []) ?: [];
         $disabledCategories = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
         $enabledCategories = ContentModerationSetting::getValue('enabled_categories', []) ?: [];
-        // What the scanner will actually apply, not what the config file says.
         $activeCategories = $moderation->activeCategories();
+        $builtinExceptions = $this->builtinExceptionPhrases();
 
         return view('admin.moderation.index', compact(
             'cfg',
@@ -46,11 +110,29 @@ class ContentModerationController extends Controller
             'phpUploadMaxKb',
             'articleUploadMaxKb',
             'phpBlocksArticleUploads',
+            'status',
+            'search',
+            'category',
+            'from',
+            'to',
+            'builtinExceptions',
         ));
     }
 
-    public function updateSettings(Request $request)
+    public function show(ContentModerationLog $log, ContentModerationService $moderation): View
     {
+        $log->load(['user:id,name,email', 'submission.user:id,name,email', 'overrider:id,name,email']);
+
+        return view('admin.moderation.show', [
+            'log' => $log,
+            'submission' => $moderation->submissionForLog($log),
+            'report' => $moderation->publicReport($log),
+        ]);
+    }
+
+    public function updateSettings(Request $request): RedirectResponse
+    {
+        $allCats = array_keys(config('content_moderation.categories', []));
         $data = $request->validate([
             'enabled' => ['sometimes', 'boolean'],
             'confidence_threshold' => ['required', 'integer', 'min:1', 'max:99'],
@@ -59,7 +141,7 @@ class ContentModerationController extends Controller
             'extra_keywords' => ['nullable', 'string'],
             'exceptions' => ['nullable', 'string'],
             'categories' => ['nullable', 'array'],
-            'categories.*' => ['string'],
+            'categories.*' => ['string', Rule::in($allCats)],
             'allowed_extensions' => ['nullable', 'string'],
             'max_kilobytes' => ['nullable', 'integer', 'min:10240', 'max:10240'],
             'scheduling_enabled' => ['sometimes', 'boolean'],
@@ -68,6 +150,10 @@ class ContentModerationController extends Controller
             'retention_months' => ['nullable', 'integer', 'min:1', 'max:24'],
             'min_uniqueness' => ['nullable', 'integer', 'min:0', 'max:100'],
         ]);
+
+        $wasEnabled = (bool) ((ContentModerationSetting::getValue('config_override', []) ?: [])['enabled']
+            ?? config('content_moderation.enabled', true));
+        $previousDisabled = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
 
         $override = ContentModerationSetting::getValue('config_override', []) ?: [];
         $override['enabled'] = $request->boolean('enabled');
@@ -83,7 +169,6 @@ class ContentModerationController extends Controller
         ContentModerationSetting::setValue('extra_keywords', $keywords);
         ContentModerationSetting::setValue('exceptions', $exceptions);
 
-        $allCats = array_keys(config('content_moderation.categories', []));
         $selected = $data['categories'] ?? [];
         $disabled = array_values(array_diff($allCats, $selected));
         $enabled = array_values(array_intersect($allCats, $selected));
@@ -91,7 +176,6 @@ class ContentModerationController extends Controller
         ContentModerationSetting::setValue('enabled_categories', $enabled);
 
         $uploadOverride = ContentModerationSetting::getValue('upload_config', []) ?: [];
-        // Platform policy: Microsoft Word (.docx) only.
         $uploadOverride['allowed_extensions'] = ['docx'];
         $uploadOverride['preferred_extension'] = 'docx';
         $uploadOverride['enabled'] = $request->boolean('uploads_enabled');
@@ -107,25 +191,43 @@ class ContentModerationController extends Controller
 
         ContentModerationSetting::clearCache();
 
+        try {
+            ActivityLogger::log(
+                'moderation.settings_updated',
+                ($request->user()?->name ?? 'Admin').' updated content moderation settings',
+                null,
+                [
+                    'enabled' => $request->boolean('enabled'),
+                    'was_enabled' => $wasEnabled,
+                    'confidence_threshold' => (int) $data['confidence_threshold'],
+                    'disabled_categories' => $disabled,
+                    'previous_disabled_categories' => is_array($previousDisabled) ? array_values($previousDisabled) : [],
+                    'extra_keyword_count' => count($keywords),
+                    'uploads_enabled' => $request->boolean('uploads_enabled'),
+                ]
+            );
+        } catch (\Throwable) {
+        }
+
         return back()->with('success', 'Moderation and content upload settings saved.');
     }
 
-    public function override(Request $request, ContentModerationLog $log)
+    public function override(Request $request, ContentModerationLog $log, ContentModerationService $moderation): RedirectResponse
     {
         $data = $request->validate([
-            'notes' => ['nullable', 'string', 'max:2000'],
+            'notes' => ['required', 'string', 'min:3', 'max:2000'],
         ]);
 
-        $log->update([
-            'passed' => true,
-            'status' => ContentModerationLog::STATUS_APPROVED,
-            'admin_override' => true,
-            'overridden_by' => auth()->id(),
-            'overridden_at' => now(),
-            'admin_notes' => $data['notes'] ?? null,
-        ]);
+        $result = $moderation->applyAdminOverride($log, $request->user(), trim($data['notes']));
 
-        return back()->with('success', 'Submission overridden as approved. Advertiser may resubmit the same link.');
+        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+    }
+
+    public function revert(Request $request, ContentModerationLog $log, ContentModerationService $moderation): RedirectResponse
+    {
+        $result = $moderation->revertAdminOverride($log, $request->user());
+
+        return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
     }
 
     /**
@@ -137,5 +239,26 @@ class ContentModerationController extends Controller
         $parts = array_map(fn ($p) => trim($p), $parts);
 
         return array_values(array_filter($parts, fn ($p) => $p !== ''));
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function builtinExceptionPhrases(): array
+    {
+        $out = [];
+        foreach (config('content_moderation.exceptions', []) as $key => $value) {
+            if (is_int($key) && is_string($value) && trim($value) !== '') {
+                $out[] = $value;
+            } elseif (is_string($key) && is_array($value)) {
+                foreach ($value as $phrase) {
+                    if (is_string($phrase) && trim($phrase) !== '') {
+                        $out[] = $phrase;
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($out));
     }
 }

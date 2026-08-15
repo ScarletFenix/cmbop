@@ -212,6 +212,7 @@ class ArticleEvaluationService
             user: $user ?? $submission->user,
             title: $title,
             links: $linkUrls,
+            contentSubmissionId: (int) $submission->id,
         );
 
         // 2) Quality heuristics (advisory)
