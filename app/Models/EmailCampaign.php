@@ -334,6 +334,10 @@ class EmailCampaign extends Model
     /**
      * Recover used to dispatch without bumping updated_at, so a backed-up
      * emails queue made every page view / drain enqueue another send job.
+     *
+     * The send job used to ride `queue.default` while this check only looked
+     * at MAIL_QUEUE_CONNECTION. Scan both so a mismatch cannot flood.
+     * Database-queue rows JSON-escape the serialized command.
      */
     protected static function hasQueuedSendJob(int $campaignId): bool
     {
@@ -341,8 +345,8 @@ class EmailCampaign extends Model
             return false;
         }
 
-        foreach (self::sendJobQueueConnections() as $connection) {
-            try {
+        try {
+            foreach (self::sendJobQueueConnections() as $connection) {
                 if ($connection === 'sync'
                     || config("queue.connections.{$connection}.driver") !== 'database') {
                     continue;
@@ -380,8 +384,8 @@ class EmailCampaign extends Model
     protected static function sendJobQueueConnections(): array
     {
         return array_values(array_unique(array_filter([
-            (string) config('queue.default'),
             (string) config('email_notifications.queue_connection', config('queue.default')),
+            (string) config('queue.default'),
         ])));
     }
 

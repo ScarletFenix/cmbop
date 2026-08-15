@@ -3,11 +3,11 @@
 namespace Tests\Unit;
 
 use App\Support\MailJobPayload;
-use Tests\TestCase;
+use PHPUnit\Framework\TestCase;
 
 class MailJobPayloadTest extends TestCase
 {
-    public function test_contains_send_campaign_job_matches_json_escaped_payload(): void
+    public function test_contains_send_campaign_job_matches_escaped_and_raw_payloads(): void
     {
         $raw = 'O:32:"App\\Jobs\\SendEmailCampaignJob":1:{s:10:"campaignId";i:12;}';
         $json = json_encode([

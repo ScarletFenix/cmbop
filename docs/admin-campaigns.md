@@ -75,8 +75,12 @@ or marketing, even if that staff account also has a marketplace role.
    job — a stale unique lock silently drops the only dispatch. The `queued` →
    `sending` claim plus per-row `pending` → `queued` is the mutex. Send
    hydrates `id`+`email` only (`collectRecipientRows` via
-   `queryForAudienceKey`) so a large audience cannot OOM the compose
-   request and a new inventory key cannot count N then send nobody.
+   `recipientBuilder` / `queryForAudienceKey`) so a large audience cannot
+   OOM the compose request and a new inventory key cannot count N then
+   send nobody. A live user email that is blank or whitespace is failed
+   at send instead of `Mail::to('')`. Email Center retry of a failed
+   campaign mailable clears `email_log_id` so a lost retry can still
+   expire as stale.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).
