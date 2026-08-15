@@ -230,6 +230,7 @@ class EmailCampaign extends Model
     protected static function recoverStalledLocked(int $staleMinutes): int
     {
         self::reconcileQueuedRecipientsFromLogs($staleMinutes);
+        self::syncQueuedRecipientsWithAttachedLogs();
         self::expireOrphanedQueuedRecipients();
 
         $stale = now()->subMinutes(max(1, $staleMinutes));
@@ -245,6 +246,17 @@ class EmailCampaign extends Model
                         ->where('updated_at', '<=', $stale);
                 })->orWhere(function ($sentLie) use ($stale) {
                     $sentLie->where('status', self::STATUS_SENT)
+                        ->where('updated_at', '<=', $stale)
+                        ->whereHas('recipients', function ($recipients) {
+                            $recipients->whereIn('status', [
+                                EmailCampaignRecipient::STATUS_PENDING,
+                                EmailCampaignRecipient::STATUS_QUEUED,
+                            ]);
+                        });
+                })->orWhere(function ($failedLie) use ($stale) {
+                    // Give-up / markFailed wipe leftover pending but leave
+                    // queued claims. Those orphans were invisible to recover.
+                    $failedLie->where('status', self::STATUS_FAILED)
                         ->where('updated_at', '<=', $stale)
                         ->whereHas('recipients', function ($recipients) {
                             $recipients->whereIn('status', [
@@ -268,6 +280,26 @@ class EmailCampaign extends Model
                 if ($campaign->status !== self::STATUS_SENDING) {
                     continue;
                 }
+            }
+
+            if ($campaign->status === self::STATUS_FAILED && $campaign->hasInFlightRecipients()) {
+                $hasPending = $campaign->recipients()
+                    ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+                    ->exists();
+                if (! $hasPending) {
+                    $released = self::reclaimOrphanedQueuedRecipients($campaign);
+                    if ($released === 0) {
+                        $campaign->touch();
+
+                        continue;
+                    }
+                    $campaign->clearFailStreak();
+                }
+                $campaign->update([
+                    'status' => self::STATUS_SENDING,
+                    'sent_at' => null,
+                ]);
+                $campaign->refresh();
             }
 
             if ($campaign->status === self::STATUS_SENDING
@@ -380,17 +412,20 @@ class EmailCampaign extends Model
         $sawUnscoped = false;
         $prefix = 'audience_campaign:'.$campaignId.':user:';
 
+        $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
+        $mailDriver = (string) config("queue.connections.{$mail}.driver");
+        if ($mail !== '' && $mail !== 'sync' && $mailDriver !== 'sync' && $mailDriver !== '' && $mailDriver !== 'database') {
+            // Mailables ride the mail connection. Redis/SQS there cannot
+            // be inspected, so do not reclaim. An unused redis
+            // queue.default must not block a healthy database mail queue.
+            return null;
+        }
+
         foreach (self::sendJobQueueConnections() as $connection) {
             try {
                 $driver = (string) config("queue.connections.{$connection}.driver");
-                if ($connection === 'sync' || $driver === 'sync' || $driver === '') {
+                if ($connection === 'sync' || $driver === 'sync' || $driver === '' || $driver !== 'database') {
                     continue;
-                }
-
-                if ($driver !== 'database') {
-                    // Redis/SQS cannot be inspected here. Leave queued
-                    // rows alone so a live mailable is not sent twice.
-                    return null;
                 }
 
                 $table = (string) config("queue.connections.{$connection}.table", 'jobs');
@@ -689,6 +724,74 @@ class EmailCampaign extends Model
                 ]);
 
             $campaignIds[(int) $row->email_campaign_id] = true;
+        }
+
+        foreach (array_keys($campaignIds) as $id) {
+            static::query()->find($id)?->recountRecipientTotals();
+        }
+    }
+
+    /**
+     * A queued row that already has a delivered/failed log FK is finished.
+     * Expire and reclaim both require a null FK, so these sat queued forever
+     * on a failed campaign.
+     */
+    protected static function syncQueuedRecipientsWithAttachedLogs(): void
+    {
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())
+                || ! Schema::hasTable((new EmailLog)->getTable())) {
+                return;
+            }
+        } catch (\Throwable) {
+            return;
+        }
+
+        $rows = EmailCampaignRecipient::query()
+            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+            ->whereNotNull('email_log_id')
+            ->get(['id', 'email_campaign_id', 'email_log_id']);
+
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $logs = EmailLog::query()
+            ->whereIn('id', $rows->pluck('email_log_id')->unique()->filter()->all())
+            ->whereIn('status', [
+                EmailLog::STATUS_DELIVERED,
+                EmailLog::STATUS_FAILED,
+            ])
+            ->get()
+            ->keyBy('id');
+
+        if ($logs->isEmpty()) {
+            return;
+        }
+
+        $campaignIds = [];
+
+        foreach ($rows as $row) {
+            $log = $logs->get((int) $row->email_log_id);
+            if (! $log) {
+                continue;
+            }
+
+            $delivered = $log->status === EmailLog::STATUS_DELIVERED;
+            $updated = EmailCampaignRecipient::query()
+                ->whereKey($row->id)
+                ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                ->where('email_log_id', $log->id)
+                ->update([
+                    'status' => $delivered
+                        ? EmailCampaignRecipient::STATUS_DELIVERED
+                        : EmailCampaignRecipient::STATUS_FAILED,
+                    'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
+                ]);
+
+            if ($updated) {
+                $campaignIds[(int) $row->email_campaign_id] = true;
+            }
         }
 
         foreach (array_keys($campaignIds) as $id) {

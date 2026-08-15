@@ -57,9 +57,15 @@ or marketing, even if that staff account also has a marketplace role.
    and no `AudienceCampaignMail` on a database queue (timeout after the
    `pending` → `queued` claim, before `Mail::send()` inserted the job),
    recover reclaims them to `pending` and dispatches a send job. A
-   Redis/SQS mail queue, a missing `payload` column, or a mailable whose
+   Redis/SQS **mail** queue, a missing `payload` column, or a mailable whose
    user id cannot be parsed is fail-closed: the row stays queued so an
-   in-flight send is not doubled. A timeout after the last `pending` →
+   in-flight send is not doubled. An unused redis `queue.default` must not
+   block a healthy database mail queue. Give-up can leave a campaign
+   `failed` with leftover `queued` claims — recover now selects those too,
+   reclaims orphans, and puts the campaign back to `sending`. A queued row
+   that already has a delivered/failed log FK is synced to that log
+   (expire/reclaim both require a null FK, so those rows sat queued forever).
+   A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
