@@ -758,6 +758,116 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 
+    public function test_casino_anchor_only_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $submission->update(['anchor_text' => 'Best online casino bonus']);
+        $this->assertStringNotContainsString('casino', strtolower((string) $submission->fresh()->extracted_text));
+        $this->assertStringNotContainsString('casino', strtolower((string) $submission->fresh()->preview_html));
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_casino_detected_link_anchor_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $payload = is_array($submission->draft_payload) ? $submission->draft_payload : [];
+        $payload['detected_links'] = [
+            [
+                'anchor' => 'best software tools',
+                'url' => 'https://example.com/tools',
+            ],
+            [
+                'anchor' => 'Best online casino bonus',
+                'url' => 'https://example.com/offer',
+            ],
+        ];
+        $submission->update(['draft_payload' => $payload]);
+        $this->assertSame('best software tools', $submission->fresh()->anchor_text);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_casino_image_alt_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $body = (string) $submission->extracted_text;
+        $submission->update([
+            'preview_html' => '<p>'.$body.'</p><img src="/storage/hero.jpg" alt="Best online casino bonus">',
+        ]);
+        $this->assertStringNotContainsString('casino', strtolower((string) $submission->fresh()->extracted_text));
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_anchor_only_draft_save_after_override_revokes_approval(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'anchor_text' => 'Best online casino bonus',
+                'target_url' => 'https://example.com/tools',
+            ])
+            ->assertOk()
+            ->assertJsonPath('approved', false);
+
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_silent_casino_anchor_after_override_revokes_the_pass(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
+
+        $submission->refresh()->update([
+            'anchor_text' => 'Best online casino bonus',
+        ]);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     public function test_admin_mark_paid_blocks_a_silent_title_edit_and_keeps_the_reject(): void
     {
         $admin = $this->admin();
