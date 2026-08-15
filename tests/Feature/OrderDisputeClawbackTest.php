@@ -930,4 +930,69 @@ class OrderDisputeClawbackTest extends TestCase
             'amount' => 60,
         ]);
     }
+
+    public function test_releasing_a_clawed_line_does_not_steal_a_reused_library_article(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site);
+        $this->publisherWallet($publisher, 100);
+        $this->advertiserWallet($advertiser, 0);
+
+        $item = $order->items->first();
+        $article = $this->createApprovedSubmission($advertiser);
+        $article->forceFill([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ])->save();
+        $item->update(['content_submission_id' => $article->id]);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'The disputed placement was deleted after completion.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed removal.']
+        )->assertOk();
+
+        $this->assertNull($article->fresh()->order_id);
+
+        $reuse = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-REUSE-AFTER-CLAW',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $reuseItem = OrderItem::create([
+            'order_id' => $reuse->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/reused',
+            'content_submission_id' => $article->id,
+            'price' => 80,
+        ]);
+        $article->forceFill([
+            'order_id' => $reuse->id,
+            'order_item_id' => $reuseItem->id,
+        ])->save();
+
+        ContentSubmission::releaseAllForOrderItem((int) $item->id);
+
+        $this->assertSame($reuse->id, (int) $article->fresh()->order_id);
+        $this->assertSame($reuseItem->id, (int) $article->fresh()->order_item_id);
+    }
 }
