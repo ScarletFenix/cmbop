@@ -549,6 +549,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
         Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
         Route::get('/finance/ledger', [AdminFinanceController::class, 'ledger'])->name('finance.ledger');
+        Route::get('/finance/ledger/export', [AdminFinanceController::class, 'ledgerExport'])->name('finance.ledger.export');
         Route::get('/finance/users/{user}', [AdminFinanceController::class, 'user'])->name('finance.user');
         Route::post('/finance/wallets/{wallet}/clear-debt', [AdminFinanceController::class, 'clearDebt'])->name('finance.wallets.clear-debt');
 

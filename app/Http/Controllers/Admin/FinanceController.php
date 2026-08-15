@@ -8,12 +8,17 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Admin\FinanceOverviewService;
 use App\Services\Orders\OrderClawbackService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FinanceController extends Controller
 {
+    public const LEDGER_EXPORT_LIMIT = 10000;
+
     public function __construct(
         private FinanceOverviewService $finance,
     ) {}
@@ -23,6 +28,23 @@ class FinanceController extends Controller
      */
     public function index(Request $request)
     {
+        $userQuery = is_string($request->input('q')) ? trim($request->input('q')) : '';
+        $userMatches = collect();
+
+        if ($userQuery !== '') {
+            $redirect = $this->redirectToDossierIfUnique($userQuery);
+            if ($redirect) {
+                return $redirect;
+            }
+
+            if (strlen($userQuery) >= 2) {
+                $userMatches = $this->searchUsers($userQuery);
+                if ($userMatches->count() === 1) {
+                    return redirect()->route('admin.finance.user', $userMatches->first());
+                }
+            }
+        }
+
         $period = $this->finance->resolvePeriod(
             $request->get('period'),
             $request->get('date_from'),
@@ -36,6 +58,8 @@ class FinanceController extends Controller
             'periodKey' => $period['key'],
             'dateFrom' => $request->get('date_from'),
             'dateTo' => $request->get('date_to'),
+            'userQuery' => $userQuery,
+            'userMatches' => $userMatches,
         ]);
     }
 
@@ -44,53 +68,83 @@ class FinanceController extends Controller
      */
     public function ledger(Request $request)
     {
-        $query = WalletTransaction::with(['user:id,name,email', 'wallet:id,role_id'])
-            ->latest();
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        $userId = (int) $request->input('user_id');
+        $ledgerUser = $userId > 0
+            ? User::query()->whereKey($userId)->first(['id', 'name', 'email'])
+            : null;
 
-        if ($request->filled('type')) {
-            $query->where('type', $request->type);
-        }
-        if ($request->filled('direction')) {
-            $query->where('direction', $request->direction);
-        }
-        if ($request->filled('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('reference', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('id', $search)
-                    ->orWhereHas('user', function ($sub) use ($search) {
-                        $sub->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
+        $transactions = $this->ledgerQuery($request)
+            ->with(['user:id,name,email', 'wallet:id,role_id'])
+            ->latest()
+            ->paginate(40)
+            ->withQueryString();
+
+        $types = $this->ledgerTypes();
+
+        return view('admin.finance-ledger', compact(
+            'transactions',
+            'types',
+            'search',
+            'ledgerUser'
+        ));
+    }
+
+    /**
+     * CSV of the current ledger filters (not the period summary).
+     */
+    public function ledgerExport(Request $request): StreamedResponse
+    {
+        $query = $this->ledgerQuery($request)->with(['user:id,name,email']);
+        $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'id',
+                'created_at',
+                'user_id',
+                'user_name',
+                'user_email',
+                'type',
+                'direction',
+                'amount',
+                'bonus_amount',
+                'balance_after',
+                'reference',
+                'description',
+            ]);
+
+            $exported = 0;
+            $query->chunkById(500, function ($rows) use ($out, &$exported) {
+                foreach ($rows as $tx) {
+                    if ($exported >= self::LEDGER_EXPORT_LIMIT) {
+                        return false;
+                    }
+                    fputcsv($out, [
+                        $tx->id,
+                        optional($tx->created_at)?->toDateTimeString(),
+                        $tx->user_id,
+                        $tx->user?->name,
+                        $tx->user?->email,
+                        $tx->type,
+                        $tx->direction,
+                        $tx->amount,
+                        $tx->bonus_amount,
+                        $tx->balance_after,
+                        $tx->reference,
+                        $tx->description,
+                    ]);
+                    $exported++;
+                }
+
+                return $exported < self::LEDGER_EXPORT_LIMIT;
             });
-        }
-        if ($request->filled('user_id')) {
-            $query->where('user_id', (int) $request->user_id);
-        }
-        if ($request->filled('date_from')) {
-            $query->whereDate('created_at', '>=', $request->date_from);
-        }
-        if ($request->filled('date_to')) {
-            $query->whereDate('created_at', '<=', $request->date_to);
-        }
 
-        $transactions = $query->paginate(40)->withQueryString();
-
-        $types = [
-            WalletTransaction::TYPE_DEPOSIT,
-            WalletTransaction::TYPE_BONUS_CREDIT,
-            WalletTransaction::TYPE_PURCHASE,
-            WalletTransaction::TYPE_REFUND,
-            WalletTransaction::TYPE_WITHDRAWAL,
-            WalletTransaction::TYPE_ADJUSTMENT,
-            WalletTransaction::TYPE_TRANSFER_OUT,
-            WalletTransaction::TYPE_TRANSFER_IN,
-            WalletTransaction::TYPE_ROLE_MOVE_OUT,
-            WalletTransaction::TYPE_ROLE_MOVE_IN,
-        ];
-
-        return view('admin.finance-ledger', compact('transactions', 'types'));
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     /**
@@ -165,5 +219,102 @@ class FinanceController extends Controller
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ledgerTypes(): array
+    {
+        return [
+            WalletTransaction::TYPE_DEPOSIT,
+            WalletTransaction::TYPE_BONUS_CREDIT,
+            WalletTransaction::TYPE_PURCHASE,
+            WalletTransaction::TYPE_REFUND,
+            WalletTransaction::TYPE_WITHDRAWAL,
+            WalletTransaction::TYPE_ADJUSTMENT,
+            WalletTransaction::TYPE_TRANSFER_OUT,
+            WalletTransaction::TYPE_TRANSFER_IN,
+            WalletTransaction::TYPE_ROLE_MOVE_OUT,
+            WalletTransaction::TYPE_ROLE_MOVE_IN,
+        ];
+    }
+
+    private function ledgerQuery(Request $request): Builder
+    {
+        $query = WalletTransaction::query();
+
+        $type = is_string($request->input('type')) ? $request->input('type') : '';
+        if ($type !== '' && in_array($type, $this->ledgerTypes(), true)) {
+            $query->where('type', $type);
+        }
+
+        $direction = is_string($request->input('direction')) ? $request->input('direction') : '';
+        if (in_array($direction, ['credit', 'debit'], true)) {
+            $query->where('direction', $direction);
+        }
+
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('id', $search)
+                    ->orWhereHas('user', function ($sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $userId = (int) $request->input('user_id');
+        if ($userId > 0) {
+            $query->where('user_id', $userId);
+        }
+
+        $dates = validator(
+            [
+                'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
+                'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
+            ],
+            [
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+            ]
+        )->valid();
+        if (! empty($dates['date_from'])) {
+            $query->whereDate('created_at', '>=', $dates['date_from']);
+        }
+        if (! empty($dates['date_to'])) {
+            $query->whereDate('created_at', '<=', $dates['date_to']);
+        }
+
+        return $query;
+    }
+
+    private function redirectToDossierIfUnique(string $userQuery): ?RedirectResponse
+    {
+        if (! ctype_digit($userQuery)) {
+            return null;
+        }
+
+        $user = User::query()->whereKey((int) $userQuery)->first();
+
+        return $user ? redirect()->route('admin.finance.user', $user) : null;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function searchUsers(string $userQuery)
+    {
+        return User::query()
+            ->where(function ($query) use ($userQuery) {
+                $query->where('name', 'like', '%'.$userQuery.'%')
+                    ->orWhere('email', 'like', '%'.$userQuery.'%');
+            })
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'email']);
     }
 }
