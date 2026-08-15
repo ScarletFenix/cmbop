@@ -158,6 +158,8 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString("staff_route('bulk-site-requests.done'", $blade);
         $this->assertStringContainsString('rejected_item_ids[]', $blade);
         $this->assertStringContainsString('function markRowRejected', $blade);
+        $this->assertStringContainsString('function doneFormReady', $blade);
+        $this->assertStringContainsString('rejected.length === 0 || noteOk', $blade);
         $this->assertStringNotContainsString('route(\'admin.bulk-site-requests.done\'', $blade);
     }
 
@@ -282,6 +284,33 @@ class BulkDoneRejectRowsTest extends TestCase
                 ));
 
             $this->assertDatabaseHas('bulk_site_request_items', ['id' => $items[0]->id]);
+            Mail::assertNothingQueued();
+        }
+    }
+
+    public function test_complete_plus_reject_without_note_does_not_seed_or_delete(): void
+    {
+        foreach ($this->staffActors() as [$prefix, $user]) {
+            Mail::fake();
+            [$bulk, $items] = $this->makeBulkWithItems(2, $prefix.'-mixnote');
+            [$keep, $drop] = $items;
+
+            $this->actingAs($user)
+                ->from(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->post(route($prefix.'.bulk-site-requests.done', $bulk), [
+                    'items' => $this->completeRow($keep),
+                    'rejected_item_ids' => [$drop->id],
+                ])
+                ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertSessionHasErrors('rejection_note')
+                ->assertSessionHas('error', fn ($message) => str_contains(
+                    (string) $message,
+                    'Add a note for the publisher about the removed sites'
+                ));
+
+            $this->assertDatabaseMissing('sites', ['domain' => $keep->domain]);
+            $this->assertDatabaseHas('bulk_site_request_items', ['id' => $drop->id]);
+            $this->assertNull($keep->fresh()->site_id);
             Mail::assertNothingQueued();
         }
     }

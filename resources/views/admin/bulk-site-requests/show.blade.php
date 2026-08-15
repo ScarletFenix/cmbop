@@ -779,15 +779,30 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         } catch (e) {}
     }
 
-    function syncDoneState() {
-        const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
+    function doneFormReady() {
         const complete = completeRows();
         const partial = partialRows();
         const rejected = rejectedIds();
         const noteOk = rejectionNoteOk();
-        const ready = partial.length === 0 && (
-            complete.length > 0 || (rejected.length > 0 && noteOk)
-        );
+        const hasWork = complete.length > 0 || rejected.length > 0;
+        const noteReady = rejected.length === 0 || noteOk;
+        return {
+            complete: complete,
+            partial: partial,
+            rejected: rejected,
+            noteOk: noteOk,
+            ready: partial.length === 0 && hasWork && noteReady,
+        };
+    }
+
+    function syncDoneState() {
+        const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
+        const state = doneFormReady();
+        const complete = state.complete;
+        const partial = state.partial;
+        const rejected = state.rejected;
+        const noteOk = state.noteOk;
+        const ready = state.ready;
         if (noteWrap) {
             noteWrap.classList.toggle('d-none', rejected.length === 0);
         }
@@ -901,13 +916,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             return;
         }
 
-        const complete = completeRows();
-        const partial = partialRows();
-        const rejected = rejectedIds();
-        const noteOk = rejectionNoteOk();
-        const ready = partial.length === 0 && (
-            complete.length > 0 || (rejected.length > 0 && noteOk)
-        );
+        const state = doneFormReady();
+        const complete = state.complete;
+        const partial = state.partial;
+        const rejected = state.rejected;
+        const noteOk = state.noteOk;
+        const ready = state.ready;
         if (!ready) {
             e.preventDefault();
             syncDoneState();

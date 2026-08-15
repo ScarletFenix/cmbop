@@ -250,7 +250,7 @@ class BulkSiteRequestController extends Controller
         $validator = Validator::make($request->all(), [
             'items' => 'nullable|array|max:'.$maxSites,
             'rejected_item_ids' => 'nullable|array|max:'.$maxSites,
-            'rejected_item_ids.*' => 'integer',
+            'rejected_item_ids.*' => 'nullable|integer',
             'rejection_note' => 'nullable|string|max:1000',
         ], [
             'items.max' => "You can Done at most {$maxSites} websites per submission (same limit as publisher bulk).",
