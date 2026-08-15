@@ -66,6 +66,10 @@ class WelcomeEmail extends PlatformMailable
      */
     protected function workspaceRole(): string
     {
+        if (EmailCatalog::isPreviewUser($this->user)) {
+            return 'advertiser';
+        }
+
         $active = strtolower((string) ($this->user->activeRole() ?? ''));
 
         if (in_array($active, ['publisher', 'advertiser'], true)) {
