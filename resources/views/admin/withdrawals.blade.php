@@ -238,6 +238,8 @@
 let currentPage = 1;
 let selectedIds = new Set();
 let lastDetailsCopyText = '';
+const withdrawalFlags = new Map();
+const duplicateLookbackDays = {{ max(1, (int) config('billing.withdrawal_mark_paid_duplicate_lookback_days', 30)) }};
 
 const csrfToken = document.querySelector('meta[name="csrf-token"]')?.content
     || '{{ csrf_token() }}';
@@ -387,6 +389,11 @@ function renderWithdrawals(withdrawals) {
         const actionable = w.status === 'pending' || w.status === 'processing';
         const checked = selectedIds.has(w.id) ? 'checked' : '';
         const copyEncoded = encodeURIComponent(w.destination_copy_text || '');
+        const matchIds = Array.isArray(w.duplicate_match_ids) ? w.duplicate_match_ids : [];
+        withdrawalFlags.set(w.id, {
+            possible_duplicate: !!w.possible_duplicate,
+            duplicate_match_ids: matchIds,
+        });
 
         html += `
             <tr data-id="${w.id}">
@@ -432,7 +439,9 @@ function renderWithdrawals(withdrawals) {
                             <li><button type="button" class="dropdown-item act-paid" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
                                 data-net="${parseFloat(w.net_amount).toFixed(2)}"
-                                data-method="${escapeHtml(w.payment_method)}"><i class="fa fa-check me-2"></i>Mark paid</button></li>
+                                data-method="${escapeHtml(w.payment_method)}"
+                                data-duplicate="${w.possible_duplicate ? '1' : '0'}"
+                                data-duplicate-ids="${escapeHtml(matchIds.map(function (id) { return 'WD-' + id; }).join(', '))}"><i class="fa fa-check me-2"></i>Mark paid</button></li>
                             <li><button type="button" class="dropdown-item text-danger act-reject" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
                                 data-amount="${parseFloat(w.amount).toFixed(2)}"><i class="fa fa-times me-2"></i>Reject</button></li>` : ''}
@@ -522,14 +531,21 @@ $(document).on('click', '.act-processing', async function() {
         });
 });
 
+function duplicateWarningHtml(matchRefs) {
+    if (!matchRefs) return '';
+    return `<br><span class="text-warning small">Same publisher was paid this net amount in the last ${duplicateLookbackDays} days (${escapeHtml(matchRefs)}). Confirm you are not paying twice.</span>`;
+}
+
 $(document).on('click', '.act-paid', async function() {
     const id = $(this).data('id');
     const name = $(this).data('name');
     const net = $(this).data('net');
     const method = $(this).data('method');
+    const isDuplicate = String($(this).data('duplicate') || '') === '1';
+    const matchRefs = $(this).attr('data-duplicate-ids') || '';
     const notes = await confirmNotes(
         'Mark paid?',
-        `Pay <strong>€${escapeHtml(String(net))}</strong> net to <strong>${escapeHtml(name)}</strong> via <strong>${escapeHtml(method)}</strong>?<br><span class="text-muted small">Only confirm after you sent the money outside the app.</span>`,
+        `Pay <strong>€${escapeHtml(String(net))}</strong> net to <strong>${escapeHtml(name)}</strong> via <strong>${escapeHtml(method)}</strong>?<br><span class="text-muted small">Only confirm after you sent the money outside the app.</span>${isDuplicate ? duplicateWarningHtml(matchRefs) : ''}`,
         'Yes, mark paid',
         ''
     );
@@ -600,26 +616,58 @@ $('#clearSelectionBtn').on('click', function() {
     updateBatchBar();
 });
 
-async function runBatch(action, title, confirmText, confirmClass) {
+function selectedDuplicateRefs() {
+    const refs = [];
+    selectedIds.forEach(function (id) {
+        const flag = withdrawalFlags.get(id);
+        if (flag && flag.possible_duplicate) {
+            refs.push('WD-' + id);
+        }
+    });
+    return refs;
+}
+
+async function runBatch(action, title, confirmText, confirmClass, options) {
     if (selectedIds.size === 0) return;
+    options = options || {};
+    const confirmDuplicates = !!options.confirmDuplicates;
+    const dupRefs = action === 'completed'
+        ? (options.duplicateRefs && options.duplicateRefs.length ? options.duplicateRefs : selectedDuplicateRefs())
+        : [];
+    const warn = (action === 'completed' && (confirmDuplicates || dupRefs.length))
+        ? duplicateWarningHtml(dupRefs.join(', ') || 'selected rows')
+        : '';
     const notes = await confirmNotes(
         title,
-        `Apply to <strong>${selectedIds.size}</strong> selected withdrawal(s).`,
+        `Apply to <strong>${selectedIds.size}</strong> selected withdrawal(s).${warn}`,
         confirmText,
         confirmClass
     );
     if (notes === null) return;
 
-    postAction('/admin/withdrawals/batch', {
+    const payload = {
         ids: Array.from(selectedIds),
         action,
         notes,
-    }).done(function(res) {
+    };
+    if (action === 'completed' && (confirmDuplicates || dupRefs.length)) {
+        payload.confirm_duplicates = 1;
+    }
+
+    postAction('/admin/withdrawals/batch', payload).done(function(res) {
         toast(res.message + (res.payout_run_id ? ' · ' + res.payout_run_id : ''));
         selectedIds.clear();
         refreshAll();
     }).fail(function(xhr) {
-        toast(xhr.responseJSON?.message || 'Batch failed', 'error');
+        const body = xhr.responseJSON || {};
+        if (action === 'completed' && xhr.status === 422 && body.needs_duplicate_confirm && !confirmDuplicates) {
+            runBatch(action, 'Possible duplicate payout', confirmText, confirmClass, {
+                confirmDuplicates: true,
+                duplicateRefs: (body.duplicate_ids || []).map(function (id) { return 'WD-' + id; }),
+            });
+            return;
+        }
+        toast(body.message || 'Batch failed', 'error');
         refreshAll();
     });
 }
@@ -768,6 +816,7 @@ $('#resetFiltersBtn').on('click', function() {
     $('#dateTo').val('');
     $('#searchInput').val('');
     selectedIds.clear();
+    withdrawalFlags.clear();
     loadWithdrawals(1);
 });
 

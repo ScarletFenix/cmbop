@@ -9,9 +9,12 @@ use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Services\Wallet\ManualWithdrawalUnknownWalletException;
+use App\Services\Wallet\WithdrawalDuplicatePayoutWarning;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -39,6 +42,7 @@ class AdminWithdrawalController extends Controller
             $withdrawals = $query->paginate(max(1, min($perPage, 100)));
 
             $invoiceLinks = app(AdminInvoiceLinks::class)->forWithdrawals($withdrawals->getCollection());
+            $this->attachDuplicateWarnings($withdrawals->getCollection());
 
             $withdrawals->getCollection()->transform(function ($withdrawal) use ($invoiceLinks) {
                 if (is_string($withdrawal->payment_details)) {
@@ -89,6 +93,7 @@ class AdminWithdrawalController extends Controller
             $invoice = app(AdminInvoiceLinks::class)->forWithdrawals(collect([$withdrawal]))->get((int) $withdrawal->id);
             $withdrawal->setAttribute('invoice', $invoice);
             $withdrawal->setAttribute('invoice_url', data_get($invoice, 'url'));
+            $this->attachDuplicateWarnings(collect([$withdrawal]));
 
             return response()->json([
                 'success' => true,
@@ -167,11 +172,20 @@ class AdminWithdrawalController extends Controller
             'ids.*' => 'integer|distinct',
             'action' => 'required|in:processing,completed,cancelled',
             'notes' => 'nullable|string|max:2000',
+            'confirm_duplicates' => 'sometimes|boolean',
         ]);
 
         $ids = $request->input('ids');
         $action = $request->input('action');
         $notes = $request->input('notes');
+
+        if ($action === 'completed' && ! $request->boolean('confirm_duplicates')) {
+            $blocked = $this->batchDuplicateBlock($ids);
+            if ($blocked !== null) {
+                return $blocked;
+            }
+        }
+
         $ok = 0;
         $failed = [];
 
@@ -338,6 +352,49 @@ class AdminWithdrawalController extends Controller
                 'message' => 'Failed to fetch statistics',
             ]);
         }
+    }
+
+    /**
+     * @param  Collection<int, Withdrawal>  $withdrawals
+     */
+    private function attachDuplicateWarnings($withdrawals): void
+    {
+        $map = app(WithdrawalDuplicatePayoutWarning::class)->matchIdsByWithdrawalId($withdrawals);
+
+        foreach ($withdrawals as $withdrawal) {
+            $ids = $map[(int) $withdrawal->id] ?? [];
+            $withdrawal->setAttribute('possible_duplicate', $ids !== []);
+            $withdrawal->setAttribute('duplicate_match_ids', $ids);
+        }
+    }
+
+    /**
+     * @param  list<int>  $ids
+     */
+    private function batchDuplicateBlock(array $ids): ?JsonResponse
+    {
+        $rows = Withdrawal::query()->whereIn('id', $ids)->get();
+        $map = app(WithdrawalDuplicatePayoutWarning::class)->matchIdsByWithdrawalId($rows);
+        $duplicateIds = [];
+        foreach ($map as $withdrawalId => $matchIds) {
+            if ($matchIds !== []) {
+                $duplicateIds[] = (int) $withdrawalId;
+            }
+        }
+
+        if ($duplicateIds === []) {
+            return null;
+        }
+
+        $refs = array_map(fn (int $id) => 'WD-'.$id, $duplicateIds);
+
+        return response()->json([
+            'success' => false,
+            'needs_duplicate_confirm' => true,
+            'message' => 'Possible duplicate payout: same publisher was paid this net amount recently ('.implode(', ', $refs).'). Confirm you are not paying twice.',
+            'duplicate_ids' => $duplicateIds,
+            'duplicate_match_ids' => $map,
+        ], 422);
     }
 
     /**
