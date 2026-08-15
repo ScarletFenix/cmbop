@@ -205,6 +205,62 @@ class ChatNotificationDeliveryTest extends TestCase
         $this->assertSame(0, DB::table('failed_jobs')->count());
     }
 
+    public function test_advertiser_chat_notifies_every_publisher_on_the_order(): void
+    {
+        Mail::fake();
+        $advertiser = $this->userWithRole('advertiser');
+        $firstPublisher = $this->userWithRole('publisher');
+        $secondPublisher = $this->userWithRole('publisher');
+        $order = $this->order($advertiser, $this->siteFor($firstPublisher));
+
+        $secondSite = Site::create([
+            'publisher_id' => $secondPublisher->id,
+            'site_name' => 'Second Chat Site',
+            'site_url' => 'https://chat-notify-2.example',
+            'domain' => 'chat-notify-2.example',
+            'da' => 28,
+            'dr' => 28,
+            'traffic' => 700,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '5 days',
+            'link_type' => 'dofollow',
+            'description' => 'Second publisher site',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $secondSite->id,
+            'site_name' => $secondSite->site_name,
+            'site_url' => $secondSite->site_url,
+            'price' => 40,
+            'content_link' => 'https://example.com/second.docx',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson('/chat/send/'.$order->id, ['message' => 'Update for both publishers.'])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertNotNull(InAppNotification::where('user_id', $firstPublisher->id)->latest('id')->first());
+        $this->assertNotNull(InAppNotification::where('user_id', $secondPublisher->id)->latest('id')->first());
+
+        Mail::assertQueued(
+            NewChatMessageNotification::class,
+            fn (NewChatMessageNotification $mail) => $mail->hasTo($firstPublisher->email)
+        );
+        Mail::assertQueued(
+            NewChatMessageNotification::class,
+            fn (NewChatMessageNotification $mail) => $mail->hasTo($secondPublisher->email)
+        );
+    }
+
     public function test_a_publisher_reply_notifies_the_advertiser(): void
     {
         Mail::fake();

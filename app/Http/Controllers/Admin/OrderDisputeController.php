@@ -24,12 +24,25 @@ class OrderDisputeController extends Controller
         ]);
 
         $order = Order::with('items')->findOrFail($orderId);
-        $item = $data['order_item_id'] ?? null
-            ? $order->items->firstWhere('id', (int) $data['order_item_id'])
-            : $order->items->first();
+        $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
+        if ($requestedItemId) {
+            $item = $order->items->firstWhere('id', $requestedItemId);
+        } else {
+            $candidates = $order->items->filter(
+                fn ($line) => $line instanceof OrderItem && $this->clawbacks->canOpenDispute($order, $line, asAdmin: true)
+            );
+            $item = $candidates->count() === 1
+                ? $candidates->first()
+                : ($order->items->count() === 1 ? $order->items->first() : null);
+        }
 
         if (! $item instanceof OrderItem) {
-            return response()->json(['success' => false, 'message' => 'Order item not found.'], 404);
+            return response()->json([
+                'success' => false,
+                'message' => $order->items->count() > 1
+                    ? 'Please choose which placement to dispute.'
+                    : 'Order item not found.',
+            ], $order->items->count() > 1 ? 422 : 404);
         }
 
         try {

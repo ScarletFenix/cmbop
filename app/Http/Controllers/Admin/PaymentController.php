@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\OrderPaymentConfirmed;
+use App\Models\ContentSubmission;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
@@ -142,7 +143,30 @@ class PaymentController extends Controller
             $order = Order::with('user')->where('id', $id)->lockForUpdate()->firstOrFail();
 
             $oldStatus = $order->payment_status;
-            $order->payment_status = $request->payment_status;
+            $newStatus = (string) $request->payment_status;
+
+            if ($newStatus === 'paid' && $oldStatus !== 'paid') {
+                if (in_array((string) $order->status, ['cancelled', 'completed'], true)
+                    || $oldStatus === 'refunded') {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.',
+                    ], 422);
+                }
+            }
+
+            if ($oldStatus === 'paid' && $newStatus === 'pending') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A paid payment cannot be moved back to pending. Mark it failed or refunded instead.',
+                ], 422);
+            }
+
+            $order->payment_status = $newStatus;
 
             if ($request->payment_status === 'paid' && ! $order->paid_at) {
                 $order->paid_at = now();
@@ -163,10 +187,21 @@ class PaymentController extends Controller
                 if ($order->status !== 'cancelled') {
                     $order->status = 'cancelled';
                 }
+                ContentSubmission::releaseAllForOrder((int) $order->id);
             }
 
-            if ($request->payment_status === 'failed' && $oldStatus === 'paid' && $order->payment_method === 'wallet') {
-                $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
+            if ($request->payment_status === 'failed' && $oldStatus === 'paid') {
+                if ($order->payment_method === 'wallet') {
+                    $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
+                } elseif (! in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+                    // Card / bank / wise: no reserved hold to release, but the
+                    // order must not stay processing/review as a failed payment.
+                    $order->status = 'cancelled';
+                }
+
+                if ($order->status === 'cancelled') {
+                    ContentSubmission::releaseAllForOrder((int) $order->id);
+                }
             }
 
             $order->save();

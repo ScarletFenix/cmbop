@@ -191,6 +191,9 @@ class PublisherReportsController extends Controller
                 ->whereHas('site', function ($q) use ($userId) {
                     $q->where('publisher_id', $userId);
                 })
+                ->whereHas('order', function ($q) {
+                    $q->where('payment_status', 'paid');
+                })
                 ->findOrFail($orderItemId);
 
             $payout = $orderItem->publisherPayoutAmount();

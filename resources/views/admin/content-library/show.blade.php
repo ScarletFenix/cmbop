@@ -13,7 +13,7 @@
             </p>
         </div>
         @if($submission->hasStoredFile())
-            <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.content-submissions.download', $submission) }}">
+            <a class="btn btn-sm btn-outline-secondary" href="{{ route('admin.content-library.download', $submission) }}">
                 Download .docx
             </a>
         @endif

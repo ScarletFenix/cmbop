@@ -162,12 +162,18 @@ class OrderController extends Controller
             ->map(fn (OrderActivity $a) => $a->toApiArray())
             ->values();
 
-        $item = $order->items->first();
-        $disputes = $item && OrderItemDispute::tableAvailable()
-            ? $item->disputes->sortByDesc('id')->values()
+        $clawbacks = app(OrderClawbackService::class);
+        $disputes = OrderItemDispute::tableAvailable()
+            ? $order->items
+                ->flatMap(fn (OrderItem $line) => $line->disputes ?? collect())
+                ->sortByDesc('id')
+                ->values()
             : collect();
         $openDispute = $disputes->first(fn (OrderItemDispute $d) => $d->isOpen());
-        $canOpenDispute = app(OrderClawbackService::class)->canOpenDispute($order, $item, asAdmin: true);
+        $disputableItems = $order->items
+            ->filter(fn (OrderItem $line) => $clawbacks->canOpenDispute($order, $line, asAdmin: true))
+            ->values();
+        $canOpenDispute = $disputableItems->isNotEmpty();
 
         $override = app(AdminOrderStatusOverride::class);
 
@@ -177,6 +183,7 @@ class OrderController extends Controller
             'messages' => $order->chatMessages,
             'disputes' => $disputes,
             'openDispute' => $openDispute,
+            'disputableItems' => $disputableItems,
             'canOpenDispute' => $canOpenDispute,
             'statusTargets' => $override->availableFor($order),
             'canOverrideStatus' => $override->isOverridable($order),

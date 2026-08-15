@@ -228,6 +228,30 @@ class HomepageSocialDeliveryTest extends TestCase
         $this->assertSame('https://delivery.example/article', $item->live_url);
     }
 
+    public function test_social_posts_endpoint_requires_paid_order(): void
+    {
+        $item = $this->makeProcessingItem([
+            'live_url' => 'https://delivery.example/article',
+            'live_url_submitted_at' => now(),
+        ]);
+        $item->order->update([
+            'status' => 'review',
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.social-posts', $item->id), [
+                'social_post_urls' => [
+                    'facebook' => 'https://www.facebook.com/posts/unpaid',
+                ],
+            ])
+            ->assertStatus(400)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($item->fresh()->social_post_urls);
+    }
+
     public function test_social_posts_endpoint_requires_live_url_first(): void
     {
         $item = $this->makeProcessingItem();

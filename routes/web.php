@@ -355,19 +355,14 @@ Route::post('/email/verification-notification', function (Request $request) {
 Route::post('/email/resend', function (Request $request) {
 
     $request->validate([
-        'email' => 'required|email|exists:users,email',
+        'email' => 'required|email',
     ]);
 
     $user = User::where('email', $request->email)->first();
 
-    if ($user->hasVerifiedEmail()) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Email already verified.',
-        ]);
+    if ($user && ! $user->hasVerifiedEmail()) {
+        $user->sendEmailVerificationNotification();
     }
-
-    $user->sendEmailVerificationNotification();
 
     return response()->json([
         'status' => 'success',
@@ -628,6 +623,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
         Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
         Route::get('/content-library/{submission}/preview', [AdminContentLibraryController::class, 'preview'])->name('content-library.preview');
+        Route::get('/content-library/{submission}/download', [AdminContentLibraryController::class, 'download'])->name('content-library.download');
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');

@@ -2,6 +2,7 @@
 
 namespace App\Services\Orders;
 
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\Wallet;
 use App\Services\Wallet\WalletLedgerService;
@@ -41,6 +42,8 @@ class OrderRefundService
                 'status' => 'cancelled',
                 'payment_status' => $refundable ? 'refunded' : null,
             ], fn ($value) => $value !== null));
+
+            ContentSubmission::releaseAllForOrder((int) $locked->id);
 
             if (! $refundable) {
                 return false;

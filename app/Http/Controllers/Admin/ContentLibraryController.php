@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentSubmission;
 use App\Services\ContentUpload\ArticlePreviewHtml;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Storage;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ContentLibraryController extends Controller
 {
@@ -99,6 +101,20 @@ class ContentLibraryController extends Controller
             'previewHtml' => ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? '')),
             'reasons' => $submission->evaluationReasonGroups(),
         ]);
+    }
+
+    public function download(ContentSubmission $submission): StreamedResponse
+    {
+        $disk = Storage::disk($submission->disk ?: 'local');
+        if (! $submission->path || ! $disk->exists($submission->path)) {
+            abort(404, 'File not found');
+        }
+
+        return $disk->download(
+            $submission->path,
+            $submission->original_filename ?: 'article.docx',
+            ['Content-Type' => $submission->mime ?: 'application/octet-stream']
+        );
     }
 
     public function preview(ContentSubmission $submission)

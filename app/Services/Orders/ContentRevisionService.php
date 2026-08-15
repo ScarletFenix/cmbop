@@ -165,17 +165,30 @@ class ContentRevisionService
         return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note, $orderItemId, $confirmExisting) {
             $lockedOrder = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
-            $itemQuery = OrderItem::query()
+            if ($lockedOrder->payment_status !== 'paid') {
+                throw ValidationException::withMessages([
+                    'order' => 'This order cannot be updated because payment is not complete.',
+                ]);
+            }
+
+            $openItems = OrderItem::query()
                 ->where('order_id', $lockedOrder->id)
                 ->where('content_revision_requested', 'yes')
                 ->orderBy('id')
-                ->lockForUpdate();
+                ->lockForUpdate()
+                ->get();
 
             if ($orderItemId) {
-                $itemQuery->whereKey($orderItemId);
+                $item = $openItems->firstWhere('id', $orderItemId);
+            } elseif ($openItems->count() === 1) {
+                $item = $openItems->first();
+            } elseif ($openItems->count() > 1) {
+                throw ValidationException::withMessages([
+                    'order_item_id' => 'Please choose which placement to send the revised article for.',
+                ]);
+            } else {
+                $item = null;
             }
-
-            $item = $itemQuery->first();
 
             if (! $item) {
                 throw ValidationException::withMessages([
