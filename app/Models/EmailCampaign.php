@@ -346,10 +346,11 @@ class EmailCampaign extends Model
         }
 
         foreach (self::sendJobQueueConnections() as $connection) {
-            if ($connection === 'sync'
-                || config("queue.connections.{$connection}.driver") !== 'database') {
-                continue;
-            }
+            try {
+                if ($connection === 'sync'
+                    || config("queue.connections.{$connection}.driver") !== 'database') {
+                    continue;
+                }
 
             try {
                 $table = (string) config("queue.connections.{$connection}.table", 'jobs');

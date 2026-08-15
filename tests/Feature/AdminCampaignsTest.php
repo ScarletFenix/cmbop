@@ -2178,6 +2178,68 @@ class AdminCampaignsTest extends TestCase
         $this->assertNull($row->fresh()->email_log_id);
     }
 
+    public function test_duplicate_campaign_send_closes_open_log_as_delivered(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Dedupe',
+            'subject' => 'Dedupe',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Dedupe',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now(),
+            'attempts' => 1,
+        ]);
+        $open = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Dedupe',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = $dedupe;
+        $mailable->to($advertiser->email);
+        $this->assertNull($mailable->send(app('mailer')));
+
+        $fresh = $open->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertNull($fresh->error);
+        $this->assertSame('duplicate', data_get($fresh->meta, 'suppressed'));
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_DELIVERED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+    }
+
     public function test_reconcile_prefers_delivered_log_over_a_newer_failed_row(): void
     {
         $admin = $this->makeUser('admin');
