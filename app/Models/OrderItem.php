@@ -130,6 +130,27 @@ class OrderItem extends Model
         return $this->hasOne(OrderItemDispute::class)->latestOfMany();
     }
 
+    /**
+     * Upheld dispute clawback already refunded this line. It must not keep
+     * claiming the Content Library article after order_id is released.
+     */
+    public function isClawedBack(): bool
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return false;
+        }
+
+        if ($this->relationLoaded('disputes')) {
+            return $this->disputes->contains(
+                fn (OrderItemDispute $dispute) => $dispute->status === OrderItemDispute::STATUS_UPHELD
+            );
+        }
+
+        return $this->disputes()
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->exists();
+    }
+
     public function site()
     {
         return $this->belongsTo(Site::class);

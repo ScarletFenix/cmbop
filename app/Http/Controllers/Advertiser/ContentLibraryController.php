@@ -91,7 +91,7 @@ class ContentLibraryController extends Controller
 
         $query = ContentSubmission::query()
             ->forLibraryList()
-            ->with(['order', 'orderItem.site', 'orderItems.site', 'orderItems.order'])
+            ->with(['order', 'orderItem.site', 'orderItems.site', 'orderItems.order', 'orderItems.disputes'])
             ->where('user_id', auth()->id())
             ->latest('id');
 
