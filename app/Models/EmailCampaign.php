@@ -4,10 +4,13 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class EmailCampaign extends Model
 {
     public const STATUS_DRAFT = 'draft';
+
+    public const STATUS_QUEUED = 'queued';
 
     public const STATUS_SENDING = 'sending';
 
@@ -46,17 +49,49 @@ class EmailCampaign extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function audienceLabel(): string
+    public function recipients(): HasMany
     {
-        return match ($this->audience) {
+        return $this->hasMany(EmailCampaignRecipient::class);
+    }
+
+    public function recountRecipientTotals(): void
+    {
+        $sent = $this->recipients()
+            ->whereIn('status', [
+                EmailCampaignRecipient::STATUS_QUEUED,
+                EmailCampaignRecipient::STATUS_DELIVERED,
+            ])
+            ->count();
+        $skipped = $this->recipients()
+            ->whereIn('status', [
+                EmailCampaignRecipient::STATUS_SKIPPED,
+                EmailCampaignRecipient::STATUS_FAILED,
+            ])
+            ->count();
+
+        $this->update([
+            'sent_count' => $sent,
+            'skipped_count' => $skipped,
+        ]);
+    }
+
+    public static function labelForAudience(?string $audience): string
+    {
+        return match ($audience) {
             'advertisers' => 'Advertisers',
             'publishers' => 'Publishers',
             'both' => 'Advertisers + Publishers',
-            'advertisers_no_orders' => 'Advertisers (no orders)',
+            'advertisers_no_orders', 'advertisers_never_checked_out' => 'Advertisers (never checked out)',
+            'advertisers_no_paid_orders' => 'Advertisers (no paid orders)',
             'publishers_no_sites' => 'Publishers (no sites)',
             'advertisers_never_deposited' => 'Advertisers (never deposited)',
             'selected' => 'Selected users',
-            default => ucfirst((string) $this->audience),
+            default => ucfirst((string) $audience),
         };
+    }
+
+    public function audienceLabel(): string
+    {
+        return self::labelForAudience($this->audience);
     }
 }

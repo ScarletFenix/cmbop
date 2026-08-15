@@ -2,11 +2,15 @@
 
 namespace App\Listeners;
 
+use App\Mail\AudienceCampaignMail;
 use App\Mail\PlatformMailable;
+use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Support\EmailCatalog;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Mailable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class LogSentEmail
@@ -59,7 +63,24 @@ class LogSentEmail
             $audience = config("email_notifications.types.{$notificationType}.audience");
         }
 
-        $payload = [
+        $logMeta = [
+            'mailer' => config('mail.default'),
+        ];
+        $campaignId = isset($meta['campaign_id']) ? (int) $meta['campaign_id'] : 0;
+        $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
+        if ($mailableInstance instanceof AudienceCampaignMail) {
+            $campaignId = $campaignId ?: (int) ($mailableInstance->campaign->id ?? 0);
+            $userId = $userId ?: (int) ($mailableInstance->recipient->id ?? 0);
+        }
+        if ($campaignId > 0) {
+            $logMeta['campaign_id'] = $campaignId;
+        }
+        if ($userId > 0) {
+            $logMeta['user_id'] = $userId;
+        }
+
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
             'mailable' => $mailable,
             'template_key' => $templateKey,
             'notification_type' => $notificationType ?: $templateKey,
@@ -70,27 +91,44 @@ class LogSentEmail
             'from_email' => $from['email'] ?? config('mail.from.address'),
             'subject' => $subject,
             'status' => EmailLog::STATUS_DELIVERED,
-            'error' => null,
-            'meta' => array_filter([
-                'mailer' => config('mail.default'),
-                'source' => $source,
-            ]),
+            'attempts' => 1,
+            'meta' => $logMeta,
             'sent_at' => now(),
-        ];
+        ]);
 
-        $existing = EmailLog::findOpenByDedupe($dedupeKey);
-        if ($existing) {
-            $existing->fill($payload);
-            $existing->attempts = max(1, (int) $existing->attempts) + 1;
-            $existing->save();
+        $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $log->id);
+    }
 
+    protected function markCampaignRecipientDelivered(int $campaignId, int $userId, int $logId): void
+    {
+        if ($campaignId < 1 || $userId < 1) {
             return;
         }
 
-        EmailLog::create(array_merge($payload, [
-            'uuid' => (string) Str::uuid(),
-            'attempts' => 1,
-        ]));
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return;
+            }
+
+            EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaignId)
+                ->where('user_id', $userId)
+                ->whereIn('status', [
+                    EmailCampaignRecipient::STATUS_PENDING,
+                    EmailCampaignRecipient::STATUS_QUEUED,
+                ])
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+                    'email_log_id' => $logId,
+                ]);
+        } catch (\Throwable $e) {
+            Log::warning('Campaign recipient log sync failed', [
+                'campaign_id' => $campaignId,
+                'user_id' => $userId,
+                'email_log_id' => $logId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function header($headers, string $name): ?string

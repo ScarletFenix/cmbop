@@ -25,6 +25,11 @@ return Application::configure(basePath: dirname(__DIR__))
         // behind Cloudflare/nginx (needed for Google OAuth redirect_uri HTTPS).
         $middleware->trustProxies(at: '*');
 
+        // Gmail List-Unsubscribe=One-Click POSTs have no CSRF token.
+        $middleware->validateCsrfTokens(except: [
+            'email/unsubscribe/*',
+        ]);
+
         // Public-site locale detection (SaaS dashboards stay English via SetLocale rules)
         // Security headers (CSP, HSTS, nosniff, frame, referrer) on every web response
         $middleware->appendToGroup('web', [

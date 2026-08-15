@@ -57,6 +57,7 @@ use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\EmailUnsubscribeController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\Marketing\PanelController as MarketingPanelController;
@@ -347,6 +348,12 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) 
     );
 })->middleware('throttle:6,1')->name('verification.verify');
 
+// Marketing unsubscribe (signed GET confirm + POST one-click). Same route name
+// so one signature works for both methods. CSRF is excepted for Gmail POSTs.
+Route::match(['get', 'post'], '/email/unsubscribe/{user}', EmailUnsubscribeController::class)
+    ->middleware('throttle:30,1')
+    ->name('email.unsubscribe');
+
 // Resend verification email (requires login)
 Route::post('/email/verification-notification', function (Request $request) {
     $request->user()->sendEmailVerificationNotification();
@@ -622,8 +629,15 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
         Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
         Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
-        Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])->name('campaigns.preview');
-        Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
+        Route::get('/campaigns/recipient-count', [AdminCampaignController::class, 'recipientCount'])
+            ->middleware('throttle:30,1')
+            ->name('campaigns.recipient-count');
+        Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])
+            ->middleware('throttle:20,1')
+            ->name('campaigns.preview');
+        Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])
+            ->middleware('throttle:6,1')
+            ->name('campaigns.send');
 
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');

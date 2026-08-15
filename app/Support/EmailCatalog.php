@@ -374,7 +374,7 @@ class EmailCatalog
             ],
             'audience_campaign' => [
                 'name' => 'Updates & Campaigns',
-                'description' => 'Admin-composed marketing / update email to a selected audience.',
+                'description' => 'Admin-composed marketing / update email to a selected audience, with a signed marketing unsubscribe footer.',
                 'category' => 'Growth',
                 'mailable' => AudienceCampaignMail::class,
                 'status' => 'active',

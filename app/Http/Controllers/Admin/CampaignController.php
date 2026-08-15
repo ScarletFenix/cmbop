@@ -3,29 +3,40 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
 use App\Models\EmailCampaign;
-use App\Models\EmailNotificationPreference;
+use App\Models\EmailCampaignRecipient;
+use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
+use App\Support\CampaignHtml;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 
 class CampaignController extends Controller
 {
     public function index(AudienceInventoryService $inventory)
     {
-        $stats = $inventory->stats();
+        $stats = $inventory->stats(includeUnverified: false);
         $campaigns = EmailCampaign::query()
             ->with('creator')
             ->latest('id')
             ->paginate(15);
 
-        $advertisers = $inventory->queryForRole('advertiser')->get(['id', 'name', 'email']);
-        $publishers = $inventory->queryForRole('publisher')->get(['id', 'name', 'email']);
+        $advertisers = $inventory->pickerUsers('advertiser');
+        $publishers = $inventory->pickerUsers('publisher');
+        $pickerCapped = $stats['advertisers'] > AudienceInventoryService::PICKER_LIMIT
+            || $stats['publishers'] > AudienceInventoryService::PICKER_LIMIT;
 
-        return view('admin.campaigns.index', compact('stats', 'campaigns', 'advertisers', 'publishers'));
+        return view('admin.campaigns.index', compact(
+            'stats',
+            'campaigns',
+            'advertisers',
+            'publishers',
+            'pickerCapped'
+        ));
     }
 
     public function preview(Request $request)
@@ -34,14 +45,14 @@ class CampaignController extends Controller
             'subject' => ['required', 'string', 'max:180'],
             'body_html' => ['required', 'string', 'max:20000'],
             'cta_label' => ['nullable', 'string', 'max:80'],
-            'cta_url' => ['nullable', 'url', 'max:500'],
+            'cta_url' => $this->ctaUrlRules(),
         ]);
 
         $campaign = new EmailCampaign([
             'subject' => $data['subject'],
-            'body_html' => $this->sanitizeBody($data['body_html']),
+            'body_html' => CampaignHtml::sanitize($data['body_html']),
             'cta_label' => $data['cta_label'] ?? null,
-            'cta_url' => $data['cta_url'] ?? null,
+            'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
             'audience' => 'selected',
         ]);
 
@@ -51,109 +62,139 @@ class CampaignController extends Controller
         return response($mailable->render());
     }
 
+    public function recipientCount(Request $request, AudienceInventoryService $inventory)
+    {
+        $data = $request->validate([
+            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
+            'user_ids' => ['nullable', 'array'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+            'include_unverified' => ['boolean'],
+        ]);
+
+        $includeUnverified = $request->boolean('include_unverified');
+        $ids = $data['user_ids'] ?? [];
+        $count = $inventory->count($data['audience'], $ids, $includeUnverified);
+        $unverifiedExcluded = 0;
+        if (! $includeUnverified) {
+            $unverifiedExcluded = max(0, $inventory->count($data['audience'], $ids, true) - $count);
+        }
+
+        return response()->json([
+            'count' => $count,
+            'label' => EmailCampaign::labelForAudience($data['audience']),
+            'unverified_excluded' => $unverifiedExcluded,
+        ]);
+    }
+
     public function send(Request $request, AudienceInventoryService $inventory)
     {
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:120'],
             'subject' => ['required', 'string', 'max:180'],
             'body_html' => ['required', 'string', 'max:20000'],
-            'audience' => ['required', Rule::in([
-                'advertisers',
-                'publishers',
-                'both',
-                'selected',
-                'advertisers_no_orders',
-                'publishers_no_sites',
-                'advertisers_never_deposited',
-            ])],
+            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
             'user_ids' => ['nullable', 'array'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'cta_label' => ['nullable', 'string', 'max:80'],
-            'cta_url' => ['nullable', 'url', 'max:500'],
-            'respect_preferences' => ['sometimes', 'boolean'],
+            'cta_url' => $this->ctaUrlRules(),
+            'respect_preferences' => ['boolean'],
+            'include_unverified' => ['boolean'],
         ]);
 
         if ($data['audience'] === 'selected' && empty($data['user_ids'])) {
             return back()->withInput()->with('error', 'Select at least one user for a custom audience.');
         }
 
-        $recipients = $inventory->collect($data['audience'], $data['user_ids'] ?? []);
+        $includeUnverified = $request->boolean('include_unverified');
+        $recipients = $inventory->collect($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
+            ->unique('id')
+            ->values();
         if ($recipients->isEmpty()) {
             return back()->withInput()->with('error', 'No recipients found for that audience.');
         }
 
-        $respectPrefs = $request->boolean('respect_preferences', true);
+        $respectPrefs = $request->boolean('respect_preferences');
+        $count = $recipients->count();
 
-        $campaign = EmailCampaign::create([
-            'name' => ($data['name'] ?? null) ?: $data['subject'],
-            'subject' => $data['subject'],
-            'body_html' => $this->sanitizeBody($data['body_html']),
-            'audience' => $data['audience'],
-            'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
-            'cta_label' => $data['cta_label'] ?? null,
-            'cta_url' => $data['cta_url'] ?? null,
-            'recipients_count' => $recipients->count(),
-            'status' => EmailCampaign::STATUS_SENDING,
-            'respect_preferences' => $respectPrefs,
-            'created_by' => auth()->id(),
-        ]);
+        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs) {
+            $campaign = EmailCampaign::create([
+                'name' => ($data['name'] ?? null) ?: $data['subject'],
+                'subject' => $data['subject'],
+                'body_html' => CampaignHtml::sanitize($data['body_html']),
+                'audience' => $data['audience'],
+                'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
+                'cta_label' => $data['cta_label'] ?? null,
+                'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
+                'recipients_count' => $count,
+                'sent_count' => 0,
+                'skipped_count' => 0,
+                'status' => EmailCampaign::STATUS_QUEUED,
+                'respect_preferences' => $respectPrefs,
+                'created_by' => auth()->id(),
+            ]);
 
-        $sent = 0;
-        $skipped = 0;
-
-        foreach ($recipients as $user) {
-            if ($respectPrefs && ! EmailNotificationPreference::allows($user, 'marketing_emails')) {
-                $skipped++;
-
-                continue;
-            }
-
-            try {
-                $mailable = new AudienceCampaignMail($campaign, $user);
-                $mailable->notificationType = 'audience_campaign';
-                $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$user->id;
-                $mailable->skipUserPreference = true; // already checked above
-
-                Mail::to($user->email)->send($mailable);
-                $sent++;
-            } catch (\Throwable $e) {
-                $skipped++;
-                Log::warning('Campaign send failed', [
-                    'campaign_id' => $campaign->id,
+            $now = now();
+            foreach ($recipients->chunk(200) as $chunk) {
+                EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
+                    'email_campaign_id' => $campaign->id,
                     'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
+                    'email' => $user->email,
+                    'status' => EmailCampaignRecipient::STATUS_PENDING,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ])->all());
             }
+
+            return $campaign;
+        });
+
+        try {
+            ActivityLogger::log(
+                'campaign.queued',
+                "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
+                $campaign,
+                [
+                    'audience' => $campaign->audience,
+                    'recipients' => $count,
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Campaign activity log failed', [
+                'campaign_id' => $campaign->id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
-        $campaign->update([
-            'sent_count' => $sent,
-            'skipped_count' => $skipped,
-            'status' => $sent > 0 ? EmailCampaign::STATUS_SENT : EmailCampaign::STATUS_FAILED,
-            'sent_at' => now(),
-        ]);
-
-        $msg = "Campaign sent to {$sent} recipient(s).";
-        if ($skipped > 0) {
-            $msg .= " Skipped {$skipped} (preferences or errors).";
-        }
+        SendEmailCampaignJob::dispatch($campaign->id);
 
         return redirect()
             ->route('admin.campaigns.index')
-            ->with($sent > 0 ? 'success' : 'error', $msg);
+            ->with('success', "Campaign queued for {$count} recipient(s).");
     }
 
-    protected function sanitizeBody(string $html): string
+    /**
+     * @return list<mixed>
+     */
+    protected function ctaUrlRules(): array
     {
-        // Allow basic formatting tags only
-        $allowed = '<p><br><strong><b><em><i><u><ul><ol><li><a><h1><h2><h3><blockquote>';
-        $clean = strip_tags($html, $allowed);
+        return [
+            'nullable',
+            'string',
+            'max:500',
+            function (string $attribute, mixed $value, \Closure $fail): void {
+                if (filled($value) && ! CampaignHtml::isSafeHttpUrl((string) $value)) {
+                    $fail('The CTA URL must be an http or https link.');
+                }
+            },
+        ];
+    }
 
-        // Ensure paragraphs if plain text
-        if (! str_contains($clean, '<')) {
-            $clean = '<p>'.nl2br(e($html)).'</p>';
+    protected function safeCtaUrl(?string $url): ?string
+    {
+        if (! filled($url)) {
+            return null;
         }
 
-        return $clean;
+        return CampaignHtml::isSafeHttpUrl($url) ? $url : null;
     }
 }
