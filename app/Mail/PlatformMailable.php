@@ -154,6 +154,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             'dedupe_key' => $this->dedupeKey,
             'audience' => property_exists($this, 'audience') ? $this->audience : null,
             'mailable' => static::class,
+            'source' => $this->forceSend ? 'email_center_test' : null,
         ];
         if (isset($this->campaign) && $this->campaign instanceof EmailCampaign && $this->campaign->id) {
             $meta['campaign_id'] = (int) $this->campaign->id;
