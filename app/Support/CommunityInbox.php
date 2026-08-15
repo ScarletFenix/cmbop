@@ -126,14 +126,33 @@ class CommunityInbox
         };
     }
 
+    public const PAGE_URL_MAX = 255;
+
     public static function safeHttpUrl(mixed $url): ?string
     {
         $url = search_text($url);
         if ($url === '' || ! preg_match('#^https?://#i', $url)) {
             return null;
         }
+        if (preg_match('/[\x00-\x1f\x7f\s]/', $url)) {
+            return null;
+        }
 
         return $url;
+    }
+
+    /**
+     * Persistable http(s) page URL, or null. The reports table is varchar(255);
+     * a longer Referer used to 500 the guest submit path.
+     */
+    public static function storedPageUrl(mixed $url): ?string
+    {
+        $safe = self::safeHttpUrl($url);
+        if ($safe === null || strlen($safe) > self::PAGE_URL_MAX) {
+            return null;
+        }
+
+        return $safe;
     }
 
     /**
@@ -178,8 +197,11 @@ class CommunityInbox
         if (is_int($raw)) {
             return max(0, $raw);
         }
-        if (is_string($raw) && is_numeric(trim($raw))) {
-            return max(0, (int) trim($raw));
+        if (is_string($raw)) {
+            $raw = trim($raw);
+            if ($raw !== '' && ctype_digit($raw)) {
+                return (int) $raw;
+            }
         }
 
         return 0;

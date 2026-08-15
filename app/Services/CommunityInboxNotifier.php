@@ -137,7 +137,7 @@ class CommunityInboxNotifier
             return;
         }
 
-        $note = 'Listing created: '.$site->domain;
+        $note = 'Listing created: '.$actual;
         $existing = trim((string) ($suggestion->admin_notes ?? ''));
 
         $affected = WebsiteSuggestion::query()
@@ -155,7 +155,10 @@ class CommunityInboxNotifier
             return;
         }
 
-        $this->notifySubmitterReviewed($suggestion->fresh(['user']), CommunityInbox::TAB_WEBSITES);
+        $fresh = $suggestion->fresh(['user']);
+        if ($fresh) {
+            $this->notifySubmitterReviewed($fresh, CommunityInbox::TAB_WEBSITES);
+        }
     }
 
     private function bellSubmitter(ProblemReport|Suggestion|WebsiteSuggestion $item, string $tab): void

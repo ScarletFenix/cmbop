@@ -73,6 +73,32 @@ class CommunityFeedbackTest extends TestCase
         ]);
     }
 
+    public function test_guest_problem_drops_an_oversized_or_unsafe_referer_instead_of_500ing(): void
+    {
+        $this->withHeaders([
+            'Referer' => 'https://app.example/'.str_repeat('a', 400),
+        ])->postJson(route('feedback.problem'), [
+            'name' => 'Guest User',
+            'email' => 'guest@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The checkout button does nothing on mobile.',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertDatabaseHas('problem_reports', [
+            'email' => 'guest@example.com',
+            'subject' => 'Checkout broken',
+            'page_url' => null,
+        ]);
+
+        $this->postJson(route('feedback.problem'), [
+            'name' => 'Guest User',
+            'email' => 'guest2@example.com',
+            'subject' => 'Too long page',
+            'message' => 'The checkout button does nothing on mobile.',
+            'page_url' => 'https://app.example/'.str_repeat('b', 400),
+        ])->assertStatus(422)->assertJsonValidationErrors(['page_url']);
+    }
+
     public function test_user_can_send_suggestion(): void
     {
         $user = $this->userWithRole('advertiser');
@@ -701,6 +727,57 @@ class CommunityFeedbackTest extends TestCase
 
         $this->assertSame('pending', $suggestion->fresh()->status);
         Mail::assertNothingQueued();
+    }
+
+    public function test_listing_handoff_uses_site_url_when_domain_is_blank(): void
+    {
+        Mail::fake();
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $suggestion = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Owned News Daily',
+            'website_url' => 'https://owned-news.example',
+            'domain' => 'owned-news.example',
+            'status' => 'pending',
+        ]);
+        $site = $this->siteFor($publisher);
+        $site->domain = '';
+
+        app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
+            (int) $suggestion->id,
+            $site,
+            $admin
+        );
+
+        $this->assertSame('accepted', $suggestion->fresh()->status);
+        $this->assertStringContainsString('Listing created: owned-news.example', (string) $suggestion->fresh()->admin_notes);
+    }
+
+    public function test_status_update_still_succeeds_when_submitter_notify_throws(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $report = ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $this->mock(CommunityInboxNotifier::class, function ($mock) {
+            $mock->shouldReceive('notifySubmitterReviewed')
+                ->once()
+                ->andThrow(new \RuntimeException('mail down'));
+        });
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame('resolved', $report->fresh()->status);
     }
 
     public function test_listing_handoff_accepts_a_rejected_suggestion_for_the_same_domain(): void

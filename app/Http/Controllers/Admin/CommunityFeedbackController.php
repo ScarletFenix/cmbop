@@ -12,6 +12,7 @@ use App\Services\CommunityInboxNotifier;
 use App\Services\SiteClaimTransferService;
 use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -298,7 +299,14 @@ class CommunityFeedbackController extends Controller
         );
 
         if ($leavingPending) {
-            $this->inboxNotifier->notifySubmitterReviewed($model->fresh(['user']), $tab);
+            try {
+                $this->inboxNotifier->notifySubmitterReviewed($model->fresh(['user']), $tab);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify community submitter: '.$e->getMessage(), [
+                    'tab' => $tab,
+                    'id' => $model->id,
+                ]);
+            }
         }
 
         return response()->json([
