@@ -522,6 +522,79 @@ class AdminOrderPaymentsOpsTest extends TestCase
         );
     }
 
+    public function test_admin_failed_releases_wallet_hold_when_order_already_cancelled(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 115,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'paid-cancel-wallet'), [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'cancelled',
+            'paid_at' => now(),
+            'total_amount' => 115,
+            'subtotal' => 115,
+            'reference_code' => 'PAY-PAID-CANCEL-WALLET',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(115.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_admin_failed_credits_cancelled_paid_card_order(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'paid-cancel-card'), [
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'cancelled',
+            'paid_at' => now(),
+            'total_amount' => 80,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
     public function test_wallet_refund_without_intent_restores_promo_in_the_hold(): void
     {
         $admin = $this->makeUser('admin');

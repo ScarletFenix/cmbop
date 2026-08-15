@@ -128,14 +128,21 @@ class OrderRefundService
             $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
         }
 
+        $ledgerAmount = $amount;
+
         if ($order->payment_method === 'wallet') {
-            if (round((float) $wallet->reserved_balance, 2) <= 0) {
+            $reservedBefore = round((float) $wallet->reserved_balance, 2);
+            if ($reservedBefore <= 0) {
                 return false;
             }
 
             $bonusReservedBefore = (float) $wallet->bonus_reserved;
             $wallet->refundReserved($amount, $bonusShare);
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
+            $ledgerAmount = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
+            if ($ledgerAmount <= 0) {
+                return false;
+            }
         } else {
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
@@ -151,11 +158,12 @@ class OrderRefundService
             if ($cashShare > 0) {
                 $wallet->credit($cashShare);
             }
+            $this->syncCheckoutBonusAfterLeftoverRestore($order, $bonusRestored);
         }
 
         $this->ledger->recordRefund(
             $wallet,
-            $amount,
+            $ledgerAmount,
             $bonusRestored,
             $order,
             $order->reference_code ?? $order->order_number
@@ -328,6 +336,42 @@ class OrderRefundService
         }
 
         return $share;
+    }
+
+    /**
+     * Keep this reference's leftover peek in sync after a card refund.
+     * A stale full peek plus another checkout's reserved bonus let a later
+     * unpaid fail dump the other checkout's promo.
+     */
+    private function syncCheckoutBonusAfterLeftoverRestore(Order $order, float $restored): void
+    {
+        $userId = (int) $order->user_id;
+        $reference = (string) ($order->reference_code ?? '');
+        if ($userId <= 0 || $reference === '') {
+            return;
+        }
+
+        $intents = app(CheckoutIntentService::class);
+        $openTotal = $this->openCheckoutSiblingTotal($userId, $reference, [(int) $order->id]);
+        if ($openTotal <= 0) {
+            $intents->takeBonus($userId, $reference);
+
+            return;
+        }
+
+        $reduce = $restored;
+        if ($reduce <= 0) {
+            $peek = $intents->peekBonus($userId, $reference);
+            $amount = round((float) $order->total_amount, 2);
+            $pool = round($amount + $openTotal, 2);
+            $reduce = ($peek > 0 && $pool > 0)
+                ? min($peek, max(0, round($peek * ($amount / $pool), 2)))
+                : 0.0;
+        }
+
+        if ($reduce > 0) {
+            $intents->decrementBonus($userId, $reference, $reduce);
+        }
     }
 
     /**

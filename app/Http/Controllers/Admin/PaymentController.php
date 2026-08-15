@@ -266,12 +266,14 @@ class PaymentController extends Controller
 
                 if ($order->payment_method === 'wallet') {
                     $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
-                } elseif (! in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+                } else {
                     // Collected card / bank / Wise: credit the advertiser wallet
-                    // the same way Refunded does. Failed used to cancel the
-                    // placement and release the article with €0 in-app credit.
+                    // the same way Refunded does. Failed used to skip already-
+                    // cancelled paid rows and leave captured money uncredited.
                     $refundAmount = $this->creditAdvertiserRefund($order);
-                    $order->status = 'cancelled';
+                    if ($order->status !== 'cancelled') {
+                        $order->status = 'cancelled';
+                    }
                 }
 
                 if ($order->status === 'cancelled') {
@@ -418,7 +420,7 @@ class PaymentController extends Controller
      */
     private function releaseWalletHoldOnAdminFailed(Order $order): float
     {
-        if (in_array((string) $order->status, ['completed', 'cancelled'], true)) {
+        if ((string) $order->status === 'completed') {
             return 0.0;
         }
 
@@ -474,12 +476,28 @@ class PaymentController extends Controller
             return 0.0;
         }
 
+        $reservedBefore = 0.0;
+        $wallet = null;
+        if ($order->payment_method === 'wallet') {
+            $advertiserRoleId = Wallet::advertiserRoleId();
+            if ($advertiserRoleId) {
+                $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
+                $reservedBefore = round((float) $wallet->reserved_balance, 2);
+            }
+        }
+
         app(OrderRefundService::class)->refundToAdvertiser(
             $order,
             $amount,
             'Admin refund',
             $this->bonusShareCapForRefund($order)
         );
+
+        if ($order->payment_method === 'wallet') {
+            $wallet?->refresh();
+
+            return max(0, round($reservedBefore - (float) ($wallet?->reserved_balance ?? 0), 2));
+        }
 
         return $amount;
     }
