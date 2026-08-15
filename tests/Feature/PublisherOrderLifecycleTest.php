@@ -11,6 +11,7 @@ use App\Models\Wallet;
 use App\Services\LiveUrlHealthChecker;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 /**
@@ -20,6 +21,7 @@ use Tests\TestCase;
  */
 class PublisherOrderLifecycleTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private User $publisher;
@@ -357,5 +359,48 @@ class PublisherOrderLifecycleTest extends TestCase
             ->assertJsonPath('success', false);
 
         $this->assertSame('https://lifecycle.example/original', $item->fresh()->live_url);
+    }
+
+    public function test_rejecting_a_paid_order_releases_the_content_library_article(): void
+    {
+        $item = $this->makeOrder('card', 'paid', 80);
+        $item->order->update(['status' => 'pending']);
+        $submission = $this->createApprovedSubmission($this->advertiser);
+        $submission->forceFill([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ])->save();
+        $item->update(['content_submission_id' => $submission->id]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.reject', $item->id), [
+                'reason' => 'We cannot publish this content right now, sorry.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $submission->refresh();
+        $this->assertNull($submission->order_id);
+        $this->assertNull($submission->order_item_id);
+        $this->assertTrue($submission->canBeOrdered());
+    }
+
+    public function test_publisher_cannot_accept_an_upcoming_scheduled_order(): void
+    {
+        $item = $this->makeOrder();
+        $item->order->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'UTC',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.accept', $item->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('pending', $item->order->fresh()->status);
+        $this->assertTrue($item->order->fresh()->isAwaitingScheduledRelease());
     }
 }

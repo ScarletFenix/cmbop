@@ -145,6 +145,8 @@ class PublisherTasksNeedsActionTest extends TestCase
         $this->assertStringContainsString('id="statProcessingOrders"', $blade);
         $this->assertStringContainsString('id="statReviewOrders"', $blade);
         $this->assertStringContainsString('value="scheduled"', $blade);
+        $this->assertStringContainsString('awaitingSchedule', $blade);
+        $this->assertStringContainsString('is_awaiting_scheduled_release', $blade);
         $this->assertFileExists(public_path('assets/css/publisher-tasks.css'));
         $css = file_get_contents(public_path('assets/css/publisher-tasks.css'));
         $this->assertStringContainsString('@media (max-width: 768px)', $css);

@@ -266,6 +266,11 @@ class StripeWebhookController extends Controller
             throw new \RuntimeException('No reference_code on order_payment PaymentIntent');
         }
 
+        $intentStatus = $intent->status ?? null;
+        if ($intentStatus !== 'succeeded') {
+            throw new \RuntimeException('order_payment PaymentIntent not succeeded: '.($intentStatus ?? 'missing'));
+        }
+
         $paymentService = app(OrderPaymentService::class);
         $newlyPaid = $paymentService->markOrdersPaidFromPaymentIntent($referenceCode, $intent);
 

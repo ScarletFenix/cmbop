@@ -6,6 +6,7 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\OrderPaymentConfirmed;
+use App\Models\ContentSubmission;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
@@ -177,6 +178,7 @@ class PaymentController extends Controller
                 if ($order->status !== 'cancelled') {
                     $order->status = 'cancelled';
                 }
+                ContentSubmission::releaseAllForOrder((int) $order->id);
             }
 
             if ($request->payment_status === 'failed' && $oldStatus === 'paid' && $order->payment_method === 'wallet') {

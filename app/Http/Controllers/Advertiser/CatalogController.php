@@ -4940,27 +4940,6 @@ class CatalogController extends Controller
 
     private function releaseContentSubmissionsForOrder(Order $order): void
     {
-        ContentSubmission::query()
-            ->where('order_id', $order->id)
-            ->get()
-            ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
-
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            return;
-        }
-
-        $linkedIds = OrderItem::query()
-            ->where('order_id', $order->id)
-            ->whereNotNull('content_submission_id')
-            ->pluck('content_submission_id')
-            ->all();
-
-        if ($linkedIds !== []) {
-            ContentSubmission::query()
-                ->whereIn('id', $linkedIds)
-                ->whereNotNull('order_id')
-                ->get()
-                ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
-        }
+        ContentSubmission::releaseAllForOrder((int) $order->id);
     }
 }

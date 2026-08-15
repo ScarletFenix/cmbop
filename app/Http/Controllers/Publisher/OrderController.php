@@ -460,6 +460,15 @@ class OrderController extends Controller
                 ], 400);
             }
 
+            if ($order->isAwaitingScheduledRelease()) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order is scheduled for later. Accept it after the publication date.',
+                ], 422);
+            }
+
             if ($order->status !== 'pending') {
                 DB::rollBack();
 
@@ -629,6 +638,8 @@ class OrderController extends Controller
                     ->resolveOrderCancelRefundAmount($order);
                 $refundProcessed = $this->refundAdvertiser($order, $orderAmount, $reason);
             }
+
+            ContentSubmission::releaseAllForOrder((int) $order->id);
 
             DB::commit();
 

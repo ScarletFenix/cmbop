@@ -265,6 +265,11 @@ class WalletStripeDepositService
      */
     public function creditFromPaymentIntentObject(object $intent): float
     {
+        $intentStatus = $intent->status ?? null;
+        if ($intentStatus !== 'succeeded') {
+            throw new \RuntimeException('wallet_deposit PaymentIntent not succeeded: '.($intentStatus ?? 'missing'));
+        }
+
         $metadata = $this->metaArray($intent->metadata ?? null);
         $type = isset($metadata['type']) ? (string) $metadata['type'] : null;
         if (! $this->isWalletDepositType($type, $metadata['deposit_id'] ?? null)) {

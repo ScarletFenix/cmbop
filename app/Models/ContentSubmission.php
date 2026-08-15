@@ -793,6 +793,42 @@ class ContentSubmission extends Model
         ])->save();
     }
 
+    /**
+     * Free every library article tied to an order (direct order_id or line link)
+     * so it can be placed again after cancel / reject / refund.
+     */
+    public static function releaseAllForOrder(int $orderId): void
+    {
+        if ($orderId <= 0) {
+            return;
+        }
+
+        static::query()
+            ->where('order_id', $orderId)
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return;
+        }
+
+        $linkedIds = OrderItem::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('content_submission_id')
+            ->pluck('content_submission_id')
+            ->all();
+
+        if ($linkedIds === []) {
+            return;
+        }
+
+        static::query()
+            ->whereIn('id', $linkedIds)
+            ->whereNotNull('order_id')
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+    }
+
     public function hasLink(): bool
     {
         $anchor = trim((string) $this->anchor_text);

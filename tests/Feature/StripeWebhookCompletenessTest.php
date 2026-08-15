@@ -428,4 +428,55 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->signedWebhook($event)->assertStatus(500);
         $this->assertSame('pending', $order->fresh()->payment_status);
     }
+
+    public function test_order_payment_intent_without_succeeded_status_is_rejected(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'PI-NOT-SUCCEEDED',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $event = [
+            'id' => 'evt_pi_requires_'.uniqid(),
+            'object' => 'event',
+            'type' => 'payment_intent.succeeded',
+            'data' => [
+                'object' => [
+                    'id' => 'pi_requires_action',
+                    'object' => 'payment_intent',
+                    'status' => 'requires_action',
+                    'amount' => 8000,
+                    'amount_received' => 0,
+                    'currency' => 'eur',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $order->reference_code,
+                        'user_id' => (string) $advertiser->id,
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertStatus(500);
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
 }
