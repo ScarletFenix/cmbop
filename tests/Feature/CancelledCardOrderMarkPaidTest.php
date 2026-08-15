@@ -737,4 +737,217 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertSame($submission->id, (int) session('checkout_content_submission_id'));
         $this->assertTrue((bool) session('ordering_from_library'));
     }
+
+    public function test_late_stripe_webhook_after_replace_credits_wallet_instead_of_rematerializing(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $submission = $this->createApprovedSubmission(
+            $advertiser,
+            $site->id,
+            0,
+            'replace webhook anchor',
+            'https://example.com/target'
+        );
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-FAILED-THEN-REPLACED',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-FAILED-THEN-REPLACED', [
+            'user_id' => $advertiser->id,
+            'order_total' => 80,
+            'amount_due' => 80,
+            'bonus_applied' => 0,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [[
+                'site_id' => $site->id,
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => 80,
+                'content_submission_id' => $submission->id,
+                'content_link' => 'https://example.com/article',
+            ]],
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-NEW-WALLET-AFTER-REPLACE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('cancelled', $leftover->fresh()->status);
+        $this->assertNull($payments->getPendingCheckout('REF-FAILED-THEN-REPLACED'));
+
+        $wallet = Wallet::where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $balanceAfterReplace = (float) $wallet->balance;
+
+        $session = (object) [
+            'id' => 'cs_late_after_replace',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_late_after_replace',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-FAILED-THEN-REPLACED',
+                'expected_amount' => '80',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $created = $payments->finalizeStripeFirstCheckout('REF-FAILED-THEN-REPLACED', $session);
+
+        $this->assertTrue($created->isEmpty());
+        $this->assertSame(0, Order::query()
+            ->where('reference_code', 'REF-FAILED-THEN-REPLACED')
+            ->where('payment_status', 'paid')
+            ->count());
+        $this->assertSame('cancelled', $leftover->fresh()->status);
+
+        $paid = Order::query()->where('reference_code', 'REF-NEW-WALLET-AFTER-REPLACE')->first();
+        $this->assertNotNull($paid);
+        $this->assertSame($paid->id, (int) $submission->fresh()->order_id);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta($balanceAfterReplace + 80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount('REF-FAILED-THEN-REPLACED'), 0.01);
+    }
+
+    public function test_late_stripe_webhook_after_replace_without_package_credits_wallet(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $submission = $this->createApprovedSubmission(
+            $advertiser,
+            $site->id,
+            0,
+            'replace no package anchor',
+            'https://example.com/target'
+        );
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-FAILED-NO-PACKAGE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-NEW-WALLET-NO-PACKAGE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $payments = app(OrderPaymentService::class);
+        $session = (object) [
+            'id' => 'cs_late_no_package',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_late_no_package',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-FAILED-NO-PACKAGE',
+                'expected_amount' => '80',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $created = $payments->finalizeStripeFirstCheckout('REF-FAILED-NO-PACKAGE', $session);
+
+        $this->assertTrue($created->isEmpty());
+        $this->assertSame('cancelled', $leftover->fresh()->status);
+        $this->assertSame(0, Order::query()
+            ->where('reference_code', 'REF-FAILED-NO-PACKAGE')
+            ->where('payment_status', 'paid')
+            ->count());
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount('REF-FAILED-NO-PACKAGE'), 0.01);
+    }
 }

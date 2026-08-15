@@ -59,6 +59,13 @@ class CampaignHtml
         return $out !== '' ? $out : '<p>'.nl2br(e($html), false).'</p>';
     }
 
+    public static function isBlank(string $html): bool
+    {
+        $text = trim(html_entity_decode(strip_tags(self::sanitize($html)), ENT_QUOTES, 'UTF-8'));
+
+        return $text === '';
+    }
+
     public static function isSafeHttpUrl(?string $url): bool
     {
         $safe = self::safeHref($url, ['http', 'https']);

@@ -115,14 +115,21 @@ class CampaignController extends Controller
             return back()->withInput()->with('error', 'No recipients found for that audience.');
         }
 
+        $bodyHtml = CampaignHtml::sanitize($data['body_html']);
+        if (CampaignHtml::isBlank($data['body_html'])) {
+            return back()->withInput()->withErrors([
+                'body_html' => 'Write a message before sending.',
+            ]);
+        }
+
         $respectPrefs = $request->boolean('respect_preferences');
         $count = $recipients->count();
 
-        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs) {
+        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs, $bodyHtml) {
             $campaign = EmailCampaign::create([
                 'name' => ($data['name'] ?? null) ?: $data['subject'],
                 'subject' => $data['subject'],
-                'body_html' => CampaignHtml::sanitize($data['body_html']),
+                'body_html' => $bodyHtml,
                 'audience' => $data['audience'],
                 'selected_user_ids' => $data['audience'] === 'selected'
                     ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()

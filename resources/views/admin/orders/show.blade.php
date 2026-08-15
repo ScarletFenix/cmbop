@@ -228,6 +228,11 @@
                                                 {{ $line->contentSubmission?->original_filename ?: ($line->content_original_name ?: 'Download file') }}
                                             </a>
                                         @endif
+                                        @if($line->content_submission_id)
+                                            <a href="{{ route('admin.content-library.show', $line->content_submission_id) }}" class="btn btn-sm btn-outline-primary">
+                                                View in Content Library
+                                            </a>
+                                        @endif
                                         @if(! $publicContentLink && ! $line->hasDownloadableContent())
                                             <span class="text-muted">No file uploaded</span>
                                         @endif

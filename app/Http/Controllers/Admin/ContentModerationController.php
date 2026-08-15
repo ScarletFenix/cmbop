@@ -6,9 +6,11 @@ use App\Http\Controllers\Controller;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\AdminLibraryStaffActions;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Support\PhpIniSize;
 use Illuminate\Http\Request;
+use Illuminate\Validation\ValidationException;
 
 class ContentModerationController extends Controller
 {
@@ -110,11 +112,16 @@ class ContentModerationController extends Controller
         return back()->with('success', 'Moderation and content upload settings saved.');
     }
 
-    public function override(Request $request, ContentModerationLog $log)
+    public function override(Request $request, ContentModerationLog $log, AdminLibraryStaffActions $staffActions)
     {
         $data = $request->validate([
             'notes' => ['nullable', 'string', 'max:2000'],
         ]);
+
+        $notes = trim((string) ($data['notes'] ?? ''));
+        if ($notes === '') {
+            $notes = 'Approved via moderation scan override.';
+        }
 
         $log->update([
             'passed' => true,
@@ -122,10 +129,27 @@ class ContentModerationController extends Controller
             'admin_override' => true,
             'overridden_by' => auth()->id(),
             'overridden_at' => now(),
-            'admin_notes' => $data['notes'] ?? null,
+            'admin_notes' => $notes,
         ]);
 
-        return back()->with('success', 'Submission overridden as approved. Advertiser may resubmit the same link.');
+        $submission = $staffActions->submissionForLog($log);
+        if (! $submission) {
+            return back()->with('success', 'Scan log overridden. No Content Library article is linked to this scan.');
+        }
+
+        try {
+            $staffActions->override($submission, 'approved', $request->user(), $notes);
+        } catch (ValidationException $e) {
+            return back()->with(
+                'error',
+                collect($e->errors())->flatten()->first()
+                    ?: 'Scan log marked approved, but the linked article could not be updated.'
+            );
+        }
+
+        return redirect()
+            ->route('admin.content-library.show', $submission)
+            ->with('success', 'Article #'.$submission->id.' approved — open in Content Library.');
     }
 
     /**
