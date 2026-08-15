@@ -69,7 +69,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('return $scanFailed && ! $scannedOk;', $matches[1]);
 
         $this->assertTrue((bool) preg_match(
-            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId\): \?array\s*\{(.*?)\n    protected static function collectCampaignMailUserIdsFromTable/s',
+            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId(?:, bool \$includeFailedJobs = true)?\): \?array\s*\{(.*?)\n    protected static function collectCampaignMailUserIdsFromTable/s',
             $source,
             $inFlight
         ));

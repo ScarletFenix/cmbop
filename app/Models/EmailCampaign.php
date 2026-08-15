@@ -437,9 +437,13 @@ class EmailCampaign extends Model
      * User ids with an AudienceCampaignMail still sitting on a database
      * queue. Null means the scan failed and callers must not reclaim.
      *
+     * Reclaim treats failed_jobs as in-flight so Email Center retry is
+     * not doubled. Expire must not — a dead failed job is not a 72h
+     * backlog, and counting it parked the recipient queued forever.
+     *
      * @return list<int>|null
      */
-    protected static function inFlightCampaignMailUserIds(int $campaignId): ?array
+    protected static function inFlightCampaignMailUserIds(int $campaignId, bool $includeFailedJobs = true): ?array
     {
         if ($campaignId < 1) {
             return [];
@@ -521,23 +525,25 @@ class EmailCampaign extends Model
 
         // A mailable that already failed is still retryable from Email
         // Center. Reclaiming that user would dispatch a second send.
-        try {
-            $failedTable = (string) config('queue.failed.table', 'failed_jobs');
-            if (Schema::hasTable($failedTable)) {
-                if (! Schema::hasColumn($failedTable, 'payload')) {
-                    return null;
-                }
+        if ($includeFailedJobs) {
+            try {
+                $failedTable = (string) config('queue.failed.table', 'failed_jobs');
+                if (Schema::hasTable($failedTable)) {
+                    if (! Schema::hasColumn($failedTable, 'payload')) {
+                        return null;
+                    }
 
-                self::collectCampaignMailUserIdsFromTable(
-                    $failedTable,
-                    $campaignId,
-                    $prefix,
-                    $ids,
-                    $sawUnscoped
-                );
+                    self::collectCampaignMailUserIdsFromTable(
+                        $failedTable,
+                        $campaignId,
+                        $prefix,
+                        $ids,
+                        $sawUnscoped
+                    );
+                }
+            } catch (\Throwable) {
+                return null;
             }
-        } catch (\Throwable) {
-            return null;
         }
 
         if ($sawUnscoped) {
@@ -937,6 +943,7 @@ class EmailCampaign extends Model
      * inserts the mailable. After the campaign stale window those orphans
      * are skipped so recount can go failed. A still-queued mailable is
      * not an orphan — skip it and a later retry doubles the send.
+     * A failed_jobs row is already dead; expire that 72h leftover.
      */
     protected static function expireOrphanedQueuedRecipients(): void
     {
@@ -957,11 +964,13 @@ class EmailCampaign extends Model
 
         foreach ($expired->groupBy('email_campaign_id') as $campaignId => $group) {
             $campaignId = (int) $campaignId;
-            $inFlight = self::inFlightCampaignMailUserIds($campaignId);
+            $inFlight = self::inFlightCampaignMailUserIds($campaignId, includeFailedJobs: false);
             // Unreadable mail queue: still expire (72h backstop). A
             // readable queue with a live AudienceCampaignMail must not
             // park that user as skipped-stale — expire + retry then
             // queued a second job beside the backlogged one.
+            // failed_jobs is not a live backlog: reclaim still holds
+            // those users, but expire must close the 72h orphan.
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
 
             foreach ($group as $row) {
@@ -1028,7 +1037,7 @@ class EmailCampaign extends Model
 
         foreach ($rows->groupBy('email_campaign_id') as $campaignId => $group) {
             $campaignId = (int) $campaignId;
-            $inFlight = self::inFlightCampaignMailUserIds($campaignId);
+            $inFlight = self::inFlightCampaignMailUserIds($campaignId, includeFailedJobs: false);
             if ($inFlight === null) {
                 continue;
             }

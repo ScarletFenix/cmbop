@@ -84,9 +84,11 @@ or marketing, even if that staff account also has a marketplace role.
    instead of counting as a fake send. Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
-   mailable. Expire must **not** skip a recipient whose
+   mailable.    Expire must **not** skip a recipient whose
    `AudienceCampaignMail` is still on a readable mail queue (a 72h
-   backlog is not a lost job). A later SMTP success or a send suppressed as a duplicate
+   backlog is not a lost job; a second retry doubles the send). A matching row in `failed_jobs` still
+   blocks reclaim (Email Center retry would double) but must **not** block expire — that job already died, and treating it as in-flight
+   left the recipient `queued` past `MAIL_CAMPAIGN_MAX_AGE_HOURS`. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including
    when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
