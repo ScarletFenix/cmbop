@@ -439,7 +439,12 @@ class EmailCenterController extends Controller
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored !== '' && in_array($stored, $uuids, true)) {
+            $payload = (string) ($payloadsByUuid[$stored] ?? '');
+            // Legacy unique-class stamps can point at someone else's job.
+            if ($stored !== ''
+                && $payload !== ''
+                && in_array($stored, $uuids, true)
+                && $this->failedJobMatchesLog($payload, $log)) {
                 $this->pendingMarkRetriedLog($log);
                 $marked[$log->id] = true;
             }
