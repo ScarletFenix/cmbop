@@ -1258,6 +1258,35 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame($uuid, $log->fresh()->meta['failed_job_uuid'] ?? null);
     }
 
+    public function test_job_failed_event_does_not_stamp_unidentified_payload(): void
+    {
+        $uuid = (string) Str::uuid();
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+
+        $job = Mockery::mock(Job::class);
+        $job->shouldReceive('uuid')->andReturn($uuid);
+        $job->shouldReceive('getRawBody')->andReturn(json_encode([
+            'displayName' => WelcomeEmail::class,
+            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+        ]));
+
+        (new StampEmailLogFailedJobUuid)->handle(
+            new JobFailed('database', $job, new \RuntimeException('SMTP'))
+        );
+
+        $this->assertNull($log->fresh()->meta['failed_job_uuid'] ?? null);
+    }
+
     public function test_successful_send_closes_every_open_log_for_the_dedupe_key(): void
     {
         $admin = $this->userWithRole('admin');
@@ -1425,74 +1454,6 @@ class AdminEmailCenterTest extends TestCase
         $this->assertNotNull($queuedAt);
         $this->assertTrue($queuedAt->greaterThan(now()->subMinute()));
         $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
-    }
-
-    public function test_retry_does_not_mark_pending_when_job_stays_failed(): void
-    {
-        $admin = $this->userWithRole('admin');
-        $advertiser = $this->userWithRole('advertiser');
-        $mailUuid = (string) Str::uuid();
-        $campaign = EmailCampaign::create([
-            'name' => 'Stuck retry',
-            'subject' => 'Stuck retry',
-            'body_html' => '<p>Hi</p>',
-            'audience' => 'advertisers',
-            'recipients_count' => 1,
-            'sent_count' => 0,
-            'skipped_count' => 1,
-            'status' => EmailCampaign::STATUS_FAILED,
-            'respect_preferences' => false,
-            'created_by' => $admin->id,
-        ]);
-        $row = EmailCampaignRecipient::create([
-            'email_campaign_id' => $campaign->id,
-            'user_id' => $advertiser->id,
-            'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_FAILED,
-            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
-        ]);
-        $log = EmailLog::create([
-            'uuid' => (string) Str::uuid(),
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'dedupe_key' => 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id,
-            'to_email' => $advertiser->email,
-            'subject' => 'Stuck retry',
-            'status' => EmailLog::STATUS_FAILED,
-            'error' => 'SMTP down',
-            'attempts' => 1,
-            'meta' => [
-                'source' => 'queue',
-                'campaign_id' => $campaign->id,
-                'user_id' => $advertiser->id,
-                'failed_job_uuid' => $mailUuid,
-            ],
-        ]);
-
-        DB::table('failed_jobs')->insert([
-            'uuid' => $mailUuid,
-            'connection' => 'database',
-            'queue' => 'emails',
-            'payload' => json_encode([
-                'displayName' => AudienceCampaignMail::class,
-                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
-                'to' => $advertiser->email,
-            ]),
-            'exception' => 'SMTP failed',
-            'failed_at' => now(),
-        ]);
-
-        $this->mockQueueRetry([$mailUuid], forget: false);
-
-        $this->actingAs($admin)
-            ->from(route('admin.emails.index'))
-            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
-            ->assertRedirect(route('admin.emails.index'))
-            ->assertSessionHas('error');
-
-        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
-        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $row->fresh()->status);
-        $this->assertTrue(DB::table('failed_jobs')->where('uuid', $mailUuid)->exists());
     }
 
     public function test_retry_does_not_mark_pending_when_job_stays_failed(): void
