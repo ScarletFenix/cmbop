@@ -103,7 +103,17 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->actingAs($admin)
             ->get(route('admin.finance', ['q' => '%%']))
             ->assertOk()
-            ->assertSee('No users match')
+            ->assertSee('Type at least 2 characters to find a user dossier.')
+            ->assertDontSee('No users match')
+            ->assertDontSee($one->email)
+            ->assertDontSee($two->email);
+
+        // "%@" is 2 typed characters but only "@" after wildcard strip — that
+        // would LIKE-match every email if the 2-char floor used the raw query.
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => '%@']))
+            ->assertOk()
+            ->assertSee('Type at least 2 characters to find a user dossier.')
             ->assertDontSee($one->email)
             ->assertDontSee($two->email);
     }

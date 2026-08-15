@@ -29,6 +29,7 @@ class FinanceController extends Controller
     public function index(Request $request)
     {
         $userQuery = search_text($request->input('q'));
+        $needle = $this->dossierSearchNeedle($userQuery);
         $userMatches = collect();
 
         if ($userQuery !== '') {
@@ -37,8 +38,10 @@ class FinanceController extends Controller
                 return $redirect;
             }
 
-            if (strlen($userQuery) >= 2) {
-                $userMatches = $this->searchUsers($userQuery);
+            // Length is measured after stripping LIKE wildcards so "%@" / "_x"
+            // cannot bypass the 2-character floor and match every email.
+            if (strlen($needle) >= 2) {
+                $userMatches = $this->searchUsers($needle);
                 if ($userMatches->count() === 1) {
                     return redirect()->route('admin.finance.user', $userMatches->first());
                 }
@@ -60,6 +63,7 @@ class FinanceController extends Controller
             'dateFrom' => $input['date_from'] ?? null,
             'dateTo' => $input['date_to'] ?? null,
             'userQuery' => $userQuery,
+            'userQueryTooShort' => $userQuery !== '' && strlen($needle) < 2,
             'userMatches' => $userMatches,
         ]);
     }
@@ -306,15 +310,18 @@ class FinanceController extends Controller
     }
 
     /**
+     * LIKE wildcards in the typed query must not broaden the match.
+     */
+    private function dossierSearchNeedle(string $userQuery): string
+    {
+        return str_replace(['\\', '%', '_'], ['', '', ''], $userQuery);
+    }
+
+    /**
      * @return Collection<int, User>
      */
-    private function searchUsers(string $userQuery)
+    private function searchUsers(string $needle)
     {
-        $needle = str_replace(['\\', '%', '_'], ['', '', ''], $userQuery);
-        if ($needle === '') {
-            return collect();
-        }
-
         return User::query()
             ->where(function ($query) use ($needle) {
                 $query->where('name', 'like', '%'.$needle.'%')
