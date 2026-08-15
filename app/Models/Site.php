@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Schema;
 
 class Site extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected static function booted(): void
     {
         $bustInventory = static fn () => CatalogCountryInventory::forget();

@@ -91,6 +91,36 @@ class SitePromotionTest extends TestCase
         $this->assertSame(40.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
     }
 
+    public function test_promo_ajax_ok_when_sibling_promo_dates_are_unparseable(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update([
+            'featured_until' => now()->addDays(3),
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'featured_until' => 'not-a-date',
+            'custom_discount_starts_at' => 'not-a-date',
+            'custom_discount_ends_at' => 'also-bad',
+        ]);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.discount', $site->id), ['percent' => 20, 'days' => 7])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($site->fresh()->hasActiveCustomDiscount());
+        $this->assertTrue($site->fresh()->joinsBulkDiscount());
+    }
+
     public function test_feature_cannot_spend_promotional_bonus(): void
     {
         $publisher = $this->publisherWithWallet(50);
