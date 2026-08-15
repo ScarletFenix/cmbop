@@ -452,6 +452,13 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertTrue(WelcomeBonusSetting::isEnabled());
     }
 
+    public function test_unlocked_read_stays_on_when_never_configured(): void
+    {
+        $this->assertSame(0, WelcomeBonusSetting::query()->count());
+        $this->assertTrue(WelcomeBonusSetting::isEnabled());
+        $this->assertSame(20.0, $this->service->amountFor($this->request('203.0.113.60'), 'advertiser'));
+    }
+
     public function test_settings_default_enabled_until_toggled(): void
     {
         $this->assertTrue(WelcomeBonusSetting::isEnabled());
