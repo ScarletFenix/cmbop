@@ -183,6 +183,12 @@ class WelcomeBonusService
             $packed = substr($packed, 12);
         }
 
+        // IPv6 privacy addresses rotate inside a /64. Lock the allocation, not
+        // the full 128 bits, or one prefix can collect €20 per signup.
+        if (strlen($packed) === 16) {
+            $packed = substr($packed, 0, 8).str_repeat("\x00", 8);
+        }
+
         $normalized = inet_ntop($packed);
 
         return $normalized !== false ? $normalized : null;
@@ -205,10 +211,23 @@ class WelcomeBonusService
         }
 
         try {
-            return WelcomeBonusClaim::query()->where('ip_address', $ip)->exists();
+            return WelcomeBonusClaim::query()->whereIn('ip_address', $this->ipClaimKeys($ip))->exists();
         } catch (\Throwable) {
             return true;
         }
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function ipClaimKeys(string $ip): array
+    {
+        $keys = [$ip];
+        if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
+            $keys[] = '::ffff:'.$ip;
+        }
+
+        return array_values(array_unique($keys));
     }
 
     private function claimsTableReady(): bool
