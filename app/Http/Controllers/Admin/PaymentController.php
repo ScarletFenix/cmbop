@@ -732,22 +732,6 @@ class PaymentController extends Controller
     }
 
     /**
-     * @param  Collection<int, Order>  $orders
-     */
-    private function attachInvoiceDocuments($orders): void
-    {
-        $links = app(AdminInvoiceLinks::class);
-        $byOrder = $links->forOrders($orders);
-
-        foreach ($orders as $order) {
-            $documents = $byOrder->get((int) $order->id, []);
-            $order->setAttribute('invoice_documents', $documents);
-            $primary = $links->primary($documents);
-            $order->setAttribute('invoice_url', data_get($primary, 'url'));
-        }
-    }
-
-    /**
      * @return list<string>
      */
     private function allowedPaymentStatuses(Order $order): array

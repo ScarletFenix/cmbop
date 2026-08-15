@@ -272,6 +272,23 @@ class SitePromotionTest extends TestCase
         ]);
     }
 
+    public function test_wallet_feature_does_not_debit_when_listing_left_catalog(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['active' => false]);
+
+        $result = app(SitePromotionService::class)->featureWithWallet($site, $publisher);
+
+        $this->assertFalse($result['success']);
+        $this->assertFalse($site->fresh()->isFeatured());
+        $this->assertEqualsWithDelta(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);
+        $this->assertDatabaseMissing('site_feature_purchases', [
+            'site_id' => $site->id,
+            'payment_method' => 'wallet',
+        ]);
+    }
+
     public function test_feature_rejects_cancelled_bulk_leftover(): void
     {
         $publisher = $this->publisherWithWallet(50);

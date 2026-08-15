@@ -69,6 +69,17 @@ class SitePromotionService
 
         try {
             return DB::transaction(function () use ($site, $publisher, $price, $days, $roleId) {
+                // Lock the listing before debiting. Returning false from this
+                // closure commits the transaction — a post-debit visibility
+                // check used to keep the charge and skip the feature.
+                $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+                if (! $lockedSite->isCatalogVisible()) {
+                    return [
+                        'success' => false,
+                        'message' => 'This listing is not in the catalog and cannot be promoted.',
+                    ];
+                }
+
                 $wallet = Wallet::lockOrCreateForRole($publisher->id, $roleId);
                 $withdrawable = $wallet->withdrawableBalance();
 
@@ -85,14 +96,6 @@ class SitePromotionService
                 }
 
                 $wallet->deductWithdrawable($price);
-
-                $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
-                if (! $lockedSite->isCatalogVisible()) {
-                    return [
-                        'success' => false,
-                        'message' => 'This listing is not in the catalog and cannot be promoted.',
-                    ];
-                }
                 $site = $this->applyFeaturePeriod($lockedSite, $publisher, $price, $days, 'wallet');
 
                 // Promo feature spends are intentionally excluded from INV tax
