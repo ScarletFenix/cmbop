@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
@@ -57,9 +58,9 @@ class EmailCampaignRecipient extends Model
     }
 
     /**
-     * A real SMTP success (or duplicate-of-a-real-send) must overwrite
-     * these. Expire can flip queued → skipped stale while the mailer is
-     * still in flight; that skip is not a veto of a delivery that landed.
+     * In-flight or failed rows a real SMTP success may close.
+     * Skipped rows are not listed here — only an expire-stale skip
+     * may be overwritten (see openForDelivery).
      *
      * @return list<string>
      */
@@ -69,7 +70,23 @@ class EmailCampaignRecipient extends Model
             self::STATUS_PENDING,
             self::STATUS_QUEUED,
             self::STATUS_FAILED,
-            self::STATUS_SKIPPED,
         ];
+    }
+
+    /**
+     * A real SMTP success (or duplicate-of-a-real-send) may close
+     * pending / queued / failed, and a skipped row only when expire
+     * parked it as stale while the mailer was still in flight.
+     * Preference, disabled, and unverified skips stay skipped.
+     */
+    public function scopeOpenForDelivery(Builder $query): Builder
+    {
+        return $query->where(function (Builder $open) {
+            $open->whereIn('status', self::statusesOpenForDelivery())
+                ->orWhere(function (Builder $stale) {
+                    $stale->where('status', self::STATUS_SKIPPED)
+                        ->where('skip_reason', self::SKIP_STALE);
+                });
+        });
     }
 }
