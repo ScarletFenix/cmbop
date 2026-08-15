@@ -113,6 +113,36 @@ class Invoice extends Model
         return $this->hasMany(BillingEvent::class);
     }
 
+    public function cancelledBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'cancelled_by');
+    }
+
+    public function statusBadgeClass(): string
+    {
+        return match ($this->status) {
+            self::STATUS_PAID => 'success',
+            self::STATUS_FAILED => 'danger',
+            self::STATUS_PENDING => 'warning',
+            self::STATUS_REFUNDED => 'info',
+            self::STATUS_CANCELLED => 'secondary',
+            default => 'primary',
+        };
+    }
+
+    public function referenceLabel(): string
+    {
+        if (filled($this->order_number)) {
+            return '#'.$this->order_number;
+        }
+
+        if (filled($this->reference_code)) {
+            return (string) $this->reference_code;
+        }
+
+        return '—';
+    }
+
     public function isCancelled(): bool
     {
         return $this->status === self::STATUS_CANCELLED;

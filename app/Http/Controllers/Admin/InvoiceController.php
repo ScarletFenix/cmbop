@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\Billing\InvoicePdfGenerator;
 use App\Support\UserFacingError;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 
 class InvoiceController extends Controller
@@ -23,38 +24,111 @@ class InvoiceController extends Controller
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('order_number', 'like', "%{$search}%")
                     ->orWhere('reference_code', 'like', "%{$search}%")
+                    ->orWhere('customer_name', 'like', "%{$search}%")
                     ->orWhere('customer_email', 'like', "%{$search}%")
-                    ->orWhere('transaction_id', 'like', "%{$search}%");
+                    ->orWhere('transaction_id', 'like', "%{$search}%")
+                    ->orWhereHas('user', fn ($user) => $user->where('name', 'like', "%{$search}%"));
             });
         }
 
-        if ($request->filled('status')) {
+        $allowedStatuses = [
+            Invoice::STATUS_PAID,
+            Invoice::STATUS_ISSUED,
+            Invoice::STATUS_PENDING,
+            Invoice::STATUS_FAILED,
+            Invoice::STATUS_REFUNDED,
+            Invoice::STATUS_CANCELLED,
+        ];
+        if ($request->filled('status') && in_array($request->status, $allowedStatuses, true)) {
             $query->where('status', $request->status);
         }
 
-        if ($request->filled('type')) {
+        $allowedTypes = [
+            Invoice::TYPE_TAX_INVOICE,
+            Invoice::TYPE_PAYMENT_RECEIPT,
+            Invoice::TYPE_REFUND_RECEIPT,
+            Invoice::TYPE_PAYMENT_FAILURE,
+            Invoice::TYPE_DEPOSIT_RECEIPT,
+            Invoice::TYPE_WITHDRAWAL_PAYOUT,
+        ];
+        if ($request->filled('type') && in_array($request->type, $allowedTypes, true)) {
             $query->where('type', $request->type);
         }
 
-        $invoices = $query->latest('id')->paginate(25)->withQueryString();
+        $from = $this->parseDate($request->input('from'));
+        $to = $this->parseDate($request->input('to'));
+        if ($from && $to && $from->gt($to)) {
+            [$from, $to] = [$to, $from];
+        }
+        if ($from) {
+            $query->whereDate('invoice_date', '>=', $from->toDateString());
+        }
+        if ($to) {
+            $query->whereDate('invoice_date', '<=', $to->toDateString());
+        }
+
+        $invoices = $query->latest('invoice_date')->latest('id')->paginate(25)->withQueryString();
 
         $stats = [
-            'generated' => Invoice::count(),
+            'documents' => Invoice::count(),
+            'tax_invoices' => Invoice::where('type', Invoice::TYPE_TAX_INVOICE)->count(),
             'downloaded' => (int) Invoice::sum('download_count'),
             'emailed' => (int) Invoice::sum('email_count'),
             'failures' => BillingEvent::where('event_type', 'invoice_generation_failed')->count(),
             'payment_failures' => Invoice::where('type', Invoice::TYPE_PAYMENT_FAILURE)->count(),
             'refunds' => Invoice::where('type', Invoice::TYPE_REFUND_RECEIPT)->count(),
+            'deposits' => Invoice::where('type', Invoice::TYPE_DEPOSIT_RECEIPT)->count(),
+            'payouts' => Invoice::where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)->count(),
         ];
 
-        return view('admin.invoices.index', compact('invoices', 'stats'));
+        return view('admin.invoices.index', [
+            'invoices' => $invoices,
+            'stats' => $stats,
+            'filterFrom' => $from?->toDateString(),
+            'filterTo' => $to?->toDateString(),
+            'currencySymbol' => (string) config('billing.currency_symbol', '€'),
+        ]);
     }
 
     public function show(Invoice $invoice)
     {
-        $invoice->load(['user', 'order.items', 'parentInvoice', 'events' => fn ($q) => $q->latest()->limit(30)]);
+        $invoice->load([
+            'user:id,name,email',
+            'order:id,order_number',
+            'parentInvoice',
+            'childInvoices',
+            'cancelledBy:id,name,email',
+            'events' => fn ($q) => $q->latest()->limit(30),
+        ]);
 
-        return view('admin.invoices.show', compact('invoice'));
+        $depositId = (int) data_get($invoice->meta, 'deposit_request_id');
+        $withdrawalId = (int) data_get($invoice->meta, 'withdrawal_id');
+        if ($withdrawalId <= 0 && preg_match('/^WD-(\d+)$/', (string) $invoice->reference_code, $matches)) {
+            $withdrawalId = (int) $matches[1];
+        }
+
+        return view('admin.invoices.show', [
+            'invoice' => $invoice,
+            'depositId' => $depositId > 0 ? $depositId : null,
+            'withdrawalId' => $withdrawalId > 0 ? $withdrawalId : null,
+            'currencySymbol' => (string) config('billing.currency_symbol', '€'),
+        ]);
+    }
+
+    public function viewPdf(Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
+    {
+        try {
+            if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
+                $pdfs->generateAndStore($invoice);
+                $invoice->refresh();
+            }
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not generate the PDF.'));
+        }
+
+        $billing->recordAdminDownload($invoice, auth()->user());
+
+        return $pdfs->stream($invoice);
     }
 
     public function download(Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
@@ -176,5 +250,24 @@ class InvoiceController extends Controller
         }
 
         return back()->with('success', 'PDF regenerated for '.$invoice->invoice_number);
+    }
+
+    private function parseDate(mixed $value): ?Carbon
+    {
+        if ($value === null || $value === '') {
+            return null;
+        }
+
+        $raw = trim((string) $value);
+        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+            return null;
+        }
+
+        [$year, $month, $day] = array_map('intval', explode('-', $raw));
+        if (! checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        return Carbon::create($year, $month, $day)->startOfDay();
     }
 }
