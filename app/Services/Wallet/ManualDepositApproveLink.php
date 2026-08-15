@@ -3,6 +3,7 @@
 namespace App\Services\Wallet;
 
 use App\Models\DepositRequest;
+use App\Support\EmailCatalog;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\URL;
 
@@ -30,9 +31,17 @@ class ManualDepositApproveLink
     /**
      * Absolute public URL for the signed confirm page (email CTA).
      */
+    public static function previewUrl(): string
+    {
+        return rtrim(app_public_url(), '/').'/admin/deposits/approve-confirm/preview';
+    }
+
     public static function url(DepositRequest|int $deposit): string
     {
         $depositId = $deposit instanceof DepositRequest ? (int) $deposit->id : (int) $deposit;
+        if ($depositId === EmailCatalog::PREVIEW_ID) {
+            return self::previewUrl();
+        }
 
         $relative = URL::temporarySignedRoute(
             'admin.deposits.approve-confirm.show',

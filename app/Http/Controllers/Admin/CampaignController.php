@@ -71,6 +71,8 @@ class CampaignController extends Controller
 
     public function recipientCount(Request $request, AudienceInventoryService $inventory)
     {
+        $this->canonicalizeAudienceInput($request);
+
         $data = $request->validate($this->audienceInputRules());
 
         $includeUnverified = $request->boolean('include_unverified');
@@ -90,6 +92,8 @@ class CampaignController extends Controller
 
     public function send(Request $request, AudienceInventoryService $inventory)
     {
+        $this->canonicalizeAudienceInput($request);
+
         $data = $request->validate(array_merge($this->audienceInputRules(), [
             'name' => ['nullable', 'string', 'max:120'],
             'subject' => ['required', 'string', 'max:180'],
@@ -230,5 +234,22 @@ class CampaignController extends Controller
         }
 
         return CampaignHtml::isSafeHttpUrl($url) ? $url : null;
+    }
+
+    /**
+     * Inventory tab slugs (no_orders, paid_orders, …) become campaign keys
+     * before validation so a bookmark or mistyped form cannot 422 / send empty.
+     */
+    protected function canonicalizeAudienceInput(Request $request): void
+    {
+        $raw = $request->input('audience');
+        if (! is_string($raw)) {
+            return;
+        }
+
+        $canonical = AudienceInventoryService::canonicalAudienceKey($raw);
+        if ($canonical !== null) {
+            $request->merge(['audience' => $canonical]);
+        }
     }
 }

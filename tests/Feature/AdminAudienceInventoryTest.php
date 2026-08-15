@@ -203,13 +203,32 @@ class AdminAudienceInventoryTest extends TestCase
         $live = $this->makeUser('publisher');
         $this->makeSite($live, ['active' => true, 'verified' => true, 'domain' => 'live-site.example', 'site_url' => 'https://live-site.example']);
         $empty = $this->makeUser('publisher');
+        $archivedOnly = $this->makeUser('publisher');
+        $this->makeSite($archivedOnly, [
+            'active' => true,
+            'verified' => true,
+            'archived_at' => now(),
+            'domain' => 'archived-only.example',
+            'site_url' => 'https://archived-only.example',
+        ]);
+        $unverifiedActive = $this->makeUser('publisher');
+        $this->makeSite($unverifiedActive, [
+            'active' => true,
+            'verified' => false,
+            'domain' => 'unverified-active.example',
+            'site_url' => 'https://unverified-active.example',
+        ]);
 
         $this->actingAs($admin)
             ->get(route('admin.audiences.index', ['tab' => 'no_active_sites']))
             ->assertOk()
             ->assertSee($draftOnly->email, false)
             ->assertSee($empty->email, false)
-            ->assertDontSee($live->email, false);
+            ->assertSee($archivedOnly->email, false)
+            ->assertSee($unverifiedActive->email, false)
+            ->assertDontSee($live->email, false)
+            ->assertSee('no catalog-visible listing', false)
+            ->assertDontSee('never paid or were refunded', false);
 
         $this->actingAs($admin)
             ->get(route('admin.audiences.index', ['tab' => 'no_sites']))
@@ -226,7 +245,7 @@ class AdminAudienceInventoryTest extends TestCase
         $unverified = $this->makeUser('advertiser', ['email_verified_at' => null, 'country' => 'DE']);
 
         $this->actingAs($admin)
-            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'verified' => 'yes', 'country' => 'DE']))
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'verified' => 'yes', 'country' => 'de']))
             ->assertOk()
             ->assertSee($de->email, false)
             ->assertDontSee($fr->email, false)
@@ -257,6 +276,13 @@ class AdminAudienceInventoryTest extends TestCase
             ->assertOk()
             ->assertSee($plain->email, false)
             ->assertDontSee($dual->email, false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'both', 'exclude_dual_role' => 1]))
+            ->assertOk()
+            ->assertSee($plain->email, false)
+            ->assertSee($optedOut->email, false)
+            ->assertDontSee($dual->email, false);
     }
 
     public function test_csv_sanitizes_formula_cells_and_logs_export(): void
@@ -285,6 +311,109 @@ class AdminAudienceInventoryTest extends TestCase
             ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'q' => 'nobody-matches-this']))
             ->assertOk()
             ->assertSee('No users match these filters', false);
+    }
+
+    public function test_collect_accepts_tab_slug_aliases(): void
+    {
+        $neverCheckedOut = $this->makeUser('advertiser');
+        $inventory = app(AudienceInventoryService::class);
+
+        $this->assertContains(
+            $neverCheckedOut->id,
+            $inventory->collect('no_orders')->pluck('id')->all()
+        );
+        $this->assertSame(
+            $inventory->collect('advertisers_no_orders')->pluck('id')->all(),
+            $inventory->collect('no_orders')->pluck('id')->all()
+        );
+        $this->assertEqualsCanonicalizing(
+            $inventory->collect('advertisers_no_orders')->pluck('id')->all(),
+            $inventory->collectRecipientRows('no_orders')->pluck('id')->all()
+        );
+    }
+
+    public function test_collect_recipient_rows_covers_new_segments(): void
+    {
+        $customer = $this->makeUser('advertiser');
+        Order::create([
+            'user_id' => $customer->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ROWS-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        $fundedIdle = $this->makeUser('advertiser');
+        $this->deposit($fundedIdle, 'completed');
+        $draftOnly = $this->makeUser('publisher');
+        $this->makeSite($draftOnly, ['active' => false, 'domain' => 'rows-draft.example', 'site_url' => 'https://rows-draft.example']);
+
+        $inventory = app(AudienceInventoryService::class);
+        foreach ([
+            'advertisers_paid_orders',
+            'advertisers_deposited_no_orders',
+            'publishers_no_active_sites',
+        ] as $key) {
+            $this->assertEqualsCanonicalizing(
+                $inventory->collect($key)->pluck('id')->all(),
+                $inventory->collectRecipientRows($key)->pluck('id')->all(),
+                $key
+            );
+        }
+        $this->assertContains($customer->id, $inventory->collectRecipientRows('advertisers_paid_orders')->pluck('id'));
+        $this->assertContains($fundedIdle->id, $inventory->collectRecipientRows('advertisers_deposited_no_orders')->pluck('id'));
+        $this->assertContains($draftOnly->id, $inventory->collectRecipientRows('publishers_no_active_sites')->pluck('id'));
+    }
+
+    public function test_inverted_registration_dates_are_swapped(): void
+    {
+        $admin = $this->makeUser('admin');
+        $inside = $this->makeUser('advertiser');
+        $inside->forceFill(['created_at' => '2026-06-15 12:00:00'])->save();
+        $outside = $this->makeUser('advertiser');
+        $outside->forceFill(['created_at' => '2026-01-01 12:00:00'])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', [
+                'tab' => 'advertisers',
+                'registered_from' => '2026-06-30',
+                'registered_to' => '2026-06-01',
+            ]))
+            ->assertOk()
+            ->assertSee($inside->email, false)
+            ->assertDontSee($outside->email, false)
+            ->assertSee('value="2026-06-01"', false)
+            ->assertSee('value="2026-06-30"', false);
+    }
+
+    public function test_campaign_send_accepts_inventory_tab_slug(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $target = $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), [
+                'name' => 'Never checked out blast',
+                'subject' => 'Finish checkout',
+                'body_html' => '<p>You have not placed an order yet.</p>',
+                'audience' => 'no_orders',
+                'cta_label' => 'Browse catalog',
+                'cta_url' => url('/advertiser/catalog'),
+                'respect_preferences' => false,
+            ])
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertSame('advertisers_no_orders', $campaign->audience);
+        $this->assertSame(1, $campaign->recipients_count);
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($target->email));
     }
 
     public function test_campaign_send_accepts_new_audience_keys(): void

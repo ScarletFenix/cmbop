@@ -1445,9 +1445,15 @@ class ContentSubmission extends Model
             return;
         }
 
+        // Only free rows still owned by this leftover. A cancelled leftover
+        // item can keep content_submission_id after the article was reused
+        // on a newer paid order — do not steal that ownership.
         static::query()
             ->whereIn('id', $linkedIds)
-            ->whereNotNull('order_id')
+            ->where(function ($q) use ($orderId) {
+                $q->whereNull('order_id')
+                    ->orWhere('order_id', $orderId);
+            })
             ->get()
             ->each(fn (self $submission) => $submission->releaseFromOrder());
     }
@@ -1471,17 +1477,22 @@ class ContentSubmission extends Model
             return;
         }
 
-        $linkedId = OrderItem::query()
-            ->whereKey($orderItemId)
-            ->value('content_submission_id');
+        $item = OrderItem::query()->whereKey($orderItemId)->first();
+        $linkedId = (int) ($item?->content_submission_id ?? 0);
+        $ownerOrderId = (int) ($item?->order_id ?? 0);
 
-        if (! $linkedId) {
+        if ($linkedId <= 0) {
             return;
         }
 
         static::query()
-            ->whereKey((int) $linkedId)
-            ->whereNotNull('order_id')
+            ->whereKey($linkedId)
+            ->where(function ($q) use ($ownerOrderId) {
+                $q->whereNull('order_id');
+                if ($ownerOrderId > 0) {
+                    $q->orWhere('order_id', $ownerOrderId);
+                }
+            })
             ->get()
             ->each(fn (self $submission) => $submission->releaseFromOrder());
     }

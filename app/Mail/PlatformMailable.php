@@ -6,7 +6,9 @@ use App\Models\EmailCampaign;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
+use App\Models\Invoice;
 use App\Models\User;
+use App\Services\Billing\InvoicePdfGenerator;
 use App\Support\EmailCatalog;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -402,6 +404,30 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
 
         return $this->publicRoute('advertiser.orders', $params);
+    }
+
+    protected function advertiserBillingDownloadUrl(Invoice $invoice): string
+    {
+        if ((int) $invoice->id === EmailCatalog::PREVIEW_ID) {
+            return rtrim(app_public_url(), '/').'/advertiser/billing/preview';
+        }
+
+        return $this->publicRoute('advertiser.billing.download', $invoice);
+    }
+
+    protected function attachInvoicePdfIfLive($mail, Invoice $invoice, string $as): void
+    {
+        if ((int) $invoice->id === EmailCatalog::PREVIEW_ID) {
+            return;
+        }
+
+        $path = app(InvoicePdfGenerator::class)->absolutePath($invoice);
+        if ($path && is_readable($path)) {
+            $mail->attach($path, [
+                'as' => $as,
+                'mime' => 'application/pdf',
+            ]);
+        }
     }
 
     /**

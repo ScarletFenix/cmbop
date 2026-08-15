@@ -71,8 +71,11 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   customer). `advertisers_paid_orders` is the inverse.
 - Extra inventory / campaign keys: `both`, `advertisers_deposited_no_orders`
   (credited deposit, no order row), `publishers_no_active_sites` (no
-  `active=1` site). Tab slugs (`no_orders`, `paid_orders`, …) normalize
-  through `AudienceInventoryService::normalizeAudienceKey()`.
+  catalog-visible site: active + verified + not archived + not leftover from
+  a cancelled bulk). Publisher archive keeps `active=1`, so `active=1` alone
+  is not “live”. Tab slugs (`no_orders`, `paid_orders`, …) normalize
+  through `AudienceInventoryService::normalizeAudienceKey()` in inventory
+  and in campaign send / recipient-count.
 - Inventory search / filters apply to the table and CSV only. **Email this
   audience** still sends the full segment (verified by default).
 - Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,

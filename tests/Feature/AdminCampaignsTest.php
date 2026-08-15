@@ -177,6 +177,14 @@ class AdminCampaignsTest extends TestCase
             ]);
 
         $this->actingAs($admin)
+            ->getJson(route('admin.campaigns.recipient-count', ['audience' => 'no_orders']))
+            ->assertOk()
+            ->assertJson([
+                'count' => $inventory->collect('advertisers_no_orders')->count(),
+                'label' => 'Advertisers (never checked out)',
+            ]);
+
+        $this->actingAs($admin)
             ->getJson(route('admin.campaigns.recipient-count', [
                 'audience' => 'selected',
                 'user_ids' => [$advertiser->id, $publisher->id],

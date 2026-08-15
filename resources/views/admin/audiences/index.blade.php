@@ -33,10 +33,10 @@
             ['tab' => 'publishers', 'stat' => 'publishers', 'title' => 'Publishers', 'hint' => 'Users with publisher role'],
             ['tab' => 'both', 'stat' => 'both_unique', 'title' => 'Unique (either role)', 'hint' => 'Combined reach without duplicates'],
             ['tab' => 'no_orders', 'stat' => 'advertisers_never_checked_out', 'title' => 'Never checked out', 'hint' => 'Advertisers with no order row'],
-            ['tab' => 'no_paid_orders', 'stat' => 'advertisers_no_paid_orders', 'title' => 'No paid orders', 'hint' => 'Advertisers who never paid or were refunded'],
+            ['tab' => 'no_paid_orders', 'stat' => 'advertisers_no_paid_orders', 'title' => 'No paid orders', 'hint' => 'Advertisers with no paid or refunded order'],
             ['tab' => 'paid_orders', 'stat' => 'advertisers_paid_orders', 'title' => 'Paid customers', 'hint' => 'Advertisers with a paid or refunded order'],
             ['tab' => 'no_sites', 'stat' => 'publishers_no_sites', 'title' => 'No sites', 'hint' => 'Publishers who never listed a site'],
-            ['tab' => 'no_active_sites', 'stat' => 'publishers_no_active_sites', 'title' => 'No active sites', 'hint' => 'Publishers with no live listing'],
+            ['tab' => 'no_active_sites', 'stat' => 'publishers_no_active_sites', 'title' => 'No active sites', 'hint' => 'Publishers with no catalog-visible listing'],
             ['tab' => 'never_deposited', 'stat' => 'advertisers_never_deposited', 'title' => 'Never deposited', 'hint' => 'Advertisers who never funded a wallet'],
             ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'title' => 'Deposited, no orders', 'hint' => 'Funded a wallet but never checked out'],
         ] as $card)
@@ -68,7 +68,7 @@
             ['tab' => 'no_sites', 'stat' => 'publishers_no_sites', 'icon' => 'fa-link', 'label' => 'No sites'],
             ['tab' => 'no_active_sites', 'stat' => 'publishers_no_active_sites', 'icon' => 'fa-unlink', 'label' => 'No active sites'],
             ['tab' => 'never_deposited', 'stat' => 'advertisers_never_deposited', 'icon' => 'fa-wallet', 'label' => 'Never deposited'],
-            ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'icon' => 'fa-funnel-dollar', 'label' => 'Deposited, no orders'],
+            ['tab' => 'deposited_no_orders', 'stat' => 'advertisers_deposited_no_orders', 'icon' => 'fa-piggy-bank', 'label' => 'Deposited, no orders'],
         ] as $nav)
             <li class="nav-item">
                 <a class="nav-link {{ $tab === $nav['tab'] ? 'active' : '' }}" href="{{ $tabUrl($nav['tab']) }}">
@@ -104,7 +104,7 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small mb-1" for="audienceCountry">Country</label>
-                    <input type="text" name="country" id="audienceCountry" class="form-control form-control-sm" value="{{ $filters['country'] ?? '' }}" maxlength="8" placeholder="DE">
+                    <input type="text" name="country" id="audienceCountry" class="form-control form-control-sm" value="{{ $filters['country'] ?? '' }}" maxlength="64" placeholder="DE">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small mb-1" for="audienceMarketing">Marketing</label>
@@ -183,9 +183,7 @@
                                         <span class="badge bg-light text-dark">{{ $role->name }}</span>
                                     @endforeach
                                     @if($user->roles->contains('name', 'publisher') && $user->roles->contains('name', 'advertiser'))
-                                        <span class="badge bg-info-subtle text-info">Also publisher</span>
-                                    @elseif($tab !== 'publishers' && $tab !== 'no_sites' && $tab !== 'no_active_sites' && $user->roles->contains('name', 'publisher'))
-                                        <span class="badge bg-info-subtle text-info">Also publisher</span>
+                                        <span class="badge bg-info-subtle text-info">Dual role</span>
                                     @endif
                                 </td>
                                 <td class="small text-muted">{{ $user->activeRole() ?: '—' }}</td>

@@ -3,7 +3,6 @@
 namespace App\Mail;
 
 use App\Models\Invoice;
-use App\Services\Billing\InvoicePdfGenerator;
 
 class PaymentSuccessfulInvoiceMail extends PlatformMailable
 {
@@ -31,26 +30,13 @@ class PaymentSuccessfulInvoiceMail extends PlatformMailable
                 'user' => $user,
                 'symbol' => $symbol,
                 'viewOrderUrl' => $this->advertiserOrdersUrl($order?->id ? (int) $order->id : null),
-                'downloadInvoiceUrl' => route('advertiser.billing.download', $this->invoice),
+                'downloadInvoiceUrl' => $this->advertiserBillingDownloadUrl($this->invoice),
                 'dashboardUrl' => route('advertiser.dashboard'),
             ]);
 
-        $path = app(InvoicePdfGenerator::class)->absolutePath($this->invoice);
-        if ($path && is_readable($path)) {
-            $mail->attach($path, [
-                'as' => $this->invoice->invoice_number.'.pdf',
-                'mime' => 'application/pdf',
-            ]);
-        }
-
+        $this->attachInvoicePdfIfLive($mail, $this->invoice, $this->invoice->invoice_number.'.pdf');
         if ($this->receipt) {
-            $receiptPath = app(InvoicePdfGenerator::class)->absolutePath($this->receipt);
-            if ($receiptPath && is_readable($receiptPath)) {
-                $mail->attach($receiptPath, [
-                    'as' => $this->receipt->invoice_number.'-receipt.pdf',
-                    'mime' => 'application/pdf',
-                ]);
-            }
+            $this->attachInvoicePdfIfLive($mail, $this->receipt, $this->receipt->invoice_number.'-receipt.pdf');
         }
 
         return $mail;

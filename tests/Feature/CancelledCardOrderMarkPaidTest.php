@@ -265,6 +265,13 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $paid = Order::query()->where('reference_code', 'REF-NEW-WALLET-WISE')->first();
         $this->assertNotNull($paid);
         $this->assertSame($paid->id, (int) $submission->fresh()->order_id);
+
+        ContentSubmission::releaseAllForOrder((int) $stale->id);
+        $this->assertSame($paid->id, (int) $submission->fresh()->order_id);
+        $this->assertSame(
+            (int) OrderItem::query()->where('order_id', $paid->id)->value('id'),
+            (int) $submission->fresh()->order_item_id
+        );
     }
 
     public function test_order_from_library_releases_abandoned_wise_leftover(): void
