@@ -349,37 +349,47 @@ class OrderPaymentService
     /**
      * Keep only the fulfilled share of checkout promo. Leftover/hidden lines
      * must not leave their bonus slice reserved forever.
+     *
+     * $packageBonus is the cart snapshot, not a live hold. After a taken
+     * library line already restored promo, refundReserved() of that snapshot
+     * would spend another checkout's reserve.
      */
     public function keepCheckoutBonusForFulfilled(
         int $userId,
         string $referenceCode,
-        float $heldBonus,
+        float $packageBonus,
         float $orderTotal,
         float $fulfilled
     ): float {
-        $heldBonus = round($heldBonus, 2);
+        $packageBonus = round($packageBonus, 2);
         $orderTotal = round($orderTotal, 2);
         $fulfilled = round($fulfilled, 2);
-        if ($userId <= 0 || $heldBonus <= 0.009) {
+        if ($userId <= 0 || $packageBonus <= 0.009) {
             return 0.0;
         }
 
-        $keep = $orderTotal > 0.009
-            ? round(min($heldBonus, $heldBonus * ($fulfilled / $orderTotal)), 2)
+        $desiredKeep = $orderTotal > 0.009
+            ? round(min($packageBonus, $packageBonus * ($fulfilled / $orderTotal)), 2)
             : 0.0;
-        $release = round(max(0, $heldBonus - $keep), 2);
-        if ($release <= 0.009) {
-            return $heldBonus;
+
+        $intents = app(CheckoutIntentService::class);
+        $liveHeld = $intents->heldBonus($userId, $referenceCode);
+        $release = round(max(0, $liveHeld - $desiredKeep), 2);
+        if ($release > 0.009) {
+            $roleId = Wallet::advertiserRoleId();
+            if ($roleId) {
+                $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+                $wallet->refundReserved($release, $release);
+            }
+            $left = round(max(0, $liveHeld - $release), 2);
+            if ($left > 0.009) {
+                $intents->rememberBonus($userId, $referenceCode, $left);
+            } else {
+                $intents->forgetBonus($userId, $referenceCode);
+            }
         }
 
-        $roleId = Wallet::advertiserRoleId();
-        if ($roleId) {
-            $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
-            $wallet->refundReserved($release, $release);
-        }
-        app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $keep);
-
-        return $keep;
+        return $desiredKeep;
     }
 
     /**
