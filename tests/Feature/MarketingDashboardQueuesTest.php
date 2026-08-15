@@ -154,6 +154,13 @@ class MarketingDashboardQueuesTest extends TestCase
             'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
             'estimated_count' => 2,
         ]);
+        $this->makeSite([
+            'site_name' => 'Awaiting Publisher Draft',
+            'site_url' => 'https://awaiting-publisher-draft.example',
+            'domain' => 'awaiting-publisher-draft.example',
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'bulk_site_request_id' => $awaitingPublisher->id,
+        ]);
         $leftover = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
             'status' => BulkSiteRequest::STATUS_COMPLETED,

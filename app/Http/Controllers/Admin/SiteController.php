@@ -2934,11 +2934,15 @@ class SiteController extends Controller
             }
 
             $oldStatus = (int) $site->active;
+            $verifyOnActivate = $activating
+                && $isMarketingActor
+                && ! (bool) $site->verified
+                && $site->needsAdminReview();
             $site->active = $activating ? 1 : 0;
             if ($activating) {
                 // Marketing has no verify route; Activate is the go-live action
                 // and the catalog requires verified + active.
-                if ($isMarketingActor && ! (bool) $site->verified && $site->needsAdminReview()) {
+                if ($verifyOnActivate) {
                     $site->verified = 1;
                     $site->verified_at = now();
                     $site->verify_method = 'manual';
