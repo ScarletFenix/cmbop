@@ -1207,8 +1207,16 @@ class OrderPaymentService
 
         // Fail/cancel already released the live hold. Keep a snapshot-only
         // package so admin mark-paid can re-reserve THIS leftover's promo
-        // instead of minting it as cash on a later reject.
-        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package)) {
+        // instead of minting it as cash on a later reject. Do not snapshot
+        // after a paid leftover — Pay again / full-card settle must not
+        // leave bonus_applied for clawback to treat as promo.
+        $alreadyPaid = $userId > 0 && Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('user_id', $userId)
+            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled')
+            ->exists();
+        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package) && ! $alreadyPaid) {
             $intents->storeLeftoverBonusSnapshot($referenceCode, $userId, $package, $snapshotBonus);
         }
     }

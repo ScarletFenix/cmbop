@@ -516,6 +516,7 @@ class ContentSubmission extends Model
             self::STATUS_PENDING,
             self::STATUS_PROCESSING,
         ])->withoutOpenOwnerOrder()
+            ->withoutActiveOrderClaim()
             ->where(function ($exp) {
                 $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
@@ -598,26 +599,46 @@ class ContentSubmission extends Model
             ->whereNotNull('country')->where('country', '!=', '')
             ->whereNotNull('language')->where('language', '!=', '')
             ->whereNull('archived_at')
-            ->withOpenOwnerOrder()
             ->hasCheckoutReadyLinks()
             ->withImageRightsCover()
-            ->withoutCurrentLivePlacement();
+            ->withoutCurrentLivePlacement()
+            ->where(function ($claim) {
+                $claim->withOpenOwnerOrder()
+                    ->orWhere(function ($paidItemOnly) {
+                        $paidItemOnly->withoutOpenOwnerOrder()
+                            ->whereHas('orderItems', function ($item) {
+                                $this->constrainPaidOpenPlacement($item);
+                            });
+                    });
+            });
     }
 
     /**
      * Current owner line is live. A sibling's live URL on the same order,
      * or a historical URL on a cancelled leftover, must not keep this
-     * article in Completed.
+     * article in Completed. Paid item-only leftovers (order_id never
+     * written) still count once the publisher posts the live URL.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
      */
     public function scopeWithCurrentLivePlacement($query)
     {
-        return $query->withOpenOwnerOrder()
-            ->whereHas('orderItems', function ($item) use ($query) {
-                $this->constrainCurrentOwnerLiveItem($item, $query->getModel()->getTable());
+        $table = $query->getModel()->getTable();
+
+        return $query->where(function ($outer) use ($table) {
+            $outer->where(function ($owned) use ($table) {
+                $owned->withOpenOwnerOrder()
+                    ->whereHas('orderItems', function ($item) use ($table) {
+                        $this->constrainCurrentOwnerLiveItem($item, $table);
+                    });
+            })->orWhere(function ($itemOnly) use ($table) {
+                $itemOnly->withoutOpenOwnerOrder()
+                    ->whereHas('orderItems', function ($item) use ($table) {
+                        $this->constrainPaidLiveItem($item, $table);
+                    });
             });
+        });
     }
 
     /**
@@ -626,8 +647,18 @@ class ContentSubmission extends Model
      */
     public function scopeWithoutCurrentLivePlacement($query)
     {
-        return $query->whereDoesntHave('orderItems', function ($item) use ($query) {
-            $this->constrainCurrentOwnerLiveItem($item, $query->getModel()->getTable());
+        $table = $query->getModel()->getTable();
+
+        return $query->where(function ($notOwnedLive) use ($table) {
+            $notOwnedLive->withoutOpenOwnerOrder()
+                ->orWhereDoesntHave('orderItems', function ($item) use ($table) {
+                    $this->constrainCurrentOwnerLiveItem($item, $table);
+                });
+        })->where(function ($notItemOnlyLive) use ($table) {
+            $notItemOnlyLive->withOpenOwnerOrder()
+                ->orWhereDoesntHave('orderItems', function ($item) use ($table) {
+                    $this->constrainPaidLiveItem($item, $table);
+                });
         });
     }
 
@@ -672,10 +703,31 @@ class ContentSubmission extends Model
                                 });
                         });
                 })->orWhere(function ($leftover) {
-                    $leftover->where('moderation_status', self::STATUS_APPROVED)
-                        ->withoutOpenOwnerOrder()
+                    $leftover->withoutOpenOwnerOrder()
                         ->whereNull('archived_at')
-                        ->withActiveOrderClaim();
+                        ->withActiveOrderClaim()
+                        ->withoutCurrentLivePlacement()
+                        ->where(function ($unpaidOrUnready) {
+                            $unpaidOrUnready->whereDoesntHave('orderItems', function ($item) {
+                                $this->constrainPaidOpenPlacement($item);
+                            })->orWhere(function ($paidUnready) {
+                                $paidUnready->where(function ($unready) {
+                                    $unready->withoutCheckoutReadyLinks()
+                                        ->orWhere(function ($rights) {
+                                            $rights->withoutImageRightsCover();
+                                        })
+                                        ->orWhere(function ($file) {
+                                            $file->whereNull('path')->orWhere('path', '');
+                                        })
+                                        ->orWhere(function ($country) {
+                                            $country->whereNull('country')->orWhere('country', '');
+                                        })
+                                        ->orWhere(function ($language) {
+                                            $language->whereNull('language')->orWhere('language', '');
+                                        });
+                                });
+                            });
+                        });
                 })->orWhere(function ($incomplete) {
                     $incomplete->where('moderation_status', self::STATUS_APPROVED)
                         ->withoutOpenOwnerOrder()
@@ -1066,8 +1118,10 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Catalog / wizard / cart may list this row. Replace runs on assign,
-     * checkout, or Order — not when the picker merely opens.
+     * Catalog / wizard / cart may list this row. Replace runs when a cart
+     * assign or add-to-cart actually attaches the article, or when checkout
+     * is about to charge — not when Order opens the catalog or the picker
+     * merely opens.
      */
     public function isAvailableForPicker(): bool
     {
@@ -1203,7 +1257,10 @@ class ContentSubmission extends Model
             return self::CHECKOUT_LINK_MESSAGE;
         }
 
-        if ($this->canBeOrdered() && $this->isClaimedByAnotherOrder()) {
+        // order_id leftovers cannot be ordered again, but they stay editable
+        // until paid. Do not hide the Pay-again notice just because
+        // canBeOrdered() is false.
+        if ($this->isClaimedByAnotherOrder() && ! $this->isLockedByPaidOrder()) {
             return self::ACTIVE_ORDER_CLAIM_MESSAGE;
         }
 
@@ -1345,11 +1402,7 @@ class ContentSubmission extends Model
 
     public function liveUrl(): ?string
     {
-        if (! $this->isInUse()) {
-            return null;
-        }
-
-        $item = $this->placementItem();
+        $item = $this->currentPaidPlacementItem();
         if (! $item || ! $item->hasLiveUrl()) {
             return null;
         }
@@ -1436,11 +1489,7 @@ class ContentSubmission extends Model
 
     public function isPublished(): bool
     {
-        if (! $this->isInUse()) {
-            return false;
-        }
-
-        $item = $this->placementItem();
+        $item = $this->currentPaidPlacementItem();
         if (! $item) {
             return false;
         }
@@ -1472,17 +1521,20 @@ class ContentSubmission extends Model
             return 'published';
         }
 
-        if ($this->isInUse()) {
-            $ownerId = (int) ($this->order_id ?? 0);
-            if ($ownerId > 0 && ! $this->isReadyToFulfill($ownerId)) {
+        if ($this->isInUse() || $this->isLockedByPaidOrder()) {
+            $claimId = (int) ($this->order_id ?? 0);
+            if ($claimId <= 0) {
+                $claimId = (int) ($this->activeClaimOrderId() ?? 0);
+            }
+            if ($claimId > 0 && ! $this->isReadyToFulfill($claimId)) {
                 return 'needs_fix';
             }
 
             return 'in_progress';
         }
 
-        // Item-only leftover (order_id never written). Not unused inventory —
-        // Expired / purge must not treat it as a dead row.
+        // Unpaid/failed item-only leftover (order_id never written). Not unused
+        // inventory — Expired / purge must not treat it as a dead row.
         if ($this->isClaimedByAnotherOrder()) {
             return 'needs_fix';
         }
@@ -1832,6 +1884,88 @@ class ContentSubmission extends Model
                     $q->orWhere('publisher_status', 'completed');
                 }
             });
+    }
+
+    /**
+     * Paid, non-cancelled line that still points here. Used when order_id
+     * was never written (item-only leftover that later settled).
+     *
+     * @param  Builder<OrderItem>  $itemQuery
+     */
+    protected function constrainPaidOpenPlacement($itemQuery): void
+    {
+        $itemQuery->whereHas('order', function ($order) {
+            $order->where('payment_status', 'paid')
+                ->where('status', '!=', 'cancelled');
+        });
+        $this->excludeClawedBackItems($itemQuery);
+    }
+
+    /**
+     * @param  Builder<OrderItem>  $itemQuery
+     */
+    protected function constrainPaidLiveItem($itemQuery, string $submissionTable): void
+    {
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            $itemQuery->whereRaw('0 = 1');
+
+            return;
+        }
+
+        $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
+        $itemQuery->whereColumn('order_items.content_submission_id', $submissionTable.'.id');
+        $this->constrainPaidOpenPlacement($itemQuery);
+        $itemQuery->where(function ($q) use ($hasPublisherStatus) {
+            $q->where(function ($live) {
+                $live->whereNotNull('live_url')->where('live_url', '!=', '');
+            });
+            if ($hasPublisherStatus) {
+                $q->orWhere('publisher_status', 'completed');
+            }
+        });
+    }
+
+    /**
+     * Paid placement for Completed / live URL. Prefers the current line, but
+     * ignores a stale cancelled leftover when a later paid item still points here.
+     */
+    public function currentPaidPlacementItem(): ?OrderItem
+    {
+        $item = $this->placementItem();
+        if ($item && $this->orderItemIsPaidOpen($item)) {
+            return $item;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return null;
+        }
+
+        $items = $this->relationLoaded('orderItems')
+            ? $this->orderItems
+            : $this->orderItems()->with('order')->orderBy('id')->get();
+
+        foreach ($items as $row) {
+            if ($this->orderItemIsPaidOpen($row)) {
+                return $row;
+            }
+        }
+
+        return null;
+    }
+
+    protected function orderItemIsPaidOpen(OrderItem $item): bool
+    {
+        if ($item->isClawedBack()) {
+            return false;
+        }
+
+        $order = $item->relationLoaded('order')
+            ? $item->order
+            : $item->order()->first();
+
+        return $order instanceof Order
+            && $order->status !== 'cancelled'
+            && $order->payment_status === 'paid';
     }
 
     /**

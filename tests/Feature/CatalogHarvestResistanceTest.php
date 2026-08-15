@@ -259,6 +259,97 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->assertStringContainsString('/advertiser/go/', $html);
     }
 
+    public function test_sample_article_href_is_our_redirect_not_the_publisher_url(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'sample-href.example');
+        $site->update(['example_url' => 'https://sample-href.example/guest-post']);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('guest-post', $html);
+        $this->assertStringNotContainsString('href="https://sample-href.example/guest-post"', $html);
+        $this->assertStringContainsString('/advertiser/go/'.$site->id.'?sample=1', $html);
+        $this->assertStringContainsString('catalog-site-details', $html);
+        $this->assertStringContainsString('data-id="'.$site->id.'"', $html);
+        $this->assertStringContainsString('class="text-decoration-none catalog-site-url"', $html);
+    }
+
+    public function test_description_listing_href_is_our_redirect_not_the_publisher_url(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'desc-href.example');
+        $site->update([
+            'description' => '<p>See <a href="https://desc-href.example/about">our about page</a>.</p>',
+        ]);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('our about page', $html);
+        $this->assertStringNotContainsString('href="https://desc-href.example/about"', $html);
+        $this->assertStringContainsString('/advertiser/go/'.$site->id.'?path=', $html);
+    }
+
+    public function test_description_path_visit_stays_on_the_listing_host(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'desc-path.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', [
+                'site' => $site->id,
+                'path' => '/about?ref=1',
+            ]))
+            ->assertRedirect('https://desc-path.example/about?ref=1');
+    }
+
+    public function test_description_path_visit_rejects_a_host(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'desc-safe.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', [
+                'site' => $site->id,
+                'path' => '//evil.example/phish',
+            ]))
+            ->assertRedirect('https://desc-safe.example');
+    }
+
+    public function test_sample_article_opens_through_our_redirect(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'sample-redirect.example');
+        $site->update(['example_url' => 'https://sample-redirect.example/guest-post']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]))
+            ->assertRedirect('https://sample-redirect.example/guest-post');
+    }
+
+    public function test_sample_visit_falls_back_to_the_listing_when_example_url_is_unsafe(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'sample-fallback.example');
+        $site->update(['example_url' => 'javascript:alert(1)']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]))
+            ->assertRedirect('https://sample-fallback.example');
+    }
+
     public function test_clicking_through_sends_them_to_the_site(): void
     {
         $advertiser = $this->userWithRole('advertiser');
@@ -325,6 +416,59 @@ class CatalogHarvestResistanceTest extends TestCase
             ->assertRedirect(route('advertiser.catalog'));
 
         $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $blocked->id]);
+    }
+
+    public function test_clicking_through_is_not_a_way_round_a_slow_down(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.slow_after' => 2,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            'catalog.url_reveal.pace.freeze_after' => 250,
+        ]);
+
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+
+        foreach (['slow-a.example', 'slow-b.example'] as $domain) {
+            $site = $this->site($publisher, $domain);
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+                ->assertOk();
+        }
+
+        $blocked = $this->site($publisher, 'slow-should-not-open.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $blocked->id))
+            ->assertRedirect(route('advertiser.catalog'));
+
+        $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $blocked->id]);
+    }
+
+    public function test_already_opened_visit_still_works_during_slow_down(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.slow_after' => 2,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            'catalog.url_reveal.pace.freeze_after' => 250,
+        ]);
+
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+        $opened = $this->site($publisher, 'slow-already-open.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $opened->id))
+            ->assertOk();
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $this->site($publisher, 'slow-peer.example')->id))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $opened->id))
+            ->assertRedirect('https://slow-already-open.example');
     }
 
     public function test_pace_does_not_block_visits_outside_hide_mode(): void

@@ -7,6 +7,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\User;
+use App\Services\AudienceInventoryService;
 use App\Support\EmailUnsubscribeLink;
 use Carbon\Carbon;
 use Illuminate\Mail\Mailables\Headers;
@@ -61,6 +62,13 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function send($mailer)
     {
+        if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
+            $this->suppressReason = 'staff';
+            $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
+
+            return null;
+        }
+
         $result = parent::send($mailer);
 
         if ($result !== null || $this->suppressReason === 'duplicate') {
@@ -106,6 +114,11 @@ class AudienceCampaignMail extends PlatformMailable
             || ($this->campaign->respect_preferences
                 && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails'))) {
             return EmailCampaignRecipient::SKIP_PREFERENCE;
+        }
+
+        if ($this->suppressReason === 'staff'
+            || AudienceInventoryService::userHasStaffRole($this->recipient)) {
+            return EmailCampaignRecipient::SKIP_STAFF;
         }
 
         return EmailCampaignRecipient::SKIP_DISABLED;
@@ -170,16 +183,13 @@ class AudienceCampaignMail extends PlatformMailable
 
     /**
      * Failed / skipped sync must not clobber an expire-stale row (leave
-     * stale). Delivered must, or a late SMTP success after expire is lost.
+     * stale). Delivered may overwrite stale, but not a preference /
+     * disabled / unverified skip.
      *
      * @return list<string>
      */
-    protected function syncableStatuses(string $newStatus): array
+    protected function syncableStatuses(): array
     {
-        if ($newStatus === EmailCampaignRecipient::STATUS_DELIVERED) {
-            return EmailCampaignRecipient::statusesOpenForDelivery();
-        }
-
         return [
             EmailCampaignRecipient::STATUS_PENDING,
             EmailCampaignRecipient::STATUS_QUEUED,
@@ -202,11 +212,18 @@ class AudienceCampaignMail extends PlatformMailable
                 return;
             }
 
-            $updated = EmailCampaignRecipient::query()
+            $newStatus = (string) ($payload['status'] ?? '');
+            $query = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
-                ->where('user_id', $userId)
-                ->whereIn('status', $this->syncableStatuses((string) ($payload['status'] ?? '')))
-                ->update($payload);
+                ->where('user_id', $userId);
+
+            if ($newStatus === EmailCampaignRecipient::STATUS_DELIVERED) {
+                $query->openForDelivery();
+            } else {
+                $query->whereIn('status', $this->syncableStatuses());
+            }
+
+            $updated = $query->update($payload);
 
             if ($updated) {
                 $campaign = EmailCampaign::query()->find($campaignId);

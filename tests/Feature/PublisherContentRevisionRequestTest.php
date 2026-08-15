@@ -849,6 +849,115 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertNotContains($broken->id, $orderableIds);
     }
 
+    public function test_revision_options_omit_replaceable_leftover_articles(): void
+    {
+        $ready = $this->createApprovedSubmission($this->advertiser);
+        $leftoverArticle = $this->createApprovedSubmission($this->advertiser);
+        $leftoverArticle->update(['title' => 'Failed Leftover Piece']);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $ready->id,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+        ]);
+        $ready->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $leftover = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-REV-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $leftoverArticle->id,
+            'content_link' => 'https://example.com/leftover',
+            'price' => 80,
+        ]);
+        $leftoverArticle->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $response = $this->actingAs($this->advertiser)
+            ->getJson(route('advertiser.orders.content-revision-options', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $orderableIds = collect($response->json('orderable'))->pluck('id')->all();
+        $this->assertNotContains($leftoverArticle->id, $orderableIds);
+        $this->assertContains($ready->id, collect($response->json('current'))->pluck('id')->all());
+    }
+
+    public function test_revision_fulfill_does_not_cancel_a_replaceable_leftover(): void
+    {
+        $current = $this->createApprovedSubmission($this->advertiser);
+        $leftoverArticle = $this->createApprovedSubmission($this->advertiser);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $current->id,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please send a different approved article.',
+        ]);
+        $current->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $leftover = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-REV-KEEP-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $leftoverArticle->id,
+            'content_link' => 'https://example.com/leftover',
+            'price' => 80,
+        ]);
+        $leftoverArticle->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_submission_id' => $leftoverArticle->id,
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['content_submission_id']);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $leftoverArticle->fresh()->order_id);
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        $this->assertSame($current->id, (int) $item->fresh()->content_submission_id);
+        Mail::assertNotQueued(ContentRevisionFulfilled::class);
+    }
+
     public function test_sibling_live_url_submit_keeps_order_processing_while_revision_open(): void
     {
         $order = Order::create([

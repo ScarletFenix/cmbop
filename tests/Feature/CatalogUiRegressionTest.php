@@ -121,6 +121,32 @@ class CatalogUiRegressionTest extends TestCase
         // Eye listeners are gated to hide mode, then capture-phase so reveal
         // runs before any leftover expand handlers.
         $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
+        // Copy tracking must stay bound when the page loaded in hide mode so
+        // an admin lift / expiry + live search still records the next wave.
+        $this->assertDoesNotMatchRegularExpression(
+            '/if \(!copyTrackEndpoint\) return;\s*(?:\/\/[^\n]*\n\s*)*if \(CatalogConfig && CatalogConfig\.inCatalogHideMode\) return;/',
+            $js
+        );
+        $this->assertStringContainsString('syncHideModeFromPayload', $js);
+        // A sticky client flag after hide_mode would silence /copy-track if the
+        // reload never happens and an admin later lifts (or the window expires).
+        $this->assertStringNotContainsString('trackingStopped', $js);
+        $this->assertStringContainsString('hideToastShown = false', $js);
+        $this->assertStringContainsString('window.CatalogCopyTrack', $js);
+        $this->assertMatchesRegularExpression(
+            '/copy-example-url[\s\S]*?CatalogCopyTrack\.report\(/',
+            $js
+        );
+        // Details expand is a sibling <tr>, not .site-row — still count copies.
+        $this->assertStringContainsString('.catalog-site-details', $js);
+        // Table-cell copies often include a trailing newline; multi-select dumps
+        // include several hosts. Do not drop the whole clipboard.
+        $this->assertStringContainsString('extractDomainish', $js);
+        $this->assertStringContainsString('.split(/[\\s,;|]+/)', $js);
+        $this->assertDoesNotMatchRegularExpression(
+            '/if \(!t \|\| t\.length > 500 \|\| \/\\\\r\|\\\\n\/\.test\(t\)\) return false;/',
+            $js
+        );
         $this->assertMatchesRegularExpression(
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
@@ -151,6 +177,10 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringNotContainsString('id="url-reveal-', $normalHtml);
         $this->assertStringNotContainsString('catalog-url-eye', $normalHtml);
         $this->assertStringContainsString('expand-arrow', $normalHtml);
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*copy-example-url[^"]*"[^>]*data-site-id="\d+"/',
+            $normalHtml
+        );
 
         $hideHtml = $this->actingAs($this->advertiserInHideMode())
             ->get(route('advertiser.catalog'))

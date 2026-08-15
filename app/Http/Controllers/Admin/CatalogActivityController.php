@@ -9,6 +9,7 @@ use App\Models\Order;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\Catalog\CatalogCopyStrikeGuard;
 use App\Services\Catalog\RevealPaceGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -176,13 +177,15 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        $model = User::findOrFail($user);
-        $hideUntilWas = $model->catalog_hide_until;
-        $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+        [$model, $hideUntilWas, $strikesWere] = $this->mutateLockedUser($user, function (User $model) {
+            $hideUntilWas = $model->catalog_hide_until;
+            $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $model->catalog_hide_until = null;
+            CatalogCopyStrikeGuard::watermarkEvents($model);
+            $model->save();
 
-        $model->catalog_hide_until = null;
-        CatalogCopyStrikeGuard::watermarkEvents($model);
-        $model->save();
+            return [$model, $hideUntilWas, $strikesWere];
+        });
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -210,15 +213,17 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        $model = User::findOrFail($user);
-        $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
-        $warnedAtWas = $model->catalog_copy_warned_at;
-        $inHide = $model->inCatalogHideMode();
+        [$model, $strikesWere, $warnedAtWas, $inHide] = $this->mutateLockedUser($user, function (User $model) {
+            $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $warnedAtWas = $model->catalog_copy_warned_at;
+            $inHide = $model->inCatalogHideMode();
+            $model->catalog_copy_strike_count = 0;
+            $model->catalog_copy_warned_at = null;
+            CatalogCopyStrikeGuard::watermarkEvents($model);
+            $model->save();
 
-        $model->catalog_copy_strike_count = 0;
-        $model->catalog_copy_warned_at = null;
-        CatalogCopyStrikeGuard::watermarkEvents($model);
-        $model->save();
+            return [$model, $strikesWere, $warnedAtWas, $inHide];
+        });
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -253,27 +258,28 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        $model = User::findOrFail($user);
-        $hideUntilWas = $model->catalog_hide_until;
-        $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+        [$model, $hideUntilWas, $strikesWere] = $this->mutateLockedUser($user, function (User $model) {
+            $hideUntilWas = $model->catalog_hide_until;
+            $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $model->catalog_hide_until = null;
+            $model->catalog_copy_strike_count = 0;
+            $model->catalog_copy_warned_at = null;
+            CatalogCopyStrikeGuard::watermarkEvents($model);
+            $model->save();
 
-        $model->catalog_hide_until = null;
-        $model->catalog_copy_strike_count = 0;
-        $model->catalog_copy_warned_at = null;
-        CatalogCopyStrikeGuard::watermarkEvents($model);
-        $model->save();
+            return [$model, $hideUntilWas, $strikesWere];
+        });
 
-        ActivityLogger::tryLog(
+        CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
+        $this->logActivity(
             'catalog_activity.copy_hide_cleared',
-            (auth()->user()?->name ?? 'Admin').' cleared catalog copy hide for '.$model->email,
+            $model->email.' hide mode lifted and strikes reset. Copy history is kept.',
             $model,
-            ['user_id' => $model->id],
-            $model->name
+            [
+                'hide_until_was' => $hideUntilWas?->toIso8601String(),
+                'strikes_were' => $strikesWere,
+            ]
         );
-
-        if (Schema::hasTable('catalog_copy_events')) {
-            CatalogCopyEvent::query()->where('user_id', $model->id)->delete();
-        }
 
         return back()->with(
             'success',
@@ -297,7 +303,7 @@ class CatalogActivityController extends Controller
             $model->save();
 
             $this->logActivity(
-                'catalog_pace_exempted',
+                'catalog_activity.exempt_toggled',
                 $model->email.' is back under the usual pace checks.',
                 $model,
                 ['exempt' => false]
@@ -315,7 +321,7 @@ class CatalogActivityController extends Controller
         $model->save();
 
         $this->logActivity(
-            'catalog_pace_exempted',
+            'catalog_activity.exempt_toggled',
             $model->email.' is trusted for '.$minutes.' minutes.',
             $model,
             [
@@ -557,34 +563,98 @@ class CatalogActivityController extends Controller
             ->groupBy('user_id')
             ->pluck('total', 'user_id');
 
-            ActivityLogger::tryLog(
-                'catalog_activity.exempt_toggled',
-                (auth()->user()?->name ?? 'Admin').' ended catalog pace exemption for '.$model->email,
-                $model,
-                ['exempt' => false, 'user_id' => $model->id],
-                $model->name
-            );
+        $hostOnly = CatalogCopyEvent::query()
+            ->select('user_id', DB::raw('COUNT(DISTINCT normalized_host) as total'))
+            ->whereIn('user_id', $userIds)
+            ->where('created_at', '>=', $since)
+            ->whereNull('site_id')
+            ->groupBy('user_id')
+            ->pluck('total', 'user_id');
 
-            return back()->with(
-                'success',
-                $model->email.' is back under the usual pace checks.'
-            );
+        $totals = collect();
+        foreach ($userIds as $id) {
+            $totals[(int) $id] = (int) ($withSite[$id] ?? 0) + (int) ($hostOnly[$id] ?? 0);
         }
 
         return $totals;
     }
 
-        ActivityLogger::tryLog(
-            'catalog_activity.exempt_toggled',
-            (auth()->user()?->name ?? 'Admin').' granted catalog pace exemption for '.$model->email,
-            $model,
-            ['exempt' => true, 'until' => $until->toIso8601String(), 'user_id' => $model->id],
-            $model->name
-        );
+    /**
+     * @template T
+     *
+     * @param  callable(User): T  $callback
+     * @return T
+     */
+    private function mutateLockedUser(int $userId, callable $callback): mixed
+    {
+        return DB::transaction(function () use ($userId, $callback) {
+            $model = User::query()->whereKey($userId)->lockForUpdate()->firstOrFail();
 
-        return back()->with(
-            'success',
-            $model->email.' is trusted until '.$until->timezone(config('app.timezone'))->format('H:i').' ('.$minutes.' minutes).'
-        );
+            return $callback($model);
+        });
+    }
+
+    private function parseDbTimestamp(mixed $value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::parse($value->format('Y-m-d H:i:s'), 'UTC');
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        return Carbon::parse($raw, 'UTC');
+    }
+
+    /**
+     * @param  array<string, mixed>  $properties
+     */
+    private function logActivity(string $action, string $description, User $subject, array $properties = []): void
+    {
+        try {
+            ActivityLogger::log($action, $description, $subject, $properties);
+        } catch (\Throwable $e) {
+            Log::warning('Catalog activity log failed', [
+                'action' => $action,
+                'user_id' => $subject->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    private function hideRemainingLabel(?Carbon $until): ?string
+    {
+        if (! $until || ! $until->isFuture()) {
+            return null;
+        }
+
+        $minutes = max(1, (int) ceil(now()->diffInMinutes($until, false)));
+
+        if ($minutes >= 120) {
+            return (int) round($minutes / 60).'h left';
+        }
+
+        return $minutes.'m left';
+    }
+
+    private function userUrl(int $userId): string
+    {
+        return route('admin.users.index', ['user' => $userId]).'#user-'.$userId;
+    }
+
+    private function copyStrikeColumnsReady(): bool
+    {
+        try {
+            return Schema::hasColumn('users', 'catalog_copy_strike_count')
+                && Schema::hasColumn('users', 'catalog_hide_until');
+        } catch (\Throwable) {
+            return false;
+        }
     }
 }

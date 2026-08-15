@@ -21,7 +21,8 @@ class CatalogCopyTrackController extends Controller
         }
 
         $validated = $request->validate([
-            'text' => ['required', 'string', 'max:500'],
+            // A multi-select dump of catalog URLs is longer than one cell.
+            'text' => ['required', 'string', 'max:8000'],
             'site_id' => ['nullable', 'integer', 'min:1'],
         ]);
 

@@ -28,6 +28,7 @@ use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
+use App\Services\Catalog\RevealPaceGuard;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
@@ -215,7 +216,7 @@ class CatalogController extends Controller
         try {
             $orderableScope = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->availableForPicker();
+                ->checkoutReady();
 
             // Count must not reuse a limited list — same exists-style gate as the dashboard.
             $approvedArticleCount = (clone $orderableScope)->count();
@@ -1508,15 +1509,6 @@ class CatalogController extends Controller
             (int) auth()->id(),
             [$submissionId]
         );
-        $submission = $submission->fresh() ?? $submission;
-
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
-            return response()->json([
-                'success' => false,
-                'error' => $submission->libraryFixSummary()
-                    ?: 'Choose an approved Content Library article that is still available to order.',
-            ], 422);
-        }
 
         $ids[$copyIndex] = $submission->id;
         $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
@@ -1621,19 +1613,22 @@ class CatalogController extends Controller
                     }
 
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
+                    $existingLineKey = null;
+                    foreach ($cart as $key => $item) {
+                        if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
+                            $existingLineKey = $key;
+                            break;
+                        }
+                    }
+                    $slotEmpty = $existingLineKey === null
+                        || (($this->cartLineContentIds($cart[$existingLineKey])[0] ?? 0) <= 0);
 
-                    if (! $alreadyAssigned) {
+                    if (! $alreadyAssigned && $slotEmpty) {
                         app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
                             (int) auth()->id(),
                             [$sessionArticleId]
                         );
-                        $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
-                        if (! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
-                            session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
-                            $librarySubmission = null;
-                        } else {
-                            $attachArticleId = (int) $librarySubmission->id;
-                        }
+                        $attachArticleId = (int) $librarySubmission->id;
                     }
                 }
             }
@@ -1701,17 +1696,24 @@ class CatalogController extends Controller
                 $line = $this->applyCartLineContentIds($line, $ids);
                 $cart[$existingItem] = $this->normalizeCartLineForSite($site, $line);
             } else {
-                // Inside hide mode the row is masked — carting it unlocks identity
-                // for that listing (and counts toward pace). Outside hide mode
-                // identity is already open; do not invent a disclosure row.
+                // Inside hide mode the row is masked — carting it unlocks
+                // identity for checkout when pace allows. The add itself is
+                // never refused. SLOW/FROZEN must not be bypassed by Buy
+                // (otherwise a script unmasks the catalog via add/remove).
                 $visibility = app(SiteUrlVisibility::class);
                 $cartUser = auth()->user();
-                if ($cartUser && $visibility->inHideMode($cartUser)) {
-                    $visibility->reveal(
-                        $cartUser,
-                        $site,
-                        SiteUrlReveal::SOURCE_CART
-                    );
+                if ($cartUser && $visibility->inHideMode($cartUser) && ! $visibility->canSee($cartUser, $site)) {
+                    $alreadySeen = $visibility->hasEverSeen($cartUser, $site);
+                    $verdict = $alreadySeen
+                        ? ['state' => RevealPaceGuard::OK]
+                        : app(RevealPaceGuard::class)->assess($cartUser);
+                    if (! in_array($verdict['state'], [RevealPaceGuard::SLOW, RevealPaceGuard::FROZEN], true)) {
+                        $visibility->reveal(
+                            $cartUser,
+                            $site,
+                            SiteUrlReveal::SOURCE_CART
+                        );
+                    }
                 }
 
                 $line = [
@@ -1906,7 +1908,7 @@ class CatalogController extends Controller
             return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
-        $partition = $this->partitionCartByCheckoutReadiness($cart);
+        $partition = $this->partitionCartByCheckoutReadiness($cart, null, null, true);
         $payableCart = $partition['payable'];
         $deferredCart = $partition['deferred'];
 
@@ -3700,7 +3702,7 @@ class CatalogController extends Controller
 
         $articles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->availableForPicker()
+            ->checkoutReady()
             ->latest('id')
             ->limit(50)
             ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
