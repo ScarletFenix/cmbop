@@ -552,6 +552,7 @@ class BillingPhases46Test extends TestCase
         $advertiser = $this->makeUser('advertiser');
         $order = $this->paidOrder($advertiser);
         Invoice::query()->where('order_id', $order->id)->delete();
+        Mail::fake();
 
         $result = app(BillingDocumentService::class)->backfillMissingTaxInvoices(10);
 
@@ -560,6 +561,9 @@ class BillingPhases46Test extends TestCase
             'order_id' => $order->id,
             'type' => Invoice::TYPE_TAX_INVOICE,
         ]);
+        $this->assertSame(0, Invoice::where('order_id', $order->id)->where('type', Invoice::TYPE_PAYMENT_RECEIPT)->count());
+        Mail::assertNothingQueued();
+        Mail::assertNothingSent();
     }
 
     public function test_promo_feature_invoicing_stays_disabled(): void

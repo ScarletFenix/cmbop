@@ -655,7 +655,10 @@ $(document).ready(function() {
             html += '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</button>';
             html += '<ul class="dropdown-menu dropdown-menu-end">';
             html += '<li><a class="dropdown-item" href="' + escapeHtml(paymentUrl(ORDERS_SHOW, order.id)) + '"><i class="fa fa-shopping-bag me-2"></i>Open order</a></li>';
-            if (allowed.length) {
+            if (order.invoice_url) {
+                html += '<li><a class="dropdown-item" href="' + escapeHtml(order.invoice_url) + '"><i class="fa fa-file-invoice-dollar me-2"></i>Open invoice</a></li>';
+            }
+            if (order.payment_status !== 'paid') {
                 html += '<li><button type="button" class="dropdown-item update-payment-btn" ';
                 html += 'data-id="' + escapeHtml(order.id) + '" ';
                 html += 'data-order="' + escapeHtml(order.order_number) + '" ';

@@ -7,11 +7,13 @@ use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\RefundReceiptMail;
+use App\Mail\WithdrawalStatusUpdated;
 use App\Models\BillingEvent;
 use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Services\InAppNotificationService;
 use App\Support\BillingCustomerMailSuppressor;
 use Illuminate\Support\Facades\Log;
@@ -236,6 +238,10 @@ class BillingDocumentService
     {
         $order->loadMissing(['user', 'items']);
 
+        if (! $order->user) {
+            throw new \RuntimeException('Cannot generate an invoice: the order has no customer account.');
+        }
+
         $existing = Invoice::query()
             ->where('order_id', $order->id)
             ->where('type', Invoice::TYPE_TAX_INVOICE)
@@ -272,39 +278,53 @@ class BillingDocumentService
         return $invoice->fresh();
     }
 
-    public function resendInvoiceEmail(Invoice $invoice): void
+    /**
+     * @return array{ok: bool, message: string}
+     */
+    public function resendInvoiceEmail(Invoice $invoice): array
     {
-        $invoice->loadMissing(['user', 'order.items']);
+        $invoice->loadMissing(['user', 'order.items', 'parentInvoice']);
 
-        if ($invoice->type === Invoice::TYPE_TAX_INVOICE) {
-            $receipt = Invoice::query()
-                ->where('parent_invoice_id', $invoice->id)
-                ->where('type', Invoice::TYPE_PAYMENT_RECEIPT)
-                ->latest('id')
-                ->first();
-            $this->emailPaymentSuccess($invoice, $receipt);
-        } elseif ($invoice->type === Invoice::TYPE_PAYMENT_RECEIPT) {
-            $parent = $invoice->parentInvoice
-                ?: Invoice::query()
-                    ->where('order_id', $invoice->order_id)
-                    ->where('type', Invoice::TYPE_TAX_INVOICE)
-                    ->where('status', '!=', Invoice::STATUS_CANCELLED)
-                    ->latest('id')
-                    ->first();
-            if ($parent) {
-                $this->emailPaymentSuccess($parent->loadMissing(['user', 'order.items']), $invoice);
-            } else {
-                $this->emailPaymentSuccess($invoice, null);
-            }
-        } elseif ($invoice->type === Invoice::TYPE_REFUND_RECEIPT) {
-            $this->emailRefund($invoice);
-        } elseif ($invoice->type === Invoice::TYPE_PAYMENT_FAILURE) {
-            $this->emailPaymentFailed($invoice);
-        } elseif ($invoice->type === Invoice::TYPE_DEPOSIT_RECEIPT) {
-            $this->emailDepositReceipt($invoice);
+        if ($invoice->isCancelled()) {
+            return [
+                'ok' => false,
+                'message' => 'Cancelled documents cannot be resent.',
+            ];
         }
 
-        $this->events->log('invoice_resent', $invoice);
+        $email = $invoice->user?->email ?: $invoice->customer_email;
+        if (! filled($email)) {
+            return [
+                'ok' => false,
+                'message' => 'This document has no customer email.',
+            ];
+        }
+
+        $result = match ($invoice->type) {
+            Invoice::TYPE_TAX_INVOICE => $this->resendTaxInvoiceEmail($invoice),
+            Invoice::TYPE_PAYMENT_RECEIPT => $this->resendPaymentReceiptEmail($invoice),
+            Invoice::TYPE_REFUND_RECEIPT => $this->emailRefund($invoice),
+            Invoice::TYPE_PAYMENT_FAILURE => $this->emailPaymentFailed($invoice),
+            Invoice::TYPE_DEPOSIT_RECEIPT => $this->emailDepositReceipt($invoice),
+            Invoice::TYPE_WITHDRAWAL_PAYOUT => $this->emailPayoutStatement($invoice),
+            default => 'This document type cannot be emailed.',
+        };
+
+        if ($result === true) {
+            $this->events->log('invoice_resent', $invoice);
+
+            return [
+                'ok' => true,
+                'message' => 'Invoice email resent to '.$email,
+            ];
+        }
+
+        return [
+            'ok' => false,
+            'message' => is_string($result)
+                ? $result
+                : 'Could not send the email to '.$email.'.',
+        ];
     }
 
     public function cancelInvoice(Invoice $invoice, User $admin, ?string $reason = null): Invoice
@@ -332,6 +352,14 @@ class BillingDocumentService
     {
         $invoice->increment('download_count');
         $this->events->log('invoice_downloaded', $invoice);
+    }
+
+    /**
+     * Staff audit download — do not increment the customer download counter.
+     */
+    public function recordAdminDownload(Invoice $invoice, ?User $actor = null): void
+    {
+        $this->events->log('invoice_downloaded_by_admin', $invoice, $invoice->order, $actor?->id);
     }
 
     /**
@@ -365,13 +393,9 @@ class BillingDocumentService
             }
 
             try {
-                $invoice = $this->handlePaymentPaid($order);
-                if ($invoice) {
-                    $created++;
-                    $ids[] = (int) $invoice->id;
-                } else {
-                    $failed++;
-                }
+                $invoice = $this->generateManually($order);
+                $created++;
+                $ids[] = (int) $invoice->id;
             } catch (\Throwable $e) {
                 $failed++;
                 Log::error('Backfill tax invoice failed', [
@@ -402,12 +426,15 @@ class BillingDocumentService
      */
     public function regenerateMissingPdfs(int $limit = 50): array
     {
+        $limit = max(1, min(200, $limit));
+        $scan = max(400, $limit * 8);
+
         $docs = Invoice::query()
-            ->whereNotNull('pdf_path')
             ->orderByDesc('id')
-            ->limit(max(1, min(200, $limit)))
+            ->limit($scan)
             ->get()
             ->filter(fn (Invoice $inv) => ! $inv->pdfExists())
+            ->take($limit)
             ->values();
 
         $regenerated = 0;
@@ -525,10 +552,38 @@ class BillingDocumentService
         return app(BillingCustomerMailSuppressor::class)->suppressed();
     }
 
-    protected function emailPaymentSuccess(Invoice $invoice, ?Invoice $receipt = null): void
+    protected function resendTaxInvoiceEmail(Invoice $invoice): bool
+    {
+        $receipt = Invoice::query()
+            ->where('parent_invoice_id', $invoice->id)
+            ->where('type', Invoice::TYPE_PAYMENT_RECEIPT)
+            ->latest('id')
+            ->first();
+
+        return $this->emailPaymentSuccess($invoice, $receipt);
+    }
+
+    protected function resendPaymentReceiptEmail(Invoice $invoice): bool
+    {
+        $parent = $invoice->parentInvoice
+            ?: Invoice::query()
+                ->where('order_id', $invoice->order_id)
+                ->where('type', Invoice::TYPE_TAX_INVOICE)
+                ->where('status', '!=', Invoice::STATUS_CANCELLED)
+                ->latest('id')
+                ->first();
+
+        if ($parent) {
+            return $this->emailPaymentSuccess($parent->loadMissing(['user', 'order.items']), $invoice);
+        }
+
+        return $this->emailPaymentSuccess($invoice, null);
+    }
+
+    protected function emailPaymentSuccess(Invoice $invoice, ?Invoice $receipt = null): bool
     {
         if ($this->customerEmailSuppressed() || ! $invoice->user?->email) {
-            return;
+            return false;
         }
 
         Mail::to($invoice->user->email)->send(
@@ -540,12 +595,14 @@ class BillingDocumentService
             'email_count' => ((int) $invoice->email_count) + 1,
         ]);
         $this->events->log('invoice_emailed', $invoice);
+
+        return true;
     }
 
-    protected function emailPaymentFailed(Invoice $doc): void
+    protected function emailPaymentFailed(Invoice $doc): bool
     {
         if ($this->customerEmailSuppressed() || ! $doc->user?->email) {
-            return;
+            return false;
         }
 
         Mail::to($doc->user->email)->send(new PaymentFailedMail($doc));
@@ -554,6 +611,8 @@ class BillingDocumentService
             'email_count' => ((int) $doc->email_count) + 1,
         ]);
         $this->events->log('payment_failure_emailed', $doc);
+
+        return true;
     }
 
     protected function emailPaymentPending(Order $order): void
@@ -575,10 +634,10 @@ class BillingDocumentService
         }
     }
 
-    protected function emailRefund(Invoice $refund): void
+    protected function emailRefund(Invoice $refund): bool
     {
         if ($this->customerEmailSuppressed() || ! $refund->user?->email) {
-            return;
+            return false;
         }
 
         Mail::to($refund->user->email)->send(new RefundReceiptMail($refund));
@@ -587,15 +646,17 @@ class BillingDocumentService
             'email_count' => ((int) $refund->email_count) + 1,
         ]);
         $this->events->log('refund_receipt_emailed', $refund);
+
+        return true;
     }
 
     /**
      * Resend deposit receipt email (admin panel).
      */
-    protected function emailDepositReceipt(Invoice $receipt): void
+    protected function emailDepositReceipt(Invoice $receipt): bool|string
     {
         if (! $receipt->user?->email) {
-            return;
+            return 'This document has no customer email.';
         }
 
         $depositId = data_get($receipt->meta, 'deposit_request_id');
@@ -616,14 +677,70 @@ class BillingDocumentService
                 'invoice_id' => $receipt->id,
             ]);
 
-            return;
+            return 'Cannot resend this deposit receipt — the deposit request was not found.';
         }
 
-        Mail::to($receipt->user->email)->send(new DepositApproved($deposit));
+        $mail = new DepositApproved($deposit);
+        $mail->dedupeKey = 'deposit_receipt_resent:'.$receipt->id.':'.now()->timestamp;
+        Mail::to($receipt->user->email)->send($mail);
         $receipt->update([
             'emailed_at' => now(),
             'email_count' => ((int) $receipt->email_count) + 1,
         ]);
         $this->events->log('deposit_receipt_emailed', $receipt);
+
+        return true;
+    }
+
+    protected function emailPayoutStatement(Invoice $statement): bool|string
+    {
+        if (! $statement->user?->email) {
+            return 'This document has no customer email.';
+        }
+
+        $withdrawal = $this->findWithdrawalForStatement($statement);
+        if (! $withdrawal) {
+            Log::warning('Cannot resend payout statement — withdrawal not found', [
+                'invoice_id' => $statement->id,
+            ]);
+
+            return 'Cannot resend this payout statement — the withdrawal was not found.';
+        }
+
+        $mail = new WithdrawalStatusUpdated(
+            $withdrawal,
+            (string) $withdrawal->status,
+            (string) $withdrawal->status,
+            'Payout statement resent.'
+        );
+        $mail->dedupeKey = 'withdrawal_payout_resent:'.$statement->id.':'.now()->timestamp;
+        $mail->recipientUser = $statement->user;
+
+        Mail::to($statement->user->email)->send($mail);
+        $statement->update([
+            'emailed_at' => now(),
+            'email_count' => ((int) $statement->email_count) + 1,
+        ]);
+        $this->events->log('payout_statement_emailed', $statement);
+
+        return true;
+    }
+
+    protected function findWithdrawalForStatement(Invoice $statement): ?Withdrawal
+    {
+        $id = (int) data_get($statement->meta, 'withdrawal_id');
+        if ($id > 0) {
+            $withdrawal = Withdrawal::query()->with('user')->find($id);
+            if ($withdrawal) {
+                return $withdrawal;
+            }
+        }
+
+        $ref = (string) $statement->reference_code;
+        if (preg_match('/^WD-(\d+)$/', $ref, $matches)) {
+            return Withdrawal::query()->with('user')->find((int) $matches[1]);
+        }
+
+        return null;
     }
 }

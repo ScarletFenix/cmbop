@@ -195,6 +195,9 @@
                 : '';
             chips.push(textLink(order.url + '#order-schedule', 'Scheduled', 'badge text-bg-warning text-dark text-decoration-none', when));
         }
+        if (order.invoice_url) {
+            chips.push(textLink(order.invoice_url, 'Invoice', 'badge text-bg-light text-dark border text-decoration-none'));
+        }
         if (!chips.length) return '';
         return '<div class="d-flex flex-wrap gap-1 mt-1">' + chips.join('') + '</div>';
     }
