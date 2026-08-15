@@ -98,6 +98,10 @@ class WelcomeBonusService
                 return false;
             }
 
+            if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
+                return false;
+            }
+
             $insert = function () use ($user, $request, $amount, $source, $ip): bool {
                 if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
                     return false;
@@ -321,45 +325,106 @@ class WelcomeBonusService
     }
 
     /**
-     * Serialize two grants for the same place.
+     * Serialize two grants for the same place until the signup transaction
+     * commits. Releasing GET_LOCK when recordClaim() returns (still inside
+     * Register / Socialite's transaction) lets a second connection pass
+     * ipAlreadyClaimed before the first claim row is visible — a second €20
+     * when the unique IP index is also missing.
      *
-     * Hostinger defaults to CACHE_STORE=database. A cache lock taken inside
-     * the signup transaction is invisible to other connections until commit,
-     * so concurrent signups from the same IP can both pass ipAlreadyClaimed
-     * when the unique IP index is also missing. MySQL/MariaDB GET_LOCK is
-     * session-scoped and works inside an open transaction.
+     * MySQL/MariaDB GET_LOCK is session-scoped and survives COMMIT, so it
+     * can be held until afterCommit / afterRollBack. Cache locks cannot:
+     * RefreshDatabase never commits the outer test transaction, so a cache
+     * lock deferred to afterCommit would leak across tests and block later
+     * same-IP grants. Cache is only the SQLite / degraded-prod fallback;
+     * the unique IP index is the backstop there.
      */
     private function withPlaceLock(string $ip, callable $insert): bool
     {
+        $acquired = $this->acquirePlaceLock($ip);
+        if ($acquired === false) {
+            return false;
+        }
+        if ($acquired === null) {
+            return $insert();
+        }
+
+        [$release, $sessionScoped] = $acquired;
+        $releaseInFinally = true;
+
+        if ($sessionScoped && DB::transactionLevel() > 0) {
+            $released = false;
+            $safeRelease = function () use ($release, &$released): void {
+                if ($released) {
+                    return;
+                }
+                $released = true;
+                $release();
+            };
+
+            try {
+                $hookPending = false;
+                $ranInline = false;
+                DB::afterCommit(function () use ($safeRelease, &$hookPending, &$ranInline): void {
+                    if (! $hookPending) {
+                        $ranInline = true;
+
+                        return;
+                    }
+                    $safeRelease();
+                });
+                if (! $ranInline) {
+                    $hookPending = true;
+                    $releaseInFinally = false;
+                    try {
+                        DB::afterRollBack($safeRelease);
+                    } catch (\Throwable) {
+                    }
+                }
+            } catch (\Throwable) {
+                // Hooks could not be registered — keep GET_LOCK until this
+                // connection closes rather than unlocking before COMMIT.
+                $releaseInFinally = false;
+            }
+        }
+
+        try {
+            return $insert();
+        } finally {
+            if ($releaseInFinally) {
+                $release();
+            }
+        }
+    }
+
+    /**
+     * @return array{0: callable(): void, 1: bool}|false|null False on timeout, null if no lock store.
+     */
+    private function acquirePlaceLock(string $ip): array|false|null
+    {
         $sql = $this->trySqlPlaceLock($ip);
         if ($sql === 'held') {
-            try {
-                return $insert();
-            } finally {
+            return [function () use ($ip): void {
                 $this->releaseSqlPlaceLock($ip);
-            }
+            }, true];
         }
         if ($sql === 'timeout') {
             return false;
         }
 
-        $ran = false;
-        $result = false;
-        $insertOnce = function () use ($insert, &$ran, &$result): bool {
-            if (! $ran) {
-                $ran = true;
-                $result = $insert();
-            }
-
-            return $result;
-        };
-
         try {
-            return Cache::lock('welcome-bonus-claim:'.$ip, 15)->block(8, $insertOnce);
+            $lock = Cache::lock('welcome-bonus-claim:'.$ip, 15);
+            $lock->block(8);
+
+            return [function () use ($lock): void {
+                try {
+                    $lock->release();
+                } catch (\Throwable) {
+                }
+            }, false];
         } catch (LockTimeoutException) {
             return false;
         } catch (\Throwable) {
-            return $insertOnce();
+            return null;
         }
     }
 

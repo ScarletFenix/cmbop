@@ -147,6 +147,18 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_cache_place_lock_is_released_when_record_claim_returns(): void
+    {
+        $user = User::factory()->create();
+        $ip = '203.0.113.50';
+
+        $this->assertTrue($this->service->recordClaim($user, $this->request($ip), 20.0, 'registration'));
+
+        $lock = Cache::lock('welcome-bonus-claim:'.$ip, 1);
+        $this->assertTrue((bool) $lock->get(), 'cache place lock leaked after recordClaim()');
+        $lock->release();
+    }
+
     public function test_missing_claims_table_does_not_grant(): void
     {
         Schema::dropIfExists('welcome_bonus_claims');
