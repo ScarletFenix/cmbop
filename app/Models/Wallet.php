@@ -444,8 +444,11 @@ class Wallet extends Model
     /**
      * Order completed: drop reserved funds (bonus portion is permanently spent).
      * Never drive reserved_balance / bonus_reserved negative — clamp and log.
+     *
+     * $bonusLimit caps how much of the consume comes from bonus_reserved so a
+     * shared checkout promo is not burned on the first sibling approve.
      */
-    public function consumeReserved(float $amount): void
+    public function consumeReserved(float $amount, ?float $bonusLimit = null): void
     {
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -479,6 +482,9 @@ class Wallet extends Model
         if (Schema::hasColumn('wallets', 'bonus_reserved')) {
             $bonusReserved = max(0, round((float) ($this->bonus_reserved ?? 0), 2));
             $fromBonus = min($consume, $bonusReserved);
+            if ($bonusLimit !== null) {
+                $fromBonus = min($fromBonus, max(0, round($bonusLimit, 2)));
+            }
             $this->bonus_reserved = round($bonusReserved - $fromBonus, 2);
         }
 

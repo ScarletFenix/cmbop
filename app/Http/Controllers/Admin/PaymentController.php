@@ -248,9 +248,11 @@ class PaymentController extends Controller
                 'admin_id' => auth()->id(),
             ]);
 
-            // Send email notification to user when payment is marked as paid
+            // Send email notification to user when payment is marked as paid.
+            // Do not consume checkout bonus here — Stripe mark-paid also leaves
+            // bonus_reserved until approve/reject so a later refund cannot mint
+            // promo as withdrawable cash.
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
-                $this->consumeReservedCheckoutBonus($order);
                 if ($sendNotification) {
                     $this->sendPaymentConfirmationEmail($order);
                 }
@@ -386,24 +388,6 @@ class PaymentController extends Controller
             }
         } catch (\Exception $e) {
             Log::error('Failed to send payment confirmation email: '.$e->getMessage());
-        }
-    }
-
-    private function consumeReservedCheckoutBonus(Order $order): void
-    {
-        $bonus = app(CheckoutIntentService::class)->takeBonus((int) $order->user_id, (string) $order->reference_code);
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->consumeReserved(min($bonus, (float) $wallet->bonus_reserved));
         }
     }
 

@@ -124,7 +124,7 @@ class OrderRefundService
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
             // cannot unlock the whole checkout promo while other paid rows remain.
-            $bonusShare = $this->cardCheckoutBonusShare($wallet, $order, $amount);
+            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
             $cashShare = round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;
@@ -161,6 +161,8 @@ class OrderRefundService
      * Drop reserved funds when an order is completed.
      * Wallet checkouts consume the full line. Card / manual checkouts only
      * consume leftover promotional reserve so it cannot be refunded as cash later.
+     * Shared checkout bonus is pro-rated across still-paid siblings so the
+     * first approve cannot burn promo that a later reject would mint as cash.
      */
     public function consumeReservedForSettledOrder(Order $order, Wallet $wallet): void
     {
@@ -169,25 +171,26 @@ class OrderRefundService
             return;
         }
 
+        $bonusShare = $this->checkoutBonusShare($wallet, $order, $total);
+
         if ($order->payment_method === 'wallet') {
-            $wallet->consumeReserved($total);
+            $wallet->consumeReserved($total, $bonusShare);
 
             return;
         }
 
-        $bonus = min($total, max(0, round((float) $wallet->bonus_reserved, 2)));
-        if ($bonus > 0) {
-            $wallet->consumeReserved($bonus);
+        if ($bonusShare > 0) {
+            $wallet->consumeReserved($bonusShare, $bonusShare);
         }
     }
 
     /**
      * Split leftover checkout bonus across still-paid siblings that share
-     * the same Stripe/card reference. Using the whole reserved bucket on the
-     * first reject unlocked promo that the advertiser could spend again
-     * while another paid line was still open.
+     * the same reference. Using the whole reserved bucket on the first
+     * reject or approve unlocked promo that a later sibling refund would
+     * mint as withdrawable cash.
      */
-    private function cardCheckoutBonusShare(Wallet $wallet, Order $order, float $amount): float
+    private function checkoutBonusShare(Wallet $wallet, Order $order, float $amount): float
     {
         $reserved = max(0, round((float) $wallet->bonus_reserved, 2));
         if ($reserved <= 0 || $amount <= 0) {
