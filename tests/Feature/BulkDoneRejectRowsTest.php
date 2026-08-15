@@ -172,6 +172,10 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString('Reason for the publisher', $blade);
         $this->assertStringContainsString('JSON.stringify({ reason })', $blade);
         $this->assertStringContainsString("'Content-Type': 'application/json'", $blade);
+        $this->assertStringContainsString('form.bulk-request-cancel', $blade);
+        $this->assertStringContainsString("staff_route('bulk-site-requests.cancel'", $blade);
+        $this->assertStringContainsString('Cancel bulk request?', $blade);
+        $this->assertStringContainsString('canCancel()', $blade);
     }
 
     public function test_done_two_complete_and_reject_one_notifies_once_for_both_roles(): void
@@ -1064,5 +1068,107 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $fresh->status);
         $this->assertSame('Waiting on publisher', $fresh->statusLabel());
         $this->assertTrue($fresh->canAddDraftSites());
+    }
+
+    public function test_cancel_requires_reason_and_removes_drafts(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'cancel-draft');
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $site = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk))
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHasErrors('reason');
+
+        $this->assertDatabaseHas('sites', ['id' => $site->id]);
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk), [
+                'reason' => 'Duplicate of an earlier batch from this publisher.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
+        $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+        $this->assertFalse(
+            BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+        );
+        Mail::assertQueued(BulkSiteRequestCancelled::class, 1);
+        Mail::assertNotQueued(SiteStatusNotification::class);
+
+        $this->actingAs($this->publisher)
+            ->post(route('publisher.bulk-sites.complete.store', $site->id), [
+                'exampleUrl' => 'https://cancel-draft-1.example/example',
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Publisher listing description text. ', 4),
+            ])
+            ->assertNotFound();
+    }
+
+    public function test_show_heals_sheet_sent_with_pending_rows_and_no_sites(): void
+    {
+        [$bulk] = $this->makeBulkWithItems(1, 'heal-sheet');
+        $bulk->forceFill([
+            'status' => BulkSiteRequest::STATUS_SHEET_SENT,
+            'sheet_sent_at' => now(),
+        ])->save();
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Waiting on marketer', false)
+            ->assertDontSee('Sheet emailed', false);
+
+        $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
+    }
+
+    public function test_completed_batch_with_pending_rows_blocks_second_publisher_bulk(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'stuck-done');
+        $bulk->forceFill([
+            'status' => BulkSiteRequest::STATUS_COMPLETED,
+            'completed_at' => now(),
+        ])->save();
+
+        $this->assertTrue(
+            BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+        );
+        $this->assertTrue(
+            MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists()
+        );
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString($items[0]->domain, $html);
+        $this->assertStringContainsString('data-open-bulk="1"', $html);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://second-a.example', 'price' => 40],
+                    ['url' => 'https://second-b.example', 'price' => 50],
+                ],
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHas('error');
     }
 }

@@ -229,6 +229,12 @@ class BulkSiteRequestController extends Controller
             ])
             ->findOrFail($id);
 
+        if ($site->bulkSiteRequest?->isCancelled()) {
+            return redirect()
+                ->route('publisher.websites', ['status' => 'pending'])
+                ->with('error', 'This bulk request was cancelled. Those sites will not be prepared.');
+        }
+
         if ($request->filled('exampleUrl')) {
             $request->merge([
                 'exampleUrl' => $this->normalizeHttpUrl($request->input('exampleUrl')),
@@ -412,7 +418,7 @@ class BulkSiteRequestController extends Controller
             $query->whereIn('id', $ids);
         }
 
-        $sites = $query->get();
+        $sites = $query->with('bulkSiteRequest')->get();
         if ($sites->isEmpty()) {
             return redirect()
                 ->route('publisher.bulk-sites.review')
@@ -425,6 +431,10 @@ class BulkSiteRequestController extends Controller
         try {
             DB::transaction(function () use ($sites, &$submitted, &$bulkIds) {
                 foreach ($sites as $site) {
+                    if ($site->bulkSiteRequest?->isCancelled()) {
+                        continue;
+                    }
+
                     if (! $site->hasCompletedPublisherDetails()) {
                         continue;
                     }
@@ -469,9 +479,13 @@ class BulkSiteRequestController extends Controller
         }
 
         if ($submitted === 0) {
+            $cancelled = $sites->contains(fn (Site $site) => $site->bulkSiteRequest?->isCancelled());
+
             return redirect()
                 ->route('publisher.bulk-sites.review')
-                ->with('error', 'None of the selected sites have complete details yet.');
+                ->with('error', $cancelled
+                    ? 'This bulk request was cancelled. Those sites will not be prepared.'
+                    : 'None of the selected sites have complete details yet.');
         }
 
         return redirect()

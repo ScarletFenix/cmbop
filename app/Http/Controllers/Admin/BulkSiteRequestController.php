@@ -31,9 +31,11 @@ class BulkSiteRequestController extends Controller
         $query = BulkSiteRequest::query()
             ->with(['publisher', 'handler'])
             ->withCount([
-                'sites',
-                'sites as awaiting_details_count' => fn ($q) => $q->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS),
-                'sites as ready_count' => fn ($q) => $q->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW),
+                'sites' => fn ($q) => $q->notArchived(),
+                'sites as awaiting_details_count' => fn ($q) => $q->notArchived()
+                    ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS),
+                'sites as ready_count' => fn ($q) => $q->notArchived()
+                    ->where('onboarding_status', Site::ONBOARDING_READY_FOR_REVIEW),
                 'items as pending_items_count' => fn ($q) => $q->whereNull('site_id'),
             ])
             ->latest();
@@ -57,7 +59,7 @@ class BulkSiteRequestController extends Controller
             'publisher',
             'handler',
             'items' => fn ($q) => $q->orderBy('id'),
-            'sites' => fn ($q) => $q->orderBy('id'),
+            'sites' => fn ($q) => $q->notArchived()->orderBy('id'),
         ])->findOrFail($id);
 
         // Heal stuck batches: completed-with-pending-rows, or drafts deleted so
@@ -74,7 +76,7 @@ class BulkSiteRequestController extends Controller
             $bulkRequest->refresh();
             $bulkRequest->load([
                 'items' => fn ($q) => $q->orderBy('id'),
-                'sites' => fn ($q) => $q->orderBy('id'),
+                'sites' => fn ($q) => $q->notArchived()->orderBy('id'),
             ]);
         }
 
@@ -150,14 +152,45 @@ class BulkSiteRequestController extends Controller
         return back()->with('success', 'Notes saved.');
     }
 
-    public function cancel(int $id)
+    public function cancel(Request $request, int $id)
     {
+        $reason = trim((string) $request->validate([
+            'reason' => ['required', 'string', 'min:10', 'max:1000'],
+        ])['reason']);
+
         $bulkRequest = BulkSiteRequest::findOrFail($id);
+        if ($bulkRequest->isCancelled()) {
+            return redirect()
+                ->to(staff_route('bulk-site-requests.index'))
+                ->with('error', 'This request is already cancelled.');
+        }
+
         $previous = $bulkRequest->status;
-        $bulkRequest->forceFill([
-            'status' => BulkSiteRequest::STATUS_CANCELLED,
-            'handled_by' => auth()->id(),
-        ])->save();
+        $removedDrafts = 0;
+
+        DB::transaction(function () use ($bulkRequest, &$removedDrafts) {
+            $drafts = $bulkRequest->sites()
+                ->where(function ($q) {
+                    $q->where('verified', 0)->orWhereNull('verified');
+                })
+                ->where(function ($q) {
+                    $q->where('active', 0)->orWhereNull('active');
+                })
+                ->get();
+
+            foreach ($drafts as $site) {
+                if (! $site->canBeHardDeleted()) {
+                    continue;
+                }
+                $site->delete();
+                $removedDrafts++;
+            }
+
+            $bulkRequest->forceFill([
+                'status' => BulkSiteRequest::STATUS_CANCELLED,
+                'handled_by' => auth()->id(),
+            ])->save();
+        });
 
         ActivityLogger::log(
             'bulk_request.cancelled',
@@ -167,14 +200,15 @@ class BulkSiteRequestController extends Controller
                 'bulk_site_request_id' => $bulkRequest->id,
                 'publisher_id' => $bulkRequest->publisher_id,
                 'from_status' => $previous,
-                'sites_remaining' => $bulkRequest->sites()->count(),
+                'reason' => $reason,
+                'drafts_removed' => $removedDrafts,
+                'sites_remaining' => $bulkRequest->sites()->notArchived()->count(),
             ],
             'Bulk request #'.$bulkRequest->id
         );
 
         // Cancelling was silent, so the request simply vanished from the
         // publisher's queue — which reads as us losing their work.
-        $reason = request()->input('reason');
         $publisher = $bulkRequest->publisher;
 
         try {

@@ -344,10 +344,7 @@ class SiteController extends Controller
                 ->whereNull('site_id')
                 ->whereHas('bulkRequest', function ($q) {
                     $q->where('publisher_id', auth()->id())
-                        ->whereNotIn('status', [
-                            BulkSiteRequest::STATUS_COMPLETED,
-                            BulkSiteRequest::STATUS_CANCELLED,
-                        ]);
+                        ->where('status', '!=', BulkSiteRequest::STATUS_CANCELLED);
                 });
 
             $waitingItemsCount = (clone $waitingItemsQuery)->count();

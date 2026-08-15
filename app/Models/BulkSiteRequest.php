@@ -84,6 +84,7 @@ class BulkSiteRequest extends Model
     public function pendingPublisherCount(): int
     {
         return $this->sites()
+            ->notArchived()
             ->whereIn('onboarding_status', [
                 Site::ONBOARDING_AWAITING_DETAILS,
                 Site::ONBOARDING_DETAILS_COMPLETE,
@@ -97,15 +98,18 @@ class BulkSiteRequest extends Model
             return;
         }
 
-        // Don't rewind a brand-new or sheet-only batch. Once drafts exist,
-        // allow progress to move forward (Done/seed may have left status stale).
-        if (in_array($this->status, [self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)
-            && $this->sites()->doesntExist()) {
+        $total = $this->sites()->notArchived()->count();
+        $pendingItems = $this->pendingItemsCount();
+
+        // Brand-new requested batches stay put. Sheet-sent with no leftover
+        // URL+price rows stays sheet-sent (legacy). Sheet-sent + pending rows
+        // and no drafts must become "Waiting on marketer" so heal/index match.
+        if ($this->status === self::STATUS_REQUESTED && $total === 0) {
             return;
         }
-
-        $total = $this->sites()->count();
-        $pendingItems = $this->pendingItemsCount();
+        if ($this->status === self::STATUS_SHEET_SENT && $total === 0 && $pendingItems === 0) {
+            return;
+        }
 
         // Last/only draft deleted: the URL+price row is pending again (site_id nullOnDelete).
         if ($total === 0) {
@@ -201,9 +205,14 @@ class BulkSiteRequest extends Model
         // Legacy sheet workflow: open request, no item rows yet, a count was set.
         // Reject-all deletes items and sets estimated_count to 0 — not legacy.
         return $this->isOpen()
-            && $this->sites()->doesntExist()
+            && $this->sites()->notArchived()->doesntExist()
             && $this->items()->doesntExist()
             && (int) $this->estimated_count > 0;
+    }
+
+    public function canCancel(): bool
+    {
+        return ! $this->isCancelled();
     }
 
     /**
@@ -214,17 +223,24 @@ class BulkSiteRequest extends Model
      */
     public function scopeBlockingPublisher($query)
     {
-        return $query->whereNotIn('status', [self::STATUS_COMPLETED, self::STATUS_CANCELLED])
-            ->where(function ($inner) {
-                $inner->whereHas('items', fn ($items) => $items->whereNull('site_id'))
-                    ->orWhereHas('sites')
-                    // Legacy sheet workflow: count set, no item rows yet.
-                    ->orWhere(function ($legacy) {
-                        $legacy->where('estimated_count', '>', 0)
-                            ->whereDoesntHave('items')
-                            ->whereDoesntHave('sites');
+        return $query->where(function ($outer) {
+            $outer->where(function ($open) {
+                $open->whereNotIn('status', [self::STATUS_COMPLETED, self::STATUS_CANCELLED])
+                    ->where(function ($inner) {
+                        $inner->whereHas('items', fn ($items) => $items->whereNull('site_id'))
+                            ->orWhereHas('sites', fn ($sites) => $sites->notArchived())
+                            // Legacy sheet workflow: count set, no item rows yet.
+                            ->orWhere(function ($legacy) {
+                                $legacy->where('estimated_count', '>', 0)
+                                    ->whereDoesntHave('items')
+                                    ->whereDoesntHave('sites');
+                            });
                     });
+            })->orWhere(function ($completedPending) {
+                $completedPending->where('status', self::STATUS_COMPLETED)
+                    ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
             });
+        });
     }
 
     public function isCancelled(): bool
@@ -237,12 +253,11 @@ class BulkSiteRequest extends Model
      */
     public function canMarkSheetSent(): bool
     {
-        if ($this->status === self::STATUS_REQUESTED) {
-            return true;
+        if (! in_array($this->status, [self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)) {
+            return false;
         }
 
-        return $this->status === self::STATUS_SHEET_SENT
-            && $this->sites()->doesntExist();
+        return $this->sites()->notArchived()->doesntExist();
     }
 
     /**

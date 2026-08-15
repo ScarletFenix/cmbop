@@ -727,7 +727,9 @@ class MarketingBulkSiteOpsTest extends TestCase
         ]);
 
         $this->actingAs($this->marketer)
-            ->post(route('marketing.bulk-site-requests.cancel', $bulk))
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk), [
+                'reason' => 'Publisher sent a duplicate batch by mistake.',
+            ])
             ->assertRedirect(route('marketing.bulk-site-requests.index'));
 
         $this->assertDatabaseHas('activity_logs', [

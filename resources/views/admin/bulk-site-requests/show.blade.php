@@ -54,13 +54,11 @@
                             </button>
                         </form>
                     @endif
-                    @if($bulkRequest->canAddDraftSites())
+                    @if($bulkRequest->canCancel())
                         <form method="POST" action="{{ staff_route('bulk-site-requests.cancel', $bulkRequest) }}"
-                              data-slb-confirm="Cancel this bulk request? History is kept."
-                              data-slb-confirm-title="Cancel bulk request?"
-                              data-slb-confirm-text="Cancel request"
-                              data-slb-confirm-danger="1">
+                              class="bulk-request-cancel">
                             @csrf
+                            <input type="hidden" name="reason" value="">
                             <button type="submit" class="btn btn-sm btn-outline-danger w-100">Cancel request</button>
                         </form>
                     @endif
@@ -1067,6 +1065,72 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
 
     syncDoneState();
 })();
+
+document.querySelectorAll('form.bulk-request-cancel').forEach(function (form) {
+    form.addEventListener('submit', async function (e) {
+        if (form.dataset.slbCancelAllow === '1') {
+            delete form.dataset.slbCancelAllow;
+            return;
+        }
+        e.preventDefault();
+        const promptText = 'Cancel this bulk request? Pending drafts are removed. History is kept. Explain why — the publisher will see this reason.';
+        let reason = '';
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            const result = await window.Swal.fire({
+                title: 'Cancel bulk request?',
+                text: promptText,
+                icon: 'warning',
+                input: 'textarea',
+                inputLabel: 'Reason for the publisher',
+                inputPlaceholder: 'Reason (min. 10 characters)',
+                inputAttributes: { 'aria-label': 'Cancel reason', maxlength: '1000' },
+                showCancelButton: true,
+                confirmButtonText: 'Cancel request',
+                customClass: { confirmButton: 'slb-swal-danger' },
+                preConfirm: function (value) {
+                    const next = String(value || '').trim();
+                    if (next.length < 10) {
+                        window.Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                        return false;
+                    }
+                    if (next.length > 1000) {
+                        window.Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                        return false;
+                    }
+                    return next;
+                },
+            });
+            if (!result.isConfirmed) {
+                return;
+            }
+            reason = String(result.value || '').trim();
+        } else {
+            const typed = window.prompt(promptText + '\n\nReason (min. 10 characters):');
+            if (typed === null) {
+                return;
+            }
+            reason = String(typed || '').trim();
+            if (reason.length < 10 || reason.length > 1000) {
+                if (window.slbAlert) {
+                    await window.slbAlert({ icon: 'error', title: 'Please enter a reason (10–1000 characters).' });
+                } else {
+                    alert('Please enter a reason (10–1000 characters).');
+                }
+                return;
+            }
+        }
+        const reasonInput = form.querySelector('input[name="reason"]');
+        if (reasonInput) {
+            reasonInput.value = reason;
+        }
+        form.dataset.slbCancelAllow = '1';
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit();
+        } else {
+            HTMLFormElement.prototype.submit.call(form);
+        }
+    });
+});
 
 document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
     btn.addEventListener('click', async function () {
