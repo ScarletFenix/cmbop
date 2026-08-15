@@ -27,7 +27,7 @@
 @section('hreflang_path', $hreflangPath ?? ('blog/'.$resolvedSlug))
 @section('hreflang_path_map', collect($hreflangPathByLocale)->map(fn ($path, $locale) => $locale.'='.$path)->implode(','))
 @section('og_type', 'article')
-@section('og_image', !empty($blog->featured_image) ? asset('storage/'.$blog->featured_image) : asset('assets/brand/web/og-share-1200x630.png'))
+@section('og_image', $blog->featuredImageAbsoluteUrl() ?: asset('assets/brand/web/og-share-1200x630.png'))
 
 @push('head')
 <script type="application/ld+json">
@@ -51,8 +51,8 @@
             'url' => asset('assets/img/logo1.png'),
         ],
     ],
-    'image' => ! empty($blog->featured_image)
-        ? [asset('storage/'.$blog->featured_image)]
+    'image' => $blog->featuredImageAbsoluteUrl()
+        ? [$blog->featuredImageAbsoluteUrl()]
         : [asset('assets/brand/web/og-share-1200x630.png')],
     'mainEntityOfPage' => $blogCanonical,
     'url' => $blogCanonical,
@@ -156,7 +156,7 @@
             <article>
                 @if($blog->featured_image)
                     <div class="mb-5">
-                        <img src="{{ Storage::url($blog->featured_image) }}" 
+                        <img src="{{ $blog->featuredImageUrl() }}" 
                              alt="{{ $resolvedTitle }}" 
                              class="img-fluid rounded-4 shadow-sm w-100">
                     </div>
@@ -232,7 +232,7 @@
                     <div class="col-md-4 mb-4">
                         <div class="card border-0 shadow-sm rounded-4 h-100 overflow-hidden" style="transition: all 0.3s ease;">
                             @if($recommended->featured_image)
-                                <img src="{{ Storage::url($recommended->featured_image) }}" 
+                                <img src="{{ $recommended->featuredImageUrl() }}" 
                                      alt="{{ $recommended->title }}" 
                                      style="height: 200px; object-fit: cover;">
                             @else

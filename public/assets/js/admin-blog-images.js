@@ -336,8 +336,13 @@
         this.maybeDeleteStoredFile(src);
     };
 
+    AdminBlogImages.prototype.isStoredBlogImageSrc = function (src) {
+        var path = normalizeSrc(src);
+        return path.indexOf('/storage/blogs/') !== -1 || path.indexOf('/media/blogs/') !== -1;
+    };
+
     AdminBlogImages.prototype.maybeDeleteStoredFile = function (src) {
-        if (!this.deleteUrl || !src || String(src).indexOf('/storage/blogs/') === -1) {
+        if (!this.deleteUrl || !this.isStoredBlogImageSrc(src)) {
             return;
         }
 

@@ -45,10 +45,20 @@ class CuratedBlogCatalog
      */
     public static function slugs(): array
     {
-        return array_map(
-            static fn (string $class): string => $class::SLUG,
-            self::postClasses()
-        );
+        $slugs = [];
+
+        foreach (self::postClasses() as $class) {
+            try {
+                if (! class_exists($class) || ! defined($class.'::SLUG')) {
+                    continue;
+                }
+                $slugs[] = $class::SLUG;
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $slugs;
     }
 
     /**
@@ -61,13 +71,20 @@ class CuratedBlogCatalog
         }
 
         foreach (self::postClasses() as $class) {
-            if ($class::SLUG !== $slug || ! method_exists($class, 'faqItems')) {
+            try {
+                if (! class_exists($class) || ! defined($class.'::SLUG') || $class::SLUG !== $slug) {
+                    continue;
+                }
+                if (! method_exists($class, 'faqItems')) {
+                    return [];
+                }
+
+                $items = $class::faqItems();
+
+                return is_array($items) ? $items : [];
+            } catch (\Throwable) {
                 continue;
             }
-
-            $items = $class::faqItems();
-
-            return is_array($items) ? $items : [];
         }
 
         return [];

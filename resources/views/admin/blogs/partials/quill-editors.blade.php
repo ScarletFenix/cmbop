@@ -10,12 +10,20 @@ var quillUploadUrl = @json(route('admin.blogs.upload-image'));
 var quillDeleteUrl = @json(route('admin.blogs.delete-content-image'));
 var csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
 var articleImagesManager = null;
-@php($editorLocales = $locales ?? ['en', 'de', 'fr', 'nl'])
+@php($editorLocales = $locales ?? \App\Support\PublicI18n::supported())
 var blogEditorLocales = @json($editorLocales);
 
 function isEmptyQuillHtml(html) {
     var value = String(html || '').trim();
-    return value === '' || value === '<p><br></p>' || value === '<p></p>';
+    if (value === '' || value === '<p><br></p>' || value === '<p></p>') {
+        return true;
+    }
+    if (/<(img|iframe|video|figure|hr)\b/i.test(value)) {
+        return false;
+    }
+    var tmp = document.createElement('div');
+    tmp.innerHTML = value;
+    return (tmp.textContent || '').trim() === '';
 }
 
 var quills = {};

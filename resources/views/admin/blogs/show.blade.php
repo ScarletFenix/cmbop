@@ -26,7 +26,7 @@
         <div class="card-body">
             @if($blog->featured_image)
                 <div class="mb-4 text-center">
-                    <img src="{{ Storage::url($blog->featured_image) }}" alt="{{ $blog->title }}" class="img-fluid rounded" style="max-height: 400px; width: auto;">
+                    <img src="{{ $blog->featuredImageUrl() }}" alt="{{ $blog->title }}" class="img-fluid rounded" style="max-height: 400px; width: auto;">
                 </div>
             @endif
 

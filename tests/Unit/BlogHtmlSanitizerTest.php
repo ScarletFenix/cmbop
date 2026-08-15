@@ -74,10 +74,41 @@ class BlogHtmlSanitizerTest extends TestCase
         $clean = $this->sanitizer->sanitize(
             '<img src="https://cdn.example.com/a.png" alt="A">'
             .'<img src="/storage/blogs/content/b.png" alt="B">'
+            .'<img src="/media/blogs/content/c.webp" alt="C">'
+            .'<img src="/storage/uploads/other.png" alt="D">'
         );
 
         $this->assertStringContainsString('src="https://cdn.example.com/a.png"', $clean);
-        $this->assertStringContainsString('src="/storage/blogs/content/b.png"', $clean);
+        $this->assertStringContainsString('src="/media/blogs/content/b.png"', $clean);
+        $this->assertStringContainsString('src="/media/blogs/content/c.webp"', $clean);
+        $this->assertStringContainsString('src="/storage/uploads/other.png"', $clean);
+        $this->assertStringNotContainsString('/storage/blogs/content/b.png', $clean);
+    }
+
+    public function test_rewrite_storage_blog_urls_is_idempotent(): void
+    {
+        $html = '<img src="https://example.test/storage/blogs/content/x.jpg">';
+        $once = BlogHtmlSanitizer::rewriteStorageBlogUrls($html);
+        $twice = BlogHtmlSanitizer::rewriteStorageBlogUrls($once);
+
+        $this->assertSame('<img src="/media/blogs/content/x.jpg">', $once);
+        $this->assertSame($once, $twice);
+    }
+
+    public function test_encode_for_editor_rewrites_storage_blog_urls(): void
+    {
+        $encoded = BlogHtmlSanitizer::encodeForEditor('<p><img src="/storage/blogs/content/demo.jpg"></p>');
+
+        $this->assertStringContainsString('/media/blogs/content/demo.jpg', $encoded);
+        $this->assertStringNotContainsString('/storage/blogs/content/demo.jpg', $encoded);
+    }
+
+    public function test_image_with_untrusted_media_prefix_is_removed(): void
+    {
+        $clean = $this->sanitizer->sanitize('<img src="/media/sites/cover.webp" alt="No">');
+
+        $this->assertStringNotContainsString('<img', $clean);
+        $this->assertStringNotContainsString('/media/sites/', $clean);
     }
 
     public function test_image_with_unsupported_scheme_is_removed(): void
@@ -125,5 +156,10 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertTrue(BlogHtmlSanitizer::isBlank('   '));
         $this->assertFalse(BlogHtmlSanitizer::isBlank('<p>Hello</p>'));
         $this->assertFalse(BlogHtmlSanitizer::isBlank('<p><img src="/storage/blogs/content/a.png" alt=""></p>'));
+        $this->assertSame(
+            BlogHtmlSanitizer::isBlank('<p><img src="/storage/blogs/content/a.png" alt=""></p>'),
+            BlogHtmlSanitizer::isEmptyHtml('<p><img src="/storage/blogs/content/a.png" alt=""></p>')
+        );
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml('<p><br></p>'));
     }
 }

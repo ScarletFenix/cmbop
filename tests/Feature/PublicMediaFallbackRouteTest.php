@@ -23,6 +23,19 @@ class PublicMediaFallbackRouteTest extends TestCase
             ->assertHeader('Cache-Control');
     }
 
+    public function test_media_route_streams_blog_image_from_public_disk(): void
+    {
+        Storage::fake('public');
+        Storage::disk('public')->put('blogs/featured/hero.webp', 'fake-webp-body');
+        Storage::disk('public')->put('blogs/content/inline.webp', 'fake-webp-body');
+
+        $this->get('/media/blogs/featured/hero.webp')
+            ->assertOk()
+            ->assertHeader('Cache-Control');
+        $this->get('/media/blogs/content/inline.webp')
+            ->assertOk();
+    }
+
     public function test_staff_sites_media_route_streams_for_authenticated_admin(): void
     {
         Storage::fake('public');

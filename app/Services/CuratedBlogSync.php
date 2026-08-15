@@ -4,23 +4,8 @@ namespace App\Services;
 
 use App\Models\Blog;
 use App\Support\BlogInlineImages;
-use App\Support\ChoisirEditeurFrBlogPost;
-use App\Support\ChoosePublisherSiteBlogPost;
-use App\Support\DofollowNofollowAnchorsEnBlogPost;
-use App\Support\DofollowNofollowAnkertexteBlogPost;
-use App\Support\GastbeitraegeEuropaBlogPost;
-use App\Support\GastpostsKopenNlBlogPost;
-use App\Support\GuestPostBriefBlogPost;
-use App\Support\GuestPostsEuropeEnBlogPost;
-use App\Support\GuestPostsUkUsBlogPost;
-use App\Support\LiveLinkChecklistBlogPost;
-use App\Support\LiveLinkRemovedBlogPost;
-use App\Support\MarketplaceVsOutreachBlogPost;
-use App\Support\PublisherGuideDeBlogPost;
+use App\Support\CuratedBlogCatalog;
 use App\Support\PublicI18n;
-use App\Support\PublisherPlatformGuideBlogPost;
-use App\Support\UitgeversKiezenNlBlogPost;
-use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -213,41 +198,47 @@ class CuratedBlogSync
      */
     public static function ensurePresent(): void
     {
-        if (! Schema::hasTable('blogs')) {
-            return;
-        }
-
-        // Always heal schema first — curated presence cache must not skip translations table.
-        self::ensureSchema();
-
-        $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
-            $slugs = array_values(array_filter(
-                self::curatedSlugs(),
-                static fn (string $slug): bool => ! CuratedBlogWriter::isTombstoned($slug)
-            ));
-            $found = Blog::query()
-                ->whereIn('slug', $slugs)
-                ->pluck('slug')
-                ->all();
-
-            if ($slugs === [] || count($found) >= count($slugs)) {
-                return true;
+        try {
+            if (! Schema::hasTable('blogs')) {
+                return;
             }
 
-            Log::warning('Curated blogs missing from database — auto-syncing', [
-                'expected' => $slugs,
-                'found' => $found,
+            // Always heal schema first — curated presence cache must not skip translations table.
+            self::ensureSchema();
+
+            $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
+                $slugs = array_values(array_filter(
+                    self::curatedSlugs(),
+                    static fn (string $slug): bool => ! CuratedBlogWriter::isTombstoned($slug)
+                ));
+                $found = Blog::query()
+                    ->whereIn('slug', $slugs)
+                    ->pluck('slug')
+                    ->all();
+
+                if ($slugs === [] || count($found) >= count($slugs)) {
+                    return true;
+                }
+
+                Log::warning('Curated blogs missing from database — auto-syncing', [
+                    'expected' => $slugs,
+                    'found' => $found,
+                ]);
+
+                return self::sync();
+            });
+
+            // If cache says false from a failed sync, retry on next request after short TTL
+            if ($present === false) {
+                Cache::forget('curated_blogs_present_v1');
+            }
+
+            self::ensureInlineImagesOnStorage();
+        } catch (\Throwable $e) {
+            Log::error('Curated blog ensurePresent failed', [
+                'error' => $e->getMessage(),
             ]);
-
-            return self::sync();
-        });
-
-        // If cache says false from a failed sync, retry on next request after short TTL
-        if ($present === false) {
-            Cache::forget('curated_blogs_present_v1');
         }
-
-        self::ensureInlineImagesOnStorage();
     }
 
     /**

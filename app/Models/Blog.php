@@ -184,4 +184,22 @@ class Blog extends Model
 
         return PublicI18n::urlForLocale('blog/'.$slug, $canonicalLocale);
     }
+
+    /**
+     * Root-relative /media URL for the featured image (Hostinger-safe).
+     */
+    public function featuredImageUrl(): ?string
+    {
+        return Site::publicDiskUrl($this->featured_image);
+    }
+
+    /**
+     * Absolute featured-image URL for Open Graph / JSON-LD.
+     */
+    public function featuredImageAbsoluteUrl(): ?string
+    {
+        $relative = $this->featuredImageUrl();
+
+        return $relative ? url($relative) : null;
+    }
 }

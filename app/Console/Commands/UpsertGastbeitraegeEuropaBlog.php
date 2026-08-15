@@ -7,7 +7,6 @@ use App\Services\CuratedBlogWriter;
 use App\Support\BlogInlineImages;
 use App\Support\GastbeitraegeEuropaBlogPost;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\File;
 
 class UpsertGastbeitraegeEuropaBlog extends Command
 {
@@ -39,16 +38,11 @@ class UpsertGastbeitraegeEuropaBlog extends Command
         BlogInlineImages::publish(GastbeitraegeEuropaBlogPost::IMAGE_CHECKLIST);
         BlogInlineImages::publish(GastbeitraegeEuropaBlogPost::IMAGE_LANGUAGES);
 
-        $source = public_path(GastbeitraegeEuropaBlogPost::FEATURED_ASSET);
-        $destination = storage_path('app/public/'.GastbeitraegeEuropaBlogPost::FEATURED_STORAGE);
-
-        if (! File::exists($source)) {
-            $this->warn('Featured asset missing: '.$source);
-
-            return;
+        if (! BlogInlineImages::publishFeatured(
+            GastbeitraegeEuropaBlogPost::FEATURED_STORAGE,
+            GastbeitraegeEuropaBlogPost::FEATURED_ASSET
+        )) {
+            $this->warn('Featured asset missing: '.public_path(GastbeitraegeEuropaBlogPost::FEATURED_ASSET));
         }
-
-        File::ensureDirectoryExists(dirname($destination));
-        File::copy($source, $destination);
     }
 }

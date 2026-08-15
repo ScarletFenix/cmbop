@@ -18,7 +18,7 @@ class BlogInlineImages
     public const STORAGE_DIR = 'blogs/content';
 
     /**
-     * Copy one file from public/assets/img/blog into storage/app/public/blogs/content.
+     * Copy one file from public/assets/img/blog onto the public disk (MEDIA_PATH).
      */
     public static function publish(string $filename): bool
     {
@@ -31,13 +31,61 @@ class BlogInlineImages
         $source = public_path(self::PUBLIC_DIR.'/'.$filename);
 
         if (File::isFile($source)) {
-            File::ensureDirectoryExists(storage_path('app/public/'.self::STORAGE_DIR));
             Storage::disk('public')->put($storagePath, File::get($source));
 
             return true;
         }
 
         return Storage::disk('public')->exists($storagePath);
+    }
+
+    /**
+     * Copy a curated featured JPG onto the public disk (not hardcoded storage/app/public).
+     * Hostinger MEDIA_PATH is the disk /media streams from; writing only to
+     * storage/app/public leaves /media/blogs/featured/... 404.
+     */
+    public static function publishFeatured(string $storagePath, ?string $publicAsset = null): bool
+    {
+        $storagePath = ltrim(str_replace('\\', '/', $storagePath), '/');
+        if (! str_starts_with($storagePath, 'blogs/featured/') || str_contains($storagePath, '..')) {
+            return false;
+        }
+
+        $filename = basename($publicAsset ?: $storagePath);
+        if ($filename === '' || $filename === '.' || $filename === '..') {
+            return false;
+        }
+
+        $candidates = array_values(array_unique(array_filter([
+            $publicAsset ? public_path($publicAsset) : null,
+            public_path(self::PUBLIC_DIR.'/'.$filename),
+        ])));
+
+        foreach ($candidates as $source) {
+            if (! File::isFile($source)) {
+                continue;
+            }
+
+            Storage::disk('public')->put($storagePath, File::get($source));
+
+            return true;
+        }
+
+        return Storage::disk('public')->exists($storagePath);
+    }
+
+    /**
+     * Bundled pillar files live in public/assets/img/blog and must not be deleted
+     * when an admin removes/replaces an image in one post.
+     */
+    public static function isBundledAsset(?string $path): bool
+    {
+        $filename = basename((string) $path);
+        if ($filename === '' || $filename === '.' || $filename === '..') {
+            return false;
+        }
+
+        return File::isFile(public_path(self::PUBLIC_DIR.'/'.$filename));
     }
 
     /**

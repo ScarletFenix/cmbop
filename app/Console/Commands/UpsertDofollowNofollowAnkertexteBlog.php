@@ -7,7 +7,6 @@ use App\Services\CuratedBlogWriter;
 use App\Support\BlogInlineImages;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\File;
 
 class UpsertDofollowNofollowAnkertexteBlog extends Command
 {
@@ -39,16 +38,11 @@ class UpsertDofollowNofollowAnkertexteBlog extends Command
         BlogInlineImages::publish(DofollowNofollowAnkertexteBlogPost::IMAGE_LINK_TYPES);
         BlogInlineImages::publish(DofollowNofollowAnkertexteBlogPost::IMAGE_ANCHOR_MIX);
 
-        $source = public_path(DofollowNofollowAnkertexteBlogPost::FEATURED_ASSET);
-        $destination = storage_path('app/public/'.DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE);
-
-        if (! File::exists($source)) {
-            $this->warn('Featured asset missing: '.$source);
-
-            return;
+        if (! BlogInlineImages::publishFeatured(
+            DofollowNofollowAnkertexteBlogPost::FEATURED_STORAGE,
+            DofollowNofollowAnkertexteBlogPost::FEATURED_ASSET
+        )) {
+            $this->warn('Featured asset missing: '.public_path(DofollowNofollowAnkertexteBlogPost::FEATURED_ASSET));
         }
-
-        File::ensureDirectoryExists(dirname($destination));
-        File::copy($source, $destination);
     }
 }

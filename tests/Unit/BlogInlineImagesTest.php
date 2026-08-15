@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Support\BlogInlineImages;
+use App\Support\GastbeitraegeEuropaBlogPost;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class BlogInlineImagesTest extends TestCase
@@ -14,6 +16,19 @@ class BlogInlineImagesTest extends TestCase
 
         $this->assertSame('/storage/blogs/content/'.$filename, $url);
         $this->assertFileExists(storage_path('app/public/blogs/content/'.$filename));
+    }
+
+    public function test_publish_featured_writes_to_public_disk(): void
+    {
+        Storage::fake('public');
+
+        $this->assertTrue(BlogInlineImages::publishFeatured(
+            GastbeitraegeEuropaBlogPost::FEATURED_STORAGE,
+            GastbeitraegeEuropaBlogPost::FEATURED_ASSET
+        ));
+        Storage::disk('public')->assertExists(GastbeitraegeEuropaBlogPost::FEATURED_STORAGE);
+        $this->assertTrue(BlogInlineImages::isBundledAsset(GastbeitraegeEuropaBlogPost::FEATURED_STORAGE));
+        $this->assertFalse(BlogInlineImages::isBundledAsset('blogs/content/unique-upload-xyz.webp'));
     }
 
     public function test_rewrite_legacy_asset_urls(): void

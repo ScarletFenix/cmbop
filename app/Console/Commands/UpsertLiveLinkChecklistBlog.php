@@ -7,7 +7,6 @@ use App\Services\CuratedBlogWriter;
 use App\Support\BlogInlineImages;
 use App\Support\LiveLinkChecklistBlogPost;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\File;
 
 class UpsertLiveLinkChecklistBlog extends Command
 {
@@ -39,16 +38,11 @@ class UpsertLiveLinkChecklistBlog extends Command
         BlogInlineImages::publish(LiveLinkChecklistBlogPost::IMAGE_ATTRIBUTES);
         BlogInlineImages::publish(LiveLinkChecklistBlogPost::IMAGE_RANKINGS);
 
-        $source = public_path(LiveLinkChecklistBlogPost::FEATURED_ASSET);
-        $destination = storage_path('app/public/'.LiveLinkChecklistBlogPost::FEATURED_STORAGE);
-
-        if (! File::exists($source)) {
-            $this->warn('Featured asset missing: '.$source);
-
-            return;
+        if (! BlogInlineImages::publishFeatured(
+            LiveLinkChecklistBlogPost::FEATURED_STORAGE,
+            LiveLinkChecklistBlogPost::FEATURED_ASSET
+        )) {
+            $this->warn('Featured asset missing: '.public_path(LiveLinkChecklistBlogPost::FEATURED_ASSET));
         }
-
-        File::ensureDirectoryExists(dirname($destination));
-        File::copy($source, $destination);
     }
 }

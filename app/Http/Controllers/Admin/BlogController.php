@@ -7,12 +7,17 @@ use App\Http\Requests\Admin\StoreBlogRequest;
 use App\Http\Requests\Admin\UpdateBlogRequest;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Models\Site;
 use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
 use App\Services\CuratedBlogWriter;
+use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Support\BlogInlineImages;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -28,56 +33,55 @@ class BlogController extends Controller
     {
         try {
             CuratedBlogSync::ensurePresent();
-
-            $query = Blog::with(['creator', 'translations'])->orderByDesc('created_at');
-
-            $search = trim((string) $request->input('q', ''));
-            if ($search !== '') {
-                $like = '%'.$search.'%';
-                $query->where(function ($inner) use ($like) {
-                    $inner->where('title', 'like', $like)
-                        ->orWhere('slug', 'like', $like)
-                        ->orWhere('author', 'like', $like)
-                        ->orWhereHas('translations', function ($translations) use ($like) {
-                            $translations->where('title', 'like', $like)
-                                ->orWhere('slug', 'like', $like);
-                        });
-                });
-            }
-
-            $status = (string) $request->input('status', '');
-            if (in_array($status, ['draft', 'published'], true)) {
-                $query->where('status', $status);
-            }
-
-            $locale = (string) $request->input('locale', '');
-            if (PublicI18n::isSupported($locale)) {
-                $query->where('primary_locale', $locale);
-            }
-
-            $kind = (string) $request->input('kind', '');
-            if ($kind === 'curated') {
-                $query->whereNotNull('curated_key');
-            } elseif ($kind === 'custom') {
-                $query->whereNull('curated_key');
-            }
-
-            if ($request->boolean('missing_translations')) {
-                $needed = count(PublicI18n::supported());
-                $query->whereRaw(
-                    '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
-                    [$needed]
-                );
-            }
-
-            $blogs = $query->paginate(20)->withQueryString();
-
-            return view('admin.blogs.index', compact('blogs'));
-        } catch (\Exception $e) {
-            Log::error('Error fetching blogs: '.$e->getMessage());
-
-            return redirect()->back()->with('error', UserFacingError::message($e, 'Failed to load blogs. Please try again.'));
+        } catch (\Throwable $e) {
+            Log::error('Error ensuring curated blogs: '.$e->getMessage());
+            session()->now('error', UserFacingError::message($e, 'Curated blog sync failed. The list below may be incomplete.'));
         }
+
+        $query = Blog::with(['creator', 'translations'])->orderByDesc('created_at');
+
+        $search = trim((string) $request->input('q', ''));
+        if ($search !== '') {
+            $like = '%'.$search.'%';
+            $query->where(function ($inner) use ($like) {
+                $inner->where('title', 'like', $like)
+                    ->orWhere('slug', 'like', $like)
+                    ->orWhere('author', 'like', $like)
+                    ->orWhereHas('translations', function ($translations) use ($like) {
+                        $translations->where('title', 'like', $like)
+                            ->orWhere('slug', 'like', $like);
+                    });
+            });
+        }
+
+        $status = (string) $request->input('status', '');
+        if (in_array($status, ['draft', 'published'], true)) {
+            $query->where('status', $status);
+        }
+
+        $locale = (string) $request->input('locale', '');
+        if (PublicI18n::isSupported($locale)) {
+            $query->where('primary_locale', $locale);
+        }
+
+        $kind = (string) $request->input('kind', '');
+        if ($kind === 'curated') {
+            $query->whereNotNull('curated_key');
+        } elseif ($kind === 'custom') {
+            $query->whereNull('curated_key');
+        }
+
+        if ($request->boolean('missing_translations')) {
+            $needed = count(PublicI18n::supported());
+            $query->whereRaw(
+                '(select count(*) from blog_translations where blog_translations.blog_id = blogs.id) < ?',
+                [$needed]
+            );
+        }
+
+        $blogs = $query->paginate(20)->withQueryString();
+
+        return view('admin.blogs.index', compact('blogs'));
     }
 
     /**
@@ -121,21 +125,14 @@ class BlogController extends Controller
     public function store(StoreBlogRequest $request)
     {
         try {
-            $this->hydrateLegacyTranslationInput($request);
-            $request->validate([
-                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'tags' => 'nullable|string',
-                'status' => 'required|in:draft,published',
-                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-            ] + $this->translationValidationRules());
-
-            if (! auth()->check()) {
-                throw new \Exception('You must be logged in to create a blog post.');
-            }
-
             $featuredImage = null;
             if ($request->hasFile('featured_image')) {
-                $featuredImage = $request->file('featured_image')->store('blogs/featured', 'public');
+                $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+                if ($featuredImage === null) {
+                    throw ValidationException::withMessages([
+                        'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
+                }
                 Log::info('Featured image uploaded', ['path' => $featuredImage]);
             }
 
@@ -199,7 +196,7 @@ class BlogController extends Controller
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog creation failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
@@ -219,11 +216,14 @@ class BlogController extends Controller
             $safeContent = app(BlogHtmlSanitizer::class)->sanitize($blog->content);
 
             return view('admin.blogs.show', compact('blog', 'safeContent'));
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('admin.blogs.index')
+                ->with('error', 'Blog not found.');
+        } catch (\Throwable $e) {
             Log::error('Error showing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Blog not found.');
+                ->with('error', UserFacingError::message($e, 'Failed to load blog. Please try again.'));
         }
     }
 
@@ -239,11 +239,14 @@ class BlogController extends Controller
                 'blog' => $blog,
                 'locales' => PublicI18n::supported(),
             ]);
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
+            return redirect()->route('admin.blogs.index')
+                ->with('error', 'Blog not found.');
+        } catch (\Throwable $e) {
             Log::error('Error editing blog: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
-                ->with('error', 'Blog not found.');
+                ->with('error', UserFacingError::message($e, 'Failed to open blog editor. Please try again.'));
         }
     }
 
@@ -254,14 +257,6 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::findOrFail($id);
-
-            $request->validate([
-                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'remove_featured_image' => 'nullable|boolean',
-                'tags' => 'nullable|string',
-                'status' => 'required|in:draft,published',
-                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-            ] + $this->translationValidationRules());
 
             $tags = null;
             if ($request->tags) {
@@ -293,19 +288,23 @@ class BlogController extends Controller
             );
             $data['slug'] = $this->uniqueBlogSlug($enSlug, $blog->id);
 
+            $oldFeaturedToDelete = null;
             if ($request->hasFile('featured_image')) {
-                if ($blog->featured_image && Storage::disk('public')->exists($blog->featured_image)) {
-                    Storage::disk('public')->delete($blog->featured_image);
-                    Log::info('Old featured image deleted', ['path' => $blog->featured_image]);
+                $stored = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+                if ($stored === null) {
+                    throw ValidationException::withMessages([
+                        'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
                 }
 
-                $data['featured_image'] = $request->file('featured_image')->store('blogs/featured', 'public');
-                Log::info('New featured image uploaded', ['path' => $data['featured_image']]);
-            } elseif ($request->boolean('remove_featured_image')) {
-                if ($blog->featured_image && Storage::disk('public')->exists($blog->featured_image)) {
-                    Storage::disk('public')->delete($blog->featured_image);
-                    Log::info('Featured image removed', ['path' => $blog->featured_image]);
+                $oldFeatured = $blog->featured_image;
+                $data['featured_image'] = $stored;
+                if (filled($oldFeatured) && $oldFeatured !== $stored) {
+                    $oldFeaturedToDelete = (string) $oldFeatured;
                 }
+                Log::info('New featured image uploaded', ['path' => $stored]);
+            } elseif ($request->boolean('remove_featured_image')) {
+                $oldFeaturedToDelete = filled($blog->featured_image) ? (string) $blog->featured_image : null;
                 $data['featured_image'] = null;
             }
 
@@ -338,6 +337,11 @@ class BlogController extends Controller
                     ->delete();
             });
 
+            if (filled($oldFeaturedToDelete)) {
+                $this->deletePublicBlogPath($oldFeaturedToDelete, $blog->id);
+                Log::info('Old featured image deleted', ['path' => $oldFeaturedToDelete]);
+            }
+
             Log::info('Blog updated successfully', [
                 'blog_id' => $blog->id,
                 'title' => $blog->title,
@@ -350,7 +354,7 @@ class BlogController extends Controller
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog update failed: '.$e->getMessage());
             Log::error($e->getTraceAsString());
 
@@ -381,7 +385,7 @@ class BlogController extends Controller
 
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blogTitle.'" deleted successfully!');
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog deletion failed: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -413,7 +417,7 @@ class BlogController extends Controller
 
             return redirect()->route('admin.blogs.index')
                 ->with('success', $message);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog status toggle failed: '.$e->getMessage());
 
             return redirect()->route('admin.blogs.index')
@@ -431,8 +435,20 @@ class BlogController extends Controller
                 'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
             ]);
 
-            $imagePath = $request->file('image')->store('blogs/content', 'public');
-            $imageUrl = Storage::url($imagePath);
+            $imagePath = $this->storeBlogImage($request->file('image'), 'blogs/content');
+            if ($imagePath === null) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Could not save the image to storage. Check disk permissions and MEDIA_PATH.',
+                ], 500);
+            }
+            $imageUrl = Site::publicDiskUrl($imagePath);
+            if ($imageUrl === null) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Could not save the image to storage. Check disk permissions and MEDIA_PATH.',
+                ], 500);
+            }
 
             Log::info('Image uploaded via editor', ['path' => $imagePath]);
 
@@ -445,7 +461,7 @@ class BlogController extends Controller
                 'success' => false,
                 'error' => collect($e->errors())->flatten()->first() ?: 'Invalid image.',
             ], 422);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Image upload failed: '.$e->getMessage());
 
             return response()->json([
@@ -473,13 +489,11 @@ class BlogController extends Controller
         }
 
         try {
-            if (Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-                Log::info('Blog content image deleted', ['path' => $path]);
-            }
+            $this->deletePublicBlogPath($path);
+            Log::info('Blog content image delete requested', ['path' => $path]);
 
             return response()->json(['success' => true]);
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Blog content image delete failed: '.$e->getMessage());
 
             return response()->json([
@@ -494,17 +508,24 @@ class BlogController extends Controller
      */
     private function blogStoragePathFromUrl(string $url): ?string
     {
-        $path = $url;
-        if (str_contains($path, '://')) {
+        $path = trim($url);
+        if ($path === '') {
+            return null;
+        }
+
+        if (str_contains($path, '://') || str_starts_with($path, '//')) {
             $path = (string) (parse_url($path, PHP_URL_PATH) ?: '');
+        } else {
+            $path = explode('#', explode('?', $path, 2)[0], 2)[0];
         }
 
-        $path = ltrim($path, '/');
-        if (str_starts_with($path, 'storage/')) {
-            $path = substr($path, strlen('storage/'));
+        $path = ltrim(str_replace('\\', '/', $path), '/');
+        foreach (['storage/', 'media/'] as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                $path = ltrim(substr($path, strlen($prefix)), '/');
+            }
         }
 
-        $path = ltrim($path, '/');
         if ($path === '' || str_contains($path, '..')) {
             return null;
         }
@@ -516,22 +537,100 @@ class BlogController extends Controller
         return $path;
     }
 
-    /**
-     * @return array<string, string>
-     */
-    private function translationValidationRules(): array
+    private function deletePublicBlogPath(?string $path, ?int $exceptBlogId = null): void
     {
-        $rules = [];
-
-        foreach (PublicI18n::supported() as $locale) {
-            $required = $locale === 'en' ? 'required' : 'nullable';
-            $rules["translations.{$locale}.title"] = $required.'|string|max:255';
-            $rules["translations.{$locale}.slug"] = 'nullable|string|max:255';
-            $rules["translations.{$locale}.excerpt"] = 'nullable|string|max:300';
-            $rules["translations.{$locale}.content"] = $required.'|string';
+        $resolved = $this->blogStoragePathFromUrl((string) $path);
+        if ($resolved === null || BlogInlineImages::isBundledAsset($resolved)) {
+            return;
         }
 
-        return $rules;
+        if ($this->blogImageIsReferenced($resolved, $exceptBlogId)) {
+            return;
+        }
+
+        if (Storage::disk('public')->exists($resolved)) {
+            Storage::disk('public')->delete($resolved);
+        }
+    }
+
+    private function blogImageIsReferenced(string $path, ?int $exceptBlogId = null): bool
+    {
+        $like = '%'.addcslashes($path, '\\%_').'%';
+
+        $usedOnBlog = Blog::query()
+            ->when($exceptBlogId, fn ($query) => $query->where('id', '!=', $exceptBlogId))
+            ->where(function ($query) use ($path, $like) {
+                $query->where('featured_image', $path)
+                    ->orWhere('content', 'like', $like);
+            })
+            ->exists();
+
+        $usedOnTranslation = BlogTranslation::query()
+            ->when($exceptBlogId, fn ($query) => $query->where('blog_id', '!=', $exceptBlogId))
+            ->where('content', 'like', $like)
+            ->exists();
+
+        return $usedOnBlog || $usedOnTranslation;
+    }
+
+    private function deleteStoredBlogImages(Blog $blog): void
+    {
+        $paths = [];
+        if (filled($blog->featured_image)) {
+            $paths[] = (string) $blog->featured_image;
+        }
+
+        $html = (string) $blog->content;
+        foreach ($blog->translations as $translation) {
+            $html .= ' '.$translation->content;
+        }
+
+        if (preg_match_all('#(?:/(?:storage|media)/)?(blogs/(?:content|featured)/[^"\'\s>]+)#', $html, $matches)) {
+            $paths = array_merge($paths, $matches[1]);
+        }
+
+        foreach (array_unique($paths) as $path) {
+            $resolved = $this->blogStoragePathFromUrl($path);
+            if ($resolved === null || BlogInlineImages::isBundledAsset($resolved)) {
+                continue;
+            }
+
+            if ($this->blogImageIsReferenced($resolved, $blog->id)) {
+                continue;
+            }
+
+            if (Storage::disk('public')->exists($resolved)) {
+                Storage::disk('public')->delete($resolved);
+                Log::info('Blog image deleted with post', ['path' => $resolved]);
+            }
+        }
+    }
+
+    /**
+     * Persist a blog image as WebP when GD can convert; otherwise keep the original file.
+     */
+    private function storeBlogImage(UploadedFile $file, string $directory): ?string
+    {
+        try {
+            $disk = Storage::disk('public');
+            $disk->makeDirectory($directory);
+
+            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, $directory)
+                ?? $file->store($directory, 'public');
+
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                return null;
+            }
+
+            return $stored;
+        } catch (\Throwable $e) {
+            Log::error('Blog image store failed', [
+                'directory' => $directory,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     private function sanitizeTranslations(array $translations, bool $requireEnglish): array
@@ -543,10 +642,14 @@ class BlogController extends Controller
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
-            $content = trim((string) ($item['content'] ?? ''));
-            if (BlogHtmlSanitizer::isBlank($content)) {
-                $content = '';
-            }
+            $metaTitle = isset($item['meta_title']) ? trim((string) $item['meta_title']) : null;
+            $metaDescription = isset($item['meta_description']) ? trim((string) $item['meta_description']) : null;
+            $isPublished = ! array_key_exists('is_published', $item)
+                || filter_var($item['is_published'], FILTER_VALIDATE_BOOLEAN);
+            $rawContent = trim((string) ($item['content'] ?? ''));
+            $content = BlogHtmlSanitizer::isBlank($rawContent)
+                ? ''
+                : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {
