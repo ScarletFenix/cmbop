@@ -19,10 +19,15 @@
                 @csrf
                 <button class="btn btn-sm btn-outline-secondary">Regenerate PDF</button>
             </form>
-            <form method="POST" action="{{ route('admin.invoices.resend', $invoice) }}">
-                @csrf
-                <button class="btn btn-sm btn-outline-secondary">Resend email</button>
-            </form>
+            @if(! $invoice->isCancelled())
+                <form method="POST" action="{{ route('admin.invoices.resend', $invoice) }}"
+                      data-slb-confirm="Resend this document email to {{ $invoice->customer_email }}?"
+                      data-slb-confirm-title="Resend email?"
+                      data-slb-confirm-text="Resend">
+                    @csrf
+                    <button class="btn btn-sm btn-outline-secondary" type="submit">Resend email</button>
+                </form>
+            @endif
             @if($invoice->type === 'tax_invoice' && $invoice->status !== 'cancelled')
                 <form method="POST" action="{{ route('admin.invoices.cancel', $invoice) }}"
                       data-slb-confirm="Cancel this invoice? The PDF will be retained."

@@ -8,6 +8,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\Billing\InvoicePdfGenerator;
+use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 
 class InvoiceController extends Controller
@@ -58,21 +59,29 @@ class InvoiceController extends Controller
 
     public function download(Invoice $invoice, InvoicePdfGenerator $pdfs, BillingDocumentService $billing)
     {
-        if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
-            $pdfs->generateAndStore($invoice);
-            $invoice->refresh();
+        try {
+            if (! $invoice->hasPdf() || ! $invoice->pdfExists()) {
+                $pdfs->generateAndStore($invoice);
+                $invoice->refresh();
+            }
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not generate the PDF.'));
         }
 
-        $billing->recordDownload($invoice);
+        $billing->recordAdminDownload($invoice, auth()->user());
 
         return $pdfs->download($invoice);
     }
 
     public function resend(Invoice $invoice, BillingDocumentService $billing)
     {
-        $billing->resendInvoiceEmail($invoice);
+        $result = $billing->resendInvoiceEmail($invoice);
 
-        return back()->with('success', 'Invoice email resent to '.$invoice->customer_email);
+        if (! $result['ok']) {
+            return back()->with('error', $result['message']);
+        }
+
+        return back()->with('success', $result['message']);
     }
 
     public function cancel(Request $request, Invoice $invoice, BillingDocumentService $billing)
@@ -97,11 +106,22 @@ class InvoiceController extends Controller
         ]);
 
         $order = Order::with(['user', 'items'])->findOrFail($data['order_id']);
-        $invoice = $billing->generateManually($order, auth()->user());
 
-        return redirect()
+        try {
+            $invoice = $billing->generateManually($order, auth()->user());
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not generate the invoice.'));
+        }
+
+        $redirect = redirect()
             ->route('admin.invoices.show', $invoice)
             ->with('success', 'Invoice '.$invoice->invoice_number.' generated.');
+
+        if ($order->payment_status !== 'paid') {
+            $redirect->with('warning', 'Invoice issued for an unpaid order.');
+        }
+
+        return $redirect;
     }
 
     /**
@@ -118,7 +138,7 @@ class InvoiceController extends Controller
         return back()->with(
             'success',
             sprintf(
-                'Backfill complete: %d created, %d skipped, %d failed.',
+                'Backfill complete: %d tax invoices created, %d skipped, %d failed. Payment receipts are not backfilled.',
                 $result['created'],
                 $result['skipped'],
                 $result['failed']
@@ -149,7 +169,11 @@ class InvoiceController extends Controller
 
     public function regeneratePdf(Invoice $invoice, BillingDocumentService $billing)
     {
-        $billing->regeneratePdf($invoice);
+        try {
+            $billing->regeneratePdf($invoice);
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not regenerate the PDF.'));
+        }
 
         return back()->with('success', 'PDF regenerated for '.$invoice->invoice_number);
     }
