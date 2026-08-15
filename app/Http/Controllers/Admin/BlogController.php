@@ -27,7 +27,7 @@ class BlogController extends Controller
         try {
             CuratedBlogSync::ensurePresent();
 
-            $blogs = Blog::orderBy('created_at', 'desc')->paginate(20);
+            $blogs = Blog::with(['creator', 'translations'])->orderBy('created_at', 'desc')->paginate(20);
 
             return view('admin.blogs.index', compact('blogs'));
         } catch (\Exception $e) {
@@ -87,19 +87,31 @@ class BlogController extends Controller
                 'translations.en.title' => 'required|string|max:255',
                 'translations.en.slug' => 'nullable|string|max:255',
                 'translations.en.excerpt' => 'nullable|string|max:300',
+                'translations.en.meta_title' => 'nullable|string|max:70',
+                'translations.en.meta_description' => 'nullable|string|max:180',
                 'translations.en.content' => 'required|string',
+                'translations.en.is_published' => 'nullable|boolean',
                 'translations.de.title' => 'nullable|string|max:255',
                 'translations.de.slug' => 'nullable|string|max:255',
                 'translations.de.excerpt' => 'nullable|string|max:300',
+                'translations.de.meta_title' => 'nullable|string|max:70',
+                'translations.de.meta_description' => 'nullable|string|max:180',
                 'translations.de.content' => 'nullable|string',
+                'translations.de.is_published' => 'nullable|boolean',
                 'translations.fr.title' => 'nullable|string|max:255',
                 'translations.fr.slug' => 'nullable|string|max:255',
                 'translations.fr.excerpt' => 'nullable|string|max:300',
+                'translations.fr.meta_title' => 'nullable|string|max:70',
+                'translations.fr.meta_description' => 'nullable|string|max:180',
                 'translations.fr.content' => 'nullable|string',
+                'translations.fr.is_published' => 'nullable|boolean',
                 'translations.nl.title' => 'nullable|string|max:255',
                 'translations.nl.slug' => 'nullable|string|max:255',
                 'translations.nl.excerpt' => 'nullable|string|max:300',
+                'translations.nl.meta_title' => 'nullable|string|max:70',
+                'translations.nl.meta_description' => 'nullable|string|max:180',
                 'translations.nl.content' => 'nullable|string',
+                'translations.nl.is_published' => 'nullable|boolean',
             ]);
 
             if (! auth()->check()) {
@@ -148,19 +160,13 @@ class BlogController extends Controller
                         ? $enSlug
                         : $this->uniqueTranslationSlug($data['slug'] ?: Str::slug($data['title']));
 
-                    BlogTranslation::create([
-                        'blog_id' => $blog->id,
-                        'locale' => $locale,
-                        'title' => $data['title'],
-                        'slug' => $slug,
-                        'excerpt' => filled($data['excerpt'])
-                            ? Str::limit(trim((string) $data['excerpt']), 300)
-                            : Str::limit(strip_tags((string) $data['content']), 160),
-                        'content' => $data['content'],
-                        'meta_title' => null,
-                        'meta_description' => null,
-                        'is_published' => true,
-                    ]);
+                    BlogTranslation::create(array_merge(
+                        $this->translationAttributes($data, $slug),
+                        [
+                            'blog_id' => $blog->id,
+                            'locale' => $locale,
+                        ]
+                    ));
                 }
 
                 return $blog;
@@ -253,19 +259,31 @@ class BlogController extends Controller
                 'translations.en.title' => 'required|string|max:255',
                 'translations.en.slug' => 'nullable|string|max:255',
                 'translations.en.excerpt' => 'nullable|string|max:300',
+                'translations.en.meta_title' => 'nullable|string|max:70',
+                'translations.en.meta_description' => 'nullable|string|max:180',
                 'translations.en.content' => 'required|string',
+                'translations.en.is_published' => 'nullable|boolean',
                 'translations.de.title' => 'nullable|string|max:255',
                 'translations.de.slug' => 'nullable|string|max:255',
                 'translations.de.excerpt' => 'nullable|string|max:300',
+                'translations.de.meta_title' => 'nullable|string|max:70',
+                'translations.de.meta_description' => 'nullable|string|max:180',
                 'translations.de.content' => 'nullable|string',
+                'translations.de.is_published' => 'nullable|boolean',
                 'translations.fr.title' => 'nullable|string|max:255',
                 'translations.fr.slug' => 'nullable|string|max:255',
                 'translations.fr.excerpt' => 'nullable|string|max:300',
+                'translations.fr.meta_title' => 'nullable|string|max:70',
+                'translations.fr.meta_description' => 'nullable|string|max:180',
                 'translations.fr.content' => 'nullable|string',
+                'translations.fr.is_published' => 'nullable|boolean',
                 'translations.nl.title' => 'nullable|string|max:255',
                 'translations.nl.slug' => 'nullable|string|max:255',
                 'translations.nl.excerpt' => 'nullable|string|max:300',
+                'translations.nl.meta_title' => 'nullable|string|max:70',
+                'translations.nl.meta_description' => 'nullable|string|max:180',
                 'translations.nl.content' => 'nullable|string',
+                'translations.nl.is_published' => 'nullable|boolean',
             ]);
 
             $tags = null;
@@ -332,19 +350,14 @@ class BlogController extends Controller
 
                     $blog->translations()->updateOrCreate(
                         ['locale' => $locale],
-                        [
-                            'title' => $translationData['title'],
-                            'slug' => $slug,
-                            'excerpt' => filled($translationData['excerpt'])
-                                ? Str::limit(trim((string) $translationData['excerpt']), 300)
-                                : Str::limit(strip_tags((string) $translationData['content']), 160),
-                            'content' => $translationData['content'],
-                            'meta_title' => null,
-                            'meta_description' => null,
-                            'is_published' => true,
-                        ]
+                        $this->translationAttributes($translationData, $slug)
                     );
                 }
+
+                $blog->translations()
+                    ->whereNotIn('locale', array_keys($translations))
+                    ->where('locale', '!=', 'en')
+                    ->delete();
             });
 
             Log::info('Blog updated successfully', [
@@ -540,6 +553,10 @@ class BlogController extends Controller
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
+            $metaTitle = isset($item['meta_title']) ? trim((string) $item['meta_title']) : null;
+            $metaDescription = isset($item['meta_description']) ? trim((string) $item['meta_description']) : null;
+            $isPublished = ! array_key_exists('is_published', $item)
+                || filter_var($item['is_published'], FILTER_VALIDATE_BOOLEAN);
             $rawContent = trim((string) ($item['content'] ?? ''));
             $content = BlogHtmlSanitizer::isEmptyHtml($rawContent)
                 ? ''
@@ -556,6 +573,9 @@ class BlogController extends Controller
                     'title' => $title,
                     'slug' => $slug,
                     'excerpt' => $excerpt,
+                    'meta_title' => $metaTitle,
+                    'meta_description' => $metaDescription,
+                    'is_published' => $isPublished,
                     'content' => $content,
                 ];
 
@@ -576,11 +596,33 @@ class BlogController extends Controller
                 'title' => $title,
                 'slug' => $slug,
                 'excerpt' => $excerpt,
+                'meta_title' => $metaTitle,
+                'meta_description' => $metaDescription,
+                'is_published' => $isPublished,
                 'content' => $content,
             ];
         }
 
         return $normalized;
+    }
+
+    /**
+     * @param  array{title: string, excerpt: ?string, content: string, meta_title: ?string, meta_description: ?string, is_published: bool}  $data
+     * @return array<string, mixed>
+     */
+    private function translationAttributes(array $data, string $slug): array
+    {
+        return [
+            'title' => $data['title'],
+            'slug' => $slug,
+            'excerpt' => filled($data['excerpt'])
+                ? Str::limit(trim((string) $data['excerpt']), 300)
+                : Str::limit(strip_tags((string) $data['content']), 160),
+            'content' => $data['content'],
+            'meta_title' => filled($data['meta_title'] ?? null) ? $data['meta_title'] : null,
+            'meta_description' => filled($data['meta_description'] ?? null) ? $data['meta_description'] : null,
+            'is_published' => (bool) ($data['is_published'] ?? true),
+        ];
     }
 
     private function hydrateLegacyTranslationInput(Request $request): void
