@@ -441,6 +441,7 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $publisher = $this->makeUser('publisher');
         $hidden = $this->makeSite($publisher, 'left-catalog.example', 80);
         $live = $this->makeSite($publisher, 'still-live.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 0);
         $ref = 'LEFT-CATALOG-1';
         $payments = app(OrderPaymentService::class);
         $payments->storePendingCheckout($ref, $this->package($advertiser, [
@@ -458,6 +459,10 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertCount(1, $created);
         $this->assertSame($live->id, (int) $created->first()->items()->first()?->site_id);
         $this->assertSame(0, OrderItem::query()->where('site_id', $hidden->id)->count());
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
     public function test_finalize_creates_no_orders_when_every_line_left_the_catalog(): void
@@ -483,8 +488,11 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertCount(0, $created);
         $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
         $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
     }
 
     public function test_mark_paid_skips_legacy_order_when_listing_left_the_catalog(): void
@@ -492,6 +500,8 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
         $site = $this->makeSite($publisher, 'legacy-hidden.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
         $ref = 'LEGACY-HIDDEN-1';
 
         $order = Order::create([
@@ -516,14 +526,90 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
 
         $site->update(['verified' => false, 'active' => false]);
 
-        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
-            $ref,
-            $this->paidSession($ref, 80, 'cs_legacy_hidden')
-        );
+        $session = $this->paidSession($ref, 80, 'cs_legacy_hidden');
+        $session->metadata->bonus_applied = '20';
+        $session->metadata->order_total = '100';
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
 
         $this->assertCount(0, $paid);
         $this->assertSame('pending', $order->fresh()->payment_status);
-        $this->assertSame('pending', $order->fresh()->status);
+        $this->assertSame('cancelled', $order->fresh()->status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(100.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            80.0,
+            app(OrderPaymentService::class)->unfulfilledCardCreditAmount($ref),
+            0.01
+        );
+    }
+
+    public function test_taken_content_library_line_is_refunded_once_not_double_credited(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $takenSite = $this->makeSite($publisher, 'taken-article.example', 80);
+        $hidden = $this->makeSite($publisher, 'taken-hidden.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+
+        $prior = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'PRIOR-TAKEN-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+        $priorItem = OrderItem::create([
+            'order_id' => $prior->id,
+            'site_id' => $takenSite->id,
+            'site_name' => $takenSite->site_name,
+            'site_url' => $takenSite->site_url,
+            'content_link' => 'https://example.com/prior',
+            'price' => 80,
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser, $takenSite->id);
+        $submission->update([
+            'order_id' => $prior->id,
+            'order_item_id' => $priorItem->id,
+        ]);
+
+        $ref = 'TAKEN-ARTICLE-1';
+        $payments = app(OrderPaymentService::class);
+        $takenLine = $this->lineFor($takenSite, 80);
+        $takenLine['content_submission_id'] = $submission->id;
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $takenLine,
+            $this->lineFor($hidden, 40),
+        ], 120));
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 120, 'cs_taken_article')
+        );
+
+        $this->assertCount(0, $created);
+        $refunded = Order::query()
+            ->where('reference_code', $ref)
+            ->where('payment_status', 'refunded')
+            ->get();
+        $this->assertCount(1, $refunded);
+        $this->assertSame('cancelled', $refunded->first()->status);
+        $this->assertSame($prior->id, (int) $submission->fresh()->order_id);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(120.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(40.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->refundedCardOrderAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(120.0, $payments->walletCreditForUnfulfillableCardCheckout($ref), 0.01);
     }
 
     public function test_wallet_deposit_session_cannot_materialize_orders(): void
@@ -595,5 +681,98 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->expectException(\RuntimeException::class);
         $this->expectExceptionMessage('not an order payment');
         app(OrderPaymentService::class)->markOrdersPaidFromStripeSession('COLLIDE-PAID', $walletSession);
+    }
+
+    public function test_webhook_settles_without_retry_when_every_line_left_the_catalog(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'webhook-left-catalog.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'WH-LEFT-CATALOG-1';
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+        ], 80));
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $this->signedWebhook([
+            'id' => 'evt_left_catalog_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_wh_left_catalog',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_wh_left',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
+    public function test_webhook_settles_when_content_library_line_was_already_taken(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'webhook-taken.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+
+        $prior = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'PRIOR-WH-TAKEN',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $submission->update(['order_id' => $prior->id]);
+
+        $ref = 'WH-TAKEN-ARTICLE-1';
+        $line = $this->lineFor($site, 80);
+        $line['content_submission_id'] = $submission->id;
+        app(OrderPaymentService::class)->storePendingCheckout($ref, $this->package($advertiser, [$line], 80));
+
+        $this->signedWebhook([
+            'id' => 'evt_taken_article_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_wh_taken_article',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_wh_taken',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame('refunded', Order::query()->where('reference_code', $ref)->value('payment_status'));
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, app(OrderPaymentService::class)->unfulfilledCardCreditAmount($ref), 0.01);
     }
 }

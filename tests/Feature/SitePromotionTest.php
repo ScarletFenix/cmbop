@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\SiteDiscountEnded;
+use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteFeaturePurchase;
@@ -271,6 +272,26 @@ class SitePromotionTest extends TestCase
         ]);
     }
 
+    public function test_feature_rejects_cancelled_bulk_leftover(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site->forceFill(['bulk_site_request_id' => $bulk->id])->save();
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.feature', $site->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This listing is not in the catalog and cannot be promoted.');
+
+        $this->assertFalse($site->fresh()->isFeatured());
+        $this->assertSame(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+    }
+
     public function test_feature_stripe_amount_must_match_configured_price(): void
     {
         config(['site_promotions.feature.price' => 10]);
@@ -311,5 +332,37 @@ class SitePromotionTest extends TestCase
         $apply = $promotions->featureFromStripePayment($site->fresh(), $newOwner, 'cs_feature_mismatch');
         $this->assertTrue($apply['success']);
         $this->assertNull($site->fresh()->featured_until);
+        $this->assertStringContainsString('changed owner', $first['message']);
+    }
+
+    public function test_feature_from_stripe_credits_cancelled_bulk_leftover(): void
+    {
+        config(['site_promotions.feature.price' => 10]);
+        $publisher = $this->publisherWithWallet(5);
+        $site = $this->site($publisher);
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site->forceFill(['bulk_site_request_id' => $bulk->id])->save();
+
+        $promotions = app(SitePromotionService::class);
+        $first = $promotions->featureFromStripePayment($site, $publisher, 'cs_feature_leftover');
+        $second = $promotions->featureFromStripePayment($site->fresh(), $publisher, 'cs_feature_leftover');
+
+        $this->assertTrue($first['success']);
+        $this->assertTrue($first['credited']);
+        $this->assertFalse($first['already']);
+        $this->assertTrue($second['already']);
+        $this->assertStringContainsString('no longer in the catalog', $first['message']);
+        $this->assertNull($site->fresh()->featured_until);
+        $this->assertEqualsWithDelta(15.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);
+        $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', 'cs_feature_leftover')->count());
+        $this->assertDatabaseHas('site_feature_purchases', [
+            'stripe_session_id' => 'cs_feature_leftover',
+            'payment_method' => 'stripe_credit',
+            'user_id' => $publisher->id,
+        ]);
     }
 }

@@ -87,6 +87,12 @@ class SitePromotionService
                 $wallet->deductWithdrawable($price);
 
                 $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+                if (! $lockedSite->isCatalogVisible()) {
+                    return [
+                        'success' => false,
+                        'message' => 'This listing is not in the catalog and cannot be promoted.',
+                    ];
+                }
                 $site = $this->applyFeaturePeriod($lockedSite, $publisher, $price, $days, 'wallet');
 
                 // Promo feature spends are intentionally excluded from INV tax
@@ -124,8 +130,12 @@ class SitePromotionService
      *
      * @return array{success:bool, credited?:bool, already?:bool, message:string}
      */
-    public function creditPayerWhenFeatureCannotApply(Site $site, User $payer, string $stripeSessionId): array
-    {
+    public function creditPayerWhenFeatureCannotApply(
+        Site $site,
+        User $payer,
+        string $stripeSessionId,
+        ?string $reason = null
+    ): array {
         $price = $this->featurePrice();
         $roleId = Wallet::publisherRoleId();
         if (! $roleId) {
@@ -136,7 +146,7 @@ class SitePromotionService
         }
 
         try {
-            return DB::transaction(function () use ($site, $payer, $stripeSessionId, $price, $roleId) {
+            return DB::transaction(function () use ($site, $payer, $stripeSessionId, $price, $roleId, $reason) {
                 $already = SiteFeaturePurchase::query()
                     ->where('payment_method', 'stripe')
                     ->where('stripe_session_id', $stripeSessionId)
@@ -190,8 +200,9 @@ class SitePromotionService
                     'success' => true,
                     'credited' => true,
                     'already' => false,
-                    'message' => 'Featured placement could not be applied because the website changed owner. €'
-                        .number_format($price, 2)
+                    'message' => 'Featured placement could not be applied because '
+                        .($reason ?: 'the website changed owner')
+                        .'. €'.number_format($price, 2)
                         .' was credited to your publisher wallet.',
                 ];
             });
@@ -221,6 +232,21 @@ class SitePromotionService
                 // Lock the site first so webhook + success URL cannot both
                 // pass an unlocked exists() check and stack two 7-day periods.
                 $locked = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
+                if ($locked->isFromCancelledBulk()) {
+                    if (is_string($stripeSessionId) && $stripeSessionId !== '') {
+                        return $this->creditPayerWhenFeatureCannotApply(
+                            $locked,
+                            $publisher,
+                            $stripeSessionId,
+                            'the listing is no longer in the catalog'
+                        );
+                    }
+
+                    return [
+                        'success' => false,
+                        'message' => 'This listing is not in the catalog and cannot be promoted.',
+                    ];
+                }
 
                 if ($stripeSessionId) {
                     $already = SiteFeaturePurchase::query()

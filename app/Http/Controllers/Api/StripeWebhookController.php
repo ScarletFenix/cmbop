@@ -257,6 +257,17 @@ class StripeWebhookController extends Controller
             $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $session);
 
             if ($newlyPaid->isEmpty()) {
+                $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
+                if ($credited > 0) {
+                    Log::warning('Stripe webhook settled without catalog-visible lines', [
+                        'reference_code' => $referenceCode,
+                        'session_id' => $session->id ?? null,
+                        'wallet_credit' => $credited,
+                    ]);
+
+                    return;
+                }
+
                 throw new \RuntimeException('No pending card orders or checkout package found for webhook ref '.$referenceCode);
             }
         }
@@ -304,6 +315,16 @@ class StripeWebhookController extends Controller
             $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $intent);
 
             if ($newlyPaid->isEmpty()) {
+                $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
+                if ($credited > 0) {
+                    Log::warning('PaymentIntent webhook settled without catalog-visible lines', [
+                        'reference_code' => $referenceCode,
+                        'wallet_credit' => $credited,
+                    ]);
+
+                    return;
+                }
+
                 throw new \RuntimeException('No pending card orders or checkout package found for PaymentIntent ref '.$referenceCode);
             }
         }
@@ -361,6 +382,15 @@ class StripeWebhookController extends Controller
         $result = $promotions->featureFromStripePayment($site, $user, $sessionId);
         if (! ($result['success'] ?? false)) {
             throw new \RuntimeException($result['message'] ?? 'Failed to apply site feature from webhook');
+        }
+
+        if ($result['credited'] ?? false) {
+            Log::warning('site_feature listing not catalog-visible; credited payer wallet', [
+                'site_id' => $siteId,
+                'session_id' => $sessionId,
+            ]);
+
+            return;
         }
 
         Log::info('Site feature applied via webhook', [
