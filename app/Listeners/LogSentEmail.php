@@ -4,6 +4,7 @@ namespace App\Listeners;
 
 use App\Mail\AudienceCampaignMail;
 use App\Mail\PlatformMailable;
+use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Support\EmailCatalog;
@@ -128,17 +129,23 @@ class LogSentEmail
                 return;
             }
 
-            EmailCampaignRecipient::query()
+            $updated = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
                 ->whereIn('status', [
                     EmailCampaignRecipient::STATUS_PENDING,
                     EmailCampaignRecipient::STATUS_QUEUED,
+                    EmailCampaignRecipient::STATUS_FAILED,
                 ])
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_DELIVERED,
                     'email_log_id' => $logId,
+                    'skip_reason' => null,
                 ]);
+
+            if ($updated) {
+                EmailCampaign::query()->find($campaignId)?->recountRecipientTotals();
+            }
         } catch (\Throwable $e) {
             Log::warning('Campaign recipient log sync failed', [
                 'campaign_id' => $campaignId,

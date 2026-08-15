@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Mail\PlatformMailable;
 use App\Models\EmailCampaign;
+use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
@@ -324,6 +325,7 @@ class EmailCenterController extends Controller
                 'error' => null,
                 'attempts' => max(1, (int) $log->attempts) + 1,
             ]);
+            $this->requeueFailedCampaignRecipient($log);
 
             return back()->with('success', 'Re-queued the failed mail job for this log.');
         }
@@ -366,6 +368,40 @@ class EmailCenterController extends Controller
             ]);
 
             return back()->with('error', UserFacingError::message($e, 'Failed to retry the test email. Please try again.'));
+        }
+    }
+
+    protected function requeueFailedCampaignRecipient(EmailLog $log): void
+    {
+        $campaignId = (int) data_get($log->meta, 'campaign_id');
+        $userId = (int) data_get($log->meta, 'user_id');
+        if ($campaignId < 1 || $userId < 1) {
+            if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $log->dedupe_key, $matches)) {
+                return;
+            }
+            $campaignId = (int) $matches[1];
+            $userId = (int) $matches[2];
+        }
+
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return;
+            }
+
+            $updated = EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaignId)
+                ->where('user_id', $userId)
+                ->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_QUEUED,
+                    'skip_reason' => null,
+                ]);
+
+            if ($updated) {
+                EmailCampaign::query()->find($campaignId)?->recountRecipientTotals();
+            }
+        } catch (\Throwable) {
+            // Delivery sync on success still flips failed → delivered.
         }
     }
 
