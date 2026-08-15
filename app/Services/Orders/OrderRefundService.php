@@ -118,19 +118,25 @@ class OrderRefundService
         $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
 
         $bonusRestored = 0.0;
-        $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
         if ($order->payment_method === 'wallet') {
-            // Peek 0 used to mean "no cap" and dumped every reserved promo
-            // on this wallet, including another checkout's leftover. Cap to
-            // the promo that still fits inside this hold (and siblings).
+            // Pro-rate only the promo that fits inside this hold. Capping
+            // after splitting the whole bonus_reserved bucket still handed
+            // another checkout's leftover to the first sibling.
             $holdCap = $this->walletHoldBonusCap($wallet, $order, $amount);
+            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount, $holdCap);
             if ($maxBonusShare !== null && $maxBonusShare > 0) {
-                $bonusShare = min($bonusShare, round($maxBonusShare, 2), $holdCap);
-            } else {
-                $bonusShare = min($bonusShare, $holdCap);
+                $bonusShare = min($bonusShare, round($maxBonusShare, 2));
             }
-        } elseif ($maxBonusShare !== null) {
-            $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
+        } else {
+            $poolCap = $maxBonusShare;
+            if ($poolCap === null) {
+                $peek = app(CheckoutIntentService::class)->peekBonus(
+                    (int) $order->user_id,
+                    (string) ($order->reference_code ?? '')
+                );
+                $poolCap = $peek > 0 ? $peek : null;
+            }
+            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount, $poolCap);
         }
 
         $ledgerAmount = $amount;
@@ -201,14 +207,24 @@ class OrderRefundService
             return;
         }
 
-        $bonusShare = $this->checkoutBonusShare($wallet, $order, $total);
-
         if ($order->payment_method === 'wallet') {
-            $bonusShare = min($bonusShare, $this->walletHoldBonusCap($wallet, $order, $total));
+            $holdCap = $this->walletHoldBonusCap($wallet, $order, $total);
+            $bonusShare = $this->checkoutBonusShare($wallet, $order, $total, $holdCap);
             $wallet->consumeReserved($total, $bonusShare);
 
             return;
         }
+
+        $peek = app(CheckoutIntentService::class)->peekBonus(
+            (int) $order->user_id,
+            (string) ($order->reference_code ?? '')
+        );
+        $bonusShare = $this->checkoutBonusShare(
+            $wallet,
+            $order,
+            $total,
+            $peek > 0 ? $peek : null
+        );
 
         if ($bonusShare > 0) {
             $wallet->consumeReserved($bonusShare, $bonusShare);
@@ -239,9 +255,12 @@ class OrderRefundService
      * reject or approve unlocked promo that a later sibling refund would
      * mint as withdrawable cash.
      */
-    private function checkoutBonusShare(Wallet $wallet, Order $order, float $amount): float
+    private function checkoutBonusShare(Wallet $wallet, Order $order, float $amount, ?float $poolCap = null): float
     {
         $reserved = max(0, round((float) $wallet->bonus_reserved, 2));
+        if ($poolCap !== null) {
+            $reserved = min($reserved, max(0, round($poolCap, 2)));
+        }
         if ($reserved <= 0 || $amount <= 0) {
             return 0.0;
         }
@@ -328,18 +347,18 @@ class OrderRefundService
             return 0.0;
         }
 
+        // Cap the pool first, then pro-rate. Capping after a split of the
+        // whole bucket still gave the first sibling another checkout's promo.
         $share = $reserved;
-        if ($openTotal > 0 && $failedTotal > 0) {
-            $pool = round($failedTotal + $openTotal, 2);
-            $share = min($reserved, max(0, round($reserved * ($failedTotal / $pool), 2)));
-        }
-
-        // Cap to this reference's leftover. Dumping the whole wallet bucket
-        // stole another in-flight checkout's promo when this row had none.
         if ($peek > 0) {
             $share = min($share, $peek);
         } elseif ($openTotal <= 0) {
             $share = 0.0;
+        }
+
+        if ($openTotal > 0 && $failedTotal > 0 && $share > 0) {
+            $pool = round($failedTotal + $openTotal, 2);
+            $share = min($share, max(0, round($share * ($failedTotal / $pool), 2)));
         }
 
         if ($share <= 0) {
