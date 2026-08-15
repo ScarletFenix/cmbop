@@ -359,13 +359,19 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                $found = DB::table($table)
+                $found = false;
+                DB::table($table)
                     ->where('payload', 'like', '%SendEmailCampaignJob%')
-                    ->pluck('payload')
-                    ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
-                        (string) $payload,
-                        $campaignId
-                    ));
+                    ->orderBy('id')
+                    ->select(['id', 'payload'])
+                    ->chunkById(100, function ($rows) use ($campaignId, &$found) {
+                        $found = $rows->contains(fn ($row) => MailJobPayload::containsSendCampaignJob(
+                            (string) $row->payload,
+                            $campaignId
+                        ));
+
+                        return ! $found;
+                    });
 
                 if ($found) {
                     return true;
