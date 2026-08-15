@@ -475,4 +475,99 @@ class AdminAudienceInventoryTest extends TestCase
 
         Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($target->email));
     }
+
+    public function test_completed_payment_status_counts_as_a_customer_order(): void
+    {
+        $completed = $this->makeUser('advertiser');
+        Order::create([
+            'user_id' => $completed->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-COMPLETED-'.random_int(1000, 9999),
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wallet',
+            'payment_status' => 'completed',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        $fundedIdle = $this->makeUser('advertiser');
+        $this->deposit($fundedIdle, 'completed');
+
+        $inventory = app(AudienceInventoryService::class);
+        $this->assertContains($completed->id, $inventory->collect('advertisers_paid_orders')->pluck('id'));
+        $this->assertNotContains($completed->id, $inventory->collect('advertisers_no_paid_orders')->pluck('id'));
+        $this->assertNotContains($completed->id, $inventory->collect('advertisers_deposited_no_orders')->pluck('id'));
+        $this->assertContains($fundedIdle->id, $inventory->collect('advertisers_deposited_no_orders')->pluck('id'));
+        $this->assertSame(1, $inventory->count('advertisers_paid_orders'));
+        $this->assertSame(1, $inventory->count('advertisers_no_paid_orders'));
+    }
+
+    public function test_staff_who_also_have_a_marketplace_role_are_excluded_from_inventory_and_campaigns(): void
+    {
+        $adminAdvertiser = $this->makeUser('advertiser');
+        $this->attachRole($adminAdvertiser, 'admin');
+        $marketingPublisher = $this->makeUser('publisher');
+        $this->attachRole($marketingPublisher, 'marketing');
+        $plain = $this->makeUser('advertiser');
+
+        $inventory = app(AudienceInventoryService::class);
+
+        $this->assertSame([$plain->id], $inventory->collect('advertisers')->pluck('id')->all());
+        $this->assertSame([], $inventory->collect('publishers')->pluck('id')->all());
+        $this->assertSame([$plain->id], $inventory->collectRecipientRows('advertisers')->pluck('id')->all());
+        $this->assertSame([$plain->id], $inventory->pickerUsers('advertiser')->pluck('id')->all());
+        $this->assertSame(0, $inventory->pickerUsers('publisher')->count());
+        $this->assertSame(0, $inventory->count('selected', [$adminAdvertiser->id, $marketingPublisher->id]));
+        $this->assertSame(0, $inventory->collect('selected', [$adminAdvertiser->id])->count());
+        $this->assertSame(1, $inventory->stats()['advertisers']);
+        $this->assertSame(0, $inventory->stats()['publishers']);
+        $this->assertSame(1, $inventory->advertiserCount());
+        $this->assertSame(0, $inventory->publisherCount());
+        $this->assertSame(1, $inventory->bothUniqueCount());
+
+        $this->assertSame(1, $inventory->queryForRole('advertiser')->whereKey($adminAdvertiser->id)->count());
+        $this->assertSame(1, $inventory->queryForRole('publisher')->whereKey($marketingPublisher->id)->count());
+    }
+
+    public function test_whitespace_only_email_is_not_a_recipient(): void
+    {
+        $blank = $this->makeUser('advertiser', ['email' => '   ']);
+        $plain = $this->makeUser('advertiser');
+
+        $inventory = app(AudienceInventoryService::class);
+        $ids = $inventory->collect('advertisers', null, true)->pluck('id')->all();
+
+        $this->assertNotContains($blank->id, $ids);
+        $this->assertContains($plain->id, $ids);
+        $this->assertSame(0, $inventory->count('selected', [$blank->id], true));
+    }
+
+    public function test_all_advertisers_campaign_skips_dual_role_staff(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $staffAdvertiser = $this->makeUser('advertiser');
+        $this->attachRole($staffAdvertiser, 'admin');
+        $target = $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), [
+                'name' => 'All advertisers',
+                'subject' => 'Marketplace update',
+                'body_html' => '<p>Hello advertisers.</p>',
+                'audience' => 'advertisers',
+                'respect_preferences' => false,
+            ])
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertSame(1, $campaign->recipients_count);
+        $this->assertEquals([$target->id], $campaign->recipients()->pluck('user_id')->map(fn ($id) => (int) $id)->all());
+        Mail::assertQueued(AudienceCampaignMail::class, 1);
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($target->email));
+        Mail::assertNotQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($staffAdvertiser->email));
+    }
 }

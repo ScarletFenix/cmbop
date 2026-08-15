@@ -30,6 +30,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('touches', $body);
         $this->assertStringContainsString('reconciled against `email_logs`', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
+        $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
+        $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

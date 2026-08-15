@@ -2,7 +2,8 @@
 
 Bulk marketing / platform-update email from **Admin → Updates & Campaigns**
 (`/admin/campaigns`). This is **not** advertiser `/campaigns` (orphaned project
-UI). Recipients are marketplace advertisers and publishers only — never admins.
+UI). Recipients are marketplace advertisers and publishers only — never admins
+or marketing, even if that staff account also has a marketplace role.
 
 ## Send path
 
@@ -72,18 +73,22 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   Audience Inventory census (`paginate` / `export` / `stats()`) still includes
   unverified unless asked otherwise. Inventory cards show **all** plus
   **emailable (verified)** so the compose count matches the subtitle.
-- `selected` accepts advertiser/publisher IDs only. Admin IDs are dropped.
+- `selected` accepts advertiser/publisher IDs only. Admin and marketing IDs
+  are dropped, including dual-role staff (admin+advertiser still must not
+  receive “all advertisers” blasts). `queryForRole()` is unchanged so
+  deposit / add-site / digest reminders can still reach those accounts.
 - Custom picker is capped at 200 users per role (`AudienceInventoryService::PICKER_LIMIT`).
 - `advertisers_no_orders` is an alias of `advertisers_never_checked_out` (no
-  order row). `advertisers_no_paid_orders` is anyone without a **paid or
-  refunded** order (abandoned checkout stays in; a later refund is still a
-  customer). `advertisers_paid_orders` is the inverse.
+  order row). `advertisers_no_paid_orders` is anyone without a **paid,
+  completed, or refunded** order (abandoned checkout stays in; a later
+  refund is still a customer). `payment_status=completed` is a paid alias
+  (`AdvertiserOrderStatus`). `advertisers_paid_orders` is the inverse.
 - Extra inventory / campaign keys: `both`, `advertisers_deposited_no_orders`
-  (credited deposit and no paid/refunded order — abandoned checkout stays
-  in), `publishers_no_active_sites` (no catalog-visible site: active +
-  verified + not archived + not leftover from a cancelled bulk). Publisher
-  archive keeps `active=1`, so `active=1` alone is not “live”. Tab slugs
-  (`no_orders`, `paid_orders`, …) normalize through
+  (credited deposit and no paid/completed/refunded order — abandoned
+  checkout stays in), `publishers_no_active_sites` (no catalog-visible site:
+  active + verified + not archived + not leftover from a cancelled bulk).
+  Publisher archive keeps `active=1`, so `active=1` alone is not “live”.
+  Tab slugs (`no_orders`, `paid_orders`, …) normalize through
   `AudienceInventoryService::normalizeAudienceKey()` in inventory and in
   campaign send / recipient-count.
 - The custom picker lists **verified users first** so unverified names cannot

@@ -427,6 +427,26 @@ class AdminCampaignsTest extends TestCase
         Mail::assertQueued(AudienceCampaignMail::class, 1);
     }
 
+    public function test_selected_audience_rejects_dual_role_staff_ids(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $staffAdvertiser = $this->makeUser('advertiser');
+        $staffAdvertiser->roles()->attach(Role::where('name', 'admin')->firstOrFail()->id);
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'audience' => 'selected',
+                'user_ids' => [$staffAdvertiser->id],
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('error', 'No recipients found for that audience.');
+
+        Mail::assertNothingQueued();
+    }
+
     public function test_no_paid_orders_excludes_paid_but_keeps_abandoned_checkout(): void
     {
         $admin = $this->makeUser('admin');

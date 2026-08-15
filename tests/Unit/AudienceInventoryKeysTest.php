@@ -78,6 +78,14 @@ class AudienceInventoryKeysTest extends TestCase
         $this->assertSame('Advertisers + Publishers', AudienceInventoryService::exportLabel('both'));
     }
 
+    public function test_customer_payment_statuses_include_completed_alias(): void
+    {
+        $this->assertSame(
+            ['paid', 'completed', 'refunded'],
+            AudienceInventoryService::customerPaymentStatuses()
+        );
+    }
+
     public function test_tab_slugs_canonicalize_to_the_same_campaign_keys(): void
     {
         $this->assertSame(
