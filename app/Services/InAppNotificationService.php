@@ -1600,7 +1600,7 @@ class InAppNotificationService
                     : InAppNotification::PRIORITY_HIGH,
                 'related' => $user,
                 'action_label' => 'Review activity',
-                'action_url' => route('admin.catalog-activity', [], false),
+                'action_url' => route('admin.catalog-activity', ['user' => $user->id], false),
                 'meta' => [
                     'user_id' => $user->id,
                     'email' => $user->email,
@@ -1608,6 +1608,49 @@ class InAppNotificationService
                     'window_minutes' => $windowMinutes,
                     'state' => $state,
                     'reason' => $because,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * An advertiser crossed a copy-strike threshold.
+     */
+    public function notifyAdminsCatalogCopyStrike(User $user, string $status, int $distinct): void
+    {
+        $who = $user->name ?: ($user->email ?: 'An advertiser');
+
+        [$title, $message, $priority] = match ($status) {
+            'hide_mode' => [
+                'Catalog hide mode started',
+                "{$who} hit a second copy-strike wave ({$distinct} distinct domains). Site names and URLs are hidden.",
+                InAppNotification::PRIORITY_HIGH,
+            ],
+            default => [
+                'Catalog copy warning',
+                "{$who} mass-copied {$distinct} catalog domains. They have been warned; another wave will hide names and URLs.",
+                InAppNotification::PRIORITY_NORMAL,
+            ],
+        };
+
+        $this->notifyAdmins(
+            self::TYPE_SYSTEM,
+            $title,
+            $message,
+            [
+                'roles' => ['admin'],
+                'category' => self::CATEGORY_SYSTEM,
+                'icon' => $status === 'hide_mode' ? 'alert-triangle' : 'eye',
+                'priority' => $priority,
+                'related' => $user,
+                'action_label' => 'Review activity',
+                'action_url' => route('admin.catalog-activity', ['user' => $user->id], false),
+                'meta' => [
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'distinct' => $distinct,
+                    'status' => $status,
+                    'strikes' => (int) ($user->catalog_copy_strike_count ?? 0),
                 ],
             ]
         );
