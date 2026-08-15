@@ -449,7 +449,7 @@ class EmailCenterController extends Controller
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored === '' || ! in_array($stored, $uuids, true)) {
+            if ($stored === '' || ! in_array($stored, $uuids, true) || ! empty($claimedUuids[$stored])) {
                 continue;
             }
 
@@ -462,6 +462,7 @@ class EmailCenterController extends Controller
 
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
+            $claimedUuids[$stored] = true;
         }
 
         foreach ($uuids as $uuid) {
@@ -541,10 +542,19 @@ class EmailCenterController extends Controller
             if ($updated) {
                 $campaign = EmailCampaign::query()->find($campaignId);
                 if ($campaign?->status === EmailCampaign::STATUS_FAILED) {
+                    // Same trap as recover's FAILED revival: leave MAX in
+                    // cache and the next recoverStalled() give-up wipes
+                    // leftover pending beside this retried mailable.
+                    $campaign->clearFailStreak();
                     $campaign->update([
                         'status' => EmailCampaign::STATUS_SENDING,
                         'sent_at' => null,
                     ]);
+                } else {
+                    // Already sending: bump updated_at so recover does not
+                    // treat this as a stale orphan and reclaim beside the
+                    // mailable queue:retry just pushed.
+                    $campaign?->touch();
                 }
                 $campaign?->recountRecipientTotals();
             }
