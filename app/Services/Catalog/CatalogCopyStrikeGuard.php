@@ -72,10 +72,15 @@ class CatalogCopyStrikeGuard
                 $siteId = null;
             } elseif ($hosts === []) {
                 // Row id known but selection was messy — fall back to listing URL.
-                $fallback = $this->normalizeHost((string) $site->site_url);
+                $fallback = $this->listingHosts($site)[0] ?? '';
                 if ($fallback !== '') {
                     $hosts = [$fallback];
                 }
+            } elseif (count($hosts) === 1 && ! in_array($hosts[0], $this->listingHosts($site), true)) {
+                // A scripted client can reuse one valid site_id with rotating
+                // hosts. Pinning those rows to the listing makes insertIfNew
+                // OR-dedupe on site_id and distinctCount collapse to 1.
+                $siteId = null;
             }
         }
 
@@ -124,9 +129,6 @@ class CatalogCopyStrikeGuard
                 // inserts/counts only ids above this cutoff so the same
                 // listings cannot restage the burst.
                 self::watermarkEvents($locked);
-                if (! $this->afterIdColumnReady()) {
-                    CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
-                }
                 $locked->save();
 
                 $fresh = $locked->fresh();
@@ -260,6 +262,24 @@ class CatalogCopyStrikeGuard
         }
 
         return $host;
+    }
+
+    /**
+     * Hosts that belong to this listing (site_url and domain column).
+     *
+     * @return list<string>
+     */
+    private function listingHosts(Site $site): array
+    {
+        $hosts = [];
+        foreach ([(string) $site->site_url, (string) ($site->domain ?? '')] as $raw) {
+            $host = $this->normalizeHost($raw);
+            if ($host !== '') {
+                $hosts[$host] = $host;
+            }
+        }
+
+        return array_values($hosts);
     }
 
     /**

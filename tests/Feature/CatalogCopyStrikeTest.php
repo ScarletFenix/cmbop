@@ -442,4 +442,21 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertFalse($result['in_hide_mode']);
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
     }
+
+    public function test_reused_site_id_with_rotating_hosts_still_reaches_the_threshold(): void
+    {
+        $user = $this->advertiser();
+        $pinned = $this->site('pinned-row.example');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $last = null;
+        for ($i = 1; $i <= 5; $i++) {
+            $last = $guard->record($user->fresh(), $pinned->id, 'rotate-'.$i.'.example');
+        }
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_WARNING, $last['status']);
+        $this->assertSame(5, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(0, CatalogCopyEvent::where('user_id', $user->id)->whereNotNull('site_id')->count());
+        $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
+    }
 }

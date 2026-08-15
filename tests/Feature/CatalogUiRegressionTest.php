@@ -128,6 +128,10 @@ class CatalogUiRegressionTest extends TestCase
             $js
         );
         $this->assertStringContainsString('syncHideModeFromPayload', $js);
+        // A sticky client flag after hide_mode would silence /copy-track if the
+        // reload never happens and an admin later lifts (or the window expires).
+        $this->assertStringNotContainsString('trackingStopped', $js);
+        $this->assertStringContainsString('hideToastShown = false', $js);
         $this->assertStringContainsString('window.CatalogCopyTrack', $js);
         $this->assertMatchesRegularExpression(
             '/copy-example-url[\s\S]*?CatalogCopyTrack\.report\(/',
