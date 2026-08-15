@@ -20,10 +20,16 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
    recounts, and marks the campaign `failed` (not stuck `sending`). Already
    queued mail can still deliver afterward.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
-   (`error`) and recount. A late `marketing_emails` opt-out, before the queued
-   mail actually sends, is honored when `respect_preferences` is on. If Email
-   Center disables the `audience_campaign` type, pending rows are skipped
-   (`disabled`) and the campaign ends `failed`.
+   (`error`) and recount. If a `sent` campaign later has no queued/delivered
+   rows left, status is downgraded to `failed`. A late `marketing_emails`
+   opt-out, before the queued mail actually sends, is honored when
+   `respect_preferences` is on. If Email Center disables the
+   `audience_campaign` type, pending rows are skipped (`disabled`) and the
+   campaign ends `failed`.
+6. Preview renders a catalog stand-in (not the admin) and a placeholder
+   unsubscribe URL. The preview iframe is sandboxed so a click cannot opt
+   the operator out. Job dispatch is unique per campaign; a dispatch failure
+   marks the campaign `failed` instead of leaving it stuck `queued`.
 
 Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
@@ -66,7 +72,9 @@ and add-site / deposit reminders keep their own queries.
 - One-click (`List-Unsubscribe=One-Click` or JSON) returns empty **200**.
 - CSRF is excepted for `email/unsubscribe/*` (Gmail POSTs have no token).
 - Campaign markdown footer + `List-Unsubscribe` / `List-Unsubscribe-Post`
-  headers share one cached signed URL. Order receipts do **not** get this footer.
+  headers share one cached signed URL. Email Center / compose previews use
+  `/email/unsubscribe/preview-id` (not a signed live link). Order receipts
+  do **not** get this footer.
 
 ## Queue / ops
 

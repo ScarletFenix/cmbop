@@ -86,6 +86,8 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('name="respect_preferences" value="0"', false)
             ->assertSee('id="previewStatus"', false)
             ->assertSee('data-slb-confirm="Send this campaign', false)
+            ->assertSee('id="previewFrame"', false)
+            ->assertSee('sandbox', false)
             ->assertSee('requestSubmit() throws if the submitter is disabled', false)
             ->assertSee("Accept': 'application/json, text/html'", false)
             ->assertSee('name="include_unverified" value="0"', false)
@@ -97,13 +99,18 @@ class AdminCampaignsTest extends TestCase
     {
         $admin = $this->makeUser('admin');
 
-        $this->actingAs($admin)
+        $html = $this->actingAs($admin)
             ->post(route('admin.campaigns.preview'), [
                 'subject' => 'Preview subject',
                 'body_html' => '<p>Preview body</p>',
             ])
             ->assertOk()
-            ->assertSee('Preview body', false);
+            ->assertSee('Preview body', false)
+            ->assertSee('/email/unsubscribe/preview-id', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('/email/unsubscribe/'.$admin->id, $html);
+        $this->assertStringNotContainsString((string) $admin->email, $html);
     }
 
     public function test_preview_rejects_empty_body(): void
@@ -830,6 +837,7 @@ class AdminCampaignsTest extends TestCase
         $this->assertNotNull($fresh->email_log_id);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
         $this->assertDatabaseHas('email_logs', [
             'id' => $fresh->email_log_id,
             'status' => EmailLog::STATUS_FAILED,

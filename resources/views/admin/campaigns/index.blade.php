@@ -253,7 +253,7 @@
                     <strong><i class="fa fa-eye me-2 text-primary"></i>Preview</strong>
                 </div>
                 <div class="card-body">
-                    <iframe id="previewFrame" title="Campaign preview" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
+                    <iframe id="previewFrame" title="Campaign preview" sandbox referrerpolicy="no-referrer" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
                     <div class="small text-muted mt-2" id="previewStatus">Click “Preview email” to render the branded message.</div>
                 </div>
             </div>

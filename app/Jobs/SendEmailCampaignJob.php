@@ -8,6 +8,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
@@ -15,7 +16,7 @@ use Illuminate\Queue\SerializesModels;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
-class SendEmailCampaignJob implements ShouldQueue
+class SendEmailCampaignJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
@@ -23,9 +24,16 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public int $timeout = 600;
 
+    public int $uniqueFor = 900;
+
     public function __construct(public int $campaignId)
     {
         $this->onQueue(config('email_notifications.queue', 'emails'));
+    }
+
+    public function uniqueId(): string
+    {
+        return 'email-campaign:'.$this->campaignId;
     }
 
     public function handle(): void

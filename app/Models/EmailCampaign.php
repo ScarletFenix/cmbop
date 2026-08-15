@@ -73,6 +73,31 @@ class EmailCampaign extends Model
             'sent_count' => $sent,
             'skipped_count' => $skipped,
         ]);
+
+        $this->reconcileTerminalStatus();
+    }
+
+    /**
+     * After queued mail later fails or is skipped, a campaign can sit on
+     * `sent` with sent_count = 0. Only downgrade; a crashed job stays
+     * `failed` even if leftover queued rows still deliver.
+     */
+    protected function reconcileTerminalStatus(): void
+    {
+        if ($this->status !== self::STATUS_SENT || $this->sent_count > 0) {
+            return;
+        }
+
+        $open = $this->recipients()
+            ->whereIn('status', [
+                EmailCampaignRecipient::STATUS_PENDING,
+                EmailCampaignRecipient::STATUS_QUEUED,
+            ])
+            ->exists();
+
+        if (! $open) {
+            $this->update(['status' => self::STATUS_FAILED]);
+        }
     }
 
     public static function labelForAudience(?string $audience): string
