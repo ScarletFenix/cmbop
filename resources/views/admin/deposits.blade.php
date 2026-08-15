@@ -176,9 +176,16 @@
                             </td>
                             <td>{{ $deposit->created_at->format('M d, Y') }}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary view-deposit" data-id="{{ $deposit->id }}">
-                                    <i class="fa fa-eye"></i> View
-                                </button>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <button class="btn btn-sm btn-outline-primary view-deposit" data-id="{{ $deposit->id }}">
+                                        <i class="fa fa-eye"></i> View
+                                    </button>
+                                    @if(!empty($invoiceLinks[$deposit->id]))
+                                        <a href="{{ $invoiceLinks[$deposit->id]['url'] }}" class="btn btn-sm btn-outline-secondary">
+                                            Invoice
+                                        </a>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                         @empty
@@ -240,7 +247,7 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(response => response.json())
             .then(data => {
                 if (data.success) {
-                    renderDepositModal(data.deposit);
+                    renderDepositModal(data.deposit, data.invoice);
                     const modal = new bootstrap.Modal(document.getElementById('depositModal'));
                     modal.show();
                 } else {
@@ -254,7 +261,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
     
-    function renderDepositModal(deposit) {
+    function renderDepositModal(deposit, invoice) {
         let statusBadge = '';
         if (deposit.status === 'pending') {
             statusBadge = '<span class="badge bg-warning">Pending</span>';
@@ -321,6 +328,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         `;
+
+        if (invoice && invoice.url) {
+            html += `
+                <div class="mb-3">
+                    <label class="fw-semibold text-muted small">Invoice</label>
+                    <div class="border rounded p-3 mt-1 bg-light">
+                        <a href="${escapeHtml(invoice.url)}">${escapeHtml(invoice.invoice_number || 'Open invoice')}</a>
+                        <span class="text-muted"> · ${escapeHtml(invoice.type_label || 'Deposit Receipt')}</span>
+                    </div>
+                </div>
+            `;
+        }
         
         if (deposit.admin_notes) {
             html += `

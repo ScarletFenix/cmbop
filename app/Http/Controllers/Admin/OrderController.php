@@ -8,6 +8,7 @@ use App\Models\OrderActivity;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
 use App\Models\User;
+use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Orders\AdminOrderStatusOverride;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Http\Request;
@@ -84,12 +85,16 @@ class OrderController extends Controller
 
         $perPage = max(1, min(100, (int) $request->get('per_page', 20)));
         $orders = $query->paginate($perPage);
+        $invoiceLinks = app(AdminInvoiceLinks::class);
+        $invoicesByOrder = $invoiceLinks->forOrders($orders->getCollection());
 
-        $data = $orders->getCollection()->map(function (Order $order) {
+        $data = $orders->getCollection()->map(function (Order $order) use ($invoiceLinks, $invoicesByOrder) {
             $item = $order->items->first();
             $site = $item?->site;
             $publisher = $site?->publisher;
             $liveUrl = $order->items->first(fn (OrderItem $line) => filled($line->live_url))?->live_url;
+            $documents = $invoicesByOrder->get((int) $order->id, []);
+            $primary = $invoiceLinks->primary($documents);
 
             return [
                 'id' => $order->id,
@@ -124,6 +129,8 @@ class OrderController extends Controller
                 'scheduled_publish_at_human' => $this->scheduledPublishAtHuman($order),
                 'modification_requested' => $item?->modification_requested,
                 'url' => route('admin.orders.show', $order->id),
+                'invoices' => $documents,
+                'invoice_url' => data_get($primary, 'url'),
             ];
         })->values();
 
@@ -150,6 +157,7 @@ class OrderController extends Controller
             'items.site.publisher',
             'items.contentSubmission',
             'chatMessages.user',
+            'invoices' => fn ($q) => $q->latest('id'),
         ], OrderItemDispute::eagerPaths([
             'items.disputes.opener',
             'items.disputes.resolver',

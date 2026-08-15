@@ -218,6 +218,9 @@
                 <a href="#" id="openPublisherLink" class="btn btn-outline-secondary btn-sm me-auto d-none" target="_blank">
                     <i class="fa fa-user me-1"></i> Open publisher / edit payout
                 </a>
+                <a href="#" id="openInvoiceLink" class="btn btn-outline-secondary btn-sm d-none">
+                    <i class="fa fa-file-invoice-dollar me-1"></i> Open invoice
+                </a>
                 <button type="button" class="btn btn-outline-primary btn-sm" id="copyDetailsBtn">
                     <i class="fa fa-copy me-1"></i> Copy payout details
                 </button>
@@ -418,6 +421,7 @@ function renderWithdrawals(withdrawals) {
                         <button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li><button type="button" class="dropdown-item view-details" data-id="${w.id}"><i class="fa fa-eye me-2"></i>View</button></li>
+                            ${w.invoice_url ? `<li><a class="dropdown-item" href="${escapeHtml(w.invoice_url)}"><i class="fa fa-file-invoice-dollar me-2"></i>Open invoice</a></li>` : ''}
                             ${w.status === 'pending' ? `
                             <li><button type="button" class="dropdown-item act-processing" data-id="${w.id}"
                                 data-name="${escapeHtml(w.user?.name || '')}"
@@ -698,6 +702,14 @@ function renderDetails(withdrawal) {
             .attr('href', `/admin/finance/users/${userId}`);
     } else {
         $('#openPublisherLink').addClass('d-none');
+    }
+
+    if (withdrawal.invoice_url) {
+        $('#openInvoiceLink')
+            .removeClass('d-none')
+            .attr('href', withdrawal.invoice_url);
+    } else {
+        $('#openInvoiceLink').addClass('d-none').attr('href', '#');
     }
 
     $('#detailsContent').html(`

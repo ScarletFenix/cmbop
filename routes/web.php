@@ -541,6 +541,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('/invoices/regenerate-missing-pdfs', [AdminInvoiceController::class, 'regenerateMissingPdfs'])->name('invoices.regenerate-missing-pdfs');
         Route::get('/invoices/{invoice}', [AdminInvoiceController::class, 'show'])->name('invoices.show');
         Route::get('/invoices/{invoice}/download', [AdminInvoiceController::class, 'download'])->name('invoices.download');
+        Route::get('/invoices/{invoice}/view', [AdminInvoiceController::class, 'viewPdf'])->name('invoices.view');
         Route::post('/invoices/{invoice}/resend', [AdminInvoiceController::class, 'resend'])->name('invoices.resend');
         Route::post('/invoices/{invoice}/cancel', [AdminInvoiceController::class, 'cancel'])->name('invoices.cancel');
         Route::post('/invoices/{invoice}/regenerate-pdf', [AdminInvoiceController::class, 'regeneratePdf'])->name('invoices.regenerate-pdf');
