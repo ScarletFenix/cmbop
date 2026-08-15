@@ -59,8 +59,31 @@ class UserController extends Controller
 
             $user = User::findOrFail($id);
 
-            $user->company_name = $request->company_name;
+            $from = $user->company_name;
+            $to = $request->input('company_name');
+            $to = is_string($to) ? trim($to) : null;
+            if ($to === '') {
+                $to = null;
+            }
+            $fromNorm = ($from === null || $from === '') ? null : (string) $from;
+
+            if ($fromNorm === $to) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Company updated successfully',
+                ]);
+            }
+
+            $user->company_name = $to;
             $user->save();
+
+            ActivityLogger::tryLog(
+                'user.company_updated',
+                (auth()->user()?->name ?? 'Admin').' updated company name for user #'.$user->id,
+                $user,
+                ['from' => $fromNorm, 'to' => $to, 'company_name' => $to],
+                $user->name
+            );
 
             return response()->json([
                 'success' => true,

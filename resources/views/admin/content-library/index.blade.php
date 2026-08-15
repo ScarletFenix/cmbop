@@ -128,8 +128,11 @@
                             $submission->country,
                             $submission->language,
                         ]))));
-                        $orderLabel = $submission->order?->order_number
-                            ?: ($submission->order_id ? '#'.$submission->order_id : null);
+                        $libraryOrder = $submission->libraryOrder();
+                        $orderLabel = $libraryOrder?->order_number
+                            ?: ($libraryOrder ? '#'.$libraryOrder->id : null);
+                        $placementSite = $submission->placementItem()?->site?->site_name
+                            ?: $submission->orderItem?->site?->site_name;
                     @endphp
                     <tr>
                         <td class="text-muted small">#{{ $submission->id }}</td>
@@ -141,13 +144,13 @@
                             @if($orderLabel)
                                 <div class="small text-muted">
                                     Order
-                                    @if($submission->order_id)
-                                        <a href="{{ route('admin.orders.show', $submission->order_id) }}">{{ $orderLabel }}</a>
+                                    @if($libraryOrder)
+                                        <a href="{{ route('admin.orders.show', $libraryOrder->id) }}">{{ $orderLabel }}</a>
                                     @else
                                         {{ $orderLabel }}
                                     @endif
-                                    @if($submission->orderItem?->site?->site_name)
-                                        · {{ $submission->orderItem->site->site_name }}
+                                    @if($placementSite)
+                                        · {{ $placementSite }}
                                     @endif
                                 </div>
                             @endif

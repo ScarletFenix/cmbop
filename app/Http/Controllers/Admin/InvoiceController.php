@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\BillingEvent;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Services\ActivityLogger;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\Billing\InvoicePdfGenerator;
 use App\Support\UserFacingError;
@@ -149,6 +150,14 @@ class InvoiceController extends Controller
             return back()->with('error', $result['message']);
         }
 
+        ActivityLogger::tryLog(
+            'invoice.resent',
+            (auth()->user()?->name ?? 'Admin').' resent invoice '.$invoice->invoice_number,
+            $invoice,
+            ['invoice_id' => $invoice->id],
+            $invoice->invoice_number
+        );
+
         return back()->with('success', $result['message']);
     }
 
@@ -162,7 +171,19 @@ class InvoiceController extends Controller
             return back()->with('error', 'Only tax invoices can be cancelled.');
         }
 
+        if ($invoice->isCancelled()) {
+            return back()->with('error', 'This invoice is already cancelled.');
+        }
+
         $billing->cancelInvoice($invoice, auth()->user(), $data['reason'] ?? null);
+
+        ActivityLogger::tryLog(
+            'invoice.cancelled',
+            (auth()->user()?->name ?? 'Admin').' cancelled invoice '.$invoice->invoice_number,
+            $invoice,
+            ['invoice_id' => $invoice->id, 'reason' => $data['reason'] ?? null],
+            $invoice->invoice_number
+        );
 
         return back()->with('success', 'Invoice cancelled. The PDF is retained for audit.');
     }
@@ -175,10 +196,27 @@ class InvoiceController extends Controller
 
         $order = Order::with(['user', 'items'])->findOrFail($data['order_id']);
 
+        $existingId = Invoice::query()
+            ->where('order_id', $order->id)
+            ->where('type', Invoice::TYPE_TAX_INVOICE)
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->latest('id')
+            ->value('id');
+
         try {
             $invoice = $billing->generateManually($order, auth()->user());
         } catch (\Throwable $e) {
             return back()->with('error', UserFacingError::message($e, 'Could not generate the invoice.'));
+        }
+
+        if (! $existingId || (int) $invoice->id !== (int) $existingId) {
+            ActivityLogger::tryLog(
+                'invoice.generated',
+                (auth()->user()?->name ?? 'Admin').' generated invoice '.$invoice->invoice_number,
+                $invoice,
+                ['invoice_id' => $invoice->id, 'order_id' => $order->id],
+                $invoice->invoice_number
+            );
         }
 
         $redirect = redirect()

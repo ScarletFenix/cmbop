@@ -58,6 +58,11 @@ class PromotionTrackingService
             return false;
         }
 
+        if (method_exists($subject, 'visibleToAudience')
+            && ! $subject->visibleToAudience(app(PromotionService::class)->resolveAudience())) {
+            return false;
+        }
+
         if ($this->looksLikeBot($request)) {
             return false;
         }
@@ -120,7 +125,13 @@ class PromotionTrackingService
             return response()->noContent();
         }
 
-        $this->record($subject, self::EVENT_CLICK, $request);
+        // Shared / emailed click URLs still land on the offer. Only count
+        // the click when the current visitor is in the intended audience.
+        $audienceOk = ! method_exists($subject, 'visibleToAudience')
+            || $subject->visibleToAudience(app(PromotionService::class)->resolveAudience());
+        if ($audienceOk) {
+            $this->record($subject, self::EVENT_CLICK, $request);
+        }
 
         return redirect()->away($href);
     }

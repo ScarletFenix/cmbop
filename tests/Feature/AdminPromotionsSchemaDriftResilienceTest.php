@@ -7,6 +7,7 @@ use App\Models\SiteAnnouncement;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -93,6 +94,35 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->assertSessionHas('error');
     }
 
+    public function test_destroy_is_refused_when_deleted_at_is_missing(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Keep me',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+
+        Schema::table('site_announcements', function ($table) {
+            $table->dropSoftDeletes();
+        });
+        $this->assertFalse(Schema::hasColumn('site_announcements', 'deleted_at'));
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.promotions.announcements.index'))
+            ->delete(route('admin.promotions.announcements.destroy', $announcement))
+            ->assertRedirect(route('admin.promotions.announcements.index'))
+            ->assertSessionHas('error')
+            ->assertSessionMissing('promotions_undo');
+
+        $this->assertDatabaseHas('site_announcements', [
+            'id' => $announcement->id,
+            'title' => 'Keep me',
+        ]);
+    }
+
     public function test_restore_reports_error_when_deleted_at_is_missing(): void
     {
         $announcement = SiteAnnouncement::create([
@@ -114,5 +144,87 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->post(route('admin.promotions.announcements.restore', $announcement->id))
             ->assertRedirect(route('admin.promotions.announcements.index'))
             ->assertSessionHas('error');
+    }
+
+    public function test_admin_list_and_edit_ok_when_ends_at_is_unparseable(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Bad schedule row',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+            'ends_at' => now()->addDay(),
+        ]);
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.announcements.index'))
+            ->assertOk()
+            ->assertSee('Bad schedule row', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.promotions.announcements.edit', $announcement->id))
+            ->assertOk()
+            ->assertDontSee('Something went wrong');
+
+        $this->assertFalse($announcement->fresh()->isCurrentlyLive());
+        $this->assertSame('paused', $announcement->fresh()->scheduleState());
+    }
+
+    public function test_admin_can_reschedule_and_duplicate_when_ends_at_is_unparseable(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Leftover schedule',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+            'ends_at' => now()->addDay(),
+        ]);
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('admin.promotions.announcements.update', $announcement), [
+                'title' => 'Leftover schedule fixed',
+                'message' => 'Body',
+                'type' => 'general',
+                'style' => 'info',
+                'audience' => 'all',
+                'is_active' => 1,
+                'priority' => 10,
+                'starts_at' => now()->subHour()->format('Y-m-d\TH:i'),
+                'ends_at' => now()->addDays(5)->format('Y-m-d\TH:i'),
+            ])
+            ->assertRedirect(route('admin.promotions.announcements.index'))
+            ->assertSessionHas('success');
+
+        $fresh = $announcement->fresh();
+        $this->assertSame('Leftover schedule fixed', $fresh->title);
+        $this->assertNotNull($fresh->safeEndsAt());
+        $this->assertTrue($fresh->isCurrentlyLive());
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.announcements.duplicate', $announcement))
+            ->assertRedirect();
+
+        $copy = SiteAnnouncement::query()->where('id', '!=', $announcement->id)->first();
+        $this->assertNotNull($copy);
+        $this->assertStringContainsString('(copy)', $copy->title);
+        $this->assertFalse($copy->is_active);
+        $this->assertNull($copy->safeEndsAt());
     }
 }

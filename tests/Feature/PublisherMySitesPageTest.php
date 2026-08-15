@@ -12,6 +12,7 @@ use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class PublisherMySitesPageTest extends TestCase
@@ -89,6 +90,30 @@ class PublisherMySitesPageTest extends TestCase
             'verified' => false,
             'active' => false,
         ], $overrides));
+    }
+
+    public function test_ajax_table_ok_when_promo_dates_are_unparseable(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Leftover Promo Dates',
+            'verified' => true,
+            'active' => true,
+            'featured_until' => now()->addDays(3),
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'featured_until' => 'not-a-date',
+            'custom_discount_starts_at' => 'not-a-date',
+            'custom_discount_ends_at' => 'also-bad',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'active']))
+            ->assertOk()
+            ->assertSee('Leftover Promo Dates', false)
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_discount_badges_follow_better_of_and_explain_advertiser_rate(): void

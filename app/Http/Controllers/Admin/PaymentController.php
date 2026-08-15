@@ -187,6 +187,26 @@ class PaymentController extends Controller
 
         $this->ensurePaymentColumns();
 
+        $requestedStatus = (string) $request->payment_status;
+        if ($requestedStatus === 'paid') {
+            $preview = Order::query()->with('user')->find($id);
+            if ($preview instanceof Order
+                && $preview->payment_status !== 'paid'
+                && $preview->payment_status !== 'refunded'
+                && ! in_array((string) $preview->status, ['cancelled', 'completed'], true)
+            ) {
+                // Scan before the payment TX. abortPaymentUpdate() rolls back, so a
+                // reject written inside that TX would leave the library row approved.
+                $libraryState = app(OrderPaymentService::class)->libraryContentStateForSettlement($preview);
+                if ($libraryState !== 'ok') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $this->libraryUnreadyForMarkPaidMessage($libraryState),
+                    ], 422);
+                }
+            }
+        }
+
         try {
             if (! $sendNotification) {
                 app(OrderLifecycleMailSuppressor::class)->suppress((int) $id, ['advertiser']);
@@ -309,9 +329,21 @@ class PaymentController extends Controller
 
             if ($newStatus === 'paid' && $oldStatus !== 'paid') {
                 $payments = app(OrderPaymentService::class);
+                $reference = (string) ($order->reference_code ?? '');
+                $bonusApplied = $payments->leftoverBonusToRereserve($order);
+                // Fail/cancel already returned this leftover's promo to
+                // bonus_balance. Mark-paid without re-reserving made reject
+                // credit that slice as withdrawable cash. The purchase-ledger
+                // helper is 0 while another checkout is open — still use this
+                // leftover's snapshot so we re-reserve OUR promo, not skip it.
+                $payments->rereserveReleasedCheckoutBonus(
+                    (int) $order->user_id,
+                    $reference,
+                    $bonusApplied
+                );
                 $bonusApplied = $payments->leftoverBonusForPurchaseLedger($order);
                 $payments->recordAdvertiserPurchaseForPaidCheckout(
-                    (string) ($order->reference_code ?? ''),
+                    $reference,
                     collect([$order->fresh(['items']) ?: $order]),
                     $bonusApplied,
                     (float) $order->total_amount
@@ -618,6 +650,12 @@ class PaymentController extends Controller
                 $refundAmount,
                 $notes !== '' ? $notes : 'Admin refund'
             );
+        }
+
+        // Notes / reference saves keep payment_status the same on purpose.
+        // Do not write payment.status_updated for those — it looks like a money move.
+        if ($oldStatus === $newStatus) {
+            return;
         }
 
         ActivityLogger::log(

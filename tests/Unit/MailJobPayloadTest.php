@@ -33,6 +33,25 @@ class MailJobPayloadTest extends TestCase
             '{"displayName":"App\\\\Jobs\\\\SendEmailCampaignJob","campaignId":123}',
             12
         ));
+        $this->assertTrue(MailJobPayload::containsCampaignId($json, 12));
+        $this->assertFalse(MailJobPayload::containsCampaignId($json, 123));
+    }
+
+    public function test_contains_campaign_mail_matches_dedupe_token_without_crossing_ids(): void
+    {
+        $payload = json_encode([
+            'displayName' => 'App\\Mail\\AudienceCampaignMail',
+            'data' => [
+                'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                'command' => 's:32:"audience_campaign:12:user:34"',
+            ],
+        ], JSON_THROW_ON_ERROR);
+
+        $this->assertTrue(MailJobPayload::containsCampaignMail($payload, 12));
+        $this->assertFalse(MailJobPayload::containsCampaignMail($payload, 123));
+        $this->assertFalse(MailJobPayload::containsCampaignMail($payload, 1));
+        $this->assertSame([34], MailJobPayload::campaignMailUserIds($payload, 12));
+        $this->assertSame([], MailJobPayload::campaignMailUserIds($payload, 123));
     }
 
     public function test_matches_email_log_require_token_rejects_unidentified_payload(): void

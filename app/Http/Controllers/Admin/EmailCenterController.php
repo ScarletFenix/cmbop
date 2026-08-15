@@ -9,6 +9,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Support\EmailCatalog;
 use App\Support\MailJobPayload;
 use App\Support\UserFacingError;
@@ -220,6 +221,13 @@ class EmailCenterController extends Controller
             } else {
                 $this->sendFrameworkTestHtml($key, $adminEmail, $dedupe);
             }
+
+            ActivityLogger::tryLog(
+                'email_center.test_sent',
+                (auth()->user()?->name ?? 'Admin').' sent a test email ('.$key.') to '.$adminEmail,
+                null,
+                ['template' => $key, 'email' => $adminEmail]
+            );
 
             return back()->with(
                 'success',
@@ -434,18 +442,34 @@ class EmailCenterController extends Controller
 
         $failed = EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
+            ->orderByDesc('id')
             ->get();
         $marked = [];
+        $claimedUuids = [];
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored !== '' && in_array($stored, $uuids, true)) {
-                $this->pendingMarkRetriedLog($log);
-                $marked[$log->id] = true;
+            if ($stored === '' || ! in_array($stored, $uuids, true) || ! empty($claimedUuids[$stored])) {
+                continue;
             }
+
+            // A stale stamp from an unidentified Welcome job must not
+            // pending-mark a different recipient. Same token rule as search.
+            $payload = (string) ($payloadsByUuid[$stored] ?? '');
+            if ($payload === '' || ! MailJobPayload::matchesEmailLog($payload, $log, requireToken: true)) {
+                continue;
+            }
+
+            $this->pendingMarkRetriedLog($log);
+            $marked[$log->id] = true;
+            $claimedUuids[$stored] = true;
         }
 
         foreach ($uuids as $uuid) {
+            if (! empty($claimedUuids[$uuid])) {
+                continue;
+            }
+
             $payload = (string) ($payloadsByUuid[$uuid] ?? '');
             if ($payload === '') {
                 continue;
@@ -462,6 +486,7 @@ class EmailCenterController extends Controller
             $log = $matches->first();
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
+            $claimedUuids[$uuid] = true;
         }
     }
 
@@ -495,7 +520,17 @@ class EmailCenterController extends Controller
             $updated = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
-                ->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                ->where(function ($query) {
+                    $query->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                        ->orWhere(function ($skipped) {
+                            // Expire parks lost mail as skipped/stale and
+                            // fails the leftover pending log. Retry must
+                            // reclaim that skip or the next recoverStalled()
+                            // immediately fails the log again.
+                            $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                                ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                        });
+                })
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_QUEUED,
                     'skip_reason' => null,
@@ -570,26 +605,14 @@ class EmailCenterController extends Controller
             return (string) $tight[0]->uuid;
         }
 
-        if (count($tight) > 1) {
-            return null;
-        }
-
-        if (count($candidates) !== 1) {
-            return null;
-        }
-
-        $payload = (string) $candidates[0]->payload;
-        $logHasIdentity = ($to !== '' && $to !== 'unknown') || $dedupe !== '';
-        if ($logHasIdentity && MailJobPayload::looksIdentified($payload)) {
-            return null;
-        }
-
-        return (string) $candidates[0]->uuid;
+        // Unique class match without a recipient token is how an anonymous
+        // Welcome job was retried against the wrong failed log.
+        return null;
     }
 
     protected function failedJobMatchesLog(string $payload, EmailLog $log): bool
     {
-        return MailJobPayload::matchesEmailLog($payload, $log);
+        return MailJobPayload::matchesEmailLog($payload, $log, requireToken: true);
     }
 
     protected function refreshFailedJobQueuedAt(string $uuid): void

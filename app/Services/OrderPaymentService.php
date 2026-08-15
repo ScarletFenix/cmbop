@@ -61,7 +61,15 @@ class OrderPaymentService
 
             $meta = $this->sessionMetadataArray($session);
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
+            if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $session)) {
+                return collect();
+            }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($session, $orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
+            }
+            if ($hasMarkable && ! $this->ensureBonusForCardMarkPaid($session, $orders, $meta, $referenceCode)) {
                 $amountMismatch = true;
 
                 return collect();
@@ -143,7 +151,15 @@ class OrderPaymentService
             }
 
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
+            if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $intent)) {
+                return collect();
+            }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($intent, $orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
+            }
+            if ($hasMarkable && ! $this->ensureBonusForCardMarkPaid($intent, $orders, $meta, $referenceCode)) {
                 $amountMismatch = true;
 
                 return collect();
@@ -267,10 +283,7 @@ class OrderPaymentService
             return round($cap, 2);
         }
 
-        $package = $this->getPendingCheckout($reference);
-        $snapshot = is_array($package)
-            ? round((float) ($package['bonus_applied'] ?? 0), 2)
-            : 0.0;
+        $snapshot = $this->leftoverPackageBonusSnapshot($order);
         if ($snapshot > 0.009) {
             return $snapshot;
         }
@@ -286,6 +299,29 @@ class OrderPaymentService
             ->first();
 
         return $wallet ? max(0, round((float) $wallet->bonus_reserved, 2)) : 0.0;
+    }
+
+    /**
+     * Fail/cancel snapshot for THIS leftover. leftoverBonusForPurchaseLedger
+     * returns 0 when another checkout exists so reject cannot steal that
+     * hold — but admin mark-paid still has to try to re-reserve this
+     * leftover's own promo from the snapshot.
+     */
+    public function leftoverBonusToRereserve(Order $order): float
+    {
+        return max(
+            $this->leftoverBonusForPurchaseLedger($order),
+            $this->leftoverPackageBonusSnapshot($order)
+        );
+    }
+
+    public function leftoverPackageBonusSnapshot(Order $order): float
+    {
+        $package = $this->getPendingCheckout((string) ($order->reference_code ?? ''));
+
+        return is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
     }
 
     /**
@@ -933,6 +969,24 @@ class OrderPaymentService
     }
 
     /**
+     * This Stripe capture was already returned as wallet cash (bonus gone,
+     * listing gone, or amount mismatch). A later webhook/success URL must
+     * not also mark the leftover paid once the promo is free again.
+     */
+    private function sessionAlreadyCreditedAsUnfulfilled(string $referenceCode, object $session): bool
+    {
+        $sessionId = (string) ($session->id ?? '');
+        if ($sessionId === '' || ! Schema::hasTable((new WalletTransaction)->getTable())) {
+            return false;
+        }
+
+        return WalletTransaction::query()
+            ->where('direction', 'credit')
+            ->where('reference', self::unfulfilledCardCreditReference($referenceCode, $sessionId))
+            ->exists();
+    }
+
+    /**
      * Card cash already returned via cancelAndRefund (e.g. a taken Content Library line).
      */
     public function refundedCardOrderAmount(string $referenceCode): float
@@ -987,12 +1041,27 @@ class OrderPaymentService
      */
     public function forgetPendingCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
     {
+        $intents = app(CheckoutIntentService::class);
         $held = $userId > 0
-            ? app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode)
+            ? $intents->heldBonus($userId, $referenceCode)
             : 0.0;
+        $package = $this->getPendingCheckout($referenceCode);
+        $snapshotBonus = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
+
         $this->forgetPendingCheckout($referenceCode);
         if ($userId > 0 && $held > 0.009) {
-            app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $held);
+            $intents->rememberBonus($userId, $referenceCode, $held);
+
+            return;
+        }
+
+        // Fail/cancel already released the live hold. Keep a snapshot-only
+        // package so admin mark-paid can re-reserve THIS leftover's promo
+        // instead of minting it as cash on a later reject.
+        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package)) {
+            $intents->storeLeftoverBonusSnapshot($referenceCode, $userId, $package, $snapshotBonus);
         }
     }
 
@@ -1033,6 +1102,14 @@ class OrderPaymentService
             ->count();
 
         $package = $this->getPendingCheckout($referenceCode);
+        $packageLines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
+        $hasMaterializableLines = collect($packageLines)->contains(fn ($line) => is_array($line));
+        if ($package !== null && ! $hasMaterializableLines && $existingCount > 0) {
+            // Snapshot-only leftover after fail/cancel. A late Pay-again
+            // session must mark those rows paid — comparing its amount to
+            // the old amount_due would wallet-credit and leave them failed.
+            return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+        }
         if ($package === null) {
             if ($existingCount > 0) {
                 $newlyPaid = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
@@ -1542,9 +1619,7 @@ class OrderPaymentService
 
     protected function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user): bool
     {
-        $result = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $user);
-
-        return (bool) ($result['ok'] ?? false);
+        return app(ContentModerationService::class)->submissionPassesLivePolicy($submission, $user);
     }
 
     public function refreshOrderItemLibraryFields(Order $order): void
@@ -1906,6 +1981,79 @@ class OrderPaymentService
         }
 
         return $stripeCents === null ? null : StripePaymentService::fromCents($stripeCents);
+    }
+
+    /**
+     * Rematerialize already refuses to create orders when the discounted
+     * Stripe capture's promo cannot be held again. Leftover mark-paid used
+     * to settle anyway, so the advertiser kept (or re-spent) the bonus and
+     * still received the placement at the card-only price.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function ensureBonusForCardMarkPaid(
+        object $session,
+        Collection $orders,
+        array $meta,
+        string $referenceCode
+    ): bool {
+        $bonusNeeded = round((float) ($meta['bonus_applied'] ?? 0), 2);
+        if ($bonusNeeded <= 0.009) {
+            return true;
+        }
+
+        $userId = (int) ($orders->first()?->user_id ?? ($meta['user_id'] ?? 0));
+        if ($userId <= 0) {
+            return false;
+        }
+
+        $intents = app(CheckoutIntentService::class);
+        $held = $intents->heldBonus($userId, $referenceCode);
+        if ($held + 0.009 < $bonusNeeded) {
+            $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusNeeded);
+            $held = $intents->heldBonus($userId, $referenceCode);
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        $wallet = $roleId
+            ? Wallet::query()->where('user_id', $userId)->where('role_id', $roleId)->first()
+            : null;
+        $reserved = $wallet ? round((float) $wallet->bonus_reserved, 2) : 0.0;
+
+        if ($held + 0.009 >= $bonusNeeded && $reserved + 0.009 >= $bonusNeeded) {
+            return true;
+        }
+
+        $cap = app(OrderRefundService::class)->cardLeftoverBonusCap($userId, $referenceCode);
+        if ($reserved + 0.009 >= $bonusNeeded && ($cap === null || $cap + 0.009 >= $bonusNeeded)) {
+            $intents->rememberBonus($userId, $referenceCode, $bonusNeeded);
+
+            return true;
+        }
+
+        $amount = $this->stripeEurosFromSession($session)
+            ?? $this->expectedStripeEurosForOrders($orders, $meta);
+        $sessionId = (string) ($session->id ?? '');
+        if ($amount > 0.009) {
+            $this->creditUnfulfilledCardCapture(
+                $userId,
+                $referenceCode,
+                $amount,
+                $sessionId !== '' ? $sessionId : null
+            );
+        }
+        Log::warning('Stripe leftover mark-paid skipped; checkout bonus could not be re-reserved', [
+            'reference_code' => $referenceCode,
+            'session_id' => $session->id ?? null,
+            'user_id' => $userId,
+            'bonus_needed' => $bonusNeeded,
+            'bonus_held' => $held,
+            'bonus_reserved' => $reserved,
+            'wallet_credit' => $amount,
+        ]);
+
+        return false;
     }
 
     /**
