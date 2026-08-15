@@ -19,6 +19,8 @@ use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\BillingCustomerMailSuppressor;
+use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -43,9 +45,9 @@ class PaymentController extends Controller
         try {
             $query = Order::with('user')->orderBy('created_at', 'desc');
 
-            // Search filter
-            if ($request->filled('search')) {
-                $search = $request->search;
+            // Search filter. Arrays (search[]) must not be interpolated into LIKE.
+            $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+            if ($search !== '') {
                 $query->where(function ($q) use ($search) {
                     $q->where('order_number', 'like', "%{$search}%")
                         ->orWhere('reference_code', 'like', "%{$search}%")
@@ -57,28 +59,38 @@ class PaymentController extends Controller
             }
 
             // Payment status filter. "unpaid" is the ops queue, not an enum value.
-            if ($request->input('payment_status') === 'unpaid') {
+            $paymentStatus = is_string($request->input('payment_status')) ? $request->input('payment_status') : '';
+            if ($paymentStatus === 'unpaid') {
                 $query->unpaidOps();
-            } elseif ($request->filled('payment_status')) {
-                $query->where('payment_status', $request->payment_status);
+            } elseif ($paymentStatus !== '') {
+                $query->where('payment_status', $paymentStatus);
             }
 
-            // Payment method filter
-            if ($request->filled('payment_method')) {
-                $query->where('payment_method', $request->payment_method);
+            $paymentMethod = is_string($request->input('payment_method')) ? $request->input('payment_method') : '';
+            if ($paymentMethod !== '') {
+                $query->where('payment_method', $paymentMethod);
             }
 
-            // Order status filter
-            if ($request->filled('status')) {
-                $query->where('status', $request->status);
+            $orderStatus = is_string($request->input('status')) ? $request->input('status') : '';
+            if ($orderStatus !== '') {
+                $query->where('status', $orderStatus);
             }
 
-            // Date range filter
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
+            $dates = validator(
+                [
+                    'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
+                    'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
+                ],
+                [
+                    'date_from' => 'nullable|date',
+                    'date_to' => 'nullable|date|after_or_equal:date_from',
+                ]
+            )->valid();
+            if (! empty($dates['date_from'])) {
+                $query->whereDate('created_at', '>=', $dates['date_from']);
             }
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
+            if (! empty($dates['date_to'])) {
+                $query->whereDate('created_at', '<=', $dates['date_to']);
             }
 
             $perPage = $request->get('per_page', 20);
@@ -132,11 +144,30 @@ class PaymentController extends Controller
      */
     public function updatePaymentStatus(Request $request, $id)
     {
+        // jQuery form posts send_notification as "true"/"false". Laravel's
+        // boolean rule only allows true/false/0/1/"0"/"1", so normalize first.
+        $this->mergeJqueryBoolean($request, 'send_notification');
+
+        // Outside the try: the catch-all would turn a ValidationException into a 500.
+        $request->validate([
+            'payment_status' => 'required|in:pending,paid,failed,refunded',
+            'notes' => 'nullable|string',
+            'send_notification' => 'sometimes|boolean',
+        ]);
+
+        // Omitted (API / existing clients) still notifies. The Order Payments
+        // checkbox posts true/false and must be honoured.
+        $sendNotification = $request->has('send_notification')
+            ? $request->boolean('send_notification')
+            : true;
+
+        $billingSuppressor = app(BillingCustomerMailSuppressor::class);
+
         try {
-            $request->validate([
-                'payment_status' => 'required|in:pending,paid,failed,refunded',
-                'notes' => 'nullable|string',
-            ]);
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->suppress((int) $id, ['advertiser']);
+                $billingSuppressor->enable();
+            }
 
             DB::beginTransaction();
 
@@ -176,6 +207,9 @@ class PaymentController extends Controller
             if ($request->payment_status === 'refunded' && $oldStatus === 'paid') {
                 if ($order->status === 'completed') {
                     DB::rollBack();
+                    if (! $sendNotification) {
+                        app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+                    }
 
                     return response()->json([
                         'success' => false,
@@ -217,7 +251,9 @@ class PaymentController extends Controller
             // Send email notification to user when payment is marked as paid
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
                 $this->consumeReservedCheckoutBonus($order);
-                $this->sendPaymentConfirmationEmail($order);
+                if ($sendNotification) {
+                    $this->sendPaymentConfirmationEmail($order);
+                }
             }
 
             // Unpaid failure: release leftover checkout bonus. Paid refunds go
@@ -242,7 +278,7 @@ class PaymentController extends Controller
                 }
             }
 
-            if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
+            if ($sendNotification && $request->payment_status === 'failed' && $oldStatus !== 'failed') {
                 $notifications->notifyPaymentFailed([$fresh], $request->notes);
                 if ($refundAmount > 0) {
                     $notifications->notifyRefundCredited(
@@ -253,7 +289,7 @@ class PaymentController extends Controller
                 }
             }
 
-            if ($request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
+            if ($sendNotification && $request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
                 $notifications->notifyRefundCredited(
                     $fresh,
                     $refundAmount,
@@ -280,12 +316,19 @@ class PaymentController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+            }
             Log::error('Error updating payment status: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to update payment status. Please try again.'),
             ], 500);
+        } finally {
+            if (! $sendNotification) {
+                $billingSuppressor->disable();
+            }
         }
     }
 
@@ -458,5 +501,24 @@ class PaymentController extends Controller
         app(OrderRefundService::class)->refundToAdvertiser($order, $amount, 'Admin refund');
 
         return $amount;
+    }
+
+    /**
+     * Map jQuery/form truthy strings onto real booleans before the boolean rule.
+     */
+    private function mergeJqueryBoolean(Request $request, string $key): void
+    {
+        if (! $request->exists($key) || ! is_string($request->input($key))) {
+            return;
+        }
+
+        $raw = strtolower(trim((string) $request->input($key)));
+        if (! in_array($raw, ['true', 'false', 'on', 'off', 'yes', 'no'], true)) {
+            return;
+        }
+
+        $request->merge([
+            $key => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
+        ]);
     }
 }
