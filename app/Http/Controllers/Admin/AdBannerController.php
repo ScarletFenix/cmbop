@@ -118,9 +118,21 @@ class AdBannerController extends Controller
 
     public function destroy(AdBanner $banner)
     {
+        if (! AdBanner::deletedAtColumnReady()) {
+            return redirect()
+                ->route(staff_route_prefix().'promotions.banners.index')
+                ->with('error', 'Banner could not be deleted until the database migration has been run. Pause it instead.');
+        }
+
         $id = (int) $banner->id;
         $name = $banner->name;
-        $banner->delete();
+        try {
+            $banner->delete();
+        } catch (\Throwable) {
+            return redirect()
+                ->route(staff_route_prefix().'promotions.banners.index')
+                ->with('error', 'Banner could not be deleted.');
+        }
         $this->log('banner.deleted', $banner, 'deleted banner');
 
         session()->put('promotions_undo', [

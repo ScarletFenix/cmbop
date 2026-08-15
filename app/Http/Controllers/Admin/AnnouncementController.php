@@ -142,9 +142,21 @@ class AnnouncementController extends Controller
 
     public function destroy(SiteAnnouncement $announcement)
     {
+        if (! SiteAnnouncement::deletedAtColumnReady()) {
+            return redirect()
+                ->route(staff_route_prefix().'promotions.announcements.index')
+                ->with('error', 'Announcement could not be deleted until the database migration has been run. Pause it instead.');
+        }
+
         $id = (int) $announcement->id;
         $title = $announcement->title;
-        $announcement->delete();
+        try {
+            $announcement->delete();
+        } catch (\Throwable) {
+            return redirect()
+                ->route(staff_route_prefix().'promotions.announcements.index')
+                ->with('error', 'Announcement could not be deleted.');
+        }
         $this->log('announcement.deleted', $announcement, 'deleted announcement');
 
         session()->put('promotions_undo', [

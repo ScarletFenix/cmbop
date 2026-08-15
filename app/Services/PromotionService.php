@@ -39,21 +39,21 @@ class PromotionService
 
     public function activeAnnouncements(?string $audience = null): Collection
     {
-        if (! Schema::hasTable('site_announcements')) {
-            return collect();
-        }
-
-        $audience = $audience ?: $this->resolveAudience();
-
         try {
+            if (! Schema::hasTable('site_announcements')) {
+                return collect();
+            }
+
+            $audience = $audience ?: $this->resolveAudience();
             $limit = max(1, (int) config('promotions.max_live_announcements', 2));
 
+            // Do not SQL-limit before isCurrentlyLive(): leftover unparseable
+            // dates still match active() and would crowd out real notices.
             return SiteAnnouncement::query()
                 ->active()
                 ->forAudience($audience)
                 ->orderBy('priority')
                 ->orderByDesc('id')
-                ->limit(max($limit * 3, 10))
                 ->get()
                 ->filter(fn (SiteAnnouncement $item) => $item->isCurrentlyLive())
                 ->take($limit)
@@ -67,13 +67,13 @@ class PromotionService
 
     public function activeBanners(?string $placement = null, ?string $audience = null): Collection
     {
-        if (! Schema::hasTable('ad_banners')) {
-            return collect();
-        }
-
-        $audience = $audience ?: $this->resolveAudience();
-
         try {
+            if (! Schema::hasTable('ad_banners')) {
+                return collect();
+            }
+
+            $audience = $audience ?: $this->resolveAudience();
+
             $query = AdBanner::query()
                 ->active()
                 ->forAudience($audience)
@@ -84,7 +84,9 @@ class PromotionService
                 $query->forPlacement($placement);
             }
 
-            $all = $query->get()->filter(fn (AdBanner $banner) => $banner->isCurrentlyLive())->values();
+            $all = $query->get()
+                ->filter(fn (AdBanner $banner) => $banner->isCurrentlyLive() && $banner->imageSrc())
+                ->values();
             $limit = max(1, (int) config('promotions.banners_per_placement', 1));
             $seed = crc32(($placement ?? 'any').'|'.now()->toDateString());
 

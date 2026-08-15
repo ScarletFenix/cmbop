@@ -94,6 +94,35 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->assertSessionHas('error');
     }
 
+    public function test_destroy_is_refused_when_deleted_at_is_missing(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Keep me',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+
+        Schema::table('site_announcements', function ($table) {
+            $table->dropSoftDeletes();
+        });
+        $this->assertFalse(Schema::hasColumn('site_announcements', 'deleted_at'));
+
+        $this->actingAs($this->admin)
+            ->from(route('admin.promotions.announcements.index'))
+            ->delete(route('admin.promotions.announcements.destroy', $announcement))
+            ->assertRedirect(route('admin.promotions.announcements.index'))
+            ->assertSessionHas('error')
+            ->assertSessionMissing('promotions_undo');
+
+        $this->assertDatabaseHas('site_announcements', [
+            'id' => $announcement->id,
+            'title' => 'Keep me',
+        ]);
+    }
+
     public function test_restore_reports_error_when_deleted_at_is_missing(): void
     {
         $announcement = SiteAnnouncement::create([
