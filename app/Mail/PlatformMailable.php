@@ -57,6 +57,15 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     }
 
     /**
+     * True when Mail::send() will run SMTP in-process (sync connection
+     * or a database mail queue whose jobs table is missing).
+     */
+    public static function sendsInline(): bool
+    {
+        return static::resolveQueueConnection() === 'sync';
+    }
+
+    /**
      * Queueing onto a backend that cannot store the job loses the mail outright,
      * so fall back to sending inline when the database queue has no jobs table.
      */

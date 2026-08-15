@@ -3,6 +3,7 @@
 namespace App\Jobs;
 
 use App\Mail\AudienceCampaignMail;
+use App\Mail\PlatformMailable;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailNotificationPreference;
@@ -20,6 +21,12 @@ class SendEmailCampaignJob implements ShouldQueue
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
     public const BATCH_SIZE = 20;
+
+    /**
+     * When the send job is on a worker but each Mail::send() is inline
+     * SMTP, 20 deliveries will blow the 25s timeout mid-batch.
+     */
+    public const SYNC_MAIL_BATCH_SIZE = 5;
 
     public const MAX_FAIL_STREAK = 2;
 
@@ -115,7 +122,7 @@ class SendEmailCampaignJob implements ShouldQueue
             ->where('status', EmailCampaignRecipient::STATUS_PENDING)
             ->with('user')
             ->orderBy('id')
-            ->limit(self::BATCH_SIZE)
+            ->limit($this->batchSize())
             ->get();
 
         foreach ($rows as $row) {
@@ -193,6 +200,31 @@ class SendEmailCampaignJob implements ShouldQueue
             ->where('email_campaign_id', $campaign->id)
             ->where('status', EmailCampaignRecipient::STATUS_PENDING)
             ->exists();
+    }
+
+    /**
+     * Full batches are safe when Mail::send() only enqueues. Inline SMTP
+     * inside a database-queued send job must stay under $timeout.
+     */
+    protected function batchSize(): int
+    {
+        if (! $this->mailSendsInline() || ! $this->runsOnWorker()) {
+            return self::BATCH_SIZE;
+        }
+
+        return self::SYNC_MAIL_BATCH_SIZE;
+    }
+
+    protected function mailSendsInline(): bool
+    {
+        return PlatformMailable::sendsInline();
+    }
+
+    protected function runsOnWorker(): bool
+    {
+        $connection = $this->connection ?? EmailCampaign::preferredSendJobConnection();
+
+        return is_string($connection) && $connection !== '' && $connection !== 'sync';
     }
 
     protected function hasQueued(EmailCampaign $campaign): bool

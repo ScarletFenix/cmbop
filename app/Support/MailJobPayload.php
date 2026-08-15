@@ -33,7 +33,10 @@ class MailJobPayload
             return false;
         }
 
-        return self::containsCampaignId($payload, $campaignId);
+        $suffix = ';i:'.$campaignId.';';
+
+        return str_contains($payload, '"campaignId"'.$suffix)
+            || str_contains($payload, '\\"campaignId\\"'.$suffix);
     }
 
     /**

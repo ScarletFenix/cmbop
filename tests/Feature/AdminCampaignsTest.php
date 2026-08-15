@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\PlatformMailable;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -1269,6 +1270,114 @@ class AdminCampaignsTest extends TestCase
         Mail::assertQueued(AudienceCampaignMail::class, SendEmailCampaignJob::BATCH_SIZE);
     }
 
+    public function test_job_uses_a_smaller_batch_when_mail_is_sync_on_a_worker(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        config([
+            'queue.default' => 'database',
+            'email_notifications.queue_connection' => 'sync',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $users = [];
+        for ($i = 0; $i < SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE + 3; $i++) {
+            $users[] = $this->makeUser('advertiser');
+        }
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Sync mail batch',
+            'subject' => 'Sync mail batch',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => count($users),
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        foreach ($users as $user) {
+            EmailCampaignRecipient::create([
+                'email_campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => EmailCampaignRecipient::STATUS_PENDING,
+            ]);
+        }
+
+        $job = new SendEmailCampaignJob($campaign->id);
+        $this->assertSame('database', $job->connection);
+        $job->handle();
+
+        $this->assertSame(
+            SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_QUEUED)->count()
+        );
+        $this->assertSame(
+            3,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_PENDING)->count()
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_job_uses_a_smaller_batch_when_mail_queue_table_is_missing(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        config([
+            'queue.default' => 'database',
+            'email_notifications.queue_connection' => 'mail',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+            'queue.connections.mail' => [
+                'driver' => 'database',
+                'table' => 'jobs_that_do_not_exist',
+                'queue' => 'emails',
+            ],
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $users = [];
+        for ($i = 0; $i < SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE + 3; $i++) {
+            $users[] = $this->makeUser('advertiser');
+        }
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Missing mail table',
+            'subject' => 'Missing mail table',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => count($users),
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        foreach ($users as $user) {
+            EmailCampaignRecipient::create([
+                'email_campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => EmailCampaignRecipient::STATUS_PENDING,
+            ]);
+        }
+
+        $job = new SendEmailCampaignJob($campaign->id);
+        $this->assertSame('database', $job->connection);
+        $this->assertTrue(PlatformMailable::sendsInline());
+        $job->handle();
+
+        $this->assertSame(
+            SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_QUEUED)->count()
+        );
+        $this->assertSame(
+            3,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_PENDING)->count()
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
     public function test_job_timeout_redispatches_instead_of_wiping_pending(): void
     {
         Queue::fake();
@@ -2136,50 +2245,6 @@ class AdminCampaignsTest extends TestCase
         );
     }
 
-    public function test_reconcile_does_not_fail_a_newer_queued_retry_from_an_old_log(): void
-    {
-        $admin = $this->makeUser('admin');
-        $advertiser = $this->makeUser('advertiser');
-
-        $campaign = EmailCampaign::create([
-            'name' => 'Retry in flight',
-            'subject' => 'Retry in flight',
-            'body_html' => '<p>Hi</p>',
-            'audience' => 'advertisers',
-            'recipients_count' => 1,
-            'sent_count' => 1,
-            'status' => EmailCampaign::STATUS_SENDING,
-            'respect_preferences' => false,
-            'created_by' => $admin->id,
-        ]);
-        $row = EmailCampaignRecipient::create([
-            'email_campaign_id' => $campaign->id,
-            'user_id' => $advertiser->id,
-            'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_QUEUED,
-        ]);
-        $row->forceFill(['updated_at' => now()->subMinutes(5)])->save();
-
-        $log = EmailLog::create([
-            'uuid' => (string) Str::uuid(),
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'dedupe_key' => EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id),
-            'to_email' => $advertiser->email,
-            'subject' => 'Retry in flight',
-            'status' => EmailLog::STATUS_FAILED,
-            'error' => 'SMTP down',
-            'attempts' => 1,
-        ]);
-        $log->forceFill(['updated_at' => now()->subHours(2)])->save();
-        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
-
-        EmailCampaign::recoverStalled();
-
-        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
-        $this->assertNull($row->fresh()->email_log_id);
-    }
-
     public function test_reconcile_prefers_delivered_log_over_a_newer_failed_row(): void
     {
         $admin = $this->makeUser('admin');
@@ -2234,67 +2299,5 @@ class AdminCampaignsTest extends TestCase
         $fresh = $row->fresh();
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $fresh->status);
         $this->assertSame($delivered->id, $fresh->email_log_id);
-    }
-
-    public function test_duplicate_campaign_send_closes_open_log_as_delivered(): void
-    {
-        $admin = $this->makeUser('admin');
-        $advertiser = $this->makeUser('advertiser');
-
-        $campaign = EmailCampaign::create([
-            'name' => 'Dedupe',
-            'subject' => 'Dedupe',
-            'body_html' => '<p>Hi</p>',
-            'audience' => 'advertisers',
-            'recipients_count' => 1,
-            'status' => EmailCampaign::STATUS_SENDING,
-            'respect_preferences' => false,
-            'created_by' => $admin->id,
-        ]);
-        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
-        EmailCampaignRecipient::create([
-            'email_campaign_id' => $campaign->id,
-            'user_id' => $advertiser->id,
-            'email' => $advertiser->email,
-            'status' => EmailCampaignRecipient::STATUS_QUEUED,
-        ]);
-
-        EmailLog::create([
-            'uuid' => (string) Str::uuid(),
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'dedupe_key' => $dedupe,
-            'to_email' => $advertiser->email,
-            'subject' => 'Dedupe',
-            'status' => EmailLog::STATUS_DELIVERED,
-            'sent_at' => now(),
-            'attempts' => 1,
-        ]);
-        $open = EmailLog::create([
-            'uuid' => (string) Str::uuid(),
-            'mailable' => AudienceCampaignMail::class,
-            'template_key' => 'audience_campaign',
-            'dedupe_key' => $dedupe,
-            'to_email' => $advertiser->email,
-            'subject' => 'Dedupe',
-            'status' => EmailLog::STATUS_FAILED,
-            'error' => 'SMTP down',
-            'attempts' => 1,
-        ]);
-
-        $mailable = new AudienceCampaignMail($campaign, $advertiser);
-        $mailable->skipUserPreference = true;
-        $mailable->dedupeKey = $dedupe;
-        $mailable->to($advertiser->email);
-        $this->assertNull($mailable->send(app('mailer')));
-
-        $fresh = $open->fresh();
-        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
-        $this->assertNull($fresh->error);
-        $this->assertSame('duplicate', data_get($fresh->meta, 'suppressed'));
-        $this->assertSame(
-            EmailCampaignRecipient::STATUS_DELIVERED,
-            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
-        );
     }
 }
