@@ -377,6 +377,38 @@ class CatalogPaceGuardTest extends TestCase
         $this->assertFalse($this->guard()->looksMetronomic($user));
     }
 
+    public function test_admin_activity_ok_when_reveal_created_at_is_leftover(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $leftover = $this->userWithRole('advertiser');
+        $leftover->forceFill(['email' => 'leftover-reveals@example.com'])->save();
+        $real = $this->userWithRole('advertiser');
+        $real->forceFill(['email' => 'real-reveals@example.com'])->save();
+        $publisher = $this->userWithRole('publisher');
+
+        for ($i = 0; $i < 8; $i++) {
+            $reveal = SiteUrlReveal::create([
+                'user_id' => $leftover->id,
+                'site_id' => $this->site($publisher, "leftover-activity-{$i}.example")->id,
+                'source' => SiteUrlReveal::SOURCE_CATALOG,
+            ]);
+            DB::table('site_url_reveals')->where('id', $reveal->id)->update([
+                'created_at' => 'not-a-date',
+            ]);
+        }
+
+        $this->history($real, 6, [30, 70]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.catalog-activity'))
+            ->assertOk()
+            ->assertDontSee('Something went wrong')
+            ->getContent();
+
+        $this->assertStringNotContainsString('leftover-reveals@example.com', $html);
+        $this->assertStringContainsString('real-reveals@example.com', $html);
+    }
+
     public function test_the_admin_screen_ranks_by_activity_and_shows_the_ratio(): void
     {
         $admin = $this->userWithRole('admin');
