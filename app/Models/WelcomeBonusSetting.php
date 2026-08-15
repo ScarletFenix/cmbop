@@ -195,7 +195,11 @@ class WelcomeBonusSetting extends Model
                 $rows = static::configRows(true);
             }
             if ($rows->isEmpty()) {
-                return ['state' => 'missing', 'value' => null];
+                // Table exists but we could not read or create a config row
+                // while holding the grant lock. Fail-closed so we do not
+                // grant without the settings-row mutex. Unlocked reads
+                // (hub / amountFor) still treat "never configured" as on.
+                return ['state' => $lock ? 'unreadable' : 'missing', 'value' => null];
             }
 
             return ['state' => 'present', 'value' => static::authoritativeConfigValue($rows)];

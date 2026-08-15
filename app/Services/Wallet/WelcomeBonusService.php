@@ -332,11 +332,15 @@ class WelcomeBonusService
      * when the unique IP index is also missing.
      *
      * MySQL/MariaDB GET_LOCK is session-scoped and survives COMMIT, so it
-     * can be held until afterCommit / afterRollBack. Cache locks cannot:
-     * RefreshDatabase never commits the outer test transaction, so a cache
-     * lock deferred to afterCommit would leak across tests and block later
-     * same-IP grants. Cache is only the SQLite / degraded-prod fallback;
-     * the unique IP index is the backstop there.
+     * is held until afterCommit / afterRollBack (or the connection closes).
+     * Never fall back to a cache lock on MySQL: Hostinger's
+     * CACHE_STORE=database lock row is invisible to other connections
+     * until COMMIT — the same race GET_LOCK exists to close.
+     *
+     * Cache locks are the SQLite / test fallback only and are released
+     * when recordClaim() returns. RefreshDatabase never commits the outer
+     * test transaction, so deferring those to afterCommit would leak
+     * across tests and block later same-IP grants.
      */
     private function withPlaceLock(string $ip, callable $insert): bool
     {
@@ -349,9 +353,19 @@ class WelcomeBonusService
         }
 
         [$release, $sessionScoped] = $acquired;
-        $releaseInFinally = true;
 
-        if ($sessionScoped && DB::transactionLevel() > 0) {
+        if (! $sessionScoped) {
+            try {
+                return $insert();
+            } finally {
+                $release();
+            }
+        }
+
+        // Hold GET_LOCK until this signup is visible to other connections.
+        // If afterCommit cannot be deferred, keep the lock until the
+        // connection closes rather than unlocking before COMMIT.
+        if (DB::transactionLevel() > 0) {
             $released = false;
             $safeRelease = function () use ($release, &$released): void {
                 if ($released) {
@@ -363,41 +377,31 @@ class WelcomeBonusService
 
             try {
                 $hookPending = false;
-                $ranInline = false;
-                DB::afterCommit(function () use ($safeRelease, &$hookPending, &$ranInline): void {
-                    if (! $hookPending) {
-                        $ranInline = true;
-
-                        return;
+                DB::afterCommit(function () use ($safeRelease, &$hookPending): void {
+                    if ($hookPending) {
+                        $safeRelease();
                     }
-                    $safeRelease();
                 });
-                if (! $ranInline) {
-                    $hookPending = true;
-                    $releaseInFinally = false;
-                    try {
-                        DB::afterRollBack($safeRelease);
-                    } catch (\Throwable) {
-                    }
+                $hookPending = true;
+                try {
+                    DB::afterRollBack($safeRelease);
+                } catch (\Throwable) {
                 }
             } catch (\Throwable) {
-                // Hooks could not be registered — keep GET_LOCK until this
-                // connection closes rather than unlocking before COMMIT.
-                $releaseInFinally = false;
             }
         }
 
         try {
             return $insert();
         } finally {
-            if ($releaseInFinally) {
+            if (DB::transactionLevel() === 0) {
                 $release();
             }
         }
     }
 
     /**
-     * @return array{0: callable(): void, 1: bool}|false|null False on timeout, null if no lock store.
+     * @return array{0: callable(): void, 1: bool}|false|null False to refuse the grant, null if no lock store (SQLite only).
      */
     private function acquirePlaceLock(string $ip): array|false|null
     {
@@ -407,7 +411,9 @@ class WelcomeBonusService
                 $this->releaseSqlPlaceLock($ip);
             }, true];
         }
-        if ($sql === 'timeout') {
+        if ($sql === 'timeout' || $this->driverUsesSqlPlaceLock()) {
+            // MySQL/MariaDB: GET_LOCK is the only lock that works inside the
+            // open signup transaction. Timeout or unavailable → no grant.
             return false;
         }
 
@@ -428,19 +434,27 @@ class WelcomeBonusService
         }
     }
 
+    private function driverUsesSqlPlaceLock(): bool
+    {
+        try {
+            return in_array(DB::getDriverName(), ['mysql', 'mariadb'], true);
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
     /**
      * @return 'held'|'timeout'|'unavailable'
      */
     private function trySqlPlaceLock(string $ip): string
     {
-        try {
-            $driver = DB::getDriverName();
-            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
-                return 'unavailable';
-            }
+        if (! $this->driverUsesSqlPlaceLock()) {
+            return 'unavailable';
+        }
 
-            $row = DB::selectOne('SELECT GET_LOCK(?, 8) as got', [$this->sqlPlaceLockName($ip)]);
-            $got = $row->got ?? null;
+        try {
+            $row = DB::selectOne('SELECT GET_LOCK(?, 8) AS got', [$this->sqlPlaceLockName($ip)]);
+            $got = is_object($row) ? ($row->got ?? $row->GOT ?? null) : null;
             if ($got === null) {
                 return 'unavailable';
             }
