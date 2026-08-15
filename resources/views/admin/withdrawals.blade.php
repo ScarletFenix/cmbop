@@ -781,6 +781,7 @@ document.addEventListener('DOMContentLoaded', function () {
     if (q.get('queue')) $('#queueFilter').val(q.get('queue'));
     if (q.get('status')) $('#statusFilter').val(q.get('status'));
     if (q.get('payment_method')) $('#paymentMethodFilter').val(q.get('payment_method'));
+    if (q.get('search')) $('#searchInput').val(q.get('search'));
 })();
 
 loadStatistics();
