@@ -7,6 +7,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -446,6 +447,55 @@ class CheckoutReadySitesOnlyTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(500.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+    }
+
+    public function test_wallet_keeps_leftover_reserved_when_notify_throws_after_pay(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'wallet-notify', 40);
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $wallet = $this->advertiserWallet($advertiser, 500);
+
+        $this->partialMock(InAppNotificationService::class, function ($mock) {
+            $mock->shouldReceive('notifyOrderCreated')
+                ->andThrow(new \RuntimeException('notify down'));
+            $mock->shouldReceive('notifyAdvertiserOrdersPaid')
+                ->andThrow(new \RuntimeException('notify down'));
+        });
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                    'language' => 'en',
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'WLTN1',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $order = Order::where('reference_code', 'WLTN1')->first();
+        $this->assertNotNull($order);
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame(1, Order::where('reference_code', 'WLTN1')->count());
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta((float) $order->total_amount, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(500.0 - (float) $order->total_amount, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
 
     private function formatMoney(float $amount): string
