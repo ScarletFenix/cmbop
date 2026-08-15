@@ -44,7 +44,7 @@ class PaymentController extends Controller
             $query = Order::with('user')->orderBy('created_at', 'desc');
 
             // Search filter. Arrays (search[]) must not be interpolated into LIKE.
-            $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+            $search = search_text($request->input('search'));
             if ($search !== '') {
                 $query->where(function ($q) use ($search) {
                     $q->where('order_number', 'like', "%{$search}%")

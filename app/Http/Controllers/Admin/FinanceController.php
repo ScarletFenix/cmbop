@@ -28,7 +28,7 @@ class FinanceController extends Controller
      */
     public function index(Request $request)
     {
-        $userQuery = is_string($request->input('q')) ? trim($request->input('q')) : '';
+        $userQuery = search_text($request->input('q'));
         $userMatches = collect();
 
         if ($userQuery !== '') {
@@ -68,7 +68,7 @@ class FinanceController extends Controller
      */
     public function ledger(Request $request)
     {
-        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        $search = search_text($request->input('search'));
         $userId = (int) $request->input('user_id');
         $ledgerUser = $userId > 0
             ? User::query()->whereKey($userId)->first(['id', 'name', 'email'])
@@ -254,7 +254,7 @@ class FinanceController extends Controller
             $query->where('direction', $direction);
         }
 
-        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        $search = search_text($request->input('search'));
         if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('reference', 'like', "%{$search}%")

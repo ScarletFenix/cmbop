@@ -167,7 +167,7 @@ class CatalogController extends Controller
         $availableCountries = $this->getAvailableCountries();
         $selectedCountryCodes = array_values(array_filter(array_map(
             static fn ($c) => strtolower(trim((string) $c)),
-            explode(',', (string) $request->input('country', ''))
+            explode(',', search_text($request->input('country')))
         )));
         try {
             $countryPicker = app(CatalogCountryInventory::class)
@@ -312,7 +312,7 @@ class CatalogController extends Controller
         }
 
         $blacklist = UserBlacklist::where('user_id', auth()->id())->pluck('site_id')->toArray();
-        $showBlacklistedOnly = $request->filled('blacklist_filter') && (string) $request->blacklist_filter === '1';
+        $showBlacklistedOnly = search_text($request->input('blacklist_filter')) === '1';
         $bulkDeals = $this->loadBulkDeals($request, $blacklist, $showBlacklistedOnly);
 
         $urlVisibility = app(SiteUrlVisibility::class);
@@ -371,10 +371,11 @@ class CatalogController extends Controller
             $query->whereNotIn('id', $blacklist);
         }
 
-        if ($request->filled('country') && ! empty($request->country)) {
+        $bulkCountry = search_text($request->input('country'));
+        if ($bulkCountry !== '') {
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
-            }, explode(',', (string) $request->country))));
+            }, explode(',', $bulkCountry))));
             if ($countries !== []) {
                 // Primary country only (scalar sites.country) — matches catalog flag.
                 app(CatalogCountryInventory::class)
@@ -382,10 +383,11 @@ class CatalogController extends Controller
             }
         }
 
-        if ($request->filled('language') && ! empty($request->language)) {
+        $bulkLanguage = search_text($request->input('language'));
+        if ($bulkLanguage !== '') {
             // Option A: all sites offering these languages (AND with country above).
             app(CatalogLanguageFilter::class)
-                ->constrainQuery($query, explode(',', (string) $request->language));
+                ->constrainQuery($query, explode(',', $bulkLanguage));
         }
 
         $bulkDeals = $query
@@ -453,7 +455,7 @@ class CatalogController extends Controller
         // Country & language stay on the dedicated multi-selects.
         // Parse before blacklist so a name search can still surface blocked rows.
         $catalogSearch = app(CatalogSearchQuery::class);
-        $rawSearch = trim((string) $request->input('search', ''));
+        $rawSearch = search_text($request->input('search'));
         $parsedSearch = $catalogSearch->parse($rawSearch);
         $searchMerge = $catalogSearch->mergeIntoRequestInput(
             $rawSearch,
@@ -464,7 +466,7 @@ class CatalogController extends Controller
         if ($searchMerge !== []) {
             $request->merge($searchMerge);
         }
-        $searchText = trim((string) $request->input('search', ''));
+        $searchText = search_text($request->input('search'));
 
         // Blacklist filter / browse hide — but free-text search includes matches
         // (dimmed via blacklisted-row) so buyers can find and unblock them.
@@ -553,35 +555,38 @@ class CatalogController extends Controller
             $query->where('traffic', '<=', (int) $request->traffic_max);
         }
 
-        if ($request->filled('category') && ! empty($request->category)) {
+        $categoryRaw = search_text($request->input('category'));
+        if ($categoryRaw !== '') {
             // category= uses `|` (publisher-aligned). Legacy comma URLs are parsed
             // longest-first against known niches — never blindly explode(',').
             // Include unknown tokens so niches not yet in `categories` still filter.
-            $categories = Category::catalogFilterNicheNames((string) $request->category);
+            $categories = Category::catalogFilterNicheNames($categoryRaw);
             if ($categories !== []) {
                 Category::constrainQueryToNicheNames($query, $categories);
             }
         }
 
-        if ($request->filled('country') && ! empty($request->country)) {
+        $countryRaw = search_text($request->input('country'));
+        if ($countryRaw !== '') {
             $countries = array_values(array_filter(array_map(function ($c) {
                 return strtolower(trim($c));
-            }, explode(',', $request->country))));
+            }, explode(',', $countryRaw))));
             // Primary country only (scalar sites.country) — matches catalog flag /
             // inventory counts. Do not match JSON countries "contains".
             app(CatalogCountryInventory::class)
                 ->constrainQueryToPrimaryCountries($query, $countries);
         }
 
-        if ($request->filled('language') && ! empty($request->language)) {
+        $languageRaw = search_text($request->input('language'));
+        if ($languageRaw !== '') {
             // Option A: language-only → all sites offering these languages (any country).
             // With country= also set, constraints AND. Never auto-sets country.
             // When country is set, drop language codes that are not paired with those countries.
-            $languageCodes = explode(',', (string) $request->language);
-            if ($request->filled('country') && ! empty($request->country)) {
+            $languageCodes = explode(',', $languageRaw);
+            if ($countryRaw !== '') {
                 $countryCodes = array_values(array_filter(array_map(
                     static fn ($c) => strtolower(trim((string) $c)),
-                    explode(',', (string) $request->country)
+                    explode(',', $countryRaw)
                 )));
                 $allowed = app(CountryLanguagePairs::class)
                     ->languageCodesForCountries($countryCodes);
@@ -1189,7 +1194,7 @@ class CatalogController extends Controller
     public function suggest(Request $request, CatalogSearchQuery $catalogSearch, SiteUrlVisibility $visibility): JsonResponse
     {
         $user = auth()->user();
-        $raw = trim((string) $request->query('q', $request->input('q', '')));
+        $raw = search_text($request->query('q', $request->input('q')));
         $parsed = $catalogSearch->parse($raw);
         $text = trim((string) ($parsed['text'] ?? ''));
 
@@ -3633,8 +3638,8 @@ class CatalogController extends Controller
             $query = Order::where('user_id', $userId)
                 ->with(OrderItemDispute::tableAvailable() ? ['items.latestDispute'] : ['items']);
 
-            $search = trim((string) $request->input('search', ''));
-            $statusFilter = strtolower(trim((string) $request->input('status', '')));
+            $search = search_text($request->input('search'));
+            $statusFilter = strtolower(search_text($request->input('status')));
 
             // Search filter — word-AND across order #, reference, site name/URL, live URL
             if ($search !== '') {

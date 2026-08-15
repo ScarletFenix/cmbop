@@ -105,7 +105,7 @@ class PanelController extends Controller
         $query = $this->marketerHistoryQuery($userId);
         $dateErrors = [];
 
-        $selectedAction = $request->string('action')->toString();
+        $selectedAction = search_text($request->input('action'));
         if ($selectedAction !== '' && ! in_array($selectedAction, self::TRACKED_ACTIONS, true)) {
             $selectedAction = '';
         }
@@ -144,7 +144,7 @@ class PanelController extends Controller
             }
         }
 
-        $searchNeedle = mb_strtolower(trim($request->string('q')->toString()));
+        $searchNeedle = mb_strtolower(search_text($request->input('q')));
         if ($searchNeedle !== '') {
             $matchedActions = marketing_task_actions_matching($searchNeedle);
             $query->where(function ($q) use ($searchNeedle, $matchedActions) {

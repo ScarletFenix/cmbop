@@ -35,10 +35,11 @@ class NotificationController extends Controller
         };
         $filterCategory = in_array($category, ['unread', 'archived'], true) ? 'all' : $category;
 
+        $q = search_text($request->get('q'));
         $paginator = $this->notifications->listForUser($user->id, [
             'status' => $status,
             'category' => $filterCategory,
-            'q' => $request->get('q'),
+            'q' => $q,
             'audience' => $role,
         ], 30);
 
@@ -49,7 +50,7 @@ class NotificationController extends Controller
             'filters' => [
                 'status' => $status,
                 'category' => $category,
-                'q' => $request->get('q', ''),
+                'q' => $q,
             ],
         ]);
     }
@@ -62,7 +63,7 @@ class NotificationController extends Controller
             $paginator = $this->notifications->listForUser($user->id, [
                 'status' => $request->get('status', 'active'),
                 'category' => $request->get('category', 'all'),
-                'q' => $request->get('q'),
+                'q' => search_text($request->get('q')),
                 'audience' => $role,
             ], (int) $request->get('per_page', 20));
 

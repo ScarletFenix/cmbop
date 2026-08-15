@@ -19,8 +19,8 @@ class BillingController extends Controller
             ->where('type', Invoice::TYPE_WITHDRAWAL_PAYOUT)
             ->where('status', '!=', Invoice::STATUS_CANCELLED);
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
+        $search = search_text($request->input('search'));
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('reference_code', 'like', "%{$search}%")

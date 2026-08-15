@@ -201,10 +201,14 @@
     // Range filters span two inputs, so one chip clears both ends.
     // Category: one named chip per niche (clear removes that niche only).
     $activeFilterChips = [];
+    $catalogSearchText = search_text(request('search'));
+    $catalogCategoryText = search_text(request('category'));
+    $catalogCountryText = search_text(request('country'));
+    $catalogLanguageText = search_text(request('language'));
     if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
-    if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
-    if (request('category')) {
-        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category'));
+    if ($catalogSearchText !== '') $activeFilterChips[] = ['label' => 'Search: '.$catalogSearchText, 'key' => 'search', 'params' => ['search']];
+    if ($catalogCategoryText !== '') {
+        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam($catalogCategoryText);
         foreach (\App\Models\Category::parseCatalogCategoryParam($categoryCanonical) as $niche) {
             $activeFilterChips[] = [
                 'label' => $niche,
@@ -214,9 +218,9 @@
             ];
         }
     }
-    if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
+    if ($catalogCountryText !== '') $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
     if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
-    if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
+    if ($catalogLanguageText !== '') $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
     if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored', 'params' => ['sponsored']];
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
@@ -296,13 +300,13 @@
                                        title="{{ $inCatalogHideMode
                                            ? 'Results update as you type. Matching rows stay masked until you use the eye.'
                                            : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
-                                       value="{{ request('search') }}"
+                                       value="{{ $catalogSearchText }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
                                        aria-describedby="catalogSearchStatus">
                                 <button type="button"
                                         id="catalogSearchClear"
-                                        class="btn btn-sm btn-link slb-search-clear{{ request('search') ? '' : ' d-none' }}"
+                                        class="btn btn-sm btn-link slb-search-clear{{ $catalogSearchText !== '' ? '' : ' d-none' }}"
                                         aria-label="Clear search">
                                     <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                                 </button>
@@ -394,7 +398,7 @@
                                     <div class="multi-select-empty d-none">No countries found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="country" id="selectedCountry" value="{{ request('country') }}">
+                            <input type="hidden" name="country" id="selectedCountry" value="{{ $catalogCountryText }}">
                         </div>
 
                         <!-- Primary: Language (searchable dropdown) -->
@@ -423,7 +427,7 @@
                                     <div class="multi-select-empty d-none">No languages found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="language" id="selectedLanguage" value="{{ request('language') }}">
+                            <input type="hidden" name="language" id="selectedLanguage" value="{{ $catalogLanguageText }}">
                         </div>
 
                         <!-- Primary: Price -->
@@ -684,7 +688,7 @@
                     Searching for a site that isn’t listed yet?
                 </p>
                 <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
-                        data-search="{{ request('search') }}">
+                        data-search="{{ $catalogSearchText }}">
                     <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>

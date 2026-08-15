@@ -37,6 +37,20 @@ if (! function_exists('scalar_text')) {
     }
 }
 
+if (! function_exists('search_text')) {
+    /**
+     * Trimmed search/filter string, or empty when the value is not a string.
+     *
+     * Query params like ?search[]=x used to 500 via (string) cast or LIKE
+     * interpolation ("Array to string conversion"). Ignore non-strings — same
+     * as admin payments / finance ledger — instead of flattening the first item.
+     */
+    function search_text(mixed $value): string
+    {
+        return is_string($value) ? trim($value) : '';
+    }
+}
+
 if (! function_exists('scalar_list')) {
     /**
      * Flatten nested arrays into unique non-empty strings.
