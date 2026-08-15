@@ -899,4 +899,39 @@ class AdminAssignSiteForPublisherTest extends TestCase
             return $mail->hasTo($advertiser->email) && $mail->suggestion->status === 'accepted';
         });
     }
+
+    public function test_admin_create_with_stale_suggestion_id_still_saves_the_listing(): void
+    {
+        Mail::fake();
+
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+        $niche = Category::query()->orderBy('name')->value('name');
+        $this->assertNotEmpty($niche);
+
+        $this->actingAs($this->admin)->post(route('admin.sites.store'), [
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Staff Added News',
+            'site_url' => 'https://staff-added-news.example',
+            'example_url' => 'https://staff-added-news.example/sample',
+            'da' => 40,
+            'dr' => 45,
+            'traffic' => 12000,
+            'country' => strtolower($country->code),
+            'language' => strtolower($language->code),
+            'categories' => $niche,
+            'price' => 99,
+            'turnaround_time' => '3days',
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Quality editorial site for guest posts. ', 4),
+            'site_tag' => 'as_you_prefer',
+            'written_request' => 1,
+            'suggestion_id' => 99999,
+        ])->assertRedirect()->assertSessionHas('success');
+
+        $this->assertNotNull(Site::where('domain', 'staff-added-news.example')->first());
+    }
 }

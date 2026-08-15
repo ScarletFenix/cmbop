@@ -205,11 +205,13 @@ class CommunityInbox
     public static function suggestionLookupDomain(WebsiteSuggestion $suggestion): string
     {
         $raw = search_text($suggestion->domain);
-        if ($raw === '') {
-            $url = self::safeHttpUrl($suggestion->website_url);
+        if ($raw === '' || preg_match('#^https?://#i', $raw)) {
+            $url = self::safeHttpUrl($raw !== '' ? $raw : $suggestion->website_url);
             if ($url) {
                 $host = parse_url($url, PHP_URL_HOST);
                 $raw = is_string($host) ? $host : '';
+            } elseif (preg_match('#^https?://#i', $raw)) {
+                $raw = '';
             }
         }
 

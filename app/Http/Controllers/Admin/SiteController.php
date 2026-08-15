@@ -812,7 +812,7 @@ class SiteController extends Controller
             'site_image' => 'nullable|file|mimes:jpeg,png,jpg,gif,webp|max:'.$this->siteImageMaxKilobytes(),
             'site_tag' => 'nullable|in:sponsored,partner_material,as_you_prefer',
             'written_request' => 'accepted',
-            'suggestion_id' => 'nullable|integer|exists:website_suggestions,id',
+            'suggestion_id' => 'nullable|integer',
         ] + $this->placementOfferValidationRules(), array_merge($this->siteImageValidationMessages(), [
             'written_request.accepted' => 'Confirm you have a written request from this publisher’s account email.',
             'description.max' => 'Description must be at most 5000 characters.',

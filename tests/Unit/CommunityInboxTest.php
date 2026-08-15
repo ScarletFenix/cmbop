@@ -152,6 +152,12 @@ class CommunityInboxTest extends TestCase
         ]);
         $this->assertSame('owned-news.example', CommunityInbox::suggestionLookupDomain($fromDomain));
 
+        $urlInDomain = new WebsiteSuggestion([
+            'website_url' => 'https://other.example',
+            'domain' => 'https://fresh-tech.example/path',
+        ]);
+        $this->assertSame('fresh-tech.example', CommunityInbox::suggestionLookupDomain($urlInDomain));
+
         $unsafe = new WebsiteSuggestion([
             'website_url' => 'javascript:alert(1)',
             'domain' => null,

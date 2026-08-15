@@ -650,9 +650,9 @@ class CommunityFeedbackTest extends TestCase
         $publisher = $this->userWithRole('publisher');
         $suggestion = WebsiteSuggestion::create([
             'user_id' => $advertiser->id,
-            'website_name' => 'Fresh Tech Blog',
-            'website_url' => 'https://fresh-tech.example',
-            'domain' => 'fresh-tech.example',
+            'website_name' => 'Owned News Daily',
+            'website_url' => 'https://owned-news.example',
+            'domain' => 'owned-news.example',
             'status' => 'pending',
         ]);
         $site = $this->siteFor($publisher);
@@ -673,8 +673,34 @@ class CommunityFeedbackTest extends TestCase
         });
         $this->assertDatabaseHas('in_app_notifications', [
             'user_id' => $advertiser->id,
-            'title' => 'Website suggestion accepted — Fresh Tech Blog',
+            'title' => 'Website suggestion accepted — Owned News Daily',
         ]);
+    }
+
+    public function test_accept_after_listing_ignores_a_suggestion_for_a_different_domain(): void
+    {
+        Mail::fake();
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $suggestion = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://fresh-tech.example',
+            'domain' => 'fresh-tech.example',
+            'status' => 'pending',
+        ]);
+        $site = $this->siteFor($publisher);
+
+        app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
+            (int) $suggestion->id,
+            $site,
+            $admin
+        );
+
+        $this->assertSame('pending', $suggestion->fresh()->status);
+        Mail::assertNothingQueued();
     }
 
     public function test_inactive_community_tabs_are_not_paginated(): void

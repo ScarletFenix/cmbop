@@ -131,6 +131,12 @@ class CommunityInboxNotifier
             return;
         }
 
+        $expected = CommunityInbox::suggestionLookupDomain($suggestion);
+        $actual = Site::normalizeMarketplaceDomain((string) $site->domain);
+        if ($expected === '' || $actual === '' || $expected !== $actual) {
+            return;
+        }
+
         $note = 'Listing created: '.$site->domain;
         $existing = trim((string) ($suggestion->admin_notes ?? ''));
 
