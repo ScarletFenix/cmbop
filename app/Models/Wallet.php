@@ -62,7 +62,9 @@ class Wallet extends Model
 
     /**
      * Create advertiser + publisher wallets for a newly registered user.
-     * Tolerates production DBs that have not yet migrated bonus_* columns.
+     * Welcome credit is applied only when bonus_* columns exist so it cannot
+     * become withdrawable cash on an unmigrated Hostinger wallet table.
+     * Returns the amount actually credited (0 when the claim is missing).
      */
     public static function insertRegistrationPair(
         int $userId,
@@ -70,10 +72,12 @@ class Wallet extends Model
         int $publisherRoleId,
         float $advertiserWelcomeBonus = 0.0,
         string $currency = 'EUR'
-    ): void {
+    ): float {
         $now = now();
-        $bonus = round(max(0, $advertiserWelcomeBonus), 2);
         $hasBonusColumns = Schema::hasColumn('wallets', 'bonus_balance');
+        // Never put welcome credit in plain balance — that makes it withdrawable.
+        $bonus = $hasBonusColumns ? round(max(0, $advertiserWelcomeBonus), 2) : 0.0;
+        $bonus = static::welcomeBonusBackedByClaim($userId, $bonus);
 
         $advertiser = [
             'user_id' => $userId,
@@ -103,6 +107,38 @@ class Wallet extends Model
         }
 
         DB::table('wallets')->insert([$advertiser, $publisher]);
+
+        return $bonus;
+    }
+
+    /**
+     * Welcome credit is only valid when this user has a claim row, and never
+     * more than the recorded claim or the configured amount.
+     */
+    private static function welcomeBonusBackedByClaim(int $userId, float $bonus): float
+    {
+        if ($bonus <= 0) {
+            return 0.0;
+        }
+
+        $max = round(max(0, (float) config('welcome_bonus.amount', 20)), 2);
+        $bonus = min($bonus, $max);
+        if ($bonus <= 0 || ! Schema::hasTable('welcome_bonus_claims')) {
+            return 0.0;
+        }
+
+        try {
+            $claimed = DB::table('welcome_bonus_claims')
+                ->where('user_id', $userId)
+                ->orderBy('id')
+                ->value('amount');
+        } catch (\Throwable) {
+            return 0.0;
+        }
+
+        $claimed = is_numeric($claimed) ? round((float) $claimed, 2) : 0.0;
+
+        return $claimed > 0 ? min($bonus, $claimed) : 0.0;
     }
 
     /**
