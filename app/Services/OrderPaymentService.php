@@ -608,7 +608,9 @@ class OrderPaymentService
                     continue;
                 }
 
-                $site = $siteId > 0 ? Site::query()->find($siteId) : null;
+                $site = $siteId > 0
+                    ? Site::query()->whereKey($siteId)->lockForUpdate()->first()
+                    : null;
                 if ($siteId > 0 && (! $site || ! $site->isCatalogVisible() || $site->isOwnedBy($buyer))) {
                     Log::warning('Skipping Stripe-first line; listing left the catalog', [
                         'reference_code' => $referenceCode,
