@@ -115,7 +115,7 @@ class SitemapController extends Controller
         $altLocales = $availableLocales ?: PublicI18n::supported();
         foreach ($altLocales as $alt) {
             $alternates[] = [
-                'hreflang' => $alt,
+                'hreflang' => PublicI18n::hreflang($alt),
                 'href' => PublicI18n::urlForLocale($path, $alt),
             ];
         }

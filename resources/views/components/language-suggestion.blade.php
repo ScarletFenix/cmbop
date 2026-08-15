@@ -31,7 +31,7 @@
       {{ __('messages.language_suggestion', ['language' => $suggestedName]) }}
     </p>
     <div class="d-flex gap-2">
-      <a href="{{ $switchUrl }}" class="btn btn-sm btn-primary" hreflang="{{ $suggested }}">
+      <a href="{{ $switchUrl }}" class="btn btn-sm btn-primary" hreflang="{{ \App\Support\PublicI18n::hreflang($suggested) }}">
         {{ __('messages.language_suggestion_switch', ['language' => $suggestedName]) }}
       </a>
       <button type="button" class="btn btn-sm btn-outline-secondary" id="localeSuggestDismiss">

@@ -96,10 +96,13 @@ use Illuminate\Support\Facades\Route;
 
 /*
 |--------------------------------------------------------------------------
-| Public marketing routes (multilingual: en unprefixed, de|fr|nl prefixed)
-| Authenticated SaaS + login/register stay English-only.
+| Public marketing routes (multilingual: en unprefixed UK English,
+| de|fr|nl|es|it|us prefixed). Authenticated SaaS + login/register stay English-only.
 |--------------------------------------------------------------------------
 */
+
+$prefixedLocalePattern = PublicI18n::prefixedPattern();
+$supportedLocalePattern = PublicI18n::supportedPattern();
 
 // Stacked locale cleanup: /nl/fr → /nl
 Route::get('/{locale}/{nested}', function ($locale, $nested) {
@@ -113,14 +116,14 @@ Route::get('/{locale}/{nested}', function ($locale, $nested) {
     }
 
     return app()->make('router')->dispatch(request());
-})->where(['locale' => 'de|fr|nl', 'nested' => 'de|fr|nl']);
+})->where(['locale' => $prefixedLocalePattern, 'nested' => $prefixedLocalePattern]);
 
 // Locale-prefixed auth → English auth (SaaS stays English)
 Route::get('/{locale}/login', fn () => Redirect::to('/login', 301))
-    ->where('locale', 'de|fr|nl')
+    ->where('locale', $prefixedLocalePattern)
     ->name('locale.login.redirect');
 Route::get('/{locale}/register', fn () => Redirect::to('/register', 301))
-    ->where('locale', 'de|fr|nl')
+    ->where('locale', $prefixedLocalePattern)
     ->name('locale.register.redirect');
 
 $registerPublicMarketingRoutes = function () {
@@ -154,14 +157,14 @@ Route::group([], $registerPublicMarketingRoutes);
 // Prefixed locales
 Route::group([
     'prefix' => '{locale}',
-    'where' => ['locale' => 'de|fr|nl'],
+    'where' => ['locale' => $prefixedLocalePattern],
     'as' => 'locale.',
 ], $registerPublicMarketingRoutes);
 
 // SEO: sitemap index + per-locale sitemaps + robots + llms.txt
 Route::get('/sitemap.xml', [SitemapController::class, 'index'])->name('sitemap');
 Route::get('/sitemap-{locale}.xml', [SitemapController::class, 'locale'])
-    ->where('locale', 'en|de|fr|nl')
+    ->where('locale', $supportedLocalePattern)
     ->name('sitemap.locale');
 Route::get('/robots.txt', function () {
     return response(RobotsTxt::render(), 200, [

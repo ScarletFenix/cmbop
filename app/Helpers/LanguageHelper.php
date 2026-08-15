@@ -38,12 +38,19 @@ if (! function_exists('show_public_language_switcher')) {
 if (! function_exists('get_available_locales')) {
     function get_available_locales()
     {
-        return [
-            'en' => ['name' => 'English', 'flag' => '🇬🇧', 'code' => 'en'],
+        $catalog = [
+            'en' => ['name' => 'English (UK)', 'flag' => '🇬🇧', 'code' => 'en'],
+            'us' => ['name' => 'English (US)', 'flag' => '🇺🇸', 'code' => 'us'],
             'de' => ['name' => 'Deutsch', 'flag' => '🇩🇪', 'code' => 'de'],
             'fr' => ['name' => 'Français', 'flag' => '🇫🇷', 'code' => 'fr'],
             'nl' => ['name' => 'Nederlands', 'flag' => '🇳🇱', 'code' => 'nl'],
+            'es' => ['name' => 'Español', 'flag' => '🇪🇸', 'code' => 'es'],
+            'it' => ['name' => 'Italiano', 'flag' => '🇮🇹', 'code' => 'it'],
         ];
+
+        $supported = array_flip(PublicI18n::supported());
+
+        return array_filter($catalog, fn ($code) => isset($supported[$code]), ARRAY_FILTER_USE_KEY);
     }
 }
 

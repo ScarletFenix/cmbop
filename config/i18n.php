@@ -6,12 +6,13 @@
  */
 return [
 
+    /** Unprefixed canonical English — treated as UK English for SEO (hreflang en-GB). */
     'default' => 'en',
 
-    'supported' => ['en', 'de', 'fr', 'nl'],
+    'supported' => ['en', 'de', 'fr', 'nl', 'es', 'it', 'us'],
 
-    /** Prefixed locales (English has no URL prefix). */
-    'prefixed' => ['de', 'fr', 'nl'],
+    /** Prefixed locales (UK English has no URL prefix). `us` is US English. */
+    'prefixed' => ['de', 'fr', 'nl', 'es', 'it', 'us'],
 
     /**
      * Public marketing path prefixes (after optional locale segment).
