@@ -349,6 +349,92 @@ class OrderPaymentService
     }
 
     /**
+     * Drop this advertiser's unpaid pending leftovers for these articles so a
+     * new checkout can claim them. Failed card leftovers stay for Pay again.
+     *
+     * @param  array<int, int|string>  $submissionIds
+     */
+    public function replaceUnpaidLeftoversForSubmissions(int $userId, array $submissionIds): void
+    {
+        $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
+        if ($userId <= 0 || $submissionIds === []) {
+            return;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            Log::warning('Skipping unpaid leftover replace: order_items.content_submission_id missing');
+
+            return;
+        }
+
+        $itemOrderIds = OrderItem::query()
+            ->whereIn('content_submission_id', $submissionIds)
+            ->whereHas('order', function ($q) use ($userId) {
+                $q->where('user_id', $userId)
+                    ->where('status', 'pending')
+                    ->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+                    });
+            })
+            ->pluck('order_id');
+
+        $ownedOrderIds = ContentSubmission::query()
+            ->whereIn('id', $submissionIds)
+            ->where('user_id', $userId)
+            ->whereNotNull('order_id')
+            ->pluck('order_id');
+
+        $orderIds = $itemOrderIds->merge($ownedOrderIds)->unique()->filter()->map(fn ($id) => (int) $id)->all();
+        if ($orderIds === []) {
+            return;
+        }
+
+        $orders = Order::query()
+            ->whereIn('id', $orderIds)
+            ->where('user_id', $userId)
+            ->where('status', 'pending')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+            })
+            ->get();
+
+        if ($orders->isEmpty()) {
+            return;
+        }
+
+        $cardRefs = $orders->where('payment_method', 'card')
+            ->pluck('reference_code')
+            ->unique()
+            ->filter();
+        foreach ($cardRefs as $referenceCode) {
+            $this->markOrdersFailedFromReference(
+                (string) $referenceCode,
+                'Replaced by a new checkout',
+                $userId
+            );
+        }
+
+        $refunds = app(OrderRefundService::class);
+        foreach ($orders as $order) {
+            if ((string) $order->payment_method !== 'card') {
+                $refunds->releaseReservedCheckoutBonus($order);
+                $order->update([
+                    'payment_status' => 'failed',
+                    'status' => 'cancelled',
+                ]);
+            }
+
+            ContentSubmission::releaseAllForOrder((int) $order->id);
+            $fresh = $order->fresh();
+            if ($fresh && $fresh->status !== 'cancelled') {
+                $fresh->update(['status' => 'cancelled']);
+            }
+        }
+    }
+
+    /**
      * Keep only the fulfilled share of checkout promo. Leftover/hidden lines
      * must not leave their bonus slice reserved forever.
      *
