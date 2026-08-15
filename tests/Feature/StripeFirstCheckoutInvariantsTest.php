@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\OrderPaymentService;
+use App\Services\Orders\OrderRefundService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
@@ -311,7 +312,7 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         ])->assertOk();
 
         $this->assertSame(0, Order::where('reference_code', $ref)->count());
-        $this->assertNull(Cache::get(OrderPaymentService::pendingCheckoutCacheKey($ref)));
+        $this->assertNotNull(app(OrderPaymentService::class)->getPendingCheckout($ref));
         $this->assertNull(Cache::get('checkout_bonus:'.$advertiser->id.':'.$ref));
 
         $wallet->refresh();
@@ -434,6 +435,71 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertNotNull(app(OrderPaymentService::class)->getPendingCheckout($ref));
+    }
+
+    public function test_session_expiry_late_payment_re_reserves_bonus(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'expire-late-pay.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'EXPIRE-LATE-PAY-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+
+        $this->signedWebhook([
+            'id' => 'evt_expire_late_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.expired',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expire_late',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'unpaid',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'bonus_applied' => '20',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+
+        $this->signedWebhook([
+            'id' => 'evt_expire_late_paid_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expire_late_paid',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 6000,
+                    'payment_intent' => 'pi_expire_late_paid',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '60',
+                        'bonus_applied' => '20',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(1, Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
     public function test_finalize_skips_listing_that_left_the_catalog(): void
@@ -819,6 +885,157 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame(1, Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->count());
     }
 
+    public function test_cancel_url_late_pay_re_reserves_bonus_and_refunds_only_card_slice(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'cancel-bonus-late.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'CANCEL-BONUS-LATE-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => $ref]))
+            ->assertRedirect();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+
+        $this->signedWebhook([
+            'id' => 'evt_cancel_bonus_late_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_cancel_bonus_late',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 6000,
+                    'payment_intent' => 'pi_cancel_bonus_late',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '60',
+                        'bonus_applied' => '20',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $order = Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->first();
+        $this->assertNotNull($order);
+        $this->assertEqualsWithDelta(80.0, (float) $order->total_amount, 0.01);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+
+        app(OrderRefundService::class)->cancelAndRefund($order);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, $wallet->lockedBonusBalance(), 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_cancel_url_late_pay_credits_card_when_bonus_was_spent(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'cancel-bonus-spent.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'CANCEL-BONUS-SPENT-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => $ref]))
+            ->assertRedirect();
+
+        $wallet->refresh();
+        $wallet->update([
+            'balance' => 0,
+            'bonus_balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_reserved' => 0,
+        ]);
+
+        $this->signedWebhook([
+            'id' => 'evt_cancel_bonus_spent_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_cancel_bonus_spent',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 6000,
+                    'payment_intent' => 'pi_cancel_bonus_spent',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '60',
+                        'bonus_applied' => '20',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_paid_webhook_credits_wallet_when_package_was_forgotten(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'FORGOTTEN-PKG-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($this->makeSite($this->makeUser('publisher'), 'forgotten-pkg.example', 80), 80),
+        ], 80));
+        $payments->forgetPendingCheckout($ref);
+
+        $this->signedWebhook([
+            'id' => 'evt_forgotten_pkg_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_forgotten_pkg',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_forgotten_pkg',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
     public function test_finalize_materializes_expired_checkout_intent_after_cache_flush(): void
     {
         $advertiser = $this->makeUser('advertiser');
@@ -862,5 +1079,61 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertSame($site->id, (int) OrderItem::query()->whereHas('order', function ($q) use ($ref) {
             $q->where('reference_code', $ref);
         })->value('site_id'));
+    }
+
+    public function test_reused_reference_with_new_package_materializes_second_checkout(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $first = $this->makeSite($publisher, 'reuse-first.example', 40);
+        $second = $this->makeSite($publisher, 'reuse-second.example', 80);
+        $ref = 'REUSE-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($first, 40),
+        ], 40));
+
+        $firstPaid = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 40, 'cs_reuse_first')
+        );
+        $this->assertCount(1, $firstPaid);
+        $this->assertNull($payments->getPendingCheckout($ref));
+
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($second, 80),
+        ], 80));
+
+        $this->signedWebhook([
+            'id' => 'evt_reuse_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_reuse_second',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_reuse_second',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(2, Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->count());
+        $this->assertEqualsCanonicalizing(
+            [$first->id, $second->id],
+            OrderItem::query()
+                ->whereIn('order_id', Order::query()->where('reference_code', $ref)->pluck('id'))
+                ->pluck('site_id')
+                ->map(fn ($id) => (int) $id)
+                ->all()
+        );
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 }

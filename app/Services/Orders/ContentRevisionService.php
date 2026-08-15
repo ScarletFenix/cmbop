@@ -227,6 +227,18 @@ class ContentRevisionService
                     ]);
                 }
 
+                if ($existing->hasImages() && ! $existing->imageRightsCoverContent()) {
+                    throw ValidationException::withMessages([
+                        'confirm_existing' => 'Confirm image rights on the attached article before sending it back.',
+                    ]);
+                }
+
+                if (! $existing->hasCheckoutReadyLinks()) {
+                    throw ValidationException::withMessages([
+                        'confirm_existing' => 'Add a valid HTTPS target URL, or clear the link, before sending this article back.',
+                    ]);
+                }
+
                 $update = array_merge($update, $this->submissionFieldsForItem($existing), $this->liveUrlClearPayload());
                 $chatExtra = ' Confirmed the existing Content Library article was updated.';
             } elseif ($submissionId) {
@@ -265,6 +277,12 @@ class ContentRevisionService
                 if (! $sameAsCurrent && $submission->order_id === null && ! $submission->canBeOrdered()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'That Content Library article is not available to attach.',
+                    ]);
+                }
+
+                if (! $submission->hasCheckoutReadyLinks()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'Add a valid HTTPS target URL, or clear the link, before attaching this article.',
                     ]);
                 }
 

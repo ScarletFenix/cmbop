@@ -703,6 +703,8 @@ class PaymentController extends Controller
                 'email' => $order->user->email,
             ] : null,
             'allowed_statuses' => $this->allowedPaymentStatuses($order),
+            'invoice_url' => $order->invoice_url,
+            'invoice_documents' => $order->invoice_documents ?? [],
         ];
     }
 
