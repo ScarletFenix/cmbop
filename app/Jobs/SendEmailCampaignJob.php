@@ -67,7 +67,7 @@ class SendEmailCampaignJob implements ShouldQueue
         try {
             $more = $this->processPending($campaign);
             if ($more) {
-                self::dispatch($this->campaignId);
+                SendEmailCampaignJob::dispatch($this->campaignId);
 
                 return;
             }
@@ -213,7 +213,7 @@ class SendEmailCampaignJob implements ShouldQueue
                 return;
             }
 
-            self::dispatch($this->campaignId, $this->failStreak + 1);
+            SendEmailCampaignJob::dispatch($this->campaignId, $this->failStreak + 1);
 
             return;
         }
