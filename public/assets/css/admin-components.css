@@ -339,3 +339,41 @@
   font-weight: 600;
   padding: 0.4em 0.65em;
 }
+
+/* ——— Wallet ledger filters ——— */
+
+.finance-ledger-filters .row > [class*="col-"] {
+  min-width: 0;
+}
+
+.finance-ledger-filters .form-label {
+  display: block;
+}
+
+.finance-ledger-filters .form-control,
+.finance-ledger-filters .form-select {
+  width: 100%;
+}
+
+.finance-ledger-filters .form-control[type="date"] {
+  min-width: 0;
+}
+
+/* Live-search status reserves a line under Search. Collapse it when empty so
+   align-items-end keeps Filter on the same baseline as the other inputs. */
+.finance-ledger-filters .slb-search-status:empty {
+  min-height: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.finance-ledger-filters__action .btn {
+  min-height: calc(1.5em + 0.5rem + 2px);
+}
+
+@media (max-width: 991.98px) {
+  .finance-ledger-filters__action .btn {
+    width: 100%;
+  }
+}
