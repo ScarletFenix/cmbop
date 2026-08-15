@@ -12,6 +12,7 @@ use App\Services\CommunityInboxNotifier;
 use App\Services\SiteClaimTransferService;
 use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -265,30 +266,73 @@ class CommunityFeedbackController extends Controller
         $goingPending = $data['status'] === 'pending';
         $leavingPending = $model->status === 'pending' && ! $goingPending;
 
-        $model->forceFill([
+        $payload = [
             'status' => $data['status'],
             'admin_notes' => $data['admin_notes'] ?? $model->admin_notes,
             'reviewed_at' => $goingPending ? null : now(),
             'reviewed_by' => $goingPending
                 ? null
                 : ($leavingPending ? auth()->id() : ($model->reviewed_by ?: auth()->id())),
-        ])->save();
+            'updated_at' => now(),
+        ];
 
-        ActivityLogger::log(
-            $activityType,
-            auth()->user()->name.' updated '.$activityType.' #'.$model->id,
-            $model,
-            $data
-        );
+        $query = $model->newQuery()->whereKey($model->id);
+        if ($leavingPending) {
+            $query->where('status', 'pending');
+        }
+
+        $affected = $query->update($payload);
+        if ($leavingPending && $affected !== 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This item was already reviewed.',
+            ], 422);
+        }
+
+        try {
+            $model->refresh();
+            $model->loadMissing('user');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to reload community item after status update: '.$e->getMessage(), [
+                'tab' => $tab,
+                'id' => $model->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Updated.',
+            ]);
+        }
+
+        try {
+            ActivityLogger::log(
+                $activityType,
+                (auth()->user()?->name ?? 'Staff').' updated '.$activityType.' #'.$model->id,
+                $model,
+                $data
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log community status update: '.$e->getMessage(), [
+                'tab' => $tab,
+                'id' => $model->id,
+            ]);
+        }
 
         if ($leavingPending) {
-            $this->inboxNotifier->notifySubmitterReviewed($model->fresh(['user']), $tab);
+            try {
+                $this->inboxNotifier->notifySubmitterReviewed($model, $tab);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify community submitter: '.$e->getMessage(), [
+                    'tab' => $tab,
+                    'id' => $model->id,
+                ]);
+            }
         }
 
         return response()->json([
             'success' => true,
             'message' => 'Updated.',
-            'item' => $model->fresh(['user:id,name,email', 'reviewer:id,name']),
+            'item' => $model->fresh(['user:id,name,email', 'reviewer:id,name']) ?? $model,
         ]);
     }
 }

@@ -21,8 +21,8 @@ class CommunityInboxNotifier
 
     public function notifyAdminsNewProblem(ProblemReport $report): void
     {
-        $who = $report->name ?: ($report->email ?: 'Someone');
-        $subject = $report->subject ?: 'a problem';
+        $who = CommunityInbox::plainLine($report->name ?: ($report->email ?: 'Someone'), 'Someone');
+        $subject = CommunityInbox::plainLine($report->subject ?: 'a problem', 'a problem');
 
         $this->notifications->notifyAdmins(
             InAppNotificationService::TYPE_SYSTEM,
@@ -43,7 +43,7 @@ class CommunityInboxNotifier
 
     public function notifyAdminsNewSuggestion(Suggestion $suggestion): void
     {
-        $who = $suggestion->name ?: ($suggestion->email ?: 'Someone');
+        $who = CommunityInbox::plainLine($suggestion->name ?: ($suggestion->email ?: 'Someone'), 'Someone');
 
         $this->notifications->notifyAdmins(
             InAppNotificationService::TYPE_SYSTEM,
@@ -64,7 +64,7 @@ class CommunityInboxNotifier
 
     public function notifyAdminsNewWebsite(WebsiteSuggestion $suggestion): void
     {
-        $name = $suggestion->website_name ?: ($suggestion->domain ?: 'a website');
+        $name = CommunityInbox::plainLine($suggestion->website_name ?: ($suggestion->domain ?: 'a website'), 'a website');
 
         $this->notifications->notifyAdmins(
             InAppNotificationService::TYPE_SYSTEM,
@@ -85,6 +85,10 @@ class CommunityInboxNotifier
 
     public function notifySubmitterReviewed(ProblemReport|Suggestion|WebsiteSuggestion $item, string $tab): void
     {
+        if (CommunityInbox::plainLine($item->status) === 'pending') {
+            return;
+        }
+
         $item->loadMissing(['user']);
 
         try {
@@ -98,18 +102,31 @@ class CommunityInboxNotifier
             ]);
         }
 
-        $email = search_text($item->email ?? null);
-        if ($email === '') {
-            $email = search_text($item->user?->email ?? null);
-        }
-        if ($email === '') {
+        $email = CommunityInbox::validEmail($item->email ?? null)
+            ?? CommunityInbox::validEmail($item->user?->email ?? null);
+        if ($email === null) {
             return;
         }
 
         try {
+            $notes = trim((string) ($item->admin_notes ?? ''));
+            $reviewKey = bin2hex(random_bytes(4));
             $mailable = $item instanceof WebsiteSuggestion
-                ? new WebsiteSuggestionReviewed($item)
-                : new CommunityFeedbackReviewed($item, $tab === CommunityInbox::TAB_SUGGESTIONS ? 'suggestion' : 'problem');
+                ? new WebsiteSuggestionReviewed(
+                    $item,
+                    (string) $item->status,
+                    $notes,
+                    (string) ($item->website_name ?: ($item->domain ?: 'the website')),
+                    $reviewKey,
+                )
+                : new CommunityFeedbackReviewed(
+                    $item,
+                    $item instanceof Suggestion ? 'suggestion' : 'problem',
+                    (string) $item->status,
+                    $notes,
+                    $item instanceof ProblemReport ? (string) ($item->subject ?: 'your report') : 'your suggestion',
+                    $reviewKey,
+                );
 
             Mail::to($email)->send($mailable);
         } catch (\Throwable $e) {
@@ -120,43 +137,61 @@ class CommunityInboxNotifier
         }
     }
 
-    public function acceptWebsiteSuggestionAfterListing(?int $suggestionId, Site $site, User $admin): void
+    public function acceptWebsiteSuggestionAfterListing(?int $suggestionId, Site $site, ?User $admin): void
     {
-        if (! $suggestionId || $suggestionId <= 0) {
+        if (! $admin instanceof User || ! $suggestionId || $suggestionId <= 0) {
             return;
         }
 
         $suggestion = WebsiteSuggestion::query()->find($suggestionId);
-        if (! $suggestion || $suggestion->status !== 'pending') {
+        if (! $suggestion || $suggestion->status === 'accepted') {
             return;
         }
 
         $expected = CommunityInbox::suggestionLookupDomain($suggestion);
-        $actual = Site::normalizeMarketplaceDomain((string) $site->domain);
+        $actual = CommunityInbox::listingLookupDomain($site);
         if ($expected === '' || $actual === '' || $expected !== $actual) {
             return;
         }
 
-        $note = 'Listing created: '.$site->domain;
+        $note = 'Listing created: '.$actual;
         $existing = trim((string) ($suggestion->admin_notes ?? ''));
 
-        $suggestion->forceFill([
-            'status' => 'accepted',
-            'admin_notes' => $existing !== '' ? $existing."\n".$note : $note,
-            'reviewed_at' => now(),
-            'reviewed_by' => $admin->id,
-        ])->save();
+        $affected = WebsiteSuggestion::query()
+            ->whereKey($suggestion->id)
+            ->where('status', '!=', 'accepted')
+            ->update([
+                'status' => 'accepted',
+                'admin_notes' => $existing !== '' ? $existing."\n".$note : $note,
+                'reviewed_at' => now(),
+                'reviewed_by' => $admin->id,
+                'updated_at' => now(),
+            ]);
 
-        $this->notifySubmitterReviewed($suggestion->fresh(['user']), CommunityInbox::TAB_WEBSITES);
+        if ($affected !== 1) {
+            return;
+        }
+
+        $fresh = $suggestion->fresh(['user']);
+        if ($fresh) {
+            try {
+                $this->notifySubmitterReviewed($fresh, CommunityInbox::TAB_WEBSITES);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify website suggestion submitter after listing: '.$e->getMessage(), [
+                    'suggestion_id' => $fresh->id,
+                    'site_id' => $site->id,
+                ]);
+            }
+        }
     }
 
     private function bellSubmitter(ProblemReport|Suggestion|WebsiteSuggestion $item, string $tab): void
     {
         $notes = Str::limit(trim((string) ($item->admin_notes ?? '')), 180);
-        $status = $item->status;
+        $status = CommunityInbox::plainLine($item->status, 'reviewed');
 
         if ($item instanceof WebsiteSuggestion) {
-            $name = $item->website_name ?: ($item->domain ?: 'the website');
+            $name = CommunityInbox::plainLine($item->website_name ?: ($item->domain ?: 'the website'), 'the website');
             $title = $status === 'accepted'
                 ? "Website suggestion accepted — {$name}"
                 : "Website suggestion update — {$name}";
@@ -164,7 +199,7 @@ class CommunityInboxNotifier
                 ? "We accepted your suggestion for {$name} and will try to add it to the catalog."
                 : "We reviewed your suggestion for {$name} and marked it as {$status}.";
         } elseif ($item instanceof ProblemReport) {
-            $subject = $item->subject ?: 'your report';
+            $subject = CommunityInbox::plainLine($item->subject ?: 'your report', 'your report');
             $title = "We reviewed your report — {$subject}";
             $message = "Your problem report was marked as {$status}.";
         } else {

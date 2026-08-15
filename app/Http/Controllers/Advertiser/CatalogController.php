@@ -1483,7 +1483,7 @@ class CatalogController extends Controller
         if (! $submission->isReadyForCheckout()) {
             return response()->json([
                 'success' => false,
-                'error' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                'error' => $submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE,
             ], 422);
         }
 
@@ -3693,6 +3693,10 @@ class CatalogController extends Controller
         foreach ($order->items as $item) {
             $id = (int) ($item->content_submission_id ?? 0);
             if ($id <= 0) {
+                if ($item->looksLikeLibraryLine()) {
+                    return false;
+                }
+
                 continue;
             }
             $submission = ContentSubmission::query()->whereKey($id)->first();
@@ -4480,7 +4484,7 @@ class CatalogController extends Controller
             if (! $submission->isReadyForCheckout()) {
                 return response()->json([
                     'success' => false,
-                    'message' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                    'message' => $submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE,
                 ], 422);
             }
 

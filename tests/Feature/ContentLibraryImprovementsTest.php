@@ -595,6 +595,213 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertDatabaseHas('content_submissions', ['id' => $submission->id]);
     }
 
+    public function test_cannot_retry_payment_when_library_article_was_deleted(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'retry-deleted');
+        $order = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => null,
+            'content_path' => 'content-uploads/'.$advertiser->id.'/gone.docx',
+            'content_original_name' => 'gone.docx',
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $order))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_cannot_retry_payment_when_library_article_is_unready(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'retry-unready');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->failedCardOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'target_url' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.retry-payment', $order))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
+    public function test_failed_leftover_order_is_not_checkout_ready(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'leftover-claim');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->order_id);
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertTrue($fresh->isClaimedByAnotherOrder());
+        $this->assertFalse($fresh->isReadyForCheckout());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $leftover->id));
+        $this->assertFalse($fresh->isJustApproved());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertSame(ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE, $fresh->libraryFixSummary());
+        $this->assertSame(ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE, $fresh->editorNotice());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => null,
+                    'language' => 'en',
+                ]],
+            ])
+            ->postJson(route('advertiser.cart.assign-article'), [
+                'id' => $site->id,
+                'content_submission_id' => $submission->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.content-library'))
+            ->assertSessionHas('error', ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE);
+
+        $leftover->update(['status' => 'cancelled']);
+        $released = $submission->fresh();
+        $this->assertFalse($released->isClaimedByAnotherOrder());
+        $this->assertTrue($released->isReadyForCheckout());
+        $this->assertSame('available', $released->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+    }
+
+    public function test_cancelled_owner_order_id_does_not_block_checkout(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $cancelled = $this->makeOrder($advertiser);
+        $cancelled->update(['status' => 'cancelled', 'payment_status' => 'failed']);
+        $submission->update(['order_id' => $cancelled->id]);
+
+        $fresh = $submission->fresh();
+        $this->assertFalse($fresh->isInUse());
+        $this->assertFalse($fresh->isClaimedByAnotherOrder());
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertTrue($fresh->isReadyForCheckout());
+        $this->assertSame('available', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+    }
+
+    public function test_cannot_archive_article_tied_to_a_failed_leftover_order(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'archive-leftover');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.archive', $submission))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($submission->fresh()->archived_at);
+        $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $leftover->id));
+    }
+
+    public function test_download_url_only_item_still_looks_like_a_library_line(): void
+    {
+        $item = new OrderItem([
+            'content_submission_id' => null,
+            'content_path' => null,
+            'content_original_name' => null,
+            'content_link' => '/content-submissions/99/download',
+        ]);
+
+        $this->assertTrue($item->looksLikeLibraryLine());
+
+        $absolute = new OrderItem([
+            'content_submission_id' => null,
+            'content_path' => null,
+            'content_original_name' => null,
+            'content_link' => 'https://seolinkbuildings.com/content-submissions/12/download',
+        ]);
+        $this->assertTrue($absolute->looksLikeLibraryLine());
+
+        $external = new OrderItem([
+            'content_submission_id' => null,
+            'content_path' => null,
+            'content_original_name' => null,
+            'content_link' => 'https://example.com/guest-post',
+        ]);
+        $this->assertFalse($external->looksLikeLibraryLine());
+    }
+
     public function test_library_availability_helper_on_model(): void
     {
         $advertiser = $this->advertiser();
@@ -696,6 +903,18 @@ class ContentLibraryImprovementsTest extends TestCase
         ]);
         $this->assertFalse($evaluating->fresh()->isJustApproved());
 
+        $needsLink = $this->createApprovedSubmission($advertiser);
+        $needsLink->update([
+            'title' => 'Needs Checkout Link Piece',
+            'anchor_text' => 'half filled',
+            'target_url' => null,
+            'evaluated_at' => now(),
+        ]);
+        $this->assertTrue($needsLink->fresh()->canBeOrdered());
+        $this->assertFalse($needsLink->fresh()->isReadyForCheckout());
+        $this->assertFalse($needsLink->fresh()->isJustApproved());
+        $this->assertNull($needsLink->fresh()->justApprovedLabel());
+
         $html = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'approved', 'availability' => 'available']))
             ->assertOk()
@@ -708,6 +927,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Stale Approved Piece')
             ->assertDontSee('Needs Fix Piece')
             ->assertDontSee('Expired Approved Piece')
+            ->assertDontSee('Needs Checkout Link Piece')
             ->getContent();
 
         $this->assertStringContainsString('class="library-just-approved"', $html);
@@ -2140,12 +2360,37 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertArrayNotHasKey('extracted_text', $row->getAttributes());
         $this->assertArrayNotHasKey('preview_html', $row->getAttributes());
         $this->assertTrue($row->canBeOrdered());
+        $this->assertTrue($row->isReadyForCheckout());
+        $this->assertFalse($row->hasImages());
 
         $this->actingAs($advertiser)
             ->getJson(route('advertiser.cart.get'))
             ->assertOk()
             ->assertJsonPath('approved_articles.0.id', $submission->id)
             ->assertJsonPath('approved_articles.0.language', 'en');
+    }
+
+    public function test_article_picker_scope_sees_missing_image_rights(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Article with a picture <img src="/storage/content-articles/1/hero.png" alt=""></p>',
+            'image_rights' => null,
+            'image_rights_source' => null,
+        ]);
+
+        $row = ContentSubmission::query()
+            ->forArticlePicker()
+            ->where('id', $submission->id)
+            ->first();
+
+        $this->assertNotNull($row);
+        $this->assertArrayNotHasKey('preview_html', $row->getAttributes());
+        $this->assertTrue($row->hasImages());
+        $this->assertFalse($row->imageRightsCoverContent());
+        $this->assertFalse($row->canBeOrdered());
+        $this->assertFalse($row->isReadyForCheckout());
     }
 
     public function test_uniqueness_corpus_selects_truncated_extracted_text(): void
@@ -2566,6 +2811,21 @@ class ContentLibraryImprovementsTest extends TestCase
             'total_amount' => 46,
             'payment_method' => 'wallet',
             'payment_status' => 'unpaid',
+            'status' => 'pending',
+        ]);
+    }
+
+    private function failedCardOrder(User $advertiser): Order
+    {
+        return Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
             'status' => 'pending',
         ]);
     }

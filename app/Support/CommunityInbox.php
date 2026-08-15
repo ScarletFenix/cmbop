@@ -126,14 +126,62 @@ class CommunityInbox
         };
     }
 
+    public const PAGE_URL_MAX = 255;
+
+    /**
+     * Single-line text for subjects, bells, and mail headers.
+     * Newlines in user-supplied names used to split SMTP subjects.
+     */
+    public static function plainLine(mixed $value, string $fallback = ''): string
+    {
+        $text = trim(preg_replace('/[\r\n]+/', ' ', search_text($value)) ?? '');
+
+        return $text !== '' ? $text : $fallback;
+    }
+
+    public static function validEmail(mixed $email): ?string
+    {
+        $email = search_text($email);
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return null;
+        }
+
+        return $email;
+    }
+
     public static function safeHttpUrl(mixed $url): ?string
     {
         $url = search_text($url);
         if ($url === '' || ! preg_match('#^https?://#i', $url)) {
             return null;
         }
+        if (preg_match('/[\x00-\x1f\x7f\s]/', $url)) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return null;
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return null;
+        }
 
         return $url;
+    }
+
+    /**
+     * Persistable http(s) page URL, or null. The reports table is varchar(255);
+     * a longer Referer used to 500 the guest submit path.
+     */
+    public static function storedPageUrl(mixed $url): ?string
+    {
+        $safe = self::safeHttpUrl($url);
+        if ($safe === null || strlen($safe) > self::PAGE_URL_MAX) {
+            return null;
+        }
+
+        return $safe;
     }
 
     /**
@@ -170,6 +218,25 @@ class CommunityInbox
     }
 
     /**
+     * Positive suggestion id from a query/body value. Arrays and booleans
+     * must not coerce to 1 the way `(int) ['12']` / `(int) true` do.
+     */
+    public static function suggestionIdFrom(mixed $raw): int
+    {
+        if (is_int($raw)) {
+            return max(0, $raw);
+        }
+        if (is_string($raw)) {
+            $raw = trim($raw);
+            if ($raw !== '' && ctype_digit($raw)) {
+                return (int) $raw;
+            }
+        }
+
+        return 0;
+    }
+
+    /**
      * Query string to prefill staff site-create from a website suggestion.
      *
      * @return array{site_name?: string, site_url?: string, country?: string, language?: string, suggestion_id: int}
@@ -177,7 +244,7 @@ class CommunityInbox
     public static function createListingQuery(WebsiteSuggestion $suggestion): array
     {
         $params = ['suggestion_id' => (int) $suggestion->id];
-        $name = search_text($suggestion->website_name);
+        $name = self::plainLine($suggestion->website_name);
         if ($name !== '') {
             $params['site_name'] = $name;
         }
@@ -207,6 +274,26 @@ class CommunityInbox
         $raw = search_text($suggestion->domain);
         if ($raw === '' || preg_match('#^https?://#i', $raw)) {
             $url = self::safeHttpUrl($raw !== '' ? $raw : $suggestion->website_url);
+            if ($url) {
+                $host = parse_url($url, PHP_URL_HOST);
+                $raw = is_string($host) ? $host : '';
+            } elseif (preg_match('#^https?://#i', $raw)) {
+                $raw = '';
+            }
+        }
+
+        return $raw !== '' ? Site::normalizeMarketplaceDomain($raw) : '';
+    }
+
+    /**
+     * Host of a staff-created listing. The in-memory Site after create can
+     * omit `domain` until refresh; fall back to site_url.
+     */
+    public static function listingLookupDomain(Site $site): string
+    {
+        $raw = search_text($site->domain);
+        if ($raw === '' || preg_match('#^https?://#i', $raw)) {
+            $url = self::safeHttpUrl($raw !== '' ? $raw : $site->site_url);
             if ($url) {
                 $host = parse_url($url, PHP_URL_HOST);
                 $raw = is_string($host) ? $host : '';

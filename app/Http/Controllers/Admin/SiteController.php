@@ -674,7 +674,7 @@ class SiteController extends Controller
             ? staff_route('sites.index', ['publisher' => $selectedPublisherId])
             : staff_route('sites.index');
 
-        $prefillSiteName = search_text($request->query('site_name'));
+        $prefillSiteName = CommunityInbox::plainLine($request->query('site_name'));
         $prefillSiteUrl = CommunityInbox::safeHttpUrl($request->query('site_url')) ?? '';
         $prefillCountry = strtolower(search_text($request->query('country')));
         if (strlen($prefillCountry) !== 2) {
@@ -684,7 +684,7 @@ class SiteController extends Controller
         if (strlen($prefillLanguage) !== 2) {
             $prefillLanguage = '';
         }
-        $suggestionId = max(0, (int) $request->query('suggestion_id'));
+        $suggestionId = CommunityInbox::suggestionIdFrom($request->query('suggestion_id'));
 
         return view('admin.site-create', compact(
             'publishers',
@@ -735,6 +735,7 @@ class SiteController extends Controller
         $dr = $this->normalizeMetricInt($request->input('dr'));
         $traffic = $this->normalizeMetricInt($request->input('traffic'));
 
+        $suggestionId = CommunityInbox::suggestionIdFrom($request->input('suggestion_id'));
         $request->merge([
             'site_url' => $siteUrl,
             'example_url' => $exampleUrl,
@@ -744,6 +745,7 @@ class SiteController extends Controller
             'site_name' => is_string($request->input('site_name'))
                 ? $this->normalizeSiteName($request->input('site_name'))
                 : $request->input('site_name'),
+            'suggestion_id' => $suggestionId > 0 ? $suggestionId : null,
         ]);
 
         $host = parse_url($siteUrl, PHP_URL_HOST);
@@ -1025,8 +1027,8 @@ class SiteController extends Controller
 
         try {
             app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
-                (int) $request->input('suggestion_id'),
-                $site,
+                CommunityInbox::suggestionIdFrom($request->input('suggestion_id')),
+                $site->fresh() ?? $site,
                 $request->user()
             );
         } catch (\Throwable $e) {

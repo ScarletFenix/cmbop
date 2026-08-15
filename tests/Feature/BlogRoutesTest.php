@@ -7,15 +7,19 @@ use App\Models\User;
 use App\Services\CuratedBlogSync;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BacklinksAufbauenBlogPost;
+use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\HowToPriceYourSiteBlogPost;
 use App\Support\LiveLinkChecklistBlogPost;
 use App\Support\PublicI18n;
 use App\Support\PublisherPlatformGuideBlogPost;
+use App\Support\WhySitesGetRejectedBlogPost;
 use Database\Seeders\AdvertiserPlatformGuideBlogSeeder;
 use Database\Seeders\BacklinksAufbauenBlogSeeder;
 use Database\Seeders\GastbeitraegeEuropaBlogSeeder;
 use Database\Seeders\LiveLinkChecklistBlogSeeder;
 use Database\Seeders\PublisherPlatformGuideBlogSeeder;
+use Database\Seeders\PublisherSupplyBlogsSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Str;
 use Tests\TestCase;
@@ -286,5 +290,20 @@ class BlogRoutesTest extends TestCase
             'status' => 'published',
             'featured_image' => PublisherPlatformGuideBlogPost::FEATURED_STORAGE,
         ]);
+    }
+
+    public function test_publisher_supply_posts_publish_with_faq_schema(): void
+    {
+        $this->seed(PublisherSupplyBlogsSeeder::class);
+
+        foreach ([
+            HowToPriceYourSiteBlogPost::SLUG,
+            WhySitesGetRejectedBlogPost::SLUG,
+            FasterPublisherPayoutsBlogPost::SLUG,
+        ] as $slug) {
+            $this->get('/blog/'.$slug)
+                ->assertOk()
+                ->assertSee('FAQPage', false);
+        }
     }
 }

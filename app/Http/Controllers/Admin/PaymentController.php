@@ -224,6 +224,17 @@ class PaymentController extends Controller
                         'This order cannot be marked paid. The listing left the catalog and is no longer fulfillable.'
                     );
                 }
+
+                $payments = app(OrderPaymentService::class);
+                $libraryState = $payments->libraryContentStateForSettlement($order);
+                if ($libraryState !== 'ok') {
+                    return $this->abortPaymentUpdate(
+                        (int) $id,
+                        $sendNotification,
+                        $this->libraryUnreadyForMarkPaidMessage($libraryState)
+                    );
+                }
+                $payments->refreshOrderItemLibraryFields($order);
             }
 
             if ($oldStatus === 'paid' && $newStatus === 'pending') {
@@ -815,6 +826,18 @@ class PaymentController extends Controller
         }
 
         app(CheckoutSchemaService::class)->ensureCheckoutTables();
+    }
+
+    /**
+     * @param  'missing'|'unready'|'taken'  $state
+     */
+    private function libraryUnreadyForMarkPaidMessage(string $state): string
+    {
+        return match ($state) {
+            'taken' => 'This order cannot be marked paid. The Content Library article is already used on another order.',
+            'missing' => 'This order cannot be marked paid. The Content Library article is missing.',
+            default => 'This order cannot be marked paid. The Content Library article is no longer ready for checkout.',
+        };
     }
 
     private function abortPaymentUpdate(int $orderId, bool $sendNotification, string $message)

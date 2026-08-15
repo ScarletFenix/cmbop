@@ -721,10 +721,12 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->order_id && ! $submission->isPublished()) {
+        if (($submission->isInUse() || $submission->isClaimedByAnotherOrder()) && ! $submission->isPublished()) {
             return response()->json([
                 'success' => false,
-                'message' => 'Articles in progress cannot be archived until the order is completed or cancelled.',
+                'message' => $submission->isClaimedByAnotherOrder() && ! $submission->isInUse()
+                    ? ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE
+                    : 'Articles in progress cannot be archived until the order is completed or cancelled.',
             ], 422);
         }
 

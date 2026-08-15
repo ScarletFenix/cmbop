@@ -5,6 +5,7 @@ namespace App\Console\Commands;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Models\User;
+use App\Services\CuratedBlogWriter;
 use App\Support\AcheterGuestPostsFrBlogPost;
 use App\Support\AdvertiserGuideDeBlogPost;
 use App\Support\BlogInlineImages;
@@ -50,31 +51,17 @@ class UpsertLanguageMarketBlogs extends Command
             $this->ensureImages($class);
 
             $payload = $class::payload();
-            unset($payload['faq']);
+            $blog = CuratedBlogWriter::upsert($class::SLUG, $payload, $authorUser?->id);
 
-            $existing = Blog::query()->where('slug', $class::SLUG)->first();
+            if (! $blog) {
+                $this->warn('Skipped deleted curated slug '.$class::SLUG);
 
-            $data = array_merge($payload, [
-                'updated_by' => $authorUser?->id,
-            ]);
-
-            if (! $existing) {
-                $data['published_at'] = now();
-                $data['created_by'] = $authorUser?->id;
-            } else {
-                $data['published_at'] = $existing->published_at ?? now();
-                $data['created_by'] = $existing->created_by ?? $authorUser?->id;
-                if ($existing->author) {
-                    $data['author'] = $existing->author;
-                }
+                continue;
             }
 
-            $blog = Blog::updateOrCreate(
-                ['slug' => $class::SLUG],
-                $data
-            );
-
-            $this->syncPrimaryTranslation($blog);
+            if (! $blog->manually_edited_at) {
+                $this->syncPrimaryTranslation($blog);
+            }
 
             $this->info('Upserted blog #'.$blog->id.' ('.$blog->slug.') locale='.($blog->primary_locale ?: 'null'));
             $ok++;

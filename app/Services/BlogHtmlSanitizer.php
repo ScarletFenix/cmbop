@@ -51,9 +51,29 @@ class BlogHtmlSanitizer
     public function sanitize(?string $html): string
     {
         $html = trim((string) $html);
-        if ($html === '' || $html === '<p><br></p>' || $html === '<p></p>') {
+
+        return $html === '' || $html === '<p><br></p>' || $html === '<p></p>';
+    }
+
+    /**
+     * Encode stored HTML for a <script type="application/json"> payload.
+     * JSON_HEX_TAG prevents </script> in the body from breaking the edit page.
+     */
+    public static function encodeForScript(?string $html): string
+    {
+        return json_encode(
+            (string) $html,
+            JSON_HEX_TAG | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES
+        ) ?: '""';
+    }
+
+    public function sanitize(?string $html): string
+    {
+        if (self::isEmptyHtml($html)) {
             return '';
         }
+
+        $html = trim((string) $html);
 
         // strip_tags keeps inner text, so remove these elements with their contents first.
         $html = preg_replace('/<(script|style|noscript|template)\b[^>]*>.*?<\/\1>/isu', '', $html) ?? $html;

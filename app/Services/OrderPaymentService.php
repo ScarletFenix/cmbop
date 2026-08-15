@@ -605,6 +605,7 @@ class OrderPaymentService
 
         foreach ($hiddenPending as $order) {
             $order->update(['status' => 'cancelled']);
+            ContentSubmission::releaseAllForOrder((int) $order->id);
         }
 
         if ($userId > 0) {
@@ -1103,13 +1104,13 @@ class OrderPaymentService
     /**
      * @return 'ok'|'missing'|'unready'|'taken'
      */
-    private function libraryContentStateForSettlement(Order $order): string
+    public function libraryContentStateForSettlement(Order $order): string
     {
         $order->loadMissing('items');
         foreach ($order->items as $item) {
             $id = (int) ($item->content_submission_id ?? 0);
             if ($id <= 0) {
-                if ($this->itemLooksLikeLibraryLine($item)) {
+                if ($item->looksLikeLibraryLine()) {
                     return 'missing';
                 }
 
@@ -1131,14 +1132,7 @@ class OrderPaymentService
         return 'ok';
     }
 
-    private function itemLooksLikeLibraryLine(OrderItem $item): bool
-    {
-        return (int) ($item->content_submission_id ?? 0) > 0
-            || filled($item->content_path)
-            || filled($item->content_original_name);
-    }
-
-    private function refreshOrderItemLibraryFields(Order $order): void
+    public function refreshOrderItemLibraryFields(Order $order): void
     {
         $schema = app(CheckoutSchemaService::class);
         $order->loadMissing('items');

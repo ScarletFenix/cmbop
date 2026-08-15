@@ -91,6 +91,257 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertSee('rel="canonical" href="'.url('/blog/english-fallback').'"', false);
     }
 
+    public function test_admin_can_create_english_only_post_when_other_locales_submit_empty_quill_html(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'English Only Title',
+                    'slug' => 'english-only-title',
+                    'excerpt' => 'English excerpt',
+                    'content' => '<p>English body</p>',
+                ],
+                'de' => [
+                    'title' => '',
+                    'slug' => '',
+                    'excerpt' => '',
+                    'content' => '<p><br></p>',
+                ],
+                'fr' => [
+                    'title' => '',
+                    'slug' => '',
+                    'excerpt' => '',
+                    'content' => '<p></p>',
+                ],
+                'nl' => [
+                    'title' => '',
+                    'slug' => '',
+                    'excerpt' => '',
+                    'content' => '',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog = Blog::query()->where('slug', 'english-only-title')->firstOrFail();
+        $this->assertDatabaseHas('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English Only Title',
+        ]);
+        $this->assertDatabaseMissing('blog_translations', ['blog_id' => $blog->id, 'locale' => 'de']);
+        $this->assertDatabaseMissing('blog_translations', ['blog_id' => $blog->id, 'locale' => 'fr']);
+        $this->assertDatabaseMissing('blog_translations', ['blog_id' => $blog->id, 'locale' => 'nl']);
+    }
+
+    public function test_admin_can_update_english_only_post_when_other_locales_submit_empty_quill_html(): void
+    {
+        $admin = $this->adminUser();
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Existing English',
+            'slug' => 'existing-english',
+            'content' => '<p>Original</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Existing English',
+            'slug' => 'existing-english',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Original</p>',
+            'is_published' => true,
+        ]);
+
+        $this->actingAs($admin)->put(route('admin.blogs.update', $blog->id), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Existing English',
+                    'slug' => 'existing-english',
+                    'excerpt' => 'Excerpt',
+                    'content' => '<p>Updated body</p>',
+                ],
+                'de' => [
+                    'title' => '',
+                    'content' => '<p><br></p>',
+                ],
+                'fr' => [
+                    'title' => '',
+                    'content' => '<p></p>',
+                ],
+                'nl' => [
+                    'title' => '',
+                    'content' => '',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseHas('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'content' => '<p>Updated body</p>',
+        ]);
+        $this->assertDatabaseMissing('blog_translations', ['blog_id' => $blog->id, 'locale' => 'de']);
+    }
+
+    public function test_create_page_hydrates_quill_from_old_input_and_escapes_script_tags(): void
+    {
+        $admin = $this->adminUser();
+
+        $html = $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->followingRedirects()
+            ->post(route('admin.blogs.store'), [
+                'status' => 'published',
+                'translations' => [
+                    'en' => [
+                        'title' => '',
+                        'content' => '<p>Keep this body</p></script><script>alert(1)</script>',
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="existingContent-en"', $html);
+        $this->assertStringContainsString('Keep this body', $html);
+        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
+        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $html);
+    }
+
+    public function test_edit_page_escapes_script_tags_in_existing_content_json(): void
+    {
+        $admin = $this->adminUser();
+        $blog = Blog::factory()->create([
+            'title' => 'XSS Edit',
+            'slug' => 'xss-edit',
+            'content' => '<p>Safe</p></script><script>alert(1)</script>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'XSS Edit',
+            'slug' => 'xss-edit',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Safe</p></script><script>alert(1)</script>',
+            'is_published' => true,
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.blogs.edit', $blog->id))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('id="existingContent-en"', $html);
+        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
+        $this->assertStringNotContainsString(
+            'id="existingContent-en"><p>Safe</p></script><script>alert(1)</script>',
+            $html
+        );
+    }
+
+    public function test_admin_persists_meta_and_can_unpublish_or_remove_a_locale(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Meta English',
+                    'slug' => 'meta-english',
+                    'excerpt' => 'English excerpt',
+                    'meta_title' => 'Custom EN title',
+                    'meta_description' => 'Custom EN description',
+                    'content' => '<p>English body</p>',
+                    'is_published' => '1',
+                ],
+                'de' => [
+                    'title' => 'Meta Deutsch',
+                    'slug' => 'meta-deutsch',
+                    'excerpt' => 'Deutscher Auszug',
+                    'content' => '<p>Deutscher Inhalt</p>',
+                    'is_published' => '1',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $blog = Blog::query()->where('slug', 'meta-english')->firstOrFail();
+        $this->assertDatabaseHas('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'meta_title' => 'Custom EN title',
+            'meta_description' => 'Custom EN description',
+        ]);
+
+        $this->get('/blog/meta-english')
+            ->assertOk()
+            ->assertSee('Custom EN title — SEOLinkBuildings', false)
+            ->assertSee('Custom EN description', false);
+
+        $this->actingAs($admin)->put(route('admin.blogs.update', $blog->id), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Meta English',
+                    'slug' => 'meta-english',
+                    'excerpt' => 'English excerpt',
+                    'meta_title' => 'Custom EN title',
+                    'meta_description' => 'Custom EN description',
+                    'content' => '<p>English body</p>',
+                    'is_published' => '1',
+                ],
+                'de' => [
+                    'title' => 'Meta Deutsch',
+                    'slug' => 'meta-deutsch',
+                    'excerpt' => 'Deutscher Auszug',
+                    'content' => '<p>Deutscher Inhalt</p>',
+                    'is_published' => '0',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseHas('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'is_published' => false,
+        ]);
+
+        $this->actingAs($admin)->put(route('admin.blogs.update', $blog->id), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Meta English',
+                    'slug' => 'meta-english',
+                    'content' => '<p>English body</p>',
+                    'is_published' => '1',
+                ],
+                'de' => [
+                    'title' => '',
+                    'content' => '<p><br></p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseMissing('blog_translations', [
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+        ]);
+    }
+
+    public function test_admin_index_links_published_posts_to_the_live_url(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)
+            ->get(route('admin.blogs.index'))
+            ->assertOk()
+            ->assertSee('View live', false)
+            ->assertSee('fa-external-link', false);
+    }
+
     public function test_admin_can_create_and_update_translations_without_overwriting_others(): void
     {
         $admin = $this->adminUser();
