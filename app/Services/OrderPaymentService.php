@@ -628,7 +628,8 @@ class OrderPaymentService
                     ? ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first()
                     : null;
                 $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
-                $attachSubmission = $submission && ! $articleTaken;
+                $articleUnready = $submission && ! $articleTaken && ! $submission->isReadyForCheckout();
+                $attachSubmission = $submission && ! $articleTaken && ! $articleUnready;
 
                 $order = $this->createPaidCardOrderRow($schema, [
                     'user_id' => $userId,
@@ -686,20 +687,22 @@ class OrderPaymentService
 
                 $item = OrderItem::create($schema->filterExistingColumns('order_items', $itemPayload));
 
-                if ($articleTaken) {
-                    app(OrderRefundService::class)->cancelAndRefund(
-                        $order,
-                        'Content Library article was already purchased on another checkout'
-                    );
+                if ($articleTaken || $articleUnready) {
+                    $reason = $articleTaken
+                        ? 'Content Library article was already purchased on another checkout'
+                        : 'Content Library article is no longer available for checkout';
+                    app(OrderRefundService::class)->cancelAndRefund($order, $reason);
                     $refundedInFinalize = round(
                         $refundedInFinalize + (float) $order->total_amount,
                         2
                     );
-                    Log::warning('Refunded duplicate Content Library Stripe checkout', [
-                        'reference_code' => $referenceCode,
-                        'order_id' => $order->id,
-                        'content_submission_id' => $submission?->id,
-                    ]);
+                    Log::warning($articleTaken
+                        ? 'Refunded duplicate Content Library Stripe checkout'
+                        : 'Refunded Stripe checkout for an unready Content Library article', [
+                            'reference_code' => $referenceCode,
+                            'order_id' => $order->id,
+                            'content_submission_id' => $submission?->id,
+                        ]);
 
                     continue;
                 }

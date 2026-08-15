@@ -913,6 +913,70 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($fresh->canBeOrdered());
     }
 
+    public function test_preview_patch_rejects_a_half_filled_checkout_link(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'target_url' => '',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentSubmission::CHECKOUT_LINK_MESSAGE);
+
+        $fresh = $submission->fresh();
+        $this->assertSame('https://example.com/tools', $fresh->target_url);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertTrue($fresh->isReadyForCheckout());
+        $this->assertSame('available', $fresh->libraryAvailability());
+    }
+
+    public function test_incomplete_link_is_not_shown_as_orderable(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['target_url' => null]);
+
+        $this->assertTrue($submission->fresh()->canBeOrdered());
+        $this->assertFalse($submission->fresh()->isReadyForCheckout());
+        $this->assertSame('needs_fix', $submission->fresh()->libraryAvailability());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString(
+            route('advertiser.content-library.order', $submission, false),
+            $html
+        );
+        $this->assertStringContainsString('Edit article', $html);
+    }
+
+    public function test_evaluation_does_not_call_an_incomplete_link_ready_to_order(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'target_url' => null,
+            'approval_notified_at' => null,
+            'evaluation_report' => null,
+        ]);
+
+        $result = app(ContentUploadService::class)->reEvaluateSubmission($submission->fresh());
+
+        $this->assertFalse($result['approved']);
+        $this->assertSame('needs_checkout_link', $result['notify_status'] ?? null);
+        $this->assertSame(ContentSubmission::CHECKOUT_LINK_MESSAGE, $result['message'] ?? null);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
+    }
+
     public function test_advertiser_can_edit_article_html_with_links_and_images(): void
     {
         config(['content_moderation.enabled' => false]);

@@ -1113,7 +1113,7 @@ class CatalogController extends Controller
                         ->orderable()
                         ->first();
                 }
-                if (! $submission || ! $submission->canBeOrdered()) {
+                if (! $submission || ! $submission->isReadyForCheckout()) {
                     $cleaned[$copyIndex] = 0;
                     $lineDirty = true;
                 } elseif ($site && ! $submission->matchesSite($site, $requireSame)) {
@@ -4659,6 +4659,10 @@ class CatalogController extends Controller
     {
         $locked = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first();
         if (! $locked || $locked->isClaimedByAnotherOrder((int) $order->id)) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+
+        if ($locked->order_id === null && ! $locked->isReadyForCheckout()) {
             throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
         }
 

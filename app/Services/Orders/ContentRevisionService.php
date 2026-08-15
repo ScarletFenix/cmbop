@@ -259,6 +259,12 @@ class ContentRevisionService
                     ]);
                 }
 
+                if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'Confirm image rights on this article before sending it back.',
+                    ]);
+                }
+
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
                 $linkedElsewhere = $submission->order_id
                     && (int) $submission->order_id !== (int) $lockedOrder->id;

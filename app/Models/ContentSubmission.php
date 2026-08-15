@@ -41,6 +41,8 @@ class ContentSubmission extends Model
 
     public const UNAVAILABLE_MESSAGE = 'Content Library article is no longer available';
 
+    public const CHECKOUT_LINK_MESSAGE = 'Add anchor text and a valid HTTPS target URL, or clear both link fields.';
+
     /** The advertiser owns or created every image. */
     public const IMAGE_RIGHTS_OWN = 'own';
 
@@ -824,6 +826,10 @@ class ContentSubmission extends Model
 
         if ($this->isEvaluating()) {
             return 'evaluating';
+        }
+
+        if ($this->canBeOrdered() && ! $this->hasCheckoutReadyLinks()) {
+            return 'needs_fix';
         }
 
         if ($this->canBeOrdered()) {
