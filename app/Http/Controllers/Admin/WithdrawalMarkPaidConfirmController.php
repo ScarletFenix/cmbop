@@ -7,6 +7,7 @@ use App\Models\Wallet;
 use App\Models\Withdrawal;
 use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
+use App\Services\Wallet\WithdrawalDuplicatePayoutWarning;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -98,7 +99,7 @@ class WithdrawalMarkPaidConfirmController extends Controller
             ->get();
 
         $duplicateMatches = $canMarkPaid
-            ? $this->duplicateAmountMatches($withdrawal)
+            ? app(WithdrawalDuplicatePayoutWarning::class)->matches($withdrawal)
             : collect();
 
         return [
@@ -107,33 +108,6 @@ class WithdrawalMarkPaidConfirmController extends Controller
             'possibleDuplicate' => $duplicateMatches->isNotEmpty(),
             'duplicateMatches' => $duplicateMatches,
         ];
-    }
-
-    /**
-     * @return Collection<int, Withdrawal>
-     */
-    protected function duplicateAmountMatches(Withdrawal $withdrawal): Collection
-    {
-        $lookbackDays = max(1, (int) config('billing.withdrawal_mark_paid_duplicate_lookback_days', 30));
-        $since = now()->subDays($lookbackDays);
-        $net = round((float) $withdrawal->net_amount, 2);
-
-        return Withdrawal::query()
-            ->where('user_id', $withdrawal->user_id)
-            ->where('status', 'completed')
-            ->whereKeyNot($withdrawal->id)
-            ->where('net_amount', $net)
-            ->where(function ($q) use ($since) {
-                $q->where('processed_at', '>=', $since)
-                    ->orWhere(function ($inner) use ($since) {
-                        $inner->whereNull('processed_at')
-                            ->where('created_at', '>=', $since);
-                    });
-            })
-            ->orderByDesc('processed_at')
-            ->orderByDesc('id')
-            ->limit(5)
-            ->get();
     }
 
     protected function payoutWallet(int $userId): ?Wallet
