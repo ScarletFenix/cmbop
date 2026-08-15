@@ -60,7 +60,7 @@ class CheckoutIntentPersistTest extends TestCase
         ]);
     }
 
-    public function test_admin_mark_paid_consumes_bonus_after_cache_flush(): void
+    public function test_admin_mark_paid_keeps_bonus_reserved_after_cache_flush(): void
     {
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
@@ -109,8 +109,8 @@ class CheckoutIntentPersistTest extends TestCase
 
         $wallet->refresh();
         $this->assertSame('paid', $order->fresh()->payment_status);
-        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
-        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
     }
 
     public function test_admin_mark_failed_refunds_bonus_after_cache_flush(): void

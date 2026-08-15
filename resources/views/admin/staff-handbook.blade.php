@@ -49,5 +49,20 @@
         </div>
     @endforeach
 
+    @if(auth()->user()?->isAdmin())
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body">
+                <h5 class="fw-bold mb-3">{{ __('messages.staff_handbook_section7_title') }}</h5>
+                <ul class="mb-0" style="line-height:1.8;">
+                    <li>{{ __('messages.staff_handbook_section7_list1') }}</li>
+                    <li>{{ __('messages.staff_handbook_section7_list2') }}</li>
+                    <li>{{ __('messages.staff_handbook_section7_list3') }}</li>
+                    <li>{{ __('messages.staff_handbook_section7_list4') }}</li>
+                    <li>{{ __('messages.staff_handbook_section7_list5') }}</li>
+                </ul>
+            </div>
+        </div>
+    @endif
+
 </div>
 @endsection

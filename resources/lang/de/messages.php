@@ -497,6 +497,12 @@ return [
     'staff_handbook_section6_list3' => 'URL, Preis, Metriken, Geo, Nischen und Bilder nur bei ausstehenden (nicht live) Sites korrigieren. Live, verifizierte oder archivierte Einträge sind schreibgeschützt — Admin fragen.',
     'staff_handbook_section6_list4' => 'Änderungen an Metriken, Geo, Nischen und Bildern sind intern und lösen keine Publisher-E-Mail aus. Name, URL oder Preis tun das.',
     'staff_handbook_section6_list5' => 'Ausstehende Sites nur mit einem Grund ablehnen/löschen, den der Publisher sieht. Die flache Review-Queue (Needs review → Sites) arbeitet über Publisher hinweg.',
+    'staff_handbook_section7_title' => 'Bestellzahlungen (Admin)',
+    'staff_handbook_section7_list1' => 'Paid = Überweisung bestätigt. Für Wise, Bank und Krypto erst nach Eingang auf dem Konto. Publisher werden auch benachrichtigt, wenn Kundenmail aus ist.',
+    'staff_handbook_section7_list2' => 'Failed = unbezahlt oder abgelehnt. Bricht einen laufenden Auftrag ab und gibt eine Wallet-Sperre frei. Nicht bei abgeschlossenen Platzierungen verwenden.',
+    'staff_handbook_section7_list3' => 'Refunded = Gutschrift auf das Advertiser-Wallet und Storno. Kartenrefunds kehren die Stripe-Belastung nicht um. Notiz und optionale Transferreferenz hinterlegen.',
+    'staff_handbook_section7_list4' => 'Abgeschlossene bezahlte Aufträge können hier nicht erstattet oder auf Failed gesetzt werden. Zuerst einen Link-Removed-Dispute öffnen, damit die Publisher-Auszahlung zurückgeholt wird.',
+    'staff_handbook_section7_list5' => 'Statusänderungen bleiben in der Auftragskonsole. Der Zahlungsstatus bleibt unter Order Payments.',
     'staff_handbook_terms_link' => 'Publisher-Nutzungsbedingungen',
     'staff_handbook_privacy_link' => 'Datenschutzerklärung',
 

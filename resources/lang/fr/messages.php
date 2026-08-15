@@ -497,6 +497,12 @@ return [
     'staff_handbook_section6_list3' => 'Corrigez URL, prix, métriques, geo, niches et images uniquement sur les sites en attente (non live). Les annonces live, vérifiées ou archivées sont en lecture seule — demander un admin.',
     'staff_handbook_section6_list4' => 'Les modifications de métriques, geo, niches et images restent internes et n’envoient pas d’e-mail à l’éditeur. Nom, URL ou prix le font.',
     'staff_handbook_section6_list5' => 'Refuser/supprimer un site en attente uniquement avec une raison visible par l’éditeur. La file plate (Needs review → Sites) traverse les éditeurs.',
+    'staff_handbook_section7_title' => 'Paiements de commande (admin)',
+    'staff_handbook_section7_list1' => 'Paid = virement confirmé. Pour Wise, banque et crypto uniquement après crédit sur le relevé. Les éditeurs sont notifiés même si l’e-mail client est décoché.',
+    'staff_handbook_section7_list2' => 'Failed = impayé ou refusé. Annule une commande en cours et libère une réserve wallet. Ne pas utiliser sur un placement terminé.',
+    'staff_handbook_section7_list3' => 'Refunded = crédit du wallet annonceur et annulation. Un remboursement carte ne reverse pas Stripe. Ajouter une note et une référence de virement optionnelle.',
+    'staff_handbook_section7_list4' => 'Les commandes payées et terminées ne peuvent pas être remboursées ou passées en Failed ici. Ouvrir d’abord un litige lien retiré pour récupérer le paiement éditeur.',
+    'staff_handbook_section7_list5' => 'Les changements d’étape restent dans la console commandes. Le statut de paiement reste dans Order Payments.',
     'staff_handbook_terms_link' => 'Conditions d’utilisation éditeur',
     'staff_handbook_privacy_link' => 'Politique de confidentialité',
 

@@ -819,6 +819,12 @@ return [
     'staff_handbook_section6_list3' => 'Fix URL, price, metrics, geo, niches, and images on pending (not-live) sites. Live, verified, or archived listings are read-only — ask an admin.',
     'staff_handbook_section6_list4' => 'Metrics, geo, niche, and image edits are internal ops and do not email the publisher. Changing name, URL, or price does notify them.',
     'staff_handbook_section6_list5' => 'Reject/delete a pending site only with a written reason the publisher will see. Use the flat review queue (Needs review → Sites) to work across publishers.',
+    'staff_handbook_section7_title' => 'Order Payments (admin)',
+    'staff_handbook_section7_list1' => 'Paid = transfer confirmed. Use for Wise, bank, and crypto after the money is on the statement. Publishers are notified even if you uncheck customer mail.',
+    'staff_handbook_section7_list2' => 'Failed = unpaid or declined. Cancels an in-flight order and releases a wallet hold. Do not use Failed on a completed placement.',
+    'staff_handbook_section7_list3' => 'Refunded = return funds to the advertiser wallet and cancel the order. Card refunds do not reverse the Stripe charge. Write a note and optional transfer reference.',
+    'staff_handbook_section7_list4' => 'Completed paid orders cannot be refunded or failed here. Open a link-removed dispute so the publisher payout is clawed back first.',
+    'staff_handbook_section7_list5' => 'Stage changes stay on the Orders console. Money status stays on Order Payments.',
     'staff_handbook_terms_link' => 'Publisher Terms of Service',
     'staff_handbook_privacy_link' => 'Privacy Policy',
 

@@ -24,6 +24,8 @@ class Order extends Model
         'total_amount',
         'payment_method',
         'payment_status',
+        'payment_reference',
+        'admin_notes',
         'status',
         'publication_mode',
         'scheduled_publish_at',

@@ -159,13 +159,14 @@ class AdminFailWalletReleaseTest extends TestCase
             ->postJson(route('admin.payments.updateStatus', $order->id), [
                 'payment_status' => 'failed',
             ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $wallet->refresh();
         $this->assertEqualsWithDelta(10.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(50.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertSame('completed', $order->fresh()->status);
+        $this->assertSame('paid', $order->fresh()->payment_status);
     }
 
     public function test_admin_failed_cancels_paid_card_order_and_releases_article(): void
@@ -253,11 +254,14 @@ class AdminFailWalletReleaseTest extends TestCase
             ->postJson(route('admin.payments.updateStatus', $order->id), [
                 'payment_status' => 'failed',
             ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonFragment([
+                'message' => 'Completed orders cannot be changed here. Use a dispute clawback so the publisher payout is reversed first.',
+            ]);
 
         $order->refresh();
-        $this->assertSame('failed', $order->payment_status);
+        $this->assertSame('paid', $order->payment_status);
         $this->assertSame('completed', $order->status);
     }
 
