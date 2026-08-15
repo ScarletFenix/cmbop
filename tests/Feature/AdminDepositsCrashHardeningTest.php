@@ -68,6 +68,18 @@ class AdminDepositsCrashHardeningTest extends TestCase
         $this->assertStringContainsString('Unknown', $html);
         $this->assertStringContainsString($deposit->reference_code, $html);
         $this->assertStringContainsString('deposit.user || {}', $html);
+        $this->assertStringContainsString('admin-deposits-filters', $html);
+        $this->assertStringContainsString('admin-deposits-filters__actions', $html);
+    }
+
+    public function test_deposits_filter_css_aligns_actions_with_inputs(): void
+    {
+        $css = file_get_contents(public_path('assets/css/admin-components.css'));
+        $this->assertStringContainsString('.admin-deposits-filters .slb-search-status:empty', $css);
+        $this->assertStringContainsString('.admin-deposits-filters__actions .btn', $css);
+
+        $live = file_get_contents(public_path('assets/css/slb-live-search.css'));
+        $this->assertStringContainsString('.slb-search-status:empty', $live);
     }
 
     public function test_array_admin_notes_do_not_approve_or_reject(): void
