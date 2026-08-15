@@ -239,7 +239,13 @@ class WelcomeBonusService
             return false;
         }
 
-        return IpUtils::checkIp($ip, $cidrs);
+        try {
+            return IpUtils::checkIp($ip, $cidrs);
+        } catch (\Throwable) {
+            // A bad CIDR in config must not 500 signup (and roll back a
+            // half-created account). Refuse the CF header and use REMOTE_ADDR.
+            return false;
+        }
     }
 
     public function ipAlreadyClaimed(string $ip, bool $lock = false): bool
@@ -257,7 +263,7 @@ class WelcomeBonusService
                 return true;
             }
 
-            return $this->legacyIpv6AllocationClaimed($ip, $lock);
+            return $this->legacyPlaceClaimed($ip, $lock);
         } catch (\Throwable) {
             return true;
         }
@@ -301,20 +307,22 @@ class WelcomeBonusService
         $keys = [$ip];
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             $keys[] = '::ffff:'.$ip;
+            $keys[] = '::FFFF:'.$ip;
         }
 
         return array_values(array_unique($keys));
     }
 
     /**
-     * Rows written before the /64 lock stored the full 128-bit address.
-     * Exact-key lookup misses those, so a second signup in the same
-     * allocation would collect another €20.
+     * Exact-string lookup misses leftover rows written before today's
+     * normalizer: full 128-bit IPv6, expanded/uppercase IPv4-mapped
+     * (::FFFF:1.2.3.4, 0:0:0:0:0:ffff:1.2.3.4). Compare packed form.
      */
-    private function legacyIpv6AllocationClaimed(string $ip, bool $lock = false): bool
+    private function legacyPlaceClaimed(string $ip, bool $lock = false): bool
     {
-        $wanted = $this->ipv6AllocationKey($ip);
-        if ($wanted === null) {
+        $wantedV6 = $this->ipv6AllocationKey($ip);
+        $wantedV4 = $this->ipv4Key($ip);
+        if ($wantedV6 === null && $wantedV4 === null) {
             return false;
         }
 
@@ -322,15 +330,42 @@ class WelcomeBonusService
         if ($lock) {
             $query->lockForUpdate();
         }
-        $stored = $query->pluck('ip_address');
 
-        foreach ($stored as $rowIp) {
-            if ($this->ipv6AllocationKey((string) $rowIp) === $wanted) {
+        foreach ($query->pluck('ip_address') as $rowIp) {
+            $row = (string) $rowIp;
+            if ($wantedV6 !== null && $this->ipv6AllocationKey($row) === $wantedV6) {
+                return true;
+            }
+            if ($wantedV4 !== null && $this->ipv4Key($row) === $wantedV4) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * IPv4, or IPv4-mapped IPv6, as a dotted quad. Used so leftover
+     * ::ffff: / ::FFFF: / expanded mapped rows still lock the IPv4 place.
+     */
+    private function ipv4Key(string $ip): ?string
+    {
+        $packed = @inet_pton($ip);
+        if ($packed === false) {
+            return null;
+        }
+
+        if (strlen($packed) === 16 && substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
+            $packed = substr($packed, 12);
+        }
+
+        if (strlen($packed) !== 4) {
+            return null;
+        }
+
+        $normalized = inet_ntop($packed);
+
+        return $normalized !== false ? $normalized : null;
     }
 
     private function ipv6AllocationKey(string $ip): ?string

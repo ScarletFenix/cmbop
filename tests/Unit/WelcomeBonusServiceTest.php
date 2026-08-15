@@ -281,6 +281,71 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
     }
 
+    public function test_legacy_uppercase_and_expanded_mapped_rows_block_the_ipv4_key(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::FFFF:1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+
+        WelcomeBonusClaim::query()->delete();
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '0:0:0:0:0:ffff:1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+
+        WelcomeBonusClaim::query()->delete();
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::ffff:102:304',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_broken_cloudflare_cidr_config_does_not_throw_or_trust_spoofed_header(): void
+    {
+        config(['welcome_bonus.cloudflare_cidrs' => ['not-a-cidr', new \stdClass]]);
+
+        $request = $this->request('8.8.8.8', [], [
+            'HTTP_CF_CONNECTING_IP' => '203.0.113.10',
+        ]);
+
+        $this->assertSame('8.8.8.8', $this->service->normalizedIp($request));
+        $this->assertSame(20.0, $this->service->amountFor($request, 'advertiser'));
+    }
+
     public function test_legacy_full_ipv6_claim_row_blocks_the_slash64(): void
     {
         WelcomeBonusClaim::query()->create([
