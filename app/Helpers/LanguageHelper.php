@@ -543,6 +543,8 @@ if (! function_exists('activity_action_labels')) {
         return marketing_task_labels() + [
             'site.approved' => 'Approved site',
             'site.rejected' => 'Rejected site',
+            'site.verified_file' => 'Verified site (file)',
+            'site.verified_manual' => 'Verified site (manual)',
             'site.archived' => 'Archived site',
             'site.deleted' => 'Deleted site',
             'site.claim_submitted' => 'Submitted site claim',
@@ -614,8 +616,49 @@ if (! function_exists('activity_action_label')) {
     {
         $action = (string) $action;
         $labels = activity_action_labels();
+        if (isset($labels[$action])) {
+            return $labels[$action];
+        }
 
-        return $labels[$action] ?? $action;
+        if (str_starts_with($action, 'site.verified_')) {
+            $method = substr($action, strlen('site.verified_'));
+
+            return $method !== '' ? 'Verified site ('.$method.')' : 'Verified site';
+        }
+
+        return $action;
+    }
+}
+
+if (! function_exists('activity_action_actions_matching')) {
+    /**
+     * Action codes whose friendly label or raw code starts with the search needle as a word.
+     *
+     * @return list<string>
+     */
+    function activity_action_actions_matching(?string $q): array
+    {
+        $needle = mb_strtolower(trim((string) $q));
+        if ($needle === '' || mb_strlen($needle) < 2) {
+            return [];
+        }
+
+        // Word-start only: "activate" hits Activated, not Deactivated.
+        $pattern = '/\b'.preg_quote($needle, '/').'/u';
+        $matched = [];
+        foreach (activity_action_labels() as $code => $label) {
+            $codeRaw = strtolower((string) $code);
+            $codeWords = str_replace(['.', '_'], ' ', $codeRaw);
+            if (
+                preg_match($pattern, strtolower((string) $label))
+                || preg_match($pattern, $codeRaw)
+                || preg_match($pattern, $codeWords)
+            ) {
+                $matched[] = $code;
+            }
+        }
+
+        return $matched;
     }
 }
 

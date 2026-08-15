@@ -40,6 +40,12 @@ class ActivityLogController extends Controller
         }
 
         $actions = array_keys(activity_action_labels());
+        foreach ($actionCounts->keys() as $code) {
+            if (is_string($code) && $code !== '' && ! in_array($code, $actions, true)) {
+                $actions[] = $code;
+            }
+        }
+        sort($actions);
 
         return view('admin.activity-logs', array_merge($meta, compact(
             'logs',
@@ -112,15 +118,17 @@ class ActivityLogController extends Controller
         );
 
         $term = search_text($request->input('user'));
+        $userId = (int) $request->input('user_id');
         if ($term !== '') {
             $like = like_contains($term);
-            $query->where(function ($q) use ($like) {
+            $query->where(function ($q) use ($like, $term) {
                 $q->whereRaw('user_name LIKE ? ESCAPE ?', [$like, '\\'])
                     ->orWhereRaw('user_email LIKE ? ESCAPE ?', [$like, '\\']);
+                if (ctype_digit($term) && (string) ((int) $term) === $term) {
+                    $q->orWhere('user_id', (int) $term);
+                }
             });
         }
-
-        $userId = (int) $request->input('user_id');
         if ($userId > 0) {
             $query->where('user_id', $userId);
         }
@@ -136,15 +144,7 @@ class ActivityLogController extends Controller
         $needle = search_text($request->input('q'));
         if ($needle !== '') {
             $like = like_contains($needle);
-            $matchedActions = [];
-            foreach (activity_action_labels() as $code => $label) {
-                if (
-                    str_contains(mb_strtolower($code), mb_strtolower($needle))
-                    || str_contains(mb_strtolower($label), mb_strtolower($needle))
-                ) {
-                    $matchedActions[] = $code;
-                }
-            }
+            $matchedActions = activity_action_actions_matching($needle);
             $query->where(function ($q) use ($like, $matchedActions) {
                 $q->whereRaw('subject_label LIKE ? ESCAPE ?', [$like, '\\'])
                     ->orWhereRaw('description LIKE ? ESCAPE ?', [$like, '\\']);

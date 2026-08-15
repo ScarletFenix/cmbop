@@ -267,6 +267,112 @@ class AdminActivityLogTest extends TestCase
         ]);
     }
 
+    public function test_search_activate_does_not_match_deactivated(): void
+    {
+        $this->makeLog([
+            'action' => 'site.activated',
+            'description' => 'Staff made the listing live',
+            'subject_label' => 'Live Site',
+        ]);
+        $this->makeLog([
+            'action' => 'site.deactivated',
+            'description' => 'Staff took the listing offline',
+            'subject_label' => 'Offline Site',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', ['q' => 'activate']))
+            ->assertOk()
+            ->assertSee('Live Site', false)
+            ->assertDontSee('Offline Site', false);
+    }
+
+    public function test_gone_site_does_not_link_to_unrelated_user_id_in_properties(): void
+    {
+        $other = User::factory()->create([
+            'name' => 'Unrelated User',
+            'email_verified_at' => now(),
+        ]);
+
+        $this->makeLog([
+            'action' => 'site.updated',
+            'description' => 'Edited a site that was later removed',
+            'subject_type' => Site::class,
+            'subject_id' => 999999,
+            'subject_label' => 'Stale Site',
+            'properties' => ['user_id' => $other->id],
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Stale Site', false)
+            ->assertSee('Removed', false)
+            ->assertDontSee('0 → 1', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString(route('admin.users.index', ['user' => $other->id]), $html);
+        $this->assertStringNotContainsString(route('admin.sites.edit', 999999), $html);
+    }
+
+    public function test_flag_status_change_is_hidden_and_observed_actions_appear_in_filter(): void
+    {
+        $this->makeLog([
+            'action' => 'site.approved',
+            'description' => 'Approved a listing',
+            'subject_label' => 'Flag Site',
+            'properties' => ['from' => 0, 'to' => 1],
+        ]);
+        $this->makeLog([
+            'action' => 'payment.status_updated',
+            'description' => 'Set payment to paid',
+            'subject_label' => 'ORD-FLAG',
+            'properties' => ['from' => 'pending', 'to' => 'paid'],
+        ]);
+        $this->makeLog([
+            'action' => 'site.verified_file',
+            'description' => 'Verified via file',
+            'subject_label' => 'File Verified Site',
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Approved a listing', false)
+            ->assertSee('Verified site (file)', false)
+            ->assertSee('pending → paid', false)
+            ->assertDontSee('0 → 1', false)
+            ->getContent();
+
+        $this->assertStringContainsString('value="site.verified_file"', $html);
+    }
+
+    public function test_numeric_user_filter_matches_actor_id(): void
+    {
+        $otherRole = Role::where('name', 'admin')->firstOrFail();
+        $other = User::factory()->create([
+            'name' => 'Other Admin',
+            'email' => 'other-admin@example.com',
+            'email_verified_at' => now(),
+            'active_role_id' => $otherRole->id,
+        ]);
+        $other->roles()->attach($otherRole->id);
+
+        $this->makeLog([
+            'user_id' => $other->id,
+            'user_name' => $other->name,
+            'user_email' => $other->email,
+            'description' => 'Other admin row',
+        ]);
+        $this->makeLog(['description' => 'Ada admin row']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', ['user' => (string) $other->id]))
+            ->assertOk()
+            ->assertSee('Other admin row', false)
+            ->assertDontSee('Ada admin row', false);
+    }
+
     public function test_logger_accepts_explicit_actor_and_try_log_swallows_failures(): void
     {
         Auth::logout();
@@ -284,6 +390,8 @@ class AdminActivityLogTest extends TestCase
         $this->assertSame($actor->id, $log->user_id);
         $this->assertSame('admin', $log->role);
 
+        $dispatcher = ActivityLog::getEventDispatcher();
+
         Log::shouldReceive('warning')->once()->withArgs(function (string $message, array $context) {
             return $message === 'Activity log failed' && ($context['action'] ?? null) === 'broken.action';
         });
@@ -294,6 +402,9 @@ class AdminActivityLogTest extends TestCase
 
         $this->assertNull(ActivityLogger::tryLog('broken.action', 'Should not throw'));
         ActivityLog::flushEventListeners();
+        if ($dispatcher) {
+            ActivityLog::setEventDispatcher($dispatcher);
+        }
     }
 
     /**

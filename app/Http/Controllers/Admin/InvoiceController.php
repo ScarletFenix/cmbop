@@ -171,6 +171,10 @@ class InvoiceController extends Controller
             return back()->with('error', 'Only tax invoices can be cancelled.');
         }
 
+        if ($invoice->isCancelled()) {
+            return back()->with('error', 'This invoice is already cancelled.');
+        }
+
         $billing->cancelInvoice($invoice, auth()->user(), $data['reason'] ?? null);
 
         ActivityLogger::tryLog(

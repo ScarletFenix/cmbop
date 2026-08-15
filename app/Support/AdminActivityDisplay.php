@@ -6,6 +6,7 @@ use App\Models\ActivityLog;
 use App\Models\AdBanner;
 use App\Models\Blog;
 use App\Models\BulkSiteRequest;
+use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Order;
@@ -66,7 +67,8 @@ class AdminActivityDisplay
      *     existingBlogIds: array<int, true>,
      *     existingWalletIds: array<int, int>,
      *     existingAnnouncementIds: array<int, true>,
-     *     existingBannerIds: array<int, true>
+     *     existingBannerIds: array<int, true>,
+     *     existingSubmissionIds: array<int, true>
      * }
      */
     public static function preload(iterable $logs): array
@@ -83,6 +85,7 @@ class AdminActivityDisplay
             'wallet' => [],
             'announcement' => [],
             'banner' => [],
+            'submission' => [],
         ];
 
         foreach ($logs as $log) {
@@ -98,6 +101,7 @@ class AdminActivityDisplay
                 'invoice_id' => 'invoice',
                 'blog_id' => 'blog',
                 'wallet_id' => 'wallet',
+                'submission_id' => 'submission',
             ] as $key => $bucket) {
                 $id = (int) data_get($props, $key);
                 if ($id > 0) {
@@ -118,6 +122,7 @@ class AdminActivityDisplay
             'existingWalletIds' => self::walletUserIds($buckets['wallet']),
             'existingAnnouncementIds' => self::existingKeys(SiteAnnouncement::class, $buckets['announcement']),
             'existingBannerIds' => self::existingKeys(AdBanner::class, $buckets['banner']),
+            'existingSubmissionIds' => self::existingKeys(ContentSubmission::class, $buckets['submission']),
         ];
     }
 
@@ -140,24 +145,22 @@ class AdminActivityDisplay
             }
         }
 
+        // Only fall back to the same family of subject (site / bulk). Guessing
+        // user_id/order_id from properties can send an admin to the wrong record.
         $props = is_array($log->properties) ? $log->properties : [];
-        foreach ([
-            ['site_id', Site::class],
-            ['bulk_site_request_id', BulkSiteRequest::class],
-            ['user_id', User::class],
-            ['order_id', Order::class],
-            ['wallet_id', Wallet::class],
-        ] as [$key, $class]) {
-            $propId = (int) data_get($props, $key);
-            if ($propId > 0) {
-                $url = self::urlForType($class, $propId, $lookup);
-                if ($url) {
-                    return $url;
-                }
+        $siteId = (int) data_get($props, 'site_id');
+        if ($siteId > 0) {
+            $url = self::urlForType(Site::class, $siteId, $lookup);
+            if ($url) {
+                return $url;
             }
         }
 
-        return null;
+        $bulkId = (int) data_get($props, 'bulk_site_request_id');
+
+        return $bulkId > 0
+            ? self::urlForType(BulkSiteRequest::class, $bulkId, $lookup)
+            : null;
     }
 
     public static function reason(?ActivityLog $log): ?string
@@ -210,6 +213,12 @@ class AdminActivityDisplay
             return null;
         }
 
+        // site.approved / site.activated store verified/active as 0/1 — the
+        // action label already says what happened; "0 → 1" is not an audit status.
+        if (self::isFlagPair($from, $to)) {
+            return null;
+        }
+
         return $fromText.' → '.$toText;
     }
 
@@ -243,6 +252,8 @@ class AdminActivityDisplay
             Blog::class => 'existingBlogIds',
             SiteAnnouncement::class => 'existingAnnouncementIds',
             AdBanner::class => 'existingBannerIds',
+            ContentSubmission::class => 'existingSubmissionIds',
+            Wallet::class => 'existingWalletIds',
         ];
 
         $key = $map[$type] ?? null;
@@ -274,6 +285,7 @@ class AdminActivityDisplay
             Wallet::class => 'wallet',
             SiteAnnouncement::class => 'announcement',
             AdBanner::class => 'banner',
+            ContentSubmission::class => 'submission',
         ];
 
         $bucket = $map[$type] ?? null;
@@ -366,7 +378,17 @@ class AdminActivityDisplay
             AdBanner::class => isset($lookup['existingBannerIds'][$id])
                 ? route('admin.promotions.banners.edit', $id)
                 : null,
+            ContentSubmission::class => isset($lookup['existingSubmissionIds'][$id])
+                ? route('admin.content-library.show', $id)
+                : null,
             default => null,
         };
+    }
+
+    private static function isFlagPair(mixed $from, mixed $to): bool
+    {
+        $flags = [0, 1, '0', '1', true, false];
+
+        return in_array($from, $flags, true) && in_array($to, $flags, true);
     }
 }
