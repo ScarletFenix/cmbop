@@ -3120,7 +3120,7 @@ class CatalogController extends Controller
                 'reason' => 'required|string|min:10',
             ]);
 
-            $order = Order::with('items')->findOrFail($id);
+            $order = Order::with(['items.site.publisher'])->findOrFail($id);
 
             if ($order->user_id !== auth()->id()) {
                 return response()->json([
@@ -3195,19 +3195,18 @@ class CatalogController extends Controller
                 ]);
             }
 
-            // Send email to publisher
-            $publisher = null;
+            $publishers = [];
             foreach ($order->items as $item) {
-                $site = Site::find($item->site_id);
-                if ($site && $site->publisher_id) {
-                    $publisher = User::find($site->publisher_id);
-                    if ($publisher) {
-                        break;
-                    }
+                if ($item->isPayoutComplete()) {
+                    continue;
+                }
+                $publisher = $item->site?->publisher;
+                if ($publisher instanceof User && filled($publisher->email)) {
+                    $publishers[$publisher->id] = $publisher;
                 }
             }
 
-            if ($publisher && $publisher->email) {
+            foreach ($publishers as $publisher) {
                 try {
                     Mail::to($publisher->email)->send(new ModificationRequested($order, $request->reason));
                 } catch (\Exception $e) {
@@ -4117,14 +4116,17 @@ class CatalogController extends Controller
             ]);
 
             $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-            $item = ! empty($data['order_item_id'])
-                ? $order->items->firstWhere('id', (int) $data['order_item_id'])
-                : $order->items->first();
+            $item = $this->resolveDisputableItem(
+                $order,
+                isset($data['order_item_id']) ? (int) $data['order_item_id'] : null,
+            );
             if (! $item) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Order has no items to dispute.',
-                ], 404);
+                    'message' => $order->items->count() > 1
+                        ? 'Please choose which placement to report.'
+                        : 'Order has no items to dispute.',
+                ], $order->items->count() > 1 ? 422 : 404);
             }
 
             $dispute = app(OrderClawbackService::class)->openDispute($item, $request->user(), $data['reason']);
@@ -4155,11 +4157,58 @@ class CatalogController extends Controller
 
     private function attachDisputeMeta(Order $order, ?OrderItem $item, OrderClawbackService $clawbacks): void
     {
-        $dispute = OrderItemDispute::tableAvailable() ? $item?->latestDispute : null;
-        $order->can_report_link_removed = $clawbacks->canOpenDispute($order, $item);
-        $order->dispute_status = $dispute?->status;
-        $order->dispute_id = $dispute?->id;
-        $order->dispute_reason = $dispute?->reason;
+        $reportable = false;
+        $open = null;
+        $latest = null;
+
+        foreach ($order->items as $line) {
+            $can = $clawbacks->canOpenDispute($order, $line);
+            $dispute = OrderItemDispute::tableAvailable() ? $line->latestDispute : null;
+            $line->setAttribute('can_report_link_removed', $can);
+            $line->setAttribute('dispute_status', $dispute?->status);
+            $line->setAttribute('dispute_id', $dispute?->id);
+            $reportable = $reportable || $can;
+            if ($dispute?->status === OrderItemDispute::STATUS_OPEN) {
+                $open = $dispute;
+            }
+            if ($dispute && ($latest === null || (int) $dispute->id > (int) $latest->id)) {
+                $latest = $dispute;
+            }
+        }
+
+        $shown = $open ?? $latest ?? (OrderItemDispute::tableAvailable() ? $item?->latestDispute : null);
+        $order->can_report_link_removed = $reportable;
+        $order->dispute_status = $shown?->status;
+        $order->dispute_id = $shown?->id;
+        $order->dispute_reason = $shown?->reason;
+    }
+
+    private function resolveDisputableItem(Order $order, ?int $orderItemId): ?OrderItem
+    {
+        if ($orderItemId) {
+            $item = $order->items->firstWhere('id', $orderItemId);
+
+            return $item instanceof OrderItem ? $item : null;
+        }
+
+        $clawbacks = app(OrderClawbackService::class);
+        $candidates = $order->items->filter(
+            fn ($line) => $line instanceof OrderItem && $clawbacks->canOpenDispute($order, $line)
+        );
+
+        if ($candidates->count() === 1) {
+            $item = $candidates->first();
+
+            return $item instanceof OrderItem ? $item : null;
+        }
+
+        if ($order->items->count() === 1) {
+            $item = $order->items->first();
+
+            return $item instanceof OrderItem ? $item : null;
+        }
+
+        return null;
     }
 
     /**

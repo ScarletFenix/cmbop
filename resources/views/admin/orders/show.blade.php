@@ -319,6 +319,15 @@
                                         <span class="badge text-bg-{{ $dBadge }}">{{ ucfirst($dispute->status) }}</span>
                                         <span class="small text-muted">#{{ $dispute->id }} · {{ optional($dispute->created_at)->format('M j, Y g:i A') }}</span>
                                     </div>
+                                    @php
+                                        $disputeLine = $order->items->firstWhere('id', $dispute->order_item_id);
+                                    @endphp
+                                    @if($disputeLine)
+                                        <div class="small text-muted mb-2">
+                                            Placement:
+                                            {{ $disputeLine->site_name ?: ($disputeLine->site?->site_name ?: '#'.$disputeLine->id) }}
+                                        </div>
+                                    @endif
                                     <div class="mb-2"><span class="text-muted small">Reason</span><div>{{ $dispute->reason }}</div></div>
                                     @if($dispute->admin_notes)
                                         <div class="mb-2"><span class="text-muted small">Admin notes</span><div>{{ $dispute->admin_notes }}</div></div>
@@ -537,6 +546,27 @@
     });
 
     document.getElementById('adminOpenDisputeBtn')?.addEventListener('click', async () => {
+        const items = @json(($disputableItems ?? collect())->map(fn ($line) => [
+            'id' => $line->id,
+            'label' => $line->site_name ?: ($line->site?->site_name ?: 'Placement #'.$line->id),
+        ])->values());
+        let itemId = items.length === 1 ? items[0].id : null;
+        if (items.length > 1) {
+            const options = {};
+            items.forEach((it) => { options[String(it.id)] = it.label; });
+            const { value: picked } = await Swal.fire({
+                title: 'Which placement?',
+                input: 'select',
+                inputOptions: options,
+                inputPlaceholder: 'Select a placement',
+                showCancelButton: true,
+                confirmButtonText: 'Continue',
+                inputValidator: (v) => v ? null : 'Please choose a placement.',
+            });
+            if (!picked) return;
+            itemId = Number(picked);
+        }
+
         const { value: reason } = await Swal.fire({
             title: 'Open link-removed dispute',
             input: 'textarea',
@@ -555,7 +585,9 @@
         });
         if (!reason) return;
         try {
-            const data = await postJson(@json(route('admin.orders.disputes.open', $order->id)), { reason });
+            const payload = { reason };
+            if (itemId) payload.order_item_id = itemId;
+            const data = await postJson(@json(route('admin.orders.disputes.open', $order->id)), payload);
             await Swal.fire('Opened', data.message, 'success');
             window.location.reload();
         } catch (e) {

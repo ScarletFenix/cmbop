@@ -670,6 +670,79 @@ class AdminOrdersConsoleTest extends TestCase
         $this->assertSame($siteUrl, $plainRow['site_admin_url'] ?? null);
     }
 
+    public function test_order_show_lists_sibling_line_disputes_and_requires_a_placement(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $firstPublisher = $this->userWithRole('publisher');
+        $secondPublisher = $this->userWithRole('publisher');
+        $firstSite = $this->siteFor($firstPublisher);
+        $secondSite = Site::create([
+            'publisher_id' => $secondPublisher->id,
+            'site_name' => 'Sibling Admin Dispute Site',
+            'site_url' => 'https://sibling-admin-dispute.example',
+            'domain' => 'sibling-admin-dispute.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 50,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Second placement',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $order = $this->orderFor($advertiser, $firstSite);
+        $order->update(['status' => 'completed', 'completed_at' => now()->subDay()]);
+        $secondItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $secondSite->id,
+            'site_name' => $secondSite->site_name,
+            'site_url' => $secondSite->site_url,
+            'price' => 50,
+            'content_link' => 'https://example.com/article-b.docx',
+            'live_url' => 'https://sibling-admin-dispute.example/live',
+        ]);
+
+        OrderItemDispute::ensureTable();
+        OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $secondItem->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'Second placement live link vanished after approval.',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.orders.show', $order->id))
+            ->assertOk()
+            ->assertSee('Second placement live link vanished after approval.')
+            ->assertSee('Sibling Admin Dispute Site')
+            ->assertSee('Which placement?', false)
+            ->assertSee('Open dispute');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.disputes.open', $order->id), [
+                'reason' => 'Trying to open without choosing a placement on a multi-item order.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.orders.disputes.open', $order->id), [
+                'reason' => 'First placement was also taken down after completion.',
+                'order_item_id' => $order->items->first()->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+    }
+
     public function test_order_show_exposes_dispute_anchor_for_list_signals(): void
     {
         $admin = $this->userWithRole('admin');

@@ -183,6 +183,8 @@ class AdvertiserOrdersUxAbcTest extends TestCase
         $this->assertStringNotContainsString('approveOrder', $renderOrdersFn[1]);
         $this->assertStringNotContainsString('requestModification', $renderOrdersFn[1]);
         $this->assertStringNotContainsString('reportLinkRemoved', $renderOrdersFn[1]);
+        $this->assertStringContainsString('window.reportLinkRemoved = function(orderId, itemId)', $js);
+        $this->assertStringContainsString('payload.order_item_id', $js);
     }
 
     public function test_awaiting_payment_and_awaiting_publisher_filters_split_pending(): void

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ModificationRequested;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -118,6 +119,62 @@ class AdvertiserApproveMultiItemTest extends TestCase
         $this->assertSame('yes', $second->modification_requested);
         $this->assertFalse((bool) $second->auto_approve_triggered);
         $this->assertEquals(70.0, (float) Wallet::where('user_id', $firstPublisher->id)->value('balance'));
+    }
+
+    public function test_request_modification_emails_every_unpaid_publisher(): void
+    {
+        [$advertiser, $firstPublisher, $secondPublisher, $order] = $this->multiItemReviewOrder(
+            firstLive: true,
+            secondLive: true,
+        );
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.order.modification', $order->id), [
+                'reason' => 'Please fix the heading on both placements and republish.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Mail::assertQueued(ModificationRequested::class, 2);
+        Mail::assertQueued(
+            ModificationRequested::class,
+            fn (ModificationRequested $mail) => $mail->hasTo($firstPublisher->email)
+        );
+        Mail::assertQueued(
+            ModificationRequested::class,
+            fn (ModificationRequested $mail) => $mail->hasTo($secondPublisher->email)
+        );
+    }
+
+    public function test_request_modification_skips_email_for_already_paid_publisher(): void
+    {
+        [$advertiser, $firstPublisher, $secondPublisher, $order] = $this->multiItemReviewOrder(
+            firstLive: true,
+            secondLive: true,
+        );
+
+        $order->items->first()->update([
+            'auto_approve_triggered' => true,
+            'completed_at' => now()->subHour(),
+            'publisher_status' => 'completed',
+        ]);
+        Wallet::where('user_id', $firstPublisher->id)->update(['balance' => 70]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.order.modification', $order->id), [
+                'reason' => 'Please fix only the unpaid placement and republish.',
+            ])
+            ->assertOk();
+
+        Mail::assertQueued(ModificationRequested::class, 1);
+        Mail::assertQueued(
+            ModificationRequested::class,
+            fn (ModificationRequested $mail) => $mail->hasTo($secondPublisher->email)
+        );
+        Mail::assertNotQueued(
+            ModificationRequested::class,
+            fn (ModificationRequested $mail) => $mail->hasTo($firstPublisher->email)
+        );
     }
 
     /**

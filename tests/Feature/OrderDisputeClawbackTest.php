@@ -305,6 +305,102 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertSame($order->id, $siblingArticle->fresh()->order_id);
     }
 
+    public function test_advertiser_can_report_a_sibling_placement_and_must_choose_a_line(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $firstPublisher = $this->makeUser('publisher');
+        $secondPublisher = $this->makeUser('publisher');
+        $firstSite = $this->makeSite($firstPublisher);
+        $secondSite = Site::create([
+            'publisher_id' => $secondPublisher->id,
+            'site_name' => 'Sibling Report Blog',
+            'site_url' => 'https://sibling-report.example',
+            'domain' => 'sibling-report.example',
+            'example_url' => 'https://sibling-report.example/post',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Sibling report site description. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-CLAW-REPORT-'.random_int(1000, 9999),
+            'subtotal' => 230,
+            'tax' => 0,
+            'total_amount' => 230,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => now()->subDays(2),
+            'completed_at' => now()->subDays(1),
+        ]);
+        $firstItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $firstSite->id,
+            'site_name' => $firstSite->site_name,
+            'site_url' => $firstSite->site_url,
+            'content_link' => 'https://example.com/article-a',
+            'price' => 115,
+            'publisher_price' => 100,
+            'live_url' => 'https://clawback-blog.example/live-a',
+        ]);
+        $secondItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $secondSite->id,
+            'site_name' => $secondSite->site_name,
+            'site_url' => $secondSite->site_url,
+            'content_link' => 'https://example.com/article-b',
+            'price' => 115,
+            'publisher_price' => 100,
+            'live_url' => 'https://sibling-report.example/live-b',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.report-link-removed', $order->id), [
+                'reason' => 'The second live article was deleted after completion.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.report-link-removed', $order->id), [
+                'reason' => 'The second live article was deleted after completion.',
+                'order_item_id' => $secondItem->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('order_item_disputes', [
+            'order_id' => $order->id,
+            'order_item_id' => $secondItem->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+        ]);
+        $this->assertDatabaseMissing('order_item_disputes', [
+            'order_item_id' => $firstItem->id,
+        ]);
+
+        $detail = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.orders.get', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('order.can_report_link_removed', true);
+
+        $items = collect($detail->json('order.items'));
+        $this->assertTrue((bool) $items->firstWhere('id', $firstItem->id)['can_report_link_removed']);
+        $this->assertFalse((bool) $items->firstWhere('id', $secondItem->id)['can_report_link_removed']);
+        $this->assertSame(OrderItemDispute::STATUS_OPEN, $items->firstWhere('id', $secondItem->id)['dispute_status']);
+    }
+
     public function test_email_catalog_can_preview_dispute_mailables(): void
     {
         $clawback = EmailCatalog::makeMailable('dispute_clawback_publisher');

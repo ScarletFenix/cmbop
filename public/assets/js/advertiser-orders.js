@@ -1258,7 +1258,7 @@ function bootAdvertiserOrdersPage() {
         });
     };
 
-    window.reportLinkRemoved = function(orderId) {
+    window.reportLinkRemoved = function(orderId, itemId) {
         Swal.fire({
             title: 'Report link removed',
             html: '<p class="small text-start mb-2">Use this if the publisher deleted the article after completion. Our team will review and may refund you while clawing back the publisher payout.</p>',
@@ -1277,6 +1277,8 @@ function bootAdvertiserOrdersPage() {
             }
         }).then((result) => {
             if (!result.isConfirmed) return;
+            const payload = { reason: result.value };
+            if (itemId) payload.order_item_id = itemId;
             fetch(ordersUrl(`/${orderId}/report-link-removed`), {
                 method: 'POST',
                 headers: {
@@ -1284,7 +1286,7 @@ function bootAdvertiserOrdersPage() {
                     'Content-Type': 'application/json',
                     'Accept': 'application/json'
                 },
-                body: JSON.stringify({ reason: result.value })
+                body: JSON.stringify(payload)
             })
             .then(response => response.json())
             .then(data => {
@@ -1601,6 +1603,15 @@ function bootAdvertiserOrdersPage() {
                 ${homepageHtml}
                 ${socialHtml}
                 ${liveUrlHtml}
+                ${order.status === 'completed' && itemsCount > 1 ? (
+                    it.can_report_link_removed
+                        ? `<div class="ov-block"><button type="button" class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id}, ${it.id || 'null'})">
+                            <i class="fa fa-flag"></i> Report link removed${it.site_name ? ` · ${escapeHtml(it.site_name)}` : ''}
+                        </button></div>`
+                        : (it.dispute_status
+                            ? `<div class="ov-block"><span class="badge text-bg-${it.dispute_status === 'upheld' ? 'danger' : (it.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(it.dispute_status)}</span></div>`
+                            : '')
+                ) : ''}
             `;
         }).join('') || '<div class="text-muted">No placements on this order.</div>';
 
@@ -1645,14 +1656,16 @@ function bootAdvertiserOrdersPage() {
                 </button>
             `;
         } else if (order.status === 'completed') {
+            const reportableItems = items.filter((it) => it && it.can_report_link_removed);
+            const singleReport = itemsCount <= 1 && reportableItems[0];
             actionButtons = `
                 <button class="btn btn-sm btn-outline-secondary" onclick="openChat(${order.id}, ${jsAttr(order.order_number || '')})">
                     <i class="fa fa-comments"></i> Chat
                 </button>
-                ${order.can_report_link_removed ? `<button class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id})">
+                ${singleReport ? `<button class="btn btn-sm btn-outline-danger" onclick="reportLinkRemoved(${order.id}, ${reportableItems[0].id || 'null'})">
                     <i class="fa fa-flag"></i> Report link removed
                 </button>` : ''}
-                ${order.dispute_status ? `<span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span>` : ''}
+                ${itemsCount <= 1 && order.dispute_status ? `<span class="badge text-bg-${order.dispute_status === 'upheld' ? 'danger' : (order.dispute_status === 'dismissed' ? 'secondary' : 'warning')}">Dispute: ${escapeHtml(order.dispute_status)}</span>` : ''}
             `;
         } else if (!['completed', 'cancelled'].includes(order.status) || order.payment_status === 'refunded') {
             actionButtons = `
