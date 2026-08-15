@@ -298,4 +298,100 @@ class SiteRatingTest extends TestCase
         $this->assertStringContainsString('__ID__', $html);
         $this->assertStringNotContainsString('`/admin/site-ratings/${btn.dataset.id}`', $html);
     }
+
+    public function test_advertiser_cannot_change_a_hidden_rating(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $site = $this->site($publisher);
+        $item = $this->completedOrderItem($advertiser, $site, 'completed');
+
+        $rating = SiteRating::create([
+            'site_id' => $site->id,
+            'user_id' => $advertiser->id,
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'rating' => 5,
+            'comment' => 'Great publisher',
+            'status' => SiteRating::STATUS_APPROVED,
+        ]);
+        SiteRating::refreshSiteAggregate($site->id);
+
+        $this->actingAs($admin)->putJson(route('admin.site-ratings.update', $rating->id), [
+            'status' => 'hidden',
+        ])->assertOk();
+
+        $this->actingAs($advertiser)->postJson(route('advertiser.ratings.store'), [
+            'order_item_id' => $item->id,
+            'rating' => 1,
+            'comment' => 'Trying to unhide',
+        ])->assertStatus(422)->assertJsonPath('success', false);
+
+        $this->actingAs($advertiser)->postJson(route('advertiser.ratings.batch'), [
+            'ratings' => [[
+                'order_item_id' => $item->id,
+                'rating' => 1,
+                'comment' => 'Trying to unhide via batch',
+            ]],
+        ])->assertStatus(422)->assertJsonPath('success', false);
+
+        $rating->refresh();
+        $this->assertSame(SiteRating::STATUS_HIDDEN, $rating->status);
+        $this->assertSame(5, (int) $rating->rating);
+        $this->assertSame('Great publisher', $rating->comment);
+        $this->assertSame(0, (int) $site->fresh()->rating_count);
+    }
+
+    public function test_edit_button_comment_is_not_double_escaped(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+        $item = $this->completedOrderItem($advertiser, $site, 'completed');
+
+        SiteRating::create([
+            'site_id' => $site->id,
+            'user_id' => $advertiser->id,
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'rating' => 4,
+            'comment' => 'Good & "fast"',
+            'status' => SiteRating::STATUS_APPROVED,
+        ]);
+
+        $html = $this->actingAs($this->admin())
+            ->get(route('admin.site-ratings.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-comment="Good &amp; &quot;fast&quot;"', $html);
+        $this->assertStringNotContainsString('Good &amp;amp;', $html);
+    }
+
+    public function test_ratings_index_ok_when_table_missing(): void
+    {
+        Schema::dropIfExists('site_ratings');
+
+        try {
+            $this->assertFalse(Schema::hasTable('site_ratings'));
+
+            $this->actingAs($this->admin())
+                ->get(route('admin.site-ratings.index'))
+                ->assertOk()
+                ->assertSee('Publisher Ratings', false)
+                ->assertSee('No ratings yet.', false);
+        } finally {
+            // DROP TABLE commits outside RefreshDatabase's transaction — put the
+            // table back so later tests in this process still have a schema.
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_240000_create_site_ratings_table.php',
+                '--force' => true,
+            ]);
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_16_250000_tie_site_ratings_to_completed_orders.php',
+                '--force' => true,
+            ]);
+        }
+    }
 }

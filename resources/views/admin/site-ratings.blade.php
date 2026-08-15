@@ -97,7 +97,7 @@
                                 <button type="button" class="btn btn-sm btn-outline-primary edit-rating"
                                         data-id="{{ $rating->id }}"
                                         data-rating="{{ $rating->rating }}"
-                                        data-comment="{{ e($rating->comment) }}"
+                                        data-comment="{{ $rating->comment }}"
                                         data-status="{{ $rating->status }}">Edit</button>
                                 <button type="button" class="btn btn-sm btn-outline-danger delete-rating" data-id="{{ $rating->id }}">Delete</button>
                             </td>

@@ -7,38 +7,57 @@ use App\Models\Site;
 use App\Models\SiteRating;
 use App\Services\ActivityLogger;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class SiteRatingController extends Controller
 {
     public function index(Request $request)
     {
-        $query = SiteRating::query()
-            ->with(['site:'.implode(',', $this->siteRelationSelectColumns()), 'user:id,name,email'])
-            ->latest('id');
+        $ratings = new LengthAwarePaginator([], 0, 30);
+        $ratings->withPath($request->url())->appends($request->query());
+        $sites = collect();
 
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        }
-        if ($request->filled('site_id')) {
-            $query->where('site_id', (int) $request->site_id);
-        }
-        if ($request->filled('q')) {
-            $q = trim((string) $request->q);
-            $query->where(function ($inner) use ($q) {
-                $inner->where('comment', 'like', "%{$q}%")
-                    ->orWhereHas('site', function ($s) use ($q) {
-                        $s->where('site_name', 'like', "%{$q}%")
-                            ->orWhere('domain', 'like', "%{$q}%");
-                    })
-                    ->orWhereHas('user', function ($u) use ($q) {
-                        $u->where('name', 'like', "%{$q}%")
-                            ->orWhere('email', 'like', "%{$q}%");
+        try {
+            if (Schema::hasTable('site_ratings')) {
+                $query = SiteRating::query()
+                    ->with(['site:'.implode(',', $this->siteRelationSelectColumns()), 'user:id,name,email'])
+                    ->latest('id');
+
+                $status = is_string($request->query('status')) ? $request->query('status') : '';
+                if (in_array($status, [SiteRating::STATUS_APPROVED, SiteRating::STATUS_HIDDEN, SiteRating::STATUS_PENDING], true)) {
+                    $query->where('status', $status);
+                }
+                if ($request->filled('site_id')) {
+                    $query->where('site_id', (int) $request->site_id);
+                }
+                $q = is_string($request->query('q')) ? trim($request->query('q')) : '';
+                if ($q !== '') {
+                    $query->where(function ($inner) use ($q) {
+                        $inner->where('comment', 'like', "%{$q}%")
+                            ->orWhereHas('site', function ($s) use ($q) {
+                                $s->where('site_name', 'like', "%{$q}%")
+                                    ->orWhere('domain', 'like', "%{$q}%");
+                            })
+                            ->orWhereHas('user', function ($u) use ($q) {
+                                $u->where('name', 'like', "%{$q}%")
+                                    ->orWhere('email', 'like', "%{$q}%");
+                            });
                     });
-            });
-        }
+                }
 
-        $ratings = $query->paginate(30)->withQueryString();
-        $sites = Site::query()->orderBy('site_name')->get(['id', 'site_name', 'domain']);
+                $ratings = $query->paginate(30)->withQueryString();
+            }
+
+            $sites = Site::query()->orderBy('site_name')->get(['id', 'site_name', 'domain']);
+        } catch (\Throwable $e) {
+            Log::warning('Admin site ratings index failed', [
+                'error' => $e->getMessage(),
+            ]);
+            $ratings = new LengthAwarePaginator([], 0, 30);
+            $ratings->withPath($request->url())->appends($request->query());
+        }
 
         return view('admin.site-ratings', compact('ratings', 'sites'));
     }
