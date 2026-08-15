@@ -158,6 +158,33 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->assertStringNotContainsString($hidden->email, $html);
     }
 
+    public function test_user_search_treats_underscore_as_literal(): void
+    {
+        $admin = $this->makeUser('admin');
+        $exact = $this->makeUser('advertiser');
+        $wildcard = $this->makeUser('publisher');
+        $exact->update(['name' => 'foo_bar dossier', 'email' => 'foo-bar-underscore@example.test']);
+        $wildcard->update(['name' => 'fooXbar dossier', 'email' => 'fooxbar-wild@example.test']);
+
+        // Unescaped LIKE "%foo_bar%" would also match fooXbar and stay on the list.
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'foo_bar']))
+            ->assertRedirect(route('admin.finance.user', $exact));
+    }
+
+    public function test_user_search_does_not_treat_leading_zero_id_as_user_key(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $advertiser->update(['name' => 'Zero Pad Person', 'email' => 'zero-pad@example.test']);
+        $padded = '0'.(string) $advertiser->id;
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => $padded]))
+            ->assertOk()
+            ->assertSee('No users match');
+    }
+
     public function test_dossier_rows_deep_link_to_admin_money_pages(): void
     {
         $admin = $this->makeUser('admin');
@@ -271,6 +298,29 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->assertStringContainsString('LEDGER-KEEP', $csv);
         $this->assertStringNotContainsString('LEDGER-SKIP', $csv);
         $this->assertStringNotContainsString($other->email, $csv);
+    }
+
+    public function test_ledger_search_treats_underscore_as_literal(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        app(WalletLedgerService::class)->recordTransferIn($wallet, 10, null, 'ORD_1', 'underscore ref');
+        app(WalletLedgerService::class)->recordTransferIn($wallet, 11, null, 'ORDX1', 'wildcard ref');
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => 'ORD_1']))
+            ->assertOk()
+            ->assertSee('underscore ref')
+            ->assertDontSee('wildcard ref');
     }
 
     public function test_ledger_ignores_array_search_and_invalid_dates(): void

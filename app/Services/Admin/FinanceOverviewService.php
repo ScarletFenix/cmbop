@@ -357,6 +357,7 @@ class FinanceOverviewService
                 $q->whereIn('payment_method', ['card', 'stripe'])
                     ->orWhere(function ($q) use ($manualMethods) {
                         $q->whereNotNull('stripe_session_id')
+                            ->where('stripe_session_id', '!=', '')
                             ->where(function ($q) use ($manualMethods) {
                                 $q->whereNull('payment_method')
                                     ->orWhereNotIn('payment_method', $manualMethods);

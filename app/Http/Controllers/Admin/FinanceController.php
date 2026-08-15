@@ -43,8 +43,10 @@ class FinanceController extends Controller
 
             // Character length after stripping LIKE wildcards so "%@" / "é"
             // cannot bypass the 2-character floor (strlen is bytes).
+            // The LIKE itself uses the raw query with escaped wildcards so
+            // "foo_bar" still matches an underscore email.
             if (mb_strlen($needle) >= 2) {
-                $fetched = $this->searchUsers($needle, self::DOSSIER_SEARCH_LIMIT + 1);
+                $fetched = $this->searchUsers($userQuery, self::DOSSIER_SEARCH_LIMIT + 1);
                 if ($fetched->count() === 1) {
                     return redirect()->route('admin.finance.user', $fetched->first());
                 }
@@ -267,15 +269,19 @@ class FinanceController extends Controller
         }
 
         $search = search_text($request->input('search'));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('reference', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('id', $search)
-                    ->orWhereHas('user', function ($sub) use ($search) {
-                        $sub->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
+        $meaningful = $this->dossierSearchNeedle($search);
+        if ($meaningful !== '') {
+            $like = like_contains($search);
+            $query->where(function ($q) use ($like, $search) {
+                $q->whereRaw('reference LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('description LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereHas('user', function ($sub) use ($like) {
+                        $sub->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                            ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
                     });
+                if (ctype_digit($search)) {
+                    $q->orWhere('id', (int) $search);
+                }
             });
         }
 
@@ -306,7 +312,7 @@ class FinanceController extends Controller
 
     private function redirectToDossierIfUnique(string $userQuery): ?RedirectResponse
     {
-        if (! ctype_digit($userQuery)) {
+        if (! ctype_digit($userQuery) || (string) ((int) $userQuery) !== $userQuery) {
             return null;
         }
 
@@ -328,10 +334,12 @@ class FinanceController extends Controller
      */
     private function searchUsers(string $needle, int $limit)
     {
+        $like = like_contains($needle);
+
         return User::query()
-            ->where(function ($query) use ($needle) {
-                $query->where('name', 'like', '%'.$needle.'%')
-                    ->orWhere('email', 'like', '%'.$needle.'%');
+            ->where(function ($query) use ($like) {
+                $query->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
             })
             ->orderBy('name')
             ->limit($limit)

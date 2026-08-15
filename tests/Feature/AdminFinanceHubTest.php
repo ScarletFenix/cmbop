@@ -181,6 +181,30 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(50.0, $overview['cash_split']['cash_in_bank']);
     }
 
+    public function test_empty_stripe_session_id_is_not_treated_as_card_deposit(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-EMPTY-SESSION',
+            'amount' => 40,
+            'payment_method' => 'paypal',
+            'status' => 'completed',
+            'approved_at' => now(),
+            'stripe_session_id' => '',
+        ]);
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(40.0, $overview['money_in']['deposits_completed']['amount']);
+        $this->assertEquals(0.0, $overview['money_in']['deposits_completed']['stripe']);
+        $this->assertEquals(0.0, $overview['money_in']['deposits_completed']['manual']);
+        $this->assertEquals(0.0, $overview['cash_split']['cash_in_bank']);
+    }
+
     public function test_withdrawable_sums_per_wallet_not_aggregate_bonus(): void
     {
         $admin = $this->makeUser('admin');
