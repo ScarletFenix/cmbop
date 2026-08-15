@@ -4939,10 +4939,10 @@ class CatalogController extends Controller
             ->whereIn('status', ['pending', 'cancelled'])
             ->get();
 
-        // Stripe-first (Add Funds style): no order rows yet — clear package + refund bonus.
+        // Stripe-first (Add Funds style): no order rows yet. Release reserved
+        // bonus, but keep the package so a late paid webhook can still settle.
         if ($canceled->isEmpty()) {
             $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
-            $paymentService->forgetPendingCheckout($referenceCode);
             session()->forget(['pending_card_reference', 'checkout_deferred_cart']);
 
             Log::info('Cancelled Stripe-first card checkout (no order rows yet)', [

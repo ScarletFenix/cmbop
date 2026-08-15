@@ -77,7 +77,7 @@ class CheckoutIntentService
             return $cached;
         }
 
-        $intent = $this->findFreshIntent($referenceCode);
+        $intent = $this->findIntent($referenceCode);
         $package = is_array($intent?->package) ? $intent->package : null;
         if ($package) {
             $ttl = $intent->expires_at ? now()->diffInSeconds($intent->expires_at, false) : 3600;
@@ -205,19 +205,6 @@ class CheckoutIntentService
         } catch (\Throwable) {
             return null;
         }
-    }
-
-    private function findFreshIntent(string $referenceCode): ?CheckoutIntent
-    {
-        $intent = $this->findIntent($referenceCode);
-        if (! $intent) {
-            return null;
-        }
-        if ($intent->expires_at && $intent->expires_at->isPast()) {
-            return null;
-        }
-
-        return $intent;
     }
 
     private function tableReady(): bool

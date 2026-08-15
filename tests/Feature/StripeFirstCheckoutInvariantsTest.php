@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CheckoutIntent;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -774,5 +775,92 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(0.0, app(OrderPaymentService::class)->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_cancel_url_keeps_package_so_late_webhook_can_settle(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'cancel-keep-pkg.example', 80);
+        $ref = 'CANCEL-KEEP-PKG-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 80));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => $ref]))
+            ->assertRedirect();
+
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+
+        $this->signedWebhook([
+            'id' => 'evt_cancel_keep_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_cancel_keep_pkg',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_cancel_keep',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(1, Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->count());
+    }
+
+    public function test_finalize_materializes_expired_checkout_intent_after_cache_flush(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'expired-intent.example', 80);
+        $ref = 'EXPIRED-INTENT-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 80));
+
+        CheckoutIntent::query()->where('reference_code', $ref)->update([
+            'expires_at' => now()->subHour(),
+        ]);
+        Cache::flush();
+
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+
+        $this->signedWebhook([
+            'id' => 'evt_expired_intent_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_expired_intent',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_expired_intent',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(1, Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->count());
+        $this->assertSame($site->id, (int) OrderItem::query()->whereHas('order', function ($q) use ($ref) {
+            $q->where('reference_code', $ref);
+        })->value('site_id'));
     }
 }
