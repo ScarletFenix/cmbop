@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -166,6 +167,34 @@ class CatalogHideModeIdentityTest extends TestCase
 
         $visibility->reveal($hidden, $site);
         $this->assertSame('Policy Name Co', $visibility->nameFor($hidden->fresh(), $site));
+    }
+
+    public function test_catalog_ok_when_hide_until_is_unparseable(): void
+    {
+        $site = $this->site('leftover-hide.example', 'Leftover Hide Brand');
+        $user = $this->advertiser([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ]);
+        DB::table('users')->where('id', $user->id)->update([
+            'catalog_hide_until' => 'not-a-date',
+        ]);
+
+        $fresh = $user->fresh();
+        $this->assertFalse($fresh->inCatalogHideMode());
+        $this->assertNull($fresh->catalog_hide_until);
+
+        $html = $this->actingAs($fresh)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertDontSee('Something went wrong')
+            ->getContent();
+
+        $this->assertStringContainsString('Leftover Hide Brand', $html);
+        $this->assertStringContainsString('leftover-hide.example', $html);
+        $this->assertStringNotContainsString('We’ve temporarily hidden listing names and website addresses', $html);
+        $this->assertStringContainsString('inCatalogHideMode: false', $html);
+        $this->assertStringContainsString((string) $site->id, $html);
     }
 
     public function test_copy_track_js_reloads_after_hide_mode_so_names_do_not_linger(): void

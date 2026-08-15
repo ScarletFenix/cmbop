@@ -39,15 +39,19 @@ class NewSitesSelector
             ->where(function ($q) use ($newWithin) {
                 // New organic picks must clear the quality bar; a live discount
                 // is still news even when metrics are below the gate.
+                // Bound created_at so leftover Hostinger strings cannot fill
+                // the candidate window (SQLite treats 'not-a-date' >= $newWithin).
                 $q->where(function ($inner) use ($newWithin) {
                     $inner->where('created_at', '>=', $newWithin)
+                        ->where('created_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL)
                         ->withGoodMetrics();
                 })->orWhere(fn ($inner) => $inner->onDiscount());
             })
             // Pull a wider set than needed so the ranking below has room.
             ->orderByDesc('created_at')
             ->limit($max * 6)
-            ->get();
+            ->get()
+            ->filter(fn (Site $site) => $this->belongsInDigest($site, $newWithin));
 
         return $candidates
             ->sortByDesc(fn (Site $site) => $this->score($site, $newWithin))
@@ -75,6 +79,22 @@ class NewSitesSelector
         $blacklisted = UserBlacklist::where('user_id', $user->id)->pluck('site_id');
 
         return $ordered->merge($favourited)->merge($blacklisted)->filter()->unique()->values();
+    }
+
+    /**
+     * PHP counterpart of the SQL candidate clause: live sale, or a parseable
+     * created_at inside the new-sites window. Leftover timestamps fail closed.
+     */
+    private function belongsInDigest(Site $site, Carbon $newWithin): bool
+    {
+        if ($site->hasActiveCustomDiscount()) {
+            return true;
+        }
+
+        $created = $site->created_at;
+
+        return $created instanceof \DateTimeInterface
+            && Carbon::instance($created)->greaterThanOrEqualTo($newWithin);
     }
 
     /**

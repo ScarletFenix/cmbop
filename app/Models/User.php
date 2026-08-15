@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -13,7 +14,7 @@ use Illuminate\Support\Facades\Schema;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, ToleratesUnparseableDates;
 
     /**
      * The attributes that are mass assignable.
@@ -98,9 +99,13 @@ class User extends Authenticatable implements MustVerifyEmail
 
     public function inCatalogHideMode(): bool
     {
-        $until = $this->catalog_hide_until ?? null;
+        try {
+            $until = $this->catalog_hide_until ?? null;
 
-        return $until !== null && $until->isFuture();
+            return $until !== null && $until->isFuture();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     public function payoutProfileLocked(): bool

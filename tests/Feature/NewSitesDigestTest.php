@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\UserFavorite;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -321,6 +322,74 @@ class NewSitesDigestTest extends TestCase
         $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
 
         Mail::assertQueued(NewSitesDigest::class, fn ($mail) => $mail->rows->count() === 6);
+    }
+
+    public function test_unparseable_created_at_is_not_treated_as_new(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->paidOrderFor($advertiser, $this->site($publisher));
+        $this->stockCatalog($publisher);
+
+        $leftover = $this->site($publisher, ['site_name' => 'Garbage Created Digest Site']);
+        DB::table('sites')->where('id', $leftover->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
+
+        Mail::assertQueued(NewSitesDigest::class, function ($mail) {
+            $names = $mail->rows->pluck('site.site_name');
+
+            return ! $names->contains('Garbage Created Digest Site')
+                && $mail->rows->every(fn (array $row) => $row['is_new'] === true || $row['discount'] !== null);
+        });
+    }
+
+    public function test_unparseable_created_at_does_not_crowd_out_real_new_sites(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->paidOrderFor($advertiser, $this->site($publisher));
+
+        for ($i = 0; $i < 40; $i++) {
+            $leftover = $this->site($publisher, ['site_name' => 'Leftover Crowd '.$i]);
+            DB::table('sites')->where('id', $leftover->id)->update([
+                'created_at' => 'not-a-date',
+            ]);
+        }
+
+        $this->stockCatalog($publisher, 4);
+
+        $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
+
+        Mail::assertQueued(NewSitesDigest::class, function ($mail) {
+            $names = $mail->rows->pluck('site.site_name');
+
+            return $mail->rows->count() >= 3
+                && $names->every(fn (string $name) => ! str_starts_with($name, 'Leftover Crowd'));
+        });
+    }
+
+    public function test_unparseable_digest_clock_still_sends_and_heals(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->paidOrderFor($advertiser, $this->site($publisher));
+        $this->stockCatalog($publisher);
+
+        DB::table('users')->where('id', $advertiser->id)->update([
+            'new_sites_digest_sent_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($advertiser->fresh()->new_sites_digest_sent_at);
+
+        $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
+
+        Mail::assertQueued(NewSitesDigest::class, fn ($mail) => $mail->hasTo($advertiser->email));
+        $healed = $advertiser->fresh()->new_sites_digest_sent_at;
+        $this->assertNotNull($healed);
+        $this->assertTrue($healed->greaterThanOrEqualTo(now()->subMinute()));
     }
 
     public function test_unverified_and_inactive_listings_stay_out_of_the_catalog_email(): void

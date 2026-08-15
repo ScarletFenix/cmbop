@@ -147,6 +147,7 @@ class PromotionTrackingService
                 ->where('subject_type', $subjectType)
                 ->where('event', $event)
                 ->where('occurred_on', '>=', $since->format('Y-m-d'))
+                ->where('occurred_on', '<=', now()->toDateString())
                 ->count();
         } catch (\Throwable) {
             return 0;
@@ -165,6 +166,7 @@ class PromotionTrackingService
                 ->where('subject_id', $subject->getKey())
                 ->where('event', $event)
                 ->where('occurred_on', '>=', $since->format('Y-m-d'))
+                ->where('occurred_on', '<=', now()->toDateString())
                 ->count();
         } catch (\Throwable) {
             return 0;

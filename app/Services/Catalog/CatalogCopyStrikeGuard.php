@@ -133,9 +133,7 @@ class CatalogCopyStrikeGuard
 
     public function inHideMode(User $user): bool
     {
-        $until = $user->catalog_hide_until ?? null;
-
-        return $until !== null && $until->isFuture();
+        return $user->inCatalogHideMode();
     }
 
     /**
