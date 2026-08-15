@@ -93,7 +93,7 @@
               <li>
                 <a class="dropdown-item d-flex align-items-center gap-2 {{ $code == $currentLocale ? 'active' : '' }}"
                    href="{{ get_language_switcher_url($code) }}"
-                   hreflang="{{ $code }}">
+                   hreflang="{{ \App\Support\PublicI18n::hreflang($code) }}">
                   <span class="navbar-lang-flag">{!! $language['flag'] !!}</span>
                   <span>{{ $language['name'] }}</span>
                   @if($code == $currentLocale)

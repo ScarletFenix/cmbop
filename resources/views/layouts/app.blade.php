@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ \App\Support\PublicI18n::htmlLang() }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -45,7 +45,7 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <meta property="og:locale" content="{{ app()->getLocale() === 'en' ? 'en_US' : app()->getLocale().'_'.strtoupper(app()->getLocale()) }}">
+    <meta property="og:locale" content="{{ \App\Support\PublicI18n::ogLocale() }}">
     <meta property="og:type" content="{{ $pageType }}">
     <meta property="og:site_name" content="SEOLinkBuildings">
     <meta property="og:title" content="{{ $pageTitle }}">
