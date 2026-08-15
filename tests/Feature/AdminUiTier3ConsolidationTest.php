@@ -105,7 +105,7 @@ class AdminUiTier3ConsolidationTest extends TestCase
         $this->assertStringContainsString('.balance-block', $shell);
 
         $components = file_get_contents(public_path('assets/css/admin-components.css'));
-        foreach (['.modern-table', '.status-badge', '.ec-kpi', '.blog-content', '.records-country-list'] as $selector) {
+        foreach (['.modern-table', '.status-badge', '.ec-kpi', '.blog-content', '.records-country-list', '.finance-ledger-filters'] as $selector) {
             $this->assertStringContainsString($selector, $components);
         }
         // Page rules must be scoped, not applied to every table in the shell.
