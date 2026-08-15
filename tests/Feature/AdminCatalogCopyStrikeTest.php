@@ -226,6 +226,28 @@ class AdminCatalogCopyStrikeTest extends TestCase
         $this->assertSame(1, ActivityLog::where('action', 'catalog_hide_lifted')->count());
     }
 
+    public function test_lifting_hide_when_already_clear_does_not_log_or_watermark(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 1,
+            'catalog_copy_warned_at' => now()->subHour(),
+            'catalog_hide_until' => null,
+            'catalog_copy_after_id' => 7,
+        ])->save();
+
+        $this->actingAs($admin)
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $advertiser->refresh();
+        $this->assertSame(7, (int) $advertiser->catalog_copy_after_id);
+        $this->assertSame(1, (int) $advertiser->catalog_copy_strike_count);
+        $this->assertSame(0, ActivityLog::where('action', 'catalog_hide_lifted')->count());
+    }
+
     public function test_admin_can_reset_strikes_without_lifting_hide(): void
     {
         $admin = $this->userWithRole('admin');
@@ -258,6 +280,28 @@ class AdminCatalogCopyStrikeTest extends TestCase
             (int) $advertiser->catalog_copy_after_id
         );
         $this->assertSame(1, ActivityLog::where('action', 'catalog_strikes_reset')->count());
+    }
+
+    public function test_resetting_zero_strikes_does_not_log_or_watermark(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 0,
+            'catalog_copy_warned_at' => null,
+            'catalog_hide_until' => now()->addDay(),
+            'catalog_copy_after_id' => 4,
+        ])->save();
+
+        $this->actingAs($admin)
+            ->post(route('admin.catalog-activity.reset-strikes', $advertiser->id))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $advertiser->refresh();
+        $this->assertSame(4, (int) $advertiser->catalog_copy_after_id);
+        $this->assertTrue($advertiser->inCatalogHideMode());
+        $this->assertSame(0, ActivityLog::where('action', 'catalog_strikes_reset')->count());
     }
 
     public function test_legacy_clear_copy_hide_lifts_and_resets_but_keeps_events(): void

@@ -265,6 +265,15 @@ class CommunityFeedbackController extends Controller
 
         $goingPending = $data['status'] === 'pending';
         $leavingPending = $model->status === 'pending' && ! $goingPending;
+        $newNotes = $data['admin_notes'] ?? $model->admin_notes;
+        if ($data['status'] === $model->status
+            && (string) ($newNotes ?? '') === (string) ($model->admin_notes ?? '')) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Updated.',
+                'item' => $model->fresh(['user:id,name,email', 'reviewer:id,name']) ?? $model,
+            ]);
+        }
 
         $payload = [
             'status' => $data['status'],
@@ -305,9 +314,15 @@ class CommunityFeedbackController extends Controller
         }
 
         try {
+            $noun = match ($activityType) {
+                'problem.report_updated' => 'problem report',
+                'suggestion.updated' => 'suggestion',
+                'website.suggestion_updated' => 'website suggestion',
+                default => 'inbox item',
+            };
             ActivityLogger::log(
                 $activityType,
-                (auth()->user()?->name ?? 'Staff').' updated '.$activityType.' #'.$model->id,
+                (auth()->user()?->name ?? 'Staff').' updated '.$noun.' #'.$model->id,
                 $model,
                 $data
             );

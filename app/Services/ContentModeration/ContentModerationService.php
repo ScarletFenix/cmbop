@@ -1129,6 +1129,18 @@ class ContentModerationService
             $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
             $log = $this->currentOrNewLogForSubmission($submission);
 
+            if ($this->overrideAlreadyApplies($log, $submission, $notes, $decision)) {
+                if ($this->overrideFingerprintState($log, $submission) === 'missing') {
+                    $this->stampOverride($log, $submission, $admin, $notes, $decision);
+                }
+
+                $message = $decision === ContentSubmission::STATUS_APPROVED
+                    ? 'Article #'.$submission->id.' is already approved by override.'
+                    : 'Article #'.$submission->id.' is already rejected by override.';
+
+                return ['ok' => true, 'submission' => $submission->fresh(), 'message' => $message];
+            }
+
             $this->stampOverride($log, $submission, $admin, $notes, $decision);
             $this->logOverrideActivity($admin, $log, $submission, $notes, $decision);
 
@@ -1225,6 +1237,20 @@ class ContentModerationService
                         'message' => 'This scan is no longer the current decision. Open the latest scan.',
                     ];
                 }
+            }
+
+            if ($this->overrideAlreadyApplies($log, $submission, $notes, ContentSubmission::STATUS_APPROVED)) {
+                if ($this->overrideFingerprintState($log, $submission) === 'missing') {
+                    $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
+                }
+
+                return [
+                    'ok' => true,
+                    'submission' => $submission?->fresh(),
+                    'message' => $submission
+                        ? 'Article #'.$submission->id.' is already approved by override.'
+                        : 'This scan is already approved by override.',
+                ];
             }
 
             $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
@@ -1324,14 +1350,48 @@ class ContentModerationService
         });
     }
 
-    protected function overrideFingerprintMatches(ContentModerationLog $log, ContentSubmission $submission): bool
-    {
-        $stored = $log->signals['override_fingerprint'] ?? null;
-        if (! is_string($stored) || $stored === '') {
+    protected function overrideAlreadyApplies(
+        ContentModerationLog $log,
+        ?ContentSubmission $submission,
+        string $notes,
+        string $decision,
+    ): bool {
+        if (! $log->admin_override) {
             return false;
         }
 
-        return hash_equals($stored, $this->contentFingerprint($submission));
+        $approved = $decision === ContentSubmission::STATUS_APPROVED;
+        if ((bool) $log->passed !== $approved) {
+            return false;
+        }
+
+        if (trim((string) $log->admin_notes) !== trim($notes)) {
+            return false;
+        }
+
+        return ! $submission || $this->overrideFingerprintState($log, $submission) !== 'mismatch';
+    }
+
+    /**
+     * @return 'match'|'missing'|'mismatch'
+     */
+    protected function overrideFingerprintState(ContentModerationLog $log, ?ContentSubmission $submission): string
+    {
+        if (! $submission) {
+            return 'match';
+        }
+
+        $stored = $log->signals['override_fingerprint'] ?? null;
+        if (! is_string($stored) || $stored === '') {
+            return 'missing';
+        }
+
+        return hash_equals($stored, $this->contentFingerprint($submission)) ? 'match' : 'mismatch';
+    }
+
+    protected function overrideFingerprintMatches(ContentModerationLog $log, ContentSubmission $submission): bool
+    {
+        return $this->overrideFingerprintState($log, $submission) === 'match';
     }
 
     protected function currentOrNewLogForSubmission(ContentSubmission $submission): ContentModerationLog
