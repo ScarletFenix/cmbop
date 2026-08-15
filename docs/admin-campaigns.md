@@ -35,12 +35,9 @@ or marketing, even if that staff account also has a marketplace role.
    `queued`/`sending` rows so a lost continuation does not sit forever.
    Recovery **touches** the campaign after a re-dispatch (or when a send
    job is already in the `jobs` table) so a backed-up emails queue cannot
-   enqueue another job on every page view. The jobs-table check parses
-   JSON-escaped `jobs.payload` (same as Email Center) — a raw LIKE for
-   `campaignId";i:N;` misses the queued job and floods another dispatch
-   every stale window. It also looks at `queue.default`, not only
-   `MAIL_QUEUE_CONNECTION`, because the send job does not call
-   `onConnection`.    A `sending` campaign that still
+   enqueue another job on every page view. The jobs-table check must
+   match JSON-escaped payloads (`\"campaignId\";i:N;`) — a literal
+   `campaignId";i:N;` LIKE misses every database-queue row.    A `sending` campaign that still
    has `queued` recipients is left sending — leftover queued rows are not
    treated as a successful send. A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because

@@ -353,17 +353,15 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                $payloads = DB::table($table)
-                    ->where('payload', 'like', '%SendEmailCampaignJob%')
-                    ->pluck('payload');
-
-                foreach ($payloads as $payload) {
-                    if (MailJobPayload::containsCampaignJob((string) $payload, $campaignId)) {
-                        return true;
-                    }
-                }
-            } catch (\Throwable) {
-            }
+            return DB::table($table)
+                ->where('payload', 'like', '%SendEmailCampaignJob%')
+                ->pluck('payload')
+                ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
+                    (string) $payload,
+                    $campaignId
+                ));
+        } catch (\Throwable) {
+            return false;
         }
 
         return false;

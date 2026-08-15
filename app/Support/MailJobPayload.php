@@ -22,25 +22,20 @@ class MailJobPayload
     }
 
     /**
-     * Database-queue payloads JSON-escape the serialized command, so a raw
-     * LIKE for campaignId";i:N; misses the job that is already queued.
+     * Database-queue payloads JSON-escape the serialized command, so
+     * `campaignId";i:12;` does not appear as a literal. `i:12;` must not
+     * match campaign 123.
      */
-    public static function containsCampaignJob(string $payload, int $campaignId): bool
+    public static function containsSendCampaignJob(string $payload, int $campaignId): bool
     {
         if ($campaignId < 1 || ! str_contains($payload, 'SendEmailCampaignJob')) {
             return false;
         }
 
-        $token = 'campaignId";i:'.$campaignId.';';
-        if (str_contains($payload, $token)
-            || str_contains($payload, 'campaignId\\";i:'.$campaignId.';')) {
-            return true;
-        }
+        $suffix = ';i:'.$campaignId.';';
 
-        $decoded = json_decode($payload, true);
-        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
-
-        return is_string($command) && str_contains($command, $token);
+        return str_contains($payload, '"campaignId"'.$suffix)
+            || str_contains($payload, '\\"campaignId\\"'.$suffix);
     }
 
     /**
