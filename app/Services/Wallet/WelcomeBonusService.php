@@ -11,6 +11,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\IpUtils;
 
 class WelcomeBonusService
 {
@@ -55,7 +56,7 @@ class WelcomeBonusService
         }
 
         $ip = $this->normalizedIp($request);
-        if ($ip !== null && $this->ipAlreadyClaimed($ip)) {
+        if ($ip === null || $this->ipAlreadyClaimed($ip)) {
             return 0.0;
         }
 
@@ -83,8 +84,7 @@ class WelcomeBonusService
             }
 
             $ip = $this->normalizedIp($request);
-
-            if ($ip !== null && $this->ipAlreadyClaimed($ip)) {
+            if ($ip === null || $this->ipAlreadyClaimed($ip)) {
                 return false;
             }
 
@@ -139,23 +139,25 @@ class WelcomeBonusService
      *
      * Do not use Request::ip() while the app trusts all proxies — that reads
      * client-controlled X-Forwarded-For and lets anyone collect €20 per spoof.
-     * Behind Cloudflare, CF-Connecting-IP is the visitor; otherwise REMOTE_ADDR
-     * is the TCP peer.
+     * CF-Connecting-IP is trusted only when REMOTE_ADDR is a Cloudflare edge.
      */
     public function normalizedIp(Request $request): ?string
     {
-        $cfRay = trim((string) $request->headers->get('CF-RAY', ''));
+        $remote = $this->sanitizeIp($request->server->get('REMOTE_ADDR'));
         $cfConnecting = $this->sanitizeIp($request->headers->get('CF-Connecting-IP'));
-        if ($cfRay !== '' && $cfConnecting !== null) {
+        if ($remote !== null && $cfConnecting !== null && $this->isCloudflarePeer($remote)) {
             return $cfConnecting;
         }
 
-        return $this->sanitizeIp($request->server->get('REMOTE_ADDR'));
+        return $remote;
     }
 
     private function sanitizeIp(mixed $raw): ?string
     {
         $ip = trim((string) $raw);
+        if (str_starts_with($ip, '[') && str_ends_with($ip, ']')) {
+            $ip = substr($ip, 1, -1);
+        }
         if ($ip === '' || strlen($ip) > 45) {
             return null;
         }
@@ -164,7 +166,29 @@ class WelcomeBonusService
             return null;
         }
 
-        return $ip;
+        $packed = inet_pton($ip);
+        if ($packed === false) {
+            return null;
+        }
+
+        // IPv4-mapped IPv6 (::ffff:1.2.3.4) must match the IPv4 claim key.
+        if (strlen($packed) === 16 && substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
+            $packed = substr($packed, 12);
+        }
+
+        $normalized = inet_ntop($packed);
+
+        return $normalized !== false ? $normalized : null;
+    }
+
+    private function isCloudflarePeer(string $ip): bool
+    {
+        $cidrs = config('welcome_bonus.cloudflare_cidrs', []);
+        if (! is_array($cidrs) || $cidrs === []) {
+            return false;
+        }
+
+        return IpUtils::checkIp($ip, $cidrs);
     }
 
     public function ipAlreadyClaimed(string $ip): bool

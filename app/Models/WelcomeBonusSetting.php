@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -161,6 +162,18 @@ class WelcomeBonusSetting extends Model
                 $query->lockForUpdate();
             }
             $row = $query->first();
+            if ($row === null && $lock) {
+                $defaultOn = static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true);
+                try {
+                    static::query()->create([
+                        'key' => 'config',
+                        'value' => ['enabled' => $defaultOn],
+                    ]);
+                } catch (UniqueConstraintViolationException) {
+                    // Another grant or Disable created the row first.
+                }
+                $row = static::query()->where('key', 'config')->lockForUpdate()->first();
+            }
             if ($row === null) {
                 return ['state' => 'missing', 'value' => null];
             }
