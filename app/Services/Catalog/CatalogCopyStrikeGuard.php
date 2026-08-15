@@ -30,8 +30,8 @@ use Illuminate\Support\Str;
  * strike reset the watermark advances so a second full wave is required.
  *
  * A table-cell copy often includes a trailing newline, and a multi-select
- * dump includes several hosts. Those still count (capped) — rejecting the
- * whole clipboard was a harvest bypass.
+ * or CSV dump includes several hosts. Those still count (capped) — rejecting
+ * the whole clipboard was a harvest bypass.
  */
 class CatalogCopyStrikeGuard
 {
@@ -72,10 +72,15 @@ class CatalogCopyStrikeGuard
                 $siteId = null;
             } elseif ($hosts === []) {
                 // Row id known but selection was messy — fall back to listing URL.
-                $fallback = $this->normalizeHost((string) $site->site_url);
+                $fallback = $this->listingHosts($site)[0] ?? '';
                 if ($fallback !== '') {
                     $hosts = [$fallback];
                 }
+            } elseif (count($hosts) === 1 && ! in_array($hosts[0], $this->listingHosts($site), true)) {
+                // A scripted client can reuse one valid site_id with rotating
+                // hosts. Pinning those rows to the listing makes insertIfNew
+                // OR-dedupe on site_id and distinctCount collapse to 1.
+                $siteId = null;
             }
         }
 
@@ -124,9 +129,6 @@ class CatalogCopyStrikeGuard
                 // inserts/counts only ids above this cutoff so the same
                 // listings cannot restage the burst.
                 self::watermarkEvents($locked);
-                if (! $this->afterIdColumnReady()) {
-                    CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
-                }
                 $locked->save();
 
                 $fresh = $locked->fresh();
@@ -207,7 +209,10 @@ class CatalogCopyStrikeGuard
             return [];
         }
 
-        $tokens = preg_split('/\s+/u', $raw) ?: [];
+        // Newlines, tabs, commas, semicolons, and pipes are all dump
+        // separators. Counting only whitespace let a CSV paste (or one
+        // POST of host1,host2,host3) collapse to a single event.
+        $tokens = preg_split('/[\s,;|]+/u', $raw) ?: [];
         $hosts = [];
 
         foreach ($tokens as $token) {
@@ -260,6 +265,24 @@ class CatalogCopyStrikeGuard
         }
 
         return $host;
+    }
+
+    /**
+     * Hosts that belong to this listing (site_url and domain column).
+     *
+     * @return list<string>
+     */
+    private function listingHosts(Site $site): array
+    {
+        $hosts = [];
+        foreach ([(string) $site->site_url, (string) ($site->domain ?? '')] as $raw) {
+            $host = $this->normalizeHost($raw);
+            if ($host !== '') {
+                $hosts[$host] = $host;
+            }
+        }
+
+        return array_values($hosts);
     }
 
     /**

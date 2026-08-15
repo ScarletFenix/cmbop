@@ -277,7 +277,7 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         );
     }
 
-    public function test_order_from_library_releases_abandoned_wise_leftover(): void
+    public function test_order_from_library_does_not_release_abandoned_wise_leftover(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
@@ -315,9 +315,11 @@ class CancelledCardOrderMarkPaidTest extends TestCase
             ]));
 
         $stale->refresh();
-        $this->assertSame('cancelled', $stale->status);
-        $this->assertNull($submission->fresh()->order_id);
-        $this->assertTrue($submission->fresh()->isReadyForCheckout());
+        $this->assertSame('pending', $stale->status);
+        $this->assertSame($stale->id, (int) $submission->fresh()->order_id);
+        $this->assertFalse($submission->fresh()->isReadyForCheckout());
+        $this->assertSame($submission->id, (int) session('checkout_content_submission_id'));
+        $this->assertTrue((bool) session('ordering_from_library'));
     }
 
     public function test_new_checkout_replaces_failed_card_leftover(): void
@@ -653,7 +655,7 @@ class CancelledCardOrderMarkPaidTest extends TestCase
             ->assertSee('View order');
     }
 
-    public function test_order_from_library_releases_failed_card_leftover(): void
+    public function test_order_from_library_does_not_release_failed_card_leftover(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
@@ -691,10 +693,12 @@ class CancelledCardOrderMarkPaidTest extends TestCase
             ]));
 
         $leftover->refresh();
-        $this->assertSame('cancelled', $leftover->status);
+        $this->assertSame('pending', $leftover->status);
         $this->assertSame('failed', $leftover->payment_status);
-        $this->assertNull($submission->fresh()->order_id);
-        $this->assertTrue($submission->fresh()->isReadyForCheckout());
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertFalse($submission->fresh()->isReadyForCheckout());
+        $this->assertSame($submission->id, (int) session('checkout_content_submission_id'));
+        $this->assertTrue((bool) session('ordering_from_library'));
     }
 
     public function test_order_from_library_keeps_unready_leftover_for_pay_again(): void
@@ -1421,6 +1425,182 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $leftover->refresh();
         $this->assertSame('pending', $leftover->status);
         $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+    }
+
+    public function test_add_to_cart_occupied_slot_does_not_cancel_ready_leftover(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'occupied-slot.example');
+        $other = $this->createApprovedSubmission($advertiser);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ADD-CART-OCCUPIED-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'ordering_from_library' => true,
+                'checkout_content_submission_id' => $submission->id,
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $other->id,
+                    'content_submission_ids' => [0 => $other->id],
+                    'language' => 'en',
+                ]],
+            ])
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => $site->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertSame($other->id, (int) session('cart.0.content_submission_id'));
+    }
+
+    public function test_assign_duplicate_does_not_cancel_ready_leftover(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $firstSite = $this->makeSite($publisher, 'dup-first.example');
+        $secondSite = $this->makeSite($publisher, 'dup-second.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ASSIGN-DUP-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $firstSite->id,
+            'site_name' => $firstSite->site_name,
+            'site_url' => $firstSite->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    [
+                        'id' => $firstSite->id,
+                        'name' => $firstSite->site_name,
+                        'quantity' => 1,
+                        'content_submission_id' => $submission->id,
+                        'content_submission_ids' => [0 => $submission->id],
+                        'language' => 'en',
+                    ],
+                    [
+                        'id' => $secondSite->id,
+                        'name' => $secondSite->site_name,
+                        'quantity' => 1,
+                        'language' => 'en',
+                    ],
+                ],
+            ])
+            ->postJson(route('advertiser.cart.assign-article'), [
+                'id' => $secondSite->id,
+                'content_submission_id' => $submission->id,
+            ])
+            ->assertStatus(422);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+    }
+
+    public function test_checkout_page_treats_leftover_cart_line_as_payable(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'checkout-leftover-page.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-CHECKOUT-PAGE-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $submission->id,
+                    'content_submission_ids' => [0 => $submission->id],
+                    'language' => 'en',
+                ]],
+            ])
+            ->get(route('advertiser.checkout'))
+            ->assertOk()
+            ->assertViewHas('payableReady', true);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
         $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
     }
 
