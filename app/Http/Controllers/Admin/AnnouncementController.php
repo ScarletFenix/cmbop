@@ -214,7 +214,13 @@ class AnnouncementController extends Controller
             $copy->clicks = 0;
         }
         $copy->created_by = auth()->id();
-        $copy->save();
+        try {
+            $copy->save();
+        } catch (\Throwable) {
+            return redirect()
+                ->route(staff_route_prefix().'promotions.announcements.index')
+                ->with('error', 'Announcement could not be duplicated.');
+        }
         $this->log('announcement.duplicated', $copy, 'duplicated announcement', ['source_id' => $announcement->id]);
 
         return redirect()

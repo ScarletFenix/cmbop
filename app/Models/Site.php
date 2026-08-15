@@ -627,13 +627,24 @@ class Site extends Model
             return $query->whereRaw('1 = 0');
         }
 
+        // SQLite compares leftover strings lexicographically ('not-a-date' > now).
+        // MySQL coerces them to 0000-00-00, which is <= now. Both disagree with
+        // hasActiveCustomDiscount() unless we require a plausible Gregorian window.
+        $ceil = '9999-12-31 23:59:59';
+        $floor = '1970-01-01 00:00:01';
+
         return $query->whereNotNull('custom_discount_percent')
             ->where('custom_discount_percent', '>', 0)
             ->whereNotNull('custom_discount_ends_at')
             ->where('custom_discount_ends_at', '>', now())
-            ->where(function (Builder $q) {
+            ->where('custom_discount_ends_at', '<=', $ceil)
+            ->where(function (Builder $q) use ($floor, $ceil) {
                 $q->whereNull('custom_discount_starts_at')
-                    ->orWhere('custom_discount_starts_at', '<=', now());
+                    ->orWhere(function (Builder $inner) use ($floor, $ceil) {
+                        $inner->where('custom_discount_starts_at', '<=', now())
+                            ->where('custom_discount_starts_at', '>=', $floor)
+                            ->where('custom_discount_starts_at', '<=', $ceil);
+                    });
             });
     }
 

@@ -10,6 +10,7 @@ use App\Services\Catalog\CatalogUrlQuery;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 /**
@@ -187,6 +188,45 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
         );
         // On sale alone does not hide the Spendable rail.
         $this->assertStringContainsString('data-bulk-rail', $filtered);
+    }
+
+    public function test_on_sale_filter_excludes_unparseable_discount_dates(): void
+    {
+        $live = $this->makeSite('Live Sale Site', [
+            'custom_discount_percent' => 20,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(7),
+        ]);
+        $leftoverEnds = $this->makeSite('Garbage Ends Site', [
+            'custom_discount_percent' => 25,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(7),
+        ]);
+        $leftoverStarts = $this->makeSite('Garbage Starts Site', [
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(7),
+        ]);
+
+        DB::table('sites')->where('id', $leftoverEnds->id)->update([
+            'custom_discount_ends_at' => 'not-a-date',
+        ]);
+        DB::table('sites')->where('id', $leftoverStarts->id)->update([
+            'custom_discount_starts_at' => 'not-a-date',
+        ]);
+
+        $this->assertTrue($live->fresh()->hasActiveCustomDiscount());
+        $this->assertFalse($leftoverEnds->fresh()->hasActiveCustomDiscount());
+        $this->assertFalse($leftoverStarts->fresh()->hasActiveCustomDiscount());
+
+        $filtered = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog', ['on_sale' => '1']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-site-name="Live Sale Site"', $filtered);
+        $this->assertStringNotContainsString('data-site-name="Garbage Ends Site"', $filtered);
+        $this->assertStringNotContainsString('data-site-name="Garbage Starts Site"', $filtered);
     }
 
     public function test_bulk_and_on_sale_filters_combine_with_and(): void
