@@ -6,6 +6,8 @@ use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Wallet;
+use App\Services\OrderPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Mockery;
@@ -65,35 +67,41 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
 
     private function fakeStripeCheckoutSession(string $sessionId = 'cs_test_pending_orders'): void
     {
+        $this->fakeStripeCheckoutSessions([$sessionId]);
+    }
+
+    /**
+     * @param  list<string>  $sessionIds
+     */
+    private function fakeStripeCheckoutSessions(array $sessionIds): void
+    {
         config([
             'services.stripe.secret' => 'sk_test_fake_key_for_unit_tests',
             'services.stripe.key' => 'pk_test_fake_key_for_unit_tests',
         ]);
 
-        $customerBody = json_encode([
-            'id' => 'cus_test_'.substr($sessionId, -8),
-            'object' => 'customer',
-            'email' => 'test@example.com',
-            'livemode' => false,
-        ], JSON_THROW_ON_ERROR);
-
-        $sessionBody = json_encode([
-            'id' => $sessionId,
-            'object' => 'checkout.session',
-            'url' => 'https://checkout.stripe.com/c/pay/'.$sessionId,
-            'payment_status' => 'unpaid',
-            'mode' => 'payment',
-            'metadata' => [],
-        ], JSON_THROW_ON_ERROR);
-
         $client = Mockery::mock(ClientInterface::class);
-        // Saved-card flow creates/retrieves a Customer, then creates the Checkout Session.
+        $returns = [];
+        foreach ($sessionIds as $sessionId) {
+            $returns[] = [json_encode([
+                'id' => 'cus_test_'.substr($sessionId, -8),
+                'object' => 'customer',
+                'email' => 'test@example.com',
+                'livemode' => false,
+            ], JSON_THROW_ON_ERROR), 200, []];
+            $returns[] = [json_encode([
+                'id' => $sessionId,
+                'object' => 'checkout.session',
+                'url' => 'https://checkout.stripe.com/c/pay/'.$sessionId,
+                'payment_status' => 'unpaid',
+                'mode' => 'payment',
+                'metadata' => [],
+            ], JSON_THROW_ON_ERROR), 200, []];
+        }
+
         $client->shouldReceive('request')
-            ->twice()
-            ->andReturn(
-                [$customerBody, 200, []],
-                [$sessionBody, 200, []]
-            );
+            ->times(count($returns))
+            ->andReturn(...$returns);
 
         ApiRequestor::setHttpClient($client);
     }
@@ -401,5 +409,67 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
             ->assertJsonPath('success', false);
 
         $this->assertSame(0, Order::where('reference_code', 'NOCFG1')->count());
+    }
+
+    public function test_second_card_pay_without_cancel_re_reserves_bonus(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $wallet = $this->fundAdvertiserWallet($advertiser, 20);
+        $wallet->update(['bonus_balance' => 20]);
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = $this->activeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->fakeStripeCheckoutSessions(['cs_bonus_first', 'cs_bonus_retry']);
+
+        $payload = [
+            'payment_method' => 'card',
+            'reference_code' => 'BONUS1',
+            'publication_mode' => 'immediate',
+            'use_bonus' => '1',
+            'content_submissions' => [
+                $site->id => [$submission->id],
+            ],
+        ];
+        $session = [
+            'cart' => [[
+                'id' => $site->id,
+                'name' => $site->site_name,
+                'quantity' => 1,
+                'price' => 100,
+                'sensitive_type' => null,
+            ]],
+        ];
+
+        $this->actingAs($advertiser)->withSession($session)
+            ->postJson(route('advertiser.checkout.process'), $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($advertiser)->withSession($session)
+            ->postJson(route('advertiser.checkout.process'), $payload)
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $package = app(OrderPaymentService::class)->getPendingCheckout('BONUS1');
+        $this->assertNotNull($package);
+        $this->assertEqualsWithDelta(20.0, (float) ($package['bonus_applied'] ?? 0), 0.01);
+        $this->assertEqualsWithDelta(
+            round((float) ($package['order_total'] ?? 0) - 20, 2),
+            (float) ($package['amount_due'] ?? 0),
+            0.01
+        );
+
+        $wallet = Wallet::query()
+            ->where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $this->assertNotNull($wallet);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
     }
 }
