@@ -309,9 +309,19 @@ class PaymentController extends Controller
 
             if ($newStatus === 'paid' && $oldStatus !== 'paid') {
                 $payments = app(OrderPaymentService::class);
+                $reference = (string) ($order->reference_code ?? '');
+                $bonusApplied = $payments->leftoverBonusForPurchaseLedger($order);
+                // Fail/cancel already returned this leftover's promo to
+                // bonus_balance. Mark-paid without re-reserving made reject
+                // credit that slice as withdrawable cash.
+                $payments->rereserveReleasedCheckoutBonus(
+                    (int) $order->user_id,
+                    $reference,
+                    $bonusApplied
+                );
                 $bonusApplied = $payments->leftoverBonusForPurchaseLedger($order);
                 $payments->recordAdvertiserPurchaseForPaidCheckout(
-                    (string) ($order->reference_code ?? ''),
+                    $reference,
                     collect([$order->fresh(['items']) ?: $order]),
                     $bonusApplied,
                     (float) $order->total_amount
