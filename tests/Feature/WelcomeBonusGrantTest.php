@@ -115,6 +115,22 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_google_signup_skips_bonus_when_disabled(): void
+    {
+        Mail::fake();
+        $this->configureGoogle();
+        app(WelcomeBonusService::class)->setEnabled(false);
+
+        $this->mockGoogleCallback('google-disabled', 'google-disabled@example.com');
+        $this->withServerVariables(['REMOTE_ADDR' => '8.8.4.4'])
+            ->get(route('auth.google.callback'))
+            ->assertRedirect('/advertiser/dashboard');
+
+        $user = User::where('email', 'google-disabled@example.com')->first();
+        $this->assertAdvertiserBonus($user, 0.0);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
     public function test_google_signup_respects_ip_claim(): void
     {
         Mail::fake();

@@ -68,7 +68,7 @@ class WelcomeBonusService
      */
     public function recordClaim(User $user, Request $request, float $amount, string $source): bool
     {
-        if ($amount <= 0) {
+        if ($amount <= 0 || ! $this->isEnabled()) {
             return false;
         }
 

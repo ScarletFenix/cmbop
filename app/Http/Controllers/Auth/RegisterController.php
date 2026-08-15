@@ -79,7 +79,7 @@ class RegisterController extends Controller
         }
 
         $bonusService = app(WelcomeBonusService::class);
-        $welcomeBonus = $bonusService->amountFor($request, (string) $request->role);
+        $welcomeBonus = 0.0;
         $user = null;
 
         DB::beginTransaction();
@@ -97,6 +97,7 @@ class RegisterController extends Controller
             $user->active_role_id = $activeRole->id;
             $user->save();
 
+            $welcomeBonus = $bonusService->amountFor($request, (string) $request->role);
             if ($welcomeBonus > 0 && ! $bonusService->recordClaim($user, $request, $welcomeBonus, 'registration')) {
                 $welcomeBonus = 0.0;
             }

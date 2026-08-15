@@ -44,13 +44,38 @@ class WelcomeBonusSetting extends Model
         $stored = static::getValue('config', []) ?: [];
 
         return array_merge([
-            'enabled' => (bool) config('welcome_bonus.enabled_default', true),
+            'enabled' => static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true),
         ], is_array($stored) ? $stored : []);
     }
 
     public static function isEnabled(): bool
     {
-        return (bool) (static::config()['enabled'] ?? true);
+        $config = static::config();
+        if (! array_key_exists('enabled', $config)) {
+            return true;
+        }
+
+        // Unparseable / null stored flags fail closed so a corrupt row cannot
+        // keep granting after an admin Disable. Missing table still fail-opens
+        // via getValue() → enabled_default.
+        return static::parseEnabledFlag($config['enabled'], false);
+    }
+
+    /**
+     * Accept bools and common string/int flags. Non-scalars must not throw —
+     * filter_var() TypeErrors would roll back every signup.
+     */
+    public static function parseEnabledFlag(mixed $raw, bool $default = false): bool
+    {
+        if (is_bool($raw)) {
+            return $raw;
+        }
+
+        if (is_int($raw) || is_float($raw) || is_string($raw)) {
+            return filter_var($raw, FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? $default;
+        }
+
+        return $default;
     }
 
     public static function setEnabled(bool $enabled, ?int $updatedBy = null): void

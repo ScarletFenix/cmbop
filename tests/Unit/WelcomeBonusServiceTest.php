@@ -99,6 +99,47 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(99, $stored['updated_by']);
     }
 
+    public function test_record_claim_refuses_when_bonus_is_disabled(): void
+    {
+        $user = User::factory()->create();
+        $this->service->setEnabled(false);
+
+        $this->assertFalse($this->service->recordClaim($user, $this->request('5.5.5.5'), 20.0, 'registration'));
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_stored_enabled_flags_are_parsed_strictly(): void
+    {
+        foreach ([0, '0', 'false', 'off', 'no', false] as $off) {
+            WelcomeBonusSetting::setValue('config', ['enabled' => $off]);
+            $this->assertFalse(WelcomeBonusSetting::isEnabled(), var_export($off, true).' should be off');
+        }
+
+        foreach ([1, '1', 'true', 'on', 'yes', true] as $on) {
+            WelcomeBonusSetting::setValue('config', ['enabled' => $on]);
+            $this->assertTrue(WelcomeBonusSetting::isEnabled(), var_export($on, true).' should be on');
+        }
+    }
+
+    public function test_malformed_enabled_flag_fails_closed_without_throwing(): void
+    {
+        WelcomeBonusSetting::setValue('config', ['enabled' => null]);
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+
+        WelcomeBonusSetting::setValue('config', ['enabled' => ['nested' => true]]);
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+
+        WelcomeBonusSetting::setValue('config', ['enabled' => 'maybe']);
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+    }
+
+    public function test_string_false_default_is_off_when_unset(): void
+    {
+        config(['welcome_bonus.enabled_default' => 'false']);
+
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+    }
+
     private function request(string $ip, array $cookies = []): Request
     {
         return Request::create('/register', 'POST', [], $cookies, [], [
