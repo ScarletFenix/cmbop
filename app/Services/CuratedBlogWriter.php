@@ -50,11 +50,12 @@ class CuratedBlogWriter
         }
 
         $existing = Blog::query()
-            ->where('slug', $slug)
-            ->when(
-                Schema::hasColumn('blogs', 'curated_key'),
-                fn ($query) => $query->orWhere('curated_key', $slug)
-            )
+            ->where(function ($query) use ($slug) {
+                $query->where('slug', $slug);
+                if (Schema::hasColumn('blogs', 'curated_key')) {
+                    $query->orWhere('curated_key', $slug);
+                }
+            })
             ->first();
 
         if ($existing && $existing->manually_edited_at) {
@@ -89,6 +90,13 @@ class CuratedBlogWriter
             }
         }
 
-        return Blog::updateOrCreate(['slug' => $slug], $data);
+        if ($existing) {
+            $existing->fill($data);
+            $existing->save();
+
+            return $existing;
+        }
+
+        return Blog::create($data);
     }
 }

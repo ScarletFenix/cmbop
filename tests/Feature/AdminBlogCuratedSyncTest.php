@@ -21,6 +21,7 @@ use App\Support\WalletEscrowRefundsBlogPost;
 use App\Support\WhySitesGetRejectedBlogPost;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Storage;
 use Tests\TestCase;
 
 class AdminBlogCuratedSyncTest extends TestCase
@@ -238,5 +239,44 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertOk()
             ->assertSee('data-slb-confirm=', false)
             ->assertSee('Posts you edited are kept', false);
+    }
+
+    public function test_ensure_present_republishes_missing_featured_images(): void
+    {
+        Storage::fake('public');
+        $this->artisan('blog:upsert-gastbeitraege-europa')->assertSuccessful();
+
+        $path = GastbeitraegeEuropaBlogPost::FEATURED_STORAGE;
+        Storage::disk('public')->assertExists($path);
+        Storage::disk('public')->delete($path);
+        Storage::disk('public')->assertMissing($path);
+
+        Cache::forget('curated_blogs_present_v1');
+        Cache::forget('curated_blogs_inline_storage_v1');
+
+        CuratedBlogSync::ensurePresent();
+
+        Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_upsert_updates_row_found_by_curated_key_without_duplicating(): void
+    {
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $blog = Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->firstOrFail();
+        $blog->forceFill([
+            'slug' => 'live-link-checklist-renamed',
+            'manually_edited_at' => null,
+        ])->save();
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertSame(1, Blog::query()->where('curated_key', LiveLinkChecklistBlogPost::SLUG)->count());
+        $this->assertTrue(
+            Blog::query()
+                ->where('id', $blog->id)
+                ->where('slug', LiveLinkChecklistBlogPost::SLUG)
+                ->exists()
+        );
     }
 }

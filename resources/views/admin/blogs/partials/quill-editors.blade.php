@@ -108,7 +108,7 @@ articleImagesManager = new AdminBlogImages({
 });
 
 var form = document.getElementById('blogForm');
-form.addEventListener('submit', function (e) {
+if (form) form.addEventListener('submit', function (e) {
     Object.keys(quills).forEach(function (locale) {
         var content = quills[locale].root.innerHTML.trim();
         document.getElementById('contentInput-' + locale).value = isEmptyQuillHtml(content) ? '' : content;
