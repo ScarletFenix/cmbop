@@ -110,6 +110,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function campaignLogUserIdsForStatus\b/', $model));
         $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
         $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
@@ -135,6 +136,22 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertDoesNotMatchRegularExpression(
             '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
             $queued[1]
+        );
+        $this->assertTrue((bool) preg_match(
+            '/protected static function expireOrphanedQueuedRecipients\(\): void\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $expire
+        ));
+        $this->assertStringContainsString('campaignLogUserIdsForStatus', $expire[1]);
+        $this->assertTrue((bool) preg_match(
+            '/protected static function reclaimOrphanedQueuedRecipients\(self \$campaign\): int\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $reclaim
+        ));
+        $this->assertGreaterThanOrEqual(
+            2,
+            substr_count($reclaim[1], 'campaignLogUserIdsForStatus'),
+            'reclaim must hold pending and delivered campaign logs'
         );
     }
 }
