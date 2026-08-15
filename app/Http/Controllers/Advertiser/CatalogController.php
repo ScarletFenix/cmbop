@@ -1504,19 +1504,19 @@ class CatalogController extends Controller
             ], 422);
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+        if (! app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
             (int) auth()->id(),
             [$submissionId]
-        );
-        $submission = $submission->fresh() ?? $submission;
+        )) {
+            $submission = $submission->fresh() ?? $submission;
 
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
             return response()->json([
                 'success' => false,
                 'error' => $submission->libraryFixSummary()
                     ?: 'Choose an approved Content Library article that is still available to order.',
             ], 422);
         }
+        $submission = $submission->fresh() ?? $submission;
 
         $ids[$copyIndex] = $submission->id;
         $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
@@ -1623,15 +1623,23 @@ class CatalogController extends Controller
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
 
                     if (! $alreadyAssigned) {
-                        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+                        if (! app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
                             (int) auth()->id(),
                             [$sessionArticleId]
-                        );
-                        $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
-                        if (! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
+                        )) {
+                            $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
+                            if ($librarySubmission->canReplaceUnpaidLeftover()
+                                || $librarySubmission->activeClaimOrderId()) {
+                                return response()->json([
+                                    'success' => false,
+                                    'error' => $librarySubmission->libraryFixSummary()
+                                        ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE,
+                                ], 422);
+                            }
                             session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
                             $librarySubmission = null;
                         } else {
+                            $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
                             $attachArticleId = (int) $librarySubmission->id;
                         }
                     }

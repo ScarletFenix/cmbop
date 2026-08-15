@@ -566,6 +566,42 @@ class OrderPaymentService
     }
 
     /**
+     * Cancel leftovers only when the articles are free for a new checkout
+     * afterwards. A concurrent claim rolls the cancel back so Pay again stays.
+     *
+     * @param  array<int, int|string>  $submissionIds
+     */
+    public function replaceUnpaidLeftoversIfStillOrderable(int $userId, array $submissionIds): bool
+    {
+        $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
+        if ($userId <= 0 || $submissionIds === []) {
+            return true;
+        }
+
+        try {
+            DB::transaction(function () use ($userId, $submissionIds) {
+                $this->replaceUnpaidLeftoversForSubmissions($userId, $submissionIds, null, false);
+                foreach ($submissionIds as $submissionId) {
+                    $fresh = ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first();
+                    if (! $fresh || ! $fresh->canBeOrdered() || ! $fresh->isReadyForCheckout()) {
+                        throw new \RuntimeException('leftover-replace-unready');
+                    }
+                }
+            });
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'leftover-replace-unready') {
+                throw $e;
+            }
+
+            return false;
+        }
+
+        $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds);
+
+        return true;
+    }
+
+    /**
      * Drop Stripe-first packages that still list these articles. Cancel URL
      * keeps the package when there are no leftover rows; a later checkout of
      * one line must not let a late webhook rematerialize the rest.

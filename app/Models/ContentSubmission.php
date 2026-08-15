@@ -1037,19 +1037,29 @@ class ContentSubmission extends Model
 
     /**
      * Approved file + market + rights + a complete HTTPS link pair.
+     * Ignores leftover/paid claims and catalog expiry so Pay again / attach
+     * on an already-claimed leftover can still settle after the listing ages out.
+     */
+    public function hasFulfillableContent(): bool
+    {
+        return $this->moderation_status === self::STATUS_APPROVED
+            && filled($this->path)
+            && ! $this->isArchived()
+            && filled($this->country)
+            && filled($this->language)
+            && $this->imageRightsCoverContent()
+            && $this->hasCheckoutReadyLinks();
+    }
+
+    /**
+     * Approved file + market + rights + a complete HTTPS link pair.
      * Ignores leftover/paid claims so Order / replace can see whether the
      * article would be usable after the leftover is released.
      */
     public function isContentReadyForOrder(): bool
     {
-        return $this->moderation_status === self::STATUS_APPROVED
-            && filled($this->path)
-            && ! $this->isArchived()
-            && ($this->expires_at === null || $this->expires_at->isFuture())
-            && filled($this->country)
-            && filled($this->language)
-            && $this->imageRightsCoverContent()
-            && $this->hasCheckoutReadyLinks();
+        return $this->hasFulfillableContent()
+            && ($this->expires_at === null || $this->expires_at->isFuture());
     }
 
     /**
@@ -1984,7 +1994,17 @@ class ContentSubmission extends Model
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
         // claims, including this order when submission.order_id is still null.
-        return $this->isContentReadyForOrder();
+        if (! $this->hasFulfillableContent()) {
+            return false;
+        }
+
+        // Catalog expiry blocks a *new* checkout. An already-claimed leftover
+        // can still be paid or attached on that same order.
+        if ($this->expires_at !== null && $this->expires_at->isPast()) {
+            return $this->isOwnedByOrder($orderId);
+        }
+
+        return true;
     }
 
     /**

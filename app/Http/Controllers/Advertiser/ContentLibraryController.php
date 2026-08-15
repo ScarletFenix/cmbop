@@ -503,6 +503,17 @@ class ContentLibraryController extends Controller
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if (! $submission->isContentReadyForOrder()) {
+            // Expired leftovers can still Pay again on the open order, but they
+            // cannot start a new catalog checkout. Unready leftovers (links /
+            // rights) stay in the library so the advertiser can fix them first.
+            if ($submission->isExpired()
+                && $submission->hasFulfillableContent()
+                && ($submission->canReplaceUnpaidLeftover() || $submission->activeClaimOrderId())) {
+                return redirect()
+                    ->route('advertiser.orders')
+                    ->with('error', 'This article is still on an open order. Use Pay again there. Expired articles cannot start a new catalog order.');
+            }
+
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
                 : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
@@ -521,13 +532,21 @@ class ContentLibraryController extends Controller
                     ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+        if (! app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
             (int) auth()->id(),
             [(int) $submission->id]
-        );
-        $submission = $submission->fresh() ?? $submission;
+        )) {
+            $submission = $submission->fresh() ?? $submission;
+            if ($submission->canReplaceUnpaidLeftover() || $submission->activeClaimOrderId()) {
+                $message = $submission->isExpired()
+                    ? 'This article is still on an open order. Use Pay again there. Expired articles cannot start a new catalog order.'
+                    : ($submission->libraryFixSummary() ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE);
 
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+                return redirect()
+                    ->route('advertiser.orders')
+                    ->with('error', $message);
+            }
+
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
                 : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
@@ -538,6 +557,7 @@ class ContentLibraryController extends Controller
                 ->route('advertiser.content-library')
                 ->with('error', $message);
         }
+        $submission = $submission->fresh() ?? $submission;
 
         // Keep existing cart sites and any publication date already chosen at checkout.
         session()->put('checkout_content_submission_id', $submission->id);
