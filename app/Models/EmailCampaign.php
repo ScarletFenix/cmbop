@@ -359,6 +359,15 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // SQLite via the query builder can return an empty set for a
+                // missing payload column instead of throwing. That looked like
+                // "no send job" and recover flooded another dispatch.
+                if (! Schema::hasColumn($table, 'payload')) {
+                    $scanFailed = true;
+
+                    continue;
+                }
+
                 $found = false;
                 DB::table($table)
                     ->where('payload', 'like', '%SendEmailCampaignJob%')
