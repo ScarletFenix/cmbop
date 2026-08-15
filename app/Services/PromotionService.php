@@ -195,8 +195,10 @@ class PromotionService
                 ->whereNotNull('featured_until')
                 ->where('featured_until', '>', now())
                 ->orderByDesc('featured_until')
-                ->limit($limit)
-                ->get();
+                ->get()
+                ->filter(fn (Site $site) => $site->isFeatured())
+                ->take($limit)
+                ->values();
         } catch (\Throwable $e) {
             Log::warning('Failed to load featured marketplace sites', ['error' => $e->getMessage()]);
 
@@ -214,7 +216,14 @@ class PromotionService
         }
 
         try {
-            return Site::query()->catalogVisible()->onDiscount()->orderByDesc('custom_discount_ends_at')->limit($limit)->get();
+            return Site::query()
+                ->catalogVisible()
+                ->onDiscount()
+                ->orderByDesc('custom_discount_ends_at')
+                ->get()
+                ->filter(fn (Site $site) => $site->hasActiveCustomDiscount())
+                ->take($limit)
+                ->values();
         } catch (\Throwable $e) {
             Log::warning('Failed to load custom-discount sites', ['error' => $e->getMessage()]);
 
@@ -284,10 +293,12 @@ class PromotionService
         }
 
         try {
-            return (int) Site::query()
+            return Site::query()
                 ->catalogVisible()
                 ->whereNotNull('featured_until')
                 ->where('featured_until', '>', now())
+                ->get()
+                ->filter(fn (Site $site) => $site->isFeatured())
                 ->count();
         } catch (\Throwable) {
             return 0;
@@ -301,7 +312,12 @@ class PromotionService
         }
 
         try {
-            return (int) Site::query()->catalogVisible()->onDiscount()->count();
+            return Site::query()
+                ->catalogVisible()
+                ->onDiscount()
+                ->get()
+                ->filter(fn (Site $site) => $site->hasActiveCustomDiscount())
+                ->count();
         } catch (\Throwable) {
             return 0;
         }

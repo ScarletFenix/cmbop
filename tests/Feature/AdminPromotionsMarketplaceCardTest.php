@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -81,6 +82,79 @@ class AdminPromotionsMarketplaceCardTest extends TestCase
             ->get(route('admin.promotions.index'))
             ->assertOk()
             ->assertDontSee('Inactive Featured Site', false);
+    }
+
+    public function test_hub_ok_when_featured_until_is_unparseable(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $publisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = $this->makeSite($publisher, 'Garbage Featured Site');
+        $this->assertTrue(Schema::hasColumn('sites', 'featured_until'));
+        $site->update(['featured_until' => now()->addDays(3)]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'featured_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($site->fresh()->isFeatured());
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertDontSee('Garbage Featured Site', false)
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_hub_ok_when_featured_site_has_unparseable_discount_dates(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $publisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = $this->makeSite($publisher, 'Featured With Bad Sale');
+        $site->update([
+            'featured_until' => now()->addDays(3),
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'custom_discount_starts_at' => 'not-a-date',
+            'custom_discount_ends_at' => 'also-bad',
+        ]);
+
+        $fresh = $site->fresh();
+        $this->assertTrue($fresh->isFeatured());
+        $this->assertFalse($fresh->hasActiveCustomDiscount());
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Featured With Bad Sale', false)
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_hub_ok_when_promo_columns_missing(): void

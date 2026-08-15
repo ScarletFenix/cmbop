@@ -598,7 +598,13 @@ class Site extends Model
             return false;
         }
 
-        return $this->featured_until !== null && $this->featured_until->isFuture();
+        try {
+            $until = $this->featured_until;
+
+            return $until instanceof \DateTimeInterface && $until->isFuture();
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     /**
@@ -627,13 +633,24 @@ class Site extends Model
             return false;
         }
 
-        if (! $this->custom_discount_percent || ! $this->custom_discount_ends_at) {
+        try {
+            if (! $this->custom_discount_percent) {
+                return false;
+            }
+
+            $ends = $this->custom_discount_ends_at;
+            if (! $ends instanceof \DateTimeInterface) {
+                return false;
+            }
+
+            $starts = $this->custom_discount_starts_at;
+            $startsOk = $starts === null
+                || ($starts instanceof \DateTimeInterface && $starts->lte(now()));
+
+            return $startsOk && $ends->isFuture();
+        } catch (\Throwable) {
             return false;
         }
-
-        $startsOk = ! $this->custom_discount_starts_at || $this->custom_discount_starts_at->lte(now());
-
-        return $startsOk && $this->custom_discount_ends_at->isFuture();
     }
 
     public function activeCustomDiscountPercent(): ?float
