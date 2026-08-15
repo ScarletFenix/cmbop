@@ -315,11 +315,9 @@ class Site extends Model
             });
 
         // Staff-assigned listings wait on publisher accept before the review queue.
+        // Leftover accepted_at is not acceptance — reuse acceptedByPublisher().
         if (static::hasSitesColumn('publisher_accepted_at')) {
-            $query->where(function ($q) {
-                $q->whereNotNull('publisher_accepted_at')
-                    ->orWhereNull('assigned_by_user_id');
-            });
+            $query->acceptedByPublisher();
         }
 
         return $query->notFromCancelledBulk();
@@ -603,6 +601,13 @@ class Site extends Model
         return $until !== null && $until->isFuture();
     }
 
+    public function isRecentlyCreated(int $days = 30): bool
+    {
+        $at = $this->created_at;
+
+        return $at instanceof \DateTimeInterface && $at->gt(now()->subDays($days));
+    }
+
     public function safeFeaturedUntil(): ?\DateTimeInterface
     {
         return $this->safeDateAttribute('featured_until');
@@ -628,13 +633,24 @@ class Site extends Model
             return $query->whereRaw('1 = 0');
         }
 
+        // SQLite compares leftover strings lexicographically ('not-a-date' > now).
+        // MySQL coerces them to 0000-00-00, which is <= now. Both disagree with
+        // hasActiveCustomDiscount() unless we require a plausible Gregorian window.
+        $ceil = static::PLAUSIBLE_SQL_DATETIME_CEIL;
+        $floor = static::PLAUSIBLE_SQL_DATETIME_FLOOR;
+
         return $query->whereNotNull('custom_discount_percent')
             ->where('custom_discount_percent', '>', 0)
             ->whereNotNull('custom_discount_ends_at')
             ->where('custom_discount_ends_at', '>', now())
-            ->where(function (Builder $q) {
+            ->where('custom_discount_ends_at', '<=', $ceil)
+            ->where(function (Builder $q) use ($floor, $ceil) {
                 $q->whereNull('custom_discount_starts_at')
-                    ->orWhere('custom_discount_starts_at', '<=', now());
+                    ->orWhere(function (Builder $inner) use ($floor, $ceil) {
+                        $inner->where('custom_discount_starts_at', '<=', now())
+                            ->where('custom_discount_starts_at', '>=', $floor)
+                            ->where('custom_discount_starts_at', '<=', $ceil);
+                    });
             });
     }
 
@@ -892,7 +908,10 @@ class Site extends Model
             $query->notFromCancelledBulk();
         }
         if (static::hasSitesColumn('archived_at')) {
-            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
+            $query->orderByRaw(
+                'case when archived_at is null or archived_at > ? or archived_at < ? then 0 else 1 end',
+                [static::PLAUSIBLE_SQL_DATETIME_CEIL, static::PLAUSIBLE_SQL_DATETIME_FLOOR]
+            );
         }
         $query->orderBy('id');
         if ($lock) {
@@ -1278,8 +1297,10 @@ class Site extends Model
         }
 
         return $query->where(function ($q) {
-            $q->whereNotNull('publisher_accepted_at')
-                ->orWhereNull('assigned_by_user_id');
+            $q->whereNull('assigned_by_user_id')
+                ->orWhere(function ($accepted) {
+                    $accepted->wherePublisherAcceptanceIsRecorded();
+                });
         });
     }
 
@@ -1295,8 +1316,37 @@ class Site extends Model
         }
 
         return $query
-            ->whereNull('publisher_accepted_at')
+            ->wherePublisherAcceptanceIsMissing()
             ->whereNotNull('assigned_by_user_id');
+    }
+
+    /**
+     * Real Gregorian publisher_accepted_at. Leftover Hostinger strings are not
+     * acceptance — PHP casts them to null via ToleratesUnparseableDates.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeWherePublisherAcceptanceIsRecorded($query)
+    {
+        return $query->whereNotNull('publisher_accepted_at')
+            ->where('publisher_accepted_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('publisher_accepted_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover publisher_accepted_at (same as PHP null after cast).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeWherePublisherAcceptanceIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('publisher_accepted_at')
+                ->orWhere('publisher_accepted_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('publisher_accepted_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
     }
 
     /**
@@ -1324,7 +1374,16 @@ class Site extends Model
             return $query;
         }
 
-        return $query->whereNull('archived_at');
+        // Leftover Hostinger strings are not a staff archive. whereNull misses
+        // them, so live listings vanished from catalogVisible() / the hub.
+        $floor = static::PLAUSIBLE_SQL_DATETIME_FLOOR;
+        $ceil = static::PLAUSIBLE_SQL_DATETIME_CEIL;
+
+        return $query->where(function (Builder $q) use ($floor, $ceil) {
+            $q->whereNull('archived_at')
+                ->orWhere('archived_at', '>', $ceil)
+                ->orWhere('archived_at', '<', $floor);
+        });
     }
 
     public function scopeArchived(Builder $query): Builder
@@ -1333,7 +1392,9 @@ class Site extends Model
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereNotNull('archived_at');
+        return $query->whereNotNull('archived_at')
+            ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
     }
 
     public function isArchived(): bool
@@ -1342,7 +1403,13 @@ class Site extends Model
             return false;
         }
 
-        return $this->archived_at !== null;
+        try {
+            $at = $this->archived_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at instanceof \DateTimeInterface;
     }
 
     /**
@@ -1423,8 +1490,9 @@ class Site extends Model
 
     /**
      * Staff-assigned listing waiting for publisher Accept/Decline.
-     * Requires publisher_accepted_at IS NULL and assigned_by_user_id set
-     * (plain publisher drafts are not invites).
+     * Requires no plausible publisher_accepted_at and assigned_by_user_id set
+     * (plain publisher drafts are not invites). Leftover Hostinger strings
+     * are not acceptance.
      */
     public function isPendingPublisherAcceptance(): bool
     {
@@ -1432,8 +1500,8 @@ class Site extends Model
             return false;
         }
 
-        return $this->publisher_accepted_at === null
-            && filled($this->assigned_by_user_id);
+        return filled($this->assigned_by_user_id)
+            && ! ($this->safeDateAttribute('publisher_accepted_at') instanceof \DateTimeInterface);
     }
 
     public function isAcceptedByPublisher(): bool
@@ -1442,12 +1510,13 @@ class Site extends Model
             return true;
         }
 
-        // Legacy / self-created rows are accepted; only staff-assigned nulls wait.
-        if ($this->publisher_accepted_at !== null) {
+        // Legacy / self-created rows are accepted; only staff-assigned
+        // listings without a plausible timestamp wait.
+        if (blank($this->assigned_by_user_id)) {
             return true;
         }
 
-        return blank($this->assigned_by_user_id);
+        return $this->safeDateAttribute('publisher_accepted_at') instanceof \DateTimeInterface;
     }
 
     public function claims()

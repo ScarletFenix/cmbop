@@ -640,11 +640,15 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('new_badge') && $request->new_badge == 1) {
-            $query->where('created_at', '>=', now()->subDays(30));
+            $query->where('created_at', '>=', now()->subDays(30))
+                ->where('created_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL);
         }
 
         if (Schema::hasColumn('sites', 'featured_until')) {
-            $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+            $query->orderByRaw(
+                '(featured_until IS NOT NULL AND featured_until > ? AND featured_until <= ?) DESC',
+                [now(), Site::PLAUSIBLE_SQL_DATETIME_CEIL]
+            );
         }
 
         if ($searchText !== '' && ! $request->filled('sort')) {
@@ -659,7 +663,10 @@ class CatalogController extends Controller
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderByRaw($advPriceSql.' ASC')->orderByDesc('id'),
             'price_desc' => $query->orderByRaw($advPriceSql.' DESC')->orderByDesc('id'),
-            'newest' => $query->latest('created_at')->orderByDesc('id'),
+            'newest' => $query
+                ->orderByRaw('(created_at IS NOT NULL AND created_at <= ?) DESC', [Site::PLAUSIBLE_SQL_DATETIME_CEIL])
+                ->latest('created_at')
+                ->orderByDesc('id'),
             'rating_desc' => Site::hasSitesColumn('rating_avg')
                 ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
                 : $query->orderByDesc('dr')->orderByDesc('id'),

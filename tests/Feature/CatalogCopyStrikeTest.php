@@ -9,6 +9,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\Catalog\CatalogCopyStrikeGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -430,6 +431,31 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
         $this->assertSame($site->id, (int) CatalogCopyEvent::first()->site_id);
+    }
+
+    public function test_unparseable_copy_event_dates_do_not_count_toward_threshold(): void
+    {
+        $user = $this->advertiser();
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        for ($i = 1; $i <= 4; $i++) {
+            $event = CatalogCopyEvent::create([
+                'user_id' => $user->id,
+                'site_id' => $this->site("garbage-copy-{$i}.example")->id,
+                'normalized_host' => "garbage-copy-{$i}.example",
+                'created_at' => now(),
+            ]);
+            DB::table('catalog_copy_events')->where('id', $event->id)->update([
+                'created_at' => 'not-a-date',
+            ]);
+        }
+
+        $site = $this->site('real-copy.example');
+        $result = $guard->record($user, $site->id, 'https://real-copy.example');
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
+        $this->assertSame(0, (int) $user->fresh()->catalog_copy_strike_count);
+        $this->assertSame(1, $result['distinct_in_window']);
     }
 
     public function test_copy_tracking_pauses_while_hide_mode_is_active(): void

@@ -152,6 +152,7 @@ class RevealPaceGuard
         return SiteUrlReveal::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', now()->subSeconds(max(1, $seconds)))
+            ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->count();
     }
 
@@ -176,9 +177,11 @@ class RevealPaceGuard
         $oldest = SiteUrlReveal::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $windowStart)
+            ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->orderByDesc('created_at')
             ->limit($limit)
             ->pluck('created_at')
+            ->filter(fn ($at) => $at instanceof \DateTimeInterface)
             ->last();
 
         if (! $oldest) {
@@ -210,9 +213,12 @@ class RevealPaceGuard
         $times = SiteUrlReveal::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', now()->subHour())
+            ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->orderByDesc('created_at')
             ->limit($samples)
-            ->pluck('created_at');
+            ->pluck('created_at')
+            ->filter(fn ($at) => $at instanceof \DateTimeInterface)
+            ->values();
 
         if ($times->count() < $samples) {
             return false;

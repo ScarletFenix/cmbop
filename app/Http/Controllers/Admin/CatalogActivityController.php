@@ -426,37 +426,20 @@ class CatalogActivityController extends Controller
             return [collect(), false];
         }
 
-        $copyFilter = $request->query('copy') === 'all' ? 'all' : 'attention';
-        $q = trim((string) $request->query('q', ''));
-        $focusUserId = max(0, (int) $request->integer('user'));
-        $matchingIds = $this->matchingUserIds($q);
-        $attentionSince = now()->subDays(self::COPY_ATTENTION_DAYS);
-
-        $query = User::query()
-            ->where(function ($outer) use ($copyFilter, $attentionSince) {
-                $outer->where(function ($q) {
-                    $q->whereNotNull('catalog_hide_until')
-                        ->where('catalog_hide_until', '>', now());
-                });
-
-                if ($copyFilter === 'all') {
-                    $outer->orWhere('catalog_copy_strike_count', '>', 0);
-
-                    return;
-                }
-
-                $outer->orWhere(function ($q) use ($attentionSince) {
-                    $q->where('catalog_copy_strike_count', '>', 0)
-                        ->where(function ($recent) use ($attentionSince) {
-                            $recent->where('catalog_copy_warned_at', '>=', $attentionSince)
-                                ->orWhere('catalog_hide_until', '>=', $attentionSince);
-                        });
-                });
+        $users = User::query()
+            ->where(function ($q) {
+                $q->where('catalog_copy_strike_count', '>', 0)
+                    ->orWhere(function ($q2) {
+                        $q2->whereNotNull('catalog_hide_until')
+                            ->where('catalog_hide_until', '>', now())
+                            ->where('catalog_hide_until', '>=', User::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                            ->where('catalog_hide_until', '<=', User::PLAUSIBLE_SQL_DATETIME_CEIL);
+                    });
             })
-            ->when($matchingIds !== null, fn ($q2) => $q2->whereIn('id', $matchingIds));
-
-        $users = $query
-            ->orderByRaw('CASE WHEN catalog_hide_until IS NOT NULL AND catalog_hide_until > ? THEN 0 ELSE 1 END', [now()])
+            ->orderByRaw(
+                'CASE WHEN catalog_hide_until IS NOT NULL AND catalog_hide_until > ? AND catalog_hide_until >= ? AND catalog_hide_until <= ? THEN 0 ELSE 1 END',
+                [now(), User::PLAUSIBLE_SQL_DATETIME_FLOOR, User::PLAUSIBLE_SQL_DATETIME_CEIL]
+            )
             ->orderByDesc('catalog_hide_until')
             ->orderByDesc('catalog_copy_strike_count')
             ->orderByDesc('catalog_copy_warned_at')
@@ -479,23 +462,14 @@ class CatalogActivityController extends Controller
             return [collect(), $capped];
         }
 
-        $userIds = $users->pluck('id');
-        $windowStart = now()->subDays($days);
-        $unlocks = collect();
-        $lastHour = collect();
-
-        if (Schema::hasTable('site_url_reveals')) {
-            $unlocks = SiteUrlReveal::query()
-                ->select('user_id', DB::raw('COUNT(*) as total'))
-                ->whereIn('user_id', $userIds)
-                ->where('created_at', '>=', $windowStart)
-                ->groupBy('user_id')
-                ->pluck('total', 'user_id');
-
-            $lastHour = SiteUrlReveal::query()
-                ->select('user_id', DB::raw('COUNT(*) as total'))
-                ->whereIn('user_id', $userIds)
-                ->where('created_at', '>=', now()->subHour())
+        $copyCounts = collect();
+        if (Schema::hasTable('catalog_copy_events')) {
+            $window = max(30, (int) config('catalog.copy_strikes.window_seconds', 120));
+            $copyCounts = CatalogCopyEvent::query()
+                ->select('user_id', DB::raw('COUNT(*) as recent_copies'))
+                ->whereIn('user_id', $users->pluck('id'))
+                ->where('created_at', '>=', now()->subSeconds($window))
+                ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
                 ->groupBy('user_id')
                 ->pluck('total', 'user_id');
         }

@@ -6,7 +6,9 @@ use App\Models\AdBanner;
 use App\Models\PromotionEvent;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\PromotionTrackingService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -284,6 +286,37 @@ class PromotionTrackingTest extends TestCase
 
         $this->assertSame(0, PromotionEvent::query()->count());
         $this->assertSame(0, (int) $banner->fresh()->impressions);
+    }
+
+    public function test_seven_day_counts_ignore_unparseable_occurred_on(): void
+    {
+        $banner = $this->liveBanner();
+        $tracking = app(PromotionTrackingService::class);
+        $since = now()->subDays(7)->startOfDay();
+
+        PromotionEvent::query()->create([
+            'subject_type' => AdBanner::class,
+            'subject_id' => $banner->id,
+            'event' => PromotionTrackingService::EVENT_IMPRESSION,
+            'visitor_hash' => 'real-visitor',
+            'occurred_on' => now()->toDateString(),
+            'created_at' => now(),
+        ]);
+
+        $garbage = PromotionEvent::query()->create([
+            'subject_type' => AdBanner::class,
+            'subject_id' => $banner->id,
+            'event' => PromotionTrackingService::EVENT_IMPRESSION,
+            'visitor_hash' => 'garbage-visitor',
+            'occurred_on' => now()->toDateString(),
+            'created_at' => now(),
+        ]);
+        DB::table('promotion_events')->where('id', $garbage->id)->update([
+            'occurred_on' => 'not-a-date',
+        ]);
+
+        $this->assertSame(1, $tracking->countSince(AdBanner::class, PromotionTrackingService::EVENT_IMPRESSION, $since));
+        $this->assertSame(1, $tracking->countForSubjectSince($banner, PromotionTrackingService::EVENT_IMPRESSION, $since));
     }
 
     public function test_preview_page_is_staff_only(): void
