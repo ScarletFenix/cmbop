@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -308,6 +309,10 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertSame('cancelled', $order->status);
         $this->assertNull($order->paid_at);
         $this->assertSame('Transfer reversed', $order->admin_notes);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'payment.status_updated',
+            'subject_id' => $order->id,
+        ]);
     }
 
     public function test_scheduled_filter_uses_publication_mode_not_status_column(): void
@@ -443,6 +448,7 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertSame('WISE-8891', $order->payment_reference);
         $this->assertSame($paidAt, $order->paid_at?->toDateTimeString());
         $this->assertEqualsWithDelta(10.0, (float) $wallet->fresh()->balance, 0.01);
+        $this->assertSame(0, ActivityLog::query()->where('action', 'payment.status_updated')->count());
     }
 
     public function test_wallet_fail_first_sibling_does_not_take_other_leftover(): void

@@ -145,8 +145,13 @@ class AdminActivityDisplay
             }
         }
 
-        // Only fall back to the same family of subject (site / bulk). Guessing
-        // user_id/order_id from properties can send an admin to the wrong record.
+        // Only fall back to site/bulk when this row is about a site or bulk
+        // request. A leftover site_id on an order/user row must not deep-link.
+        $siteFamily = in_array($type, ['', Site::class, BulkSiteRequest::class], true);
+        if (! $siteFamily) {
+            return null;
+        }
+
         $props = is_array($log->properties) ? $log->properties : [];
         $siteId = (int) data_get($props, 'site_id');
         if ($siteId > 0) {

@@ -652,6 +652,12 @@ class PaymentController extends Controller
             );
         }
 
+        // Notes / reference saves keep payment_status the same on purpose.
+        // Do not write payment.status_updated for those — it looks like a money move.
+        if ($oldStatus === $newStatus) {
+            return;
+        }
+
         ActivityLogger::log(
             'payment.status_updated',
             (auth()->user()?->name ?? 'Admin').' set payment for order '.$order->order_number.' to '.$newStatus,
