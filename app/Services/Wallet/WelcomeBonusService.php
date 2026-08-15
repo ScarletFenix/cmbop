@@ -129,29 +129,7 @@ class WelcomeBonusService
                 }
             };
 
-            // Settings-row lock serializes grants only when that table exists.
-            // Per-place lock covers Hostinger drift (no unique IP index yet).
-            // Lock-store failures must not abort signup — unique IP + row
-            // locks still refuse a second €20. Do not retry insert() if it
-            // already ran (lock release can throw after a successful write).
-            $ran = false;
-            $result = false;
-            $insertOnce = function () use ($insert, &$ran, &$result): bool {
-                if (! $ran) {
-                    $ran = true;
-                    $result = $insert();
-                }
-
-                return $result;
-            };
-
-            try {
-                return Cache::lock('welcome-bonus-claim:'.$ip, 15)->block(8, $insertOnce);
-            } catch (LockTimeoutException) {
-                return false;
-            } catch (\Throwable) {
-                return $insertOnce();
-            }
+            return $this->withPlaceLock($ip, $insert);
         };
 
         // The settings-row lock only holds until this transaction ends.
@@ -216,10 +194,7 @@ class WelcomeBonusService
             return null;
         }
 
-        // IPv4-mapped IPv6 (::ffff:1.2.3.4) must match the IPv4 claim key.
-        if (strlen($packed) === 16 && substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
-            $packed = substr($packed, 12);
-        }
+        $packed = $this->packedIpv4IfMapped($packed);
 
         // IPv6 privacy addresses rotate inside a /64. Lock the allocation, not
         // the full 128 bits, or one prefix can collect €20 per signup.
@@ -308,6 +283,7 @@ class WelcomeBonusService
         if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV4) !== false) {
             $keys[] = '::ffff:'.$ip;
             $keys[] = '::FFFF:'.$ip;
+            $keys[] = '::'.$ip;
         }
 
         return array_values(array_unique($keys));
@@ -345,6 +321,110 @@ class WelcomeBonusService
     }
 
     /**
+     * Serialize two grants for the same place.
+     *
+     * Hostinger defaults to CACHE_STORE=database. A cache lock taken inside
+     * the signup transaction is invisible to other connections until commit,
+     * so concurrent signups from the same IP can both pass ipAlreadyClaimed
+     * when the unique IP index is also missing. MySQL/MariaDB GET_LOCK is
+     * session-scoped and works inside an open transaction.
+     */
+    private function withPlaceLock(string $ip, callable $insert): bool
+    {
+        $sql = $this->trySqlPlaceLock($ip);
+        if ($sql === 'held') {
+            try {
+                return $insert();
+            } finally {
+                $this->releaseSqlPlaceLock($ip);
+            }
+        }
+        if ($sql === 'timeout') {
+            return false;
+        }
+
+        $ran = false;
+        $result = false;
+        $insertOnce = function () use ($insert, &$ran, &$result): bool {
+            if (! $ran) {
+                $ran = true;
+                $result = $insert();
+            }
+
+            return $result;
+        };
+
+        try {
+            return Cache::lock('welcome-bonus-claim:'.$ip, 15)->block(8, $insertOnce);
+        } catch (LockTimeoutException) {
+            return false;
+        } catch (\Throwable) {
+            return $insertOnce();
+        }
+    }
+
+    /**
+     * @return 'held'|'timeout'|'unavailable'
+     */
+    private function trySqlPlaceLock(string $ip): string
+    {
+        try {
+            $driver = DB::getDriverName();
+            if (! in_array($driver, ['mysql', 'mariadb'], true)) {
+                return 'unavailable';
+            }
+
+            $row = DB::selectOne('SELECT GET_LOCK(?, 8) as got', [$this->sqlPlaceLockName($ip)]);
+            $got = $row->got ?? null;
+            if ($got === null) {
+                return 'unavailable';
+            }
+
+            return (int) $got === 1 ? 'held' : 'timeout';
+        } catch (\Throwable) {
+            return 'unavailable';
+        }
+    }
+
+    private function releaseSqlPlaceLock(string $ip): void
+    {
+        try {
+            DB::selectOne('SELECT RELEASE_LOCK(?) as released', [$this->sqlPlaceLockName($ip)]);
+        } catch (\Throwable) {
+        }
+    }
+
+    private function sqlPlaceLockName(string $ip): string
+    {
+        // GET_LOCK names are capped at 64 characters.
+        return 'wbclaim:'.$ip;
+    }
+
+    /**
+     * ::ffff:1.2.3.4 and deprecated ::1.2.3.4 (96-bit zero prefix) are the
+     * same place as 1.2.3.4. Leave :: and ::1 as IPv6.
+     */
+    private function packedIpv4IfMapped(string $packed): string
+    {
+        if (strlen($packed) !== 16) {
+            return $packed;
+        }
+
+        if (substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
+            return substr($packed, 12);
+        }
+
+        if (substr($packed, 0, 12) === str_repeat("\x00", 12)) {
+            $tail = substr($packed, 12);
+            if ($tail !== "\x00\x00\x00\x00" && $tail !== "\x00\x00\x00\x01") {
+                return $tail;
+            }
+        }
+
+        return $packed;
+    }
+
+    /**
      * IPv4, or IPv4-mapped IPv6, as a dotted quad. Used so leftover
      * ::ffff: / ::FFFF: / expanded mapped rows still lock the IPv4 place.
      */
@@ -355,9 +435,7 @@ class WelcomeBonusService
             return null;
         }
 
-        if (strlen($packed) === 16 && substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
-            $packed = substr($packed, 12);
-        }
+        $packed = $this->packedIpv4IfMapped($packed);
 
         if (strlen($packed) !== 4) {
             return null;
@@ -375,8 +453,8 @@ class WelcomeBonusService
             return null;
         }
 
-        // IPv4-mapped rows are covered by ipClaimKeys(), not the /64 lock.
-        if (substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
+        // Mapped / IPv4-compatible rows are the IPv4 place, not a /64.
+        if (strlen($this->packedIpv4IfMapped($packed)) === 4) {
             return null;
         }
 

@@ -334,6 +334,31 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_ipv4_compatible_ipv6_normalizes_to_ipv4_and_leaves_loopback_as_ipv6(): void
+    {
+        $this->assertSame('1.2.3.4', $this->service->normalizedIp($this->request('::1.2.3.4')));
+        $this->assertSame('::', $this->service->normalizedIp($this->request('::1')));
+    }
+
+    public function test_legacy_ipv4_compatible_claim_row_blocks_the_ipv4_key(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
     public function test_broken_cloudflare_cidr_config_does_not_throw_or_trust_spoofed_header(): void
     {
         config(['welcome_bonus.cloudflare_cidrs' => ['not-a-cidr', new \stdClass]]);
