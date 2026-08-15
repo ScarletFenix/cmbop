@@ -9,26 +9,32 @@ use App\Mail\OrderPaymentConfirmed;
 use App\Models\ContentSubmission;
 use App\Models\Invoice;
 use App\Models\Order;
-use App\Models\User;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\CheckoutIntentService;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
 use App\Support\BillingCustomerMailSuppressor;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PaymentController extends Controller
 {
+    public const EXPORT_LIMIT = 5000;
+
     /**
      * Display payments list page
      */
@@ -43,63 +49,19 @@ class PaymentController extends Controller
     public function getPaymentsData(Request $request)
     {
         try {
-            $query = Order::with('user')->orderBy('created_at', 'desc');
+            $this->ensurePaymentColumns();
+            $query = $this->paymentsQuery($request);
 
-            // Search filter. Arrays (search[]) must not be interpolated into LIKE.
-            $search = search_text($request->input('search'));
-            if ($search !== '') {
-                $query->where(function ($q) use ($search) {
-                    $q->where('order_number', 'like', "%{$search}%")
-                        ->orWhere('reference_code', 'like', "%{$search}%")
-                        ->orWhereHas('user', function ($sub) use ($search) {
-                            $sub->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                        });
-                });
-            }
-
-            // Payment status filter. "unpaid" is the ops queue, not an enum value.
-            $paymentStatus = is_string($request->input('payment_status')) ? $request->input('payment_status') : '';
-            if ($paymentStatus === 'unpaid') {
-                $query->unpaidOps();
-            } elseif ($paymentStatus !== '') {
-                $query->where('payment_status', $paymentStatus);
-            }
-
-            $paymentMethod = is_string($request->input('payment_method')) ? $request->input('payment_method') : '';
-            if ($paymentMethod !== '') {
-                $query->where('payment_method', $paymentMethod);
-            }
-
-            $orderStatus = is_string($request->input('status')) ? $request->input('status') : '';
-            if ($orderStatus !== '') {
-                $query->where('status', $orderStatus);
-            }
-
-            $dates = validator(
-                [
-                    'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
-                    'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
-                ],
-                [
-                    'date_from' => 'nullable|date',
-                    'date_to' => 'nullable|date|after_or_equal:date_from',
-                ]
-            )->valid();
-            if (! empty($dates['date_from'])) {
-                $query->whereDate('created_at', '>=', $dates['date_from']);
-            }
-            if (! empty($dates['date_to'])) {
-                $query->whereDate('created_at', '<=', $dates['date_to']);
-            }
-
-            $perPage = $request->get('per_page', 20);
+            $perPage = (int) $request->input('per_page', 20);
+            $perPage = max(1, min(100, $perPage));
             $orders = $query->paginate($perPage);
             $this->attachInvoiceDocuments($orders->getCollection());
 
+            $unpaid = Order::query()->unpaidOps();
+
             return response()->json([
                 'success' => true,
-                'data' => $orders->items(),
+                'data' => collect($orders->items())->map(fn (Order $order) => $this->serializePaymentRow($order))->values(),
                 'pagination' => [
                     'current_page' => $orders->currentPage(),
                     'last_page' => $orders->lastPage(),
@@ -107,6 +69,10 @@ class PaymentController extends Controller
                     'total' => $orders->total(),
                     'from' => $orders->firstItem(),
                     'to' => $orders->lastItem(),
+                ],
+                'summary' => [
+                    'unpaid_count' => (clone $unpaid)->count(),
+                    'unpaid_amount' => round((float) (clone $unpaid)->sum('total_amount'), 2),
                 ],
             ]);
 
@@ -121,7 +87,56 @@ class PaymentController extends Controller
     }
 
     /**
-     * Show single payment details
+     * CSV of the current filter (capped) for finance reconciliation.
+     */
+    public function export(Request $request): StreamedResponse
+    {
+        $this->ensurePaymentColumns();
+        $rows = $this->paymentsQuery($request)->limit(self::EXPORT_LIMIT)->get();
+        $filename = 'order-payments-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($rows) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'order_number',
+                'reference_code',
+                'user_name',
+                'user_email',
+                'amount',
+                'payment_method',
+                'payment_status',
+                'order_status',
+                'payment_reference',
+                'admin_notes',
+                'paid_at',
+                'created_at',
+            ]);
+
+            foreach ($rows as $order) {
+                fputcsv($out, [
+                    $order->order_number,
+                    $order->reference_code,
+                    $order->user?->name,
+                    $order->user?->email,
+                    number_format((float) $order->total_amount, 2, '.', ''),
+                    $order->payment_method,
+                    $order->payment_status,
+                    $order->status,
+                    $order->payment_reference,
+                    $order->admin_notes,
+                    optional($order->paid_at)->toDateTimeString(),
+                    optional($order->created_at)->toDateTimeString(),
+                ]);
+            }
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * Show single payment details (slim payload — no Stripe dump / payout fields).
      */
     public function show($id)
     {
@@ -131,7 +146,7 @@ class PaymentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'data' => $order,
+                'data' => $this->serializePaymentRow($order),
             ]);
         } catch (\Exception $e) {
             return response()->json([
@@ -153,7 +168,8 @@ class PaymentController extends Controller
         // Outside the try: the catch-all would turn a ValidationException into a 500.
         $request->validate([
             'payment_status' => 'required|in:pending,paid,failed,refunded',
-            'notes' => 'nullable|string',
+            'notes' => 'nullable|string|max:2000',
+            'payment_reference' => 'nullable|string|max:120',
             'send_notification' => 'sometimes|boolean',
         ]);
 
@@ -164,6 +180,12 @@ class PaymentController extends Controller
             : true;
 
         $billingSuppressor = app(BillingCustomerMailSuppressor::class);
+        $notes = is_string($request->input('notes')) ? trim((string) $request->input('notes')) : '';
+        $paymentReference = is_string($request->input('payment_reference'))
+            ? trim((string) $request->input('payment_reference'))
+            : '';
+
+        $this->ensurePaymentColumns();
 
         try {
             if (! $sendNotification) {
@@ -178,28 +200,41 @@ class PaymentController extends Controller
             $oldStatus = $order->payment_status;
             $newStatus = (string) $request->payment_status;
 
+            if (! in_array($newStatus, $this->allowedPaymentStatuses($order), true)) {
+                return $this->abortPaymentUpdate(
+                    (int) $id,
+                    $sendNotification,
+                    $this->disallowedStatusMessage($order, $newStatus)
+                );
+            }
+
             if ($newStatus === 'paid' && $oldStatus !== 'paid') {
                 if (in_array((string) $order->status, ['cancelled', 'completed'], true)
                     || $oldStatus === 'refunded') {
-                    DB::rollBack();
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.',
-                    ], 422);
+                    return $this->abortPaymentUpdate(
+                        (int) $id,
+                        $sendNotification,
+                        'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.'
+                    );
                 }
             }
 
             if ($oldStatus === 'paid' && $newStatus === 'pending') {
-                DB::rollBack();
-
-                return response()->json([
-                    'success' => false,
-                    'message' => 'A paid payment cannot be moved back to pending. Mark it failed or refunded instead.',
-                ], 422);
+                return $this->abortPaymentUpdate(
+                    (int) $id,
+                    $sendNotification,
+                    'A paid payment cannot be moved back to pending. Mark it failed or refunded instead.'
+                );
             }
 
             $order->payment_status = $newStatus;
+
+            if ($notes !== '' && Schema::hasColumn('orders', 'admin_notes')) {
+                $order->admin_notes = $notes;
+            }
+            if ($paymentReference !== '' && Schema::hasColumn('orders', 'payment_reference')) {
+                $order->payment_reference = $paymentReference;
+            }
 
             if ($request->payment_status === 'paid' && ! $order->paid_at) {
                 $order->paid_at = now();
@@ -208,15 +243,11 @@ class PaymentController extends Controller
             $refundAmount = 0.0;
             if ($request->payment_status === 'refunded' && $oldStatus === 'paid') {
                 if ($order->status === 'completed') {
-                    DB::rollBack();
-                    if (! $sendNotification) {
-                        app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
-                    }
-
-                    return response()->json([
-                        'success' => false,
-                        'message' => 'Completed orders cannot be refunded here. Use a dispute clawback so the publisher payout is reversed first.',
-                    ], 422);
+                    return $this->abortPaymentUpdate(
+                        (int) $id,
+                        $sendNotification,
+                        'Completed orders cannot be refunded here. Use a dispute clawback so the publisher payout is reversed first.'
+                    );
                 }
 
                 $refundAmount = $this->creditAdvertiserRefund($order);
@@ -227,6 +258,14 @@ class PaymentController extends Controller
             }
 
             if ($request->payment_status === 'failed' && $oldStatus === 'paid') {
+                if ($order->status === 'completed') {
+                    return $this->abortPaymentUpdate(
+                        (int) $id,
+                        $sendNotification,
+                        'Completed orders cannot be marked failed here. Use a dispute clawback so the publisher payout is reversed first.'
+                    );
+                }
+
                 if ($order->payment_method === 'wallet') {
                     $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
                 } elseif (! in_array((string) $order->status, ['cancelled', 'completed'], true)) {
@@ -240,6 +279,8 @@ class PaymentController extends Controller
                 if ($order->status === 'cancelled') {
                     ContentSubmission::releaseAllForOrder((int) $order->id);
                 }
+
+                $order->paid_at = null;
             }
 
             $order->save();
@@ -250,6 +291,8 @@ class PaymentController extends Controller
                 'old_status' => $oldStatus,
                 'new_status' => $request->payment_status,
                 'admin_id' => auth()->id(),
+                'notes' => $notes !== '' ? $notes : null,
+                'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
             ]);
 
             // Send email notification to user when payment is marked as paid.
@@ -257,6 +300,9 @@ class PaymentController extends Controller
             // bonus_reserved until approve/reject so a later refund cannot mint
             // promo as withdrawable cash.
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
+                // Keep leftover checkout bonus reserved until approve/reject,
+                // matching Stripe finalize. Consuming here minted promo as cash
+                // if the publisher later rejected the placement.
                 if ($sendNotification) {
                     $this->sendPaymentConfirmationEmail($order);
                 }
@@ -286,12 +332,12 @@ class PaymentController extends Controller
             }
 
             if ($sendNotification && $request->payment_status === 'failed' && $oldStatus !== 'failed') {
-                $notifications->notifyPaymentFailed([$fresh], $request->notes);
+                $notifications->notifyPaymentFailed([$fresh], $notes !== '' ? $notes : $request->notes);
                 if ($refundAmount > 0) {
                     $notifications->notifyRefundCredited(
                         $fresh,
                         $refundAmount,
-                        $request->notes ?: 'Admin marked payment failed'
+                        $notes !== '' ? $notes : 'Admin marked payment failed'
                     );
                 }
             }
@@ -300,7 +346,7 @@ class PaymentController extends Controller
                 $notifications->notifyRefundCredited(
                     $fresh,
                     $refundAmount,
-                    $request->notes ?: 'Admin refund'
+                    $notes !== '' ? $notes : 'Admin refund'
                 );
             }
 
@@ -308,7 +354,13 @@ class PaymentController extends Controller
                 'payment.status_updated',
                 auth()->user()->name.' set payment for order '.$order->order_number.' to '.$request->payment_status,
                 $order,
-                ['from' => $oldStatus, 'to' => $request->payment_status],
+                [
+                    'from' => $oldStatus,
+                    'to' => $request->payment_status,
+                    'notes' => $notes !== '' ? $notes : null,
+                    'payment_reference' => $paymentReference !== '' ? $paymentReference : null,
+                    'refund_amount' => $refundAmount > 0 ? $refundAmount : null,
+                ],
                 $order->order_number
             );
 
@@ -318,6 +370,8 @@ class PaymentController extends Controller
                 'data' => [
                     'payment_status' => $order->payment_status,
                     'paid_at' => $order->paid_at,
+                    'admin_notes' => $order->admin_notes,
+                    'payment_reference' => $order->payment_reference,
                 ],
             ]);
 
@@ -453,16 +507,12 @@ class PaymentController extends Controller
 
     /**
      * Credit the advertiser wallet when admin marks a paid order as refunded.
-     * Mirrors publisher reject refund behaviour.
+     * Uses the full order total (tax / surcharges included), not a line helper.
      */
     private function creditAdvertiserRefund(Order $order): float
     {
         $order->loadMissing('items');
-        $amount = app(OrderRefundService::class)
-            ->resolveLineRefundAmount(
-                $order,
-                (float) ($order->items->sum('price') ?: $order->total_amount)
-            );
+        $amount = app(OrderRefundService::class)->resolveOrderCancelRefundAmount($order);
         if ($amount <= 0) {
             return 0.0;
         }
@@ -505,5 +555,172 @@ class PaymentController extends Controller
         $request->merge([
             $key => filter_var($raw, FILTER_VALIDATE_BOOLEAN),
         ]);
+    }
+
+    /**
+     * @return Builder<Order>
+     */
+    private function paymentsQuery(Request $request): Builder
+    {
+        $query = Order::query()->with('user:id,name,email')->orderBy('created_at', 'desc');
+
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('order_number', 'like', "%{$search}%")
+                    ->orWhere('reference_code', 'like', "%{$search}%")
+                    ->orWhereHas('user', function ($sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+                if (Schema::hasColumn('orders', 'payment_reference')) {
+                    $q->orWhere('payment_reference', 'like', "%{$search}%");
+                }
+            });
+        }
+
+        $paymentStatus = is_string($request->input('payment_status')) ? $request->input('payment_status') : '';
+        if ($paymentStatus === 'unpaid') {
+            $query->unpaidOps();
+        } elseif ($paymentStatus !== '') {
+            $query->where('payment_status', $paymentStatus);
+        }
+
+        $paymentMethod = is_string($request->input('payment_method')) ? $request->input('payment_method') : '';
+        if ($paymentMethod !== '') {
+            $query->where('payment_method', $paymentMethod);
+        }
+
+        $orderStatus = is_string($request->input('status')) ? $request->input('status') : '';
+        if ($orderStatus !== '') {
+            $query->where('status', $orderStatus);
+        }
+
+        $dates = validator(
+            [
+                'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
+                'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
+                'date_field' => is_string($request->input('date_field')) ? $request->input('date_field') : 'created_at',
+            ],
+            [
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+                'date_field' => 'nullable|in:created_at,paid_at',
+            ]
+        )->valid();
+
+        $dateField = ($dates['date_field'] ?? 'created_at') === 'paid_at' ? 'paid_at' : 'created_at';
+        if (! empty($dates['date_from'])) {
+            $query->whereDate($dateField, '>=', $dates['date_from']);
+        }
+        if (! empty($dates['date_to'])) {
+            $query->whereDate($dateField, '<=', $dates['date_to']);
+        }
+
+        return $query;
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function serializePaymentRow(Order $order): array
+    {
+        return [
+            'id' => $order->id,
+            'order_number' => $order->order_number,
+            'reference_code' => $order->reference_code,
+            'total_amount' => (float) $order->total_amount,
+            'payment_method' => $order->payment_method,
+            'payment_status' => $order->payment_status,
+            'status' => $order->status,
+            'paid_at' => $order->paid_at?->toIso8601String(),
+            'created_at' => $order->created_at?->toIso8601String(),
+            'admin_notes' => $order->admin_notes,
+            'payment_reference' => $order->payment_reference,
+            'user' => $order->user ? [
+                'id' => $order->user->id,
+                'name' => $order->user->name,
+                'email' => $order->user->email,
+            ] : null,
+            'allowed_statuses' => $this->allowedPaymentStatuses($order),
+        ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function allowedPaymentStatuses(Order $order): array
+    {
+        $current = (string) $order->payment_status;
+
+        if ($current === 'refunded') {
+            return [];
+        }
+
+        if ($current === 'paid') {
+            if (in_array((string) $order->status, ['completed'], true)) {
+                return [];
+            }
+
+            return ['failed', 'refunded'];
+        }
+
+        $allowed = ['pending', 'paid', 'failed'];
+        if (in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+            $allowed = array_values(array_diff($allowed, ['paid']));
+        }
+
+        return $allowed;
+    }
+
+    private function disallowedStatusMessage(Order $order, string $newStatus): string
+    {
+        if ($order->payment_status === 'paid' && $order->status === 'completed') {
+            if ($newStatus === 'refunded') {
+                return 'Completed orders cannot be refunded here. Use a dispute clawback so the publisher payout is reversed first.';
+            }
+            if ($newStatus === 'failed') {
+                return 'Completed orders cannot be marked failed here. Use a dispute clawback so the publisher payout is reversed first.';
+            }
+
+            return 'Completed orders cannot be changed here. Use a dispute clawback so the publisher payout is reversed first.';
+        }
+
+        if ($order->payment_status === 'paid' && $newStatus === 'pending') {
+            return 'A paid payment cannot be moved back to pending. Mark it failed or refunded instead.';
+        }
+
+        if ($newStatus === 'paid') {
+            return 'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.';
+        }
+
+        return 'That payment status change is not allowed for this order.';
+    }
+
+    /**
+     * Hostinger deploys often skip migrate. Search/update must not 500
+     * when admin_notes / payment_reference are still missing.
+     */
+    private function ensurePaymentColumns(): void
+    {
+        if (Schema::hasColumn('orders', 'admin_notes')
+            && Schema::hasColumn('orders', 'payment_reference')) {
+            return;
+        }
+
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
+    }
+
+    private function abortPaymentUpdate(int $orderId, bool $sendNotification, string $message)
+    {
+        DB::rollBack();
+        if (! $sendNotification) {
+            app(OrderLifecycleMailSuppressor::class)->forget($orderId);
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+        ], 422);
     }
 }

@@ -11,6 +11,8 @@ ALTER TABLE `orders` ADD COLUMN `scheduled_publish_at` timestamp NULL;
 ALTER TABLE `orders` ADD COLUMN `schedule_timezone` varchar(64) NULL;
 ALTER TABLE `orders` ADD COLUMN `sensitive_type` varchar(50) NULL;
 ALTER TABLE `orders` ADD COLUMN `additional_price` decimal(10,2) NULL DEFAULT 0;
+ALTER TABLE `orders` ADD COLUMN `admin_notes` text NULL;
+ALTER TABLE `orders` ADD COLUMN `payment_reference` varchar(120) NULL;
 
 -- order_items (content library + fee snapshot + publisher workflow)
 ALTER TABLE `order_items` ADD COLUMN `content_submission_id` BIGINT UNSIGNED NULL;

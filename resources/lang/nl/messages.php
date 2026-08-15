@@ -497,6 +497,12 @@ return [
     'staff_handbook_section6_list3' => 'Corrigeer URL, prijs, metrics, geo, niches en afbeeldingen alleen op openstaande (niet-live) sites. Live, geverifieerde of gearchiveerde listings zijn alleen-lezen — vraag een admin.',
     'staff_handbook_section6_list4' => 'Wijzigingen aan metrics, geo, niches en afbeeldingen zijn intern en mailen de publisher niet. Naam, URL of prijs wel.',
     'staff_handbook_section6_list5' => 'Wijs een openstaande site alleen af/verwijder die met een reden die de publisher ziet. De platte reviewwachtrij (Needs review → Sites) werkt over publishers heen.',
+    'staff_handbook_section7_title' => 'Bestelbetalingen (admin)',
+    'staff_handbook_section7_list1' => 'Paid = overboeking bevestigd. Voor Wise, bank en crypto pas na bijschrijving. Publishers krijgen bericht ook als klanmail uit staat.',
+    'staff_handbook_section7_list2' => 'Failed = onbetaald of geweigerd. Annuleert een lopende order en geeft een wallet-reservering vrij. Niet gebruiken bij een afgeronde plaatsing.',
+    'staff_handbook_section7_list3' => 'Refunded = tegoed op de adverteerder-wallet en annulering. Een kaartrefund draait de Stripe-charge niet terug. Zet een notitie en optionele transferreferentie.',
+    'staff_handbook_section7_list4' => 'Afgeronde betaalde orders kunnen hier niet worden terugbetaald of op Failed gezet. Open eerst een link-verwijderd-dispuut zodat de publisher-uitbetaling wordt teruggehaald.',
+    'staff_handbook_section7_list5' => 'Fasewijzigingen blijven in de orderconsole. De betalingsstatus blijft bij Order Payments.',
     'staff_handbook_terms_link' => 'Algemene voorwaarden voor publishers',
     'staff_handbook_privacy_link' => 'Privacybeleid',
 

@@ -532,6 +532,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/payments', [AdminPaymentController::class, 'index'])->name('payments');
         Route::get('/payments/data', [AdminPaymentController::class, 'getPaymentsData'])->name('payments.data');
+        Route::get('/payments/export', [AdminPaymentController::class, 'export'])->name('payments.export');
         Route::get('/payments/{id}', [AdminPaymentController::class, 'show'])->name('payments.show');
         Route::post('/payments/{id}/update-status', [AdminPaymentController::class, 'updatePaymentStatus'])->name('payments.updateStatus');
 

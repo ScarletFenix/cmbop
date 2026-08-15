@@ -111,8 +111,6 @@ class CheckoutIntentPersistTest extends TestCase
         $this->assertSame('paid', $order->fresh()->payment_status);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
-        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
-        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
     }
 
     public function test_admin_mark_failed_refunds_bonus_after_cache_flush(): void

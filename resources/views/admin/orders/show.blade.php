@@ -489,9 +489,11 @@
                         <div class="col-md-3"><span class="text-muted small">Method</span><div class="fw-semibold">{{ $order->payment_method ?: '—' }}</div></div>
                         <div class="col-md-3"><span class="text-muted small">Total</span><div class="fw-semibold">€{{ number_format((float) $order->total_amount, 2) }}</div></div>
                         <div class="col-md-3"><span class="text-muted small">Paid at</span><div>{{ optional($order->paid_at)->format('M j, Y g:i A') ?: '—' }}</div></div>
+                        <div class="col-md-3"><span class="text-muted small">Transfer reference</span><div>{{ $order->payment_reference ?: '—' }}</div></div>
+                        <div class="col-md-9"><span class="text-muted small">Admin notes</span><div>{{ $order->admin_notes ?: '—' }}</div></div>
                     </div>
                     <p class="text-muted small mb-3">
-                        To mark paid, failed, or refunded, use the Order Payments tools. This screen is inspection-only.
+                        To mark paid, failed, or refunded, use the Order Payments tools. Completed paid orders need a dispute clawback. This screen is inspection-only.
                     </p>
                     <div class="d-flex flex-wrap gap-2">
                         <a href="{{ $paymentsUrl }}" class="btn btn-primary btn-sm">
