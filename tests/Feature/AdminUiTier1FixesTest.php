@@ -117,6 +117,25 @@ class AdminUiTier1FixesTest extends TestCase
             ->assertOk();
     }
 
+    public function test_blogs_header_actions_share_one_alignment_row(): void
+    {
+        $blade = file_get_contents(resource_path('views/admin/blogs/index.blade.php'));
+        $css = file_get_contents(public_path('assets/css/admin-components.css'));
+
+        $this->assertStringContainsString('admin-blogs-header-actions', $blade);
+        $this->assertStringContainsString('.admin-blogs-header-actions', $css);
+        $this->assertStringContainsString('align-items: center', $css);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.blogs.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('admin-blogs-header-actions', $html);
+        $this->assertStringContainsString('Create New Blog', $html);
+        $this->assertStringContainsString('Sync curated SEO blogs', $html);
+    }
+
     public function test_users_table_keeps_hidden_role_input_inside_a_cell(): void
     {
         $html = $this->actingAs($this->admin)

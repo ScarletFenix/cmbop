@@ -7,8 +7,8 @@
             <h1 class="h3 mb-0">Blogs</h1>
             <p class="text-muted">Create, publish, and manage SEO blog posts and daily updates for the public blog page.</p>
         </div>
-        <div class="col-md-6 text-end d-flex justify-content-end gap-2 flex-wrap">
-            <form action="{{ route('admin.blogs.sync-curated') }}" method="POST" class="d-inline">
+        <div class="col-md-6 admin-blogs-header-actions">
+            <form action="{{ route('admin.blogs.sync-curated') }}" method="POST">
                 @csrf
                 <button type="submit" class="btn btn-outline-primary"
                         title="Import/update curated SEO pillar posts into this list"

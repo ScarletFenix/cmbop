@@ -241,6 +241,32 @@
 
 /* ——— Blogs ——— */
 
+/* Sync is a <form><button>, Create is an <a>. Without a shared flex
+   alignment they sit on different baselines and Create floats above Sync. */
+.admin-blogs-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.admin-blogs-header-actions form {
+  display: inline-flex;
+  align-items: center;
+  margin: 0;
+}
+
+.admin-blogs-header-actions .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  line-height: 1.25;
+  min-height: calc(1.5em + 0.75rem + 2px);
+  border-radius: var(--btn-radius-pill, 999px);
+}
+
 .admin-blogs-table td,
 .admin-blogs-table th {
   padding: 12px 15px;
