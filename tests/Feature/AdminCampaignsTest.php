@@ -1028,6 +1028,13 @@ class AdminCampaignsTest extends TestCase
         ]);
     }
 
+    public function test_recover_does_not_crash_when_recipients_table_is_missing(): void
+    {
+        Schema::drop('email_campaign_recipients');
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+    }
+
     public function test_log_sync_updates_open_dedupe_row_instead_of_duplicating(): void
     {
         $admin = $this->makeUser('admin');

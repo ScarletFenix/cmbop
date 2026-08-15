@@ -110,9 +110,31 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
-        $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
+        $this->assertSame(1, preg_match_all('/function healQueuedRecipientsWithTerminalLog\b/', $model));
+        $this->assertSame(0, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function expireOrphanedPendingLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function healQueuedRecipientsWithTerminalLog\(\): array\s*\{(.*?)\n    \/\*\*/s',
+            $model,
+            $heal
+        ));
+        $this->assertSame(
+            0,
+            preg_match_all('/^\s*return;\s*$/m', $heal[1]),
+            'healQueuedRecipientsWithTerminalLog must return [] — a bare return is a TypeError'
+        );
+        $this->assertTrue((bool) preg_match(
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    \}\n\}\n/s',
+            $model,
+            $queued
+        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $queued[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queued[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queued[1]
+        );
     }
 }
