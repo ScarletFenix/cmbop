@@ -154,4 +154,72 @@ class AdminBlogCuratedSyncTest extends TestCase
             Blog::query()->where('slug', AcheterGuestPostsFrBlogPost::SLUG)->exists()
         );
     }
+
+    public function test_sync_does_not_overwrite_manually_edited_curated_post(): void
+    {
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $admin = $this->adminUser();
+        $blog = Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->firstOrFail();
+        $originalTitle = $blog->title;
+
+        $this->actingAs($admin)->put(route('admin.blogs.update', $blog->id), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Admin Edited Checklist Title',
+                    'slug' => $blog->slug,
+                    'excerpt' => 'Edited excerpt',
+                    'content' => '<p>Edited body</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertSame('Admin Edited Checklist Title', $blog->fresh()->title);
+        $this->assertNotNull($blog->fresh()->manually_edited_at);
+
+        $this->actingAs($admin)
+            ->post(route('admin.blogs.sync-curated'))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertSame('Admin Edited Checklist Title', $blog->fresh()->title);
+        $this->assertNotSame($originalTitle, $blog->fresh()->title);
+    }
+
+    public function test_deleted_curated_post_is_not_resurrected_by_heal_or_sync(): void
+    {
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $admin = $this->adminUser();
+        $blog = Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->firstOrFail();
+
+        $this->actingAs($admin)
+            ->delete(route('admin.blogs.destroy', $blog->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseMissing('blogs', ['slug' => LiveLinkChecklistBlogPost::SLUG]);
+        $this->assertDatabaseHas('curated_blog_tombstones', ['slug' => LiveLinkChecklistBlogPost::SLUG]);
+
+        Cache::forget('curated_blogs_present_v1');
+        CuratedBlogSync::ensurePresent();
+
+        $this->assertDatabaseMissing('blogs', ['slug' => LiveLinkChecklistBlogPost::SLUG]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.blogs.sync-curated'))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        $this->assertDatabaseMissing('blogs', ['slug' => LiveLinkChecklistBlogPost::SLUG]);
+    }
+
+    public function test_sync_button_asks_for_confirmation(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)
+            ->get(route('admin.blogs.index'))
+            ->assertOk()
+            ->assertSee('data-slb-confirm=', false)
+            ->assertSee('Posts you edited are kept', false);
+    }
 }

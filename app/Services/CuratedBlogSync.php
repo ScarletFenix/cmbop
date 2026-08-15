@@ -36,6 +36,26 @@ class CuratedBlogSync
             });
         }
 
+        if (! Schema::hasColumn('blogs', 'curated_key')) {
+            Schema::table('blogs', function ($table) {
+                $table->string('curated_key')->nullable()->index();
+            });
+        }
+
+        if (! Schema::hasColumn('blogs', 'manually_edited_at')) {
+            Schema::table('blogs', function ($table) {
+                $table->timestamp('manually_edited_at')->nullable();
+            });
+        }
+
+        if (! Schema::hasTable('curated_blog_tombstones')) {
+            Schema::create('curated_blog_tombstones', function (Blueprint $table) {
+                $table->id();
+                $table->string('slug')->unique();
+                $table->timestamps();
+            });
+        }
+
         self::ensureTranslationsTable();
     }
 
@@ -185,13 +205,16 @@ class CuratedBlogSync
         self::ensureSchema();
 
         $present = Cache::remember('curated_blogs_present_v1', now()->addMinutes(30), function () {
-            $slugs = self::curatedSlugs();
+            $slugs = array_values(array_filter(
+                self::curatedSlugs(),
+                static fn (string $slug): bool => ! CuratedBlogWriter::isTombstoned($slug)
+            ));
             $found = Blog::query()
                 ->whereIn('slug', $slugs)
                 ->pluck('slug')
                 ->all();
 
-            if (count($found) >= count($slugs)) {
+            if ($slugs === [] || count($found) >= count($slugs)) {
                 return true;
             }
 

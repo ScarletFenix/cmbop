@@ -10,7 +10,11 @@
         <div class="col-md-6 text-end d-flex justify-content-end gap-2 flex-wrap">
             <form action="{{ route('admin.blogs.sync-curated') }}" method="POST" class="d-inline">
                 @csrf
-                <button type="submit" class="btn btn-outline-primary" title="Import/update curated SEO pillar posts into this list">
+                <button type="submit" class="btn btn-outline-primary"
+                        title="Import/update curated SEO pillar posts into this list"
+                        data-slb-confirm="This updates unedited pillar posts from code. Posts you edited are kept. Deleted pillar posts stay deleted."
+                        data-slb-confirm-title="Sync curated SEO blogs?"
+                        data-slb-confirm-text="Sync">
                     <i class="fa fa-sync me-2"></i> Sync curated SEO blogs
                 </button>
             </form>

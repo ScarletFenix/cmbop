@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Blog;
 use App\Models\User;
+use App\Services\CuratedBlogWriter;
 use App\Support\BlogInlineImages;
 use App\Support\DofollowNofollowAnkertexteBlogPost;
 use Illuminate\Console\Command;
@@ -20,30 +20,14 @@ class UpsertDofollowNofollowAnkertexteBlog extends Command
         $this->ensureFeaturedImage();
 
         $payload = DofollowNofollowAnkertexteBlogPost::payload();
-        unset($payload['faq']);
-
-        $existing = Blog::query()->where('slug', DofollowNofollowAnkertexteBlogPost::SLUG)->first();
         $authorUser = User::query()->orderBy('id')->first();
+        $blog = CuratedBlogWriter::upsert(DofollowNofollowAnkertexteBlogPost::SLUG, $payload, $authorUser?->id);
 
-        $data = array_merge($payload, [
-            'updated_by' => $authorUser?->id,
-        ]);
+        if (! $blog) {
+            $this->warn('Skipped deleted curated slug '.DofollowNofollowAnkertexteBlogPost::SLUG);
 
-        if (! $existing) {
-            $data['published_at'] = now();
-            $data['created_by'] = $authorUser?->id;
-        } else {
-            $data['published_at'] = $existing->published_at ?? now();
-            $data['created_by'] = $existing->created_by ?? $authorUser?->id;
-            if ($existing->author) {
-                $data['author'] = $existing->author;
-            }
+            return self::SUCCESS;
         }
-
-        $blog = Blog::updateOrCreate(
-            ['slug' => DofollowNofollowAnkertexteBlogPost::SLUG],
-            $data
-        );
 
         $this->info('Upserted blog #'.$blog->id.' ('.$blog->slug.') primary_locale='.($blog->primary_locale ?: 'null'));
 

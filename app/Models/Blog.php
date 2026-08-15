@@ -17,6 +17,7 @@ class Blog extends Model
     protected $fillable = [
         'title',
         'slug',
+        'curated_key',
         'primary_locale',
         'excerpt',
         'content',
@@ -25,6 +26,7 @@ class Blog extends Model
         'tags',
         'status',
         'published_at',
+        'manually_edited_at',
         'created_by',
         'updated_by',
     ];
@@ -32,6 +34,7 @@ class Blog extends Model
     protected $casts = [
         'tags' => 'array',
         'published_at' => 'datetime',
+        'manually_edited_at' => 'datetime',
     ];
 
     /**
