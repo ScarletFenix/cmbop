@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Services\AudienceInventoryService;
+use App\Support\MailJobPayload;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -115,16 +116,6 @@ class EmailCampaign extends Model
                 $payload['sent_at'] = $this->sent_at ?? now();
             } else {
                 $payload['status'] = self::STATUS_FAILED;
-                $payload['sent_at'] = $this->sent_at ?? now();
-            }
-        } elseif ($this->status === self::STATUS_SENDING) {
-            $pending = $this->recipients()
-                ->where('status', EmailCampaignRecipient::STATUS_PENDING)
-                ->count();
-            if ($pending === 0 && $queued === 0) {
-                $payload['status'] = $delivered > 0
-                    ? self::STATUS_SENT
-                    : self::STATUS_FAILED;
                 $payload['sent_at'] = $this->sent_at ?? now();
             }
         }
@@ -366,8 +357,11 @@ class EmailCampaign extends Model
 
             return DB::table($table)
                 ->where('payload', 'like', '%SendEmailCampaignJob%')
-                ->where('payload', 'like', '%campaignId";i:'.$campaignId.';%')
-                ->exists();
+                ->pluck('payload')
+                ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
+                    (string) $payload,
+                    $campaignId
+                ));
         } catch (\Throwable) {
             return false;
         }
