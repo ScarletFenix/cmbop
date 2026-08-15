@@ -16,8 +16,14 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
    queue. Flash: **Campaign queued for N recipient(s).**
 4. The job marks the campaign `sending`, preference-skips or queues
    `AudienceCampaignMail`, then finalizes `sent` (if any mail left the job) or
-   `failed`. A thrown handle recounts rows and marks `failed` (not stuck
-   `sending`).
+   `failed`. A thrown handle (or timeout) fails leftover **pending** rows,
+   recounts, and marks the campaign `failed` (not stuck `sending`). Already
+   queued mail can still deliver afterward.
+5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
+   (`error`) and recount. A late `marketing_emails` opt-out, before the queued
+   mail actually sends, is honored when `respect_preferences` is on. If Email
+   Center disables the `audience_campaign` type, pending rows are skipped
+   (`disabled`) and the campaign ends `failed`.
 
 Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
@@ -44,10 +50,11 @@ and add-site / deposit reminders keep their own queries.
   controller uses `$request->boolean('respect_preferences')` with no default
   `true`.
 - Preference gate is `marketing_emails` only. Order, payment, and security
-  mail stay on.
+  mail stay on. The job pre-checks before queueing; the mailable checks again
+  at send time so an unsubscribe that lands in between is still honored.
 - Transactional `PlatformMailable` drops after `MAIL_MAX_AGE_HOURS` (24).
   Campaign mail uses `MAIL_CAMPAIGN_MAX_AGE_HOURS` (72). A dropped send marks
-  the recipient `skipped` (`stale` or `disabled`).
+  the recipient `skipped` (`stale`, `preference`, or `disabled`).
 
 ## Signed unsubscribe
 

@@ -6,6 +6,7 @@ use App\Mail\AudienceCampaignMail;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailNotificationPreference;
+use App\Models\EmailNotificationSetting;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -20,7 +21,7 @@ class SendEmailCampaignJob implements ShouldQueue
 
     public int $tries = 1;
 
-    public int $timeout = 120;
+    public int $timeout = 600;
 
     public function __construct(public int $campaignId)
     {
@@ -59,9 +60,22 @@ class SendEmailCampaignJob implements ShouldQueue
 
     protected function processPending(EmailCampaign $campaign): void
     {
+        if (! EmailNotificationSetting::isEnabled('audience_campaign')) {
+            EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaign->id)
+                ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_SKIPPED,
+                    'skip_reason' => EmailCampaignRecipient::SKIP_DISABLED,
+                ]);
+
+            return;
+        }
+
         EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
             ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+            ->with('user')
             ->orderBy('id')
             ->chunkById(100, function ($rows) use ($campaign) {
                 foreach ($rows as $row) {
@@ -97,7 +111,6 @@ class SendEmailCampaignJob implements ShouldQueue
             $mailable = new AudienceCampaignMail($campaign, $user);
             $mailable->notificationType = 'audience_campaign';
             $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$user->id;
-            $mailable->skipUserPreference = true;
 
             Mail::to($user->email)->send($mailable);
         } catch (\Throwable $e) {
@@ -139,6 +152,14 @@ class SendEmailCampaignJob implements ShouldQueue
         if (in_array($campaign->status, [EmailCampaign::STATUS_SENT, EmailCampaign::STATUS_FAILED], true)) {
             return;
         }
+
+        EmailCampaignRecipient::query()
+            ->where('email_campaign_id', $campaign->id)
+            ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+            ->update([
+                'status' => EmailCampaignRecipient::STATUS_FAILED,
+                'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+            ]);
 
         $campaign->recountRecipientTotals();
         $campaign->update([
