@@ -65,6 +65,9 @@ class SearchQueryHardeningTest extends TestCase
         $this->assertNull(filter_number('nope'));
         $this->assertSame(10.0, filter_number('10'));
         $this->assertSame(10.0, filter_number(10));
+        $this->assertSame('%foo%', like_contains('foo'));
+        $this->assertSame('%100\\% off%', like_contains('100% off'));
+        $this->assertSame('%a\\_b%', like_contains('a_b'));
     }
 
     public function test_admin_list_pages_ignore_array_search(): void
