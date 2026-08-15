@@ -379,7 +379,7 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->actingAs($admin)
             ->getJson(route('admin.payments.data', ['search' => $order->order_number]))
             ->assertOk()
-            ->assertJsonPath('data.0.allowed_statuses', ['refunded']);
+            ->assertJsonPath('data.0.allowed_statuses', ['failed', 'refunded']);
 
         $this->actingAs($admin)
             ->postJson(route('admin.payments.updateStatus', $order->id), [
@@ -395,6 +395,89 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_paid_row_can_save_notes_without_a_money_move(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 10,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'notes-only'), [
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now()->subHour(),
+            'total_amount' => 80,
+        ]);
+        $paidAt = $order->paid_at?->toDateTimeString();
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['search' => $order->order_number]))
+            ->assertOk()
+            ->assertJsonPath('data.0.allowed_statuses', ['paid', 'failed', 'refunded']);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+                'notes' => 'Wise #8891 matched on statement',
+                'payment_reference' => 'WISE-8891',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $order->refresh();
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame('processing', $order->status);
+        $this->assertSame('Wise #8891 matched on statement', $order->admin_notes);
+        $this->assertSame('WISE-8891', $order->payment_reference);
+        $this->assertSame($paidAt, $order->paid_at?->toDateTimeString());
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->fresh()->balance, 0.01);
+    }
+
+    public function test_wallet_fail_does_not_steal_another_checkout_leftover_bonus(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 100,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'wallet-iso'), [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 80,
+            'reference_code' => 'PAY-WALLET-THIS',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $order->reference_code, 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PAY-WALLET-OTHER', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk();
+
+        $wallet->refresh();
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
     }
 
     public function test_refund_does_not_steal_another_checkout_leftover_bonus(): void
@@ -532,6 +615,8 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString('Swal.fire({', $html);
         $this->assertStringContainsString('does not refund the Stripe charge', $html);
         $this->assertStringContainsString('Use a dispute clawback', $html);
+        $this->assertStringContainsString('willMoveMoney', $html);
+        $this->assertStringContainsString('does not credit the wallet again', $html);
         $blade = file_get_contents(resource_path('views/admin/payments.blade.php'));
         $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $blade);
     }

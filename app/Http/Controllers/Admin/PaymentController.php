@@ -446,10 +446,16 @@ class PaymentController extends Controller
             return 0.0;
         }
 
+        $thisOrderBonus = app(CheckoutIntentService::class)->peekBonus(
+            (int) $order->user_id,
+            (string) $order->reference_code
+        );
+
         app(OrderRefundService::class)->refundToAdvertiser(
             $order,
             $amount,
-            'Admin marked payment failed'
+            'Admin marked payment failed',
+            $thisOrderBonus > 0 ? $thisOrderBonus : null
         );
         $wallet->refresh();
         $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
@@ -683,13 +689,15 @@ class PaymentController extends Controller
                 return [];
             }
 
-            return ['failed', 'refunded'];
+            // Keep `paid` so staff can save notes / transfer reference
+            // without a money move.
+            return ['paid', 'failed', 'refunded'];
         }
 
         // Paid→failed already credits captured methods. Allow Refunded as a
-        // bookkeeping correction (no second credit).
+        // bookkeeping correction (no second credit) and Failed for notes.
         if ($current === 'failed' && (string) $order->status === 'cancelled') {
-            return ['refunded'];
+            return ['failed', 'refunded'];
         }
 
         $allowed = ['pending', 'paid', 'failed'];

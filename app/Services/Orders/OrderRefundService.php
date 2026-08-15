@@ -118,8 +118,12 @@ class OrderRefundService
         $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
 
         $bonusRestored = 0.0;
+        $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
+        if ($maxBonusShare !== null) {
+            $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
+        }
+
         if ($order->payment_method === 'wallet') {
-            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
             $bonusReservedBefore = (float) $wallet->bonus_reserved;
             $wallet->refundReserved($amount, $bonusShare);
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
@@ -129,10 +133,6 @@ class OrderRefundService
             // cannot unlock the whole checkout promo while other paid rows remain.
             // An explicit cap (this reference's leftover) also stops a second
             // in-flight checkout on the same wallet from being stolen.
-            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
-            if ($maxBonusShare !== null) {
-                $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
-            }
             $cashShare = round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;
