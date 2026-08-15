@@ -300,6 +300,11 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(DepositRequest::class);
     }
 
+    public function emailNotificationPreferences()
+    {
+        return $this->hasMany(EmailNotificationPreference::class);
+    }
+
     /** ------------------ Wallets ------------------ */
     public function wallets()
     {

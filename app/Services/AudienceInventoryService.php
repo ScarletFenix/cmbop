@@ -25,11 +25,35 @@ class AudienceInventoryService
 
     public const AUDIENCE_ADVERTISERS_NO_PAID_ORDERS = 'advertisers_no_paid_orders';
 
+    public const AUDIENCE_ADVERTISERS_PAID_ORDERS = 'advertisers_paid_orders';
+
     public const AUDIENCE_PUBLISHERS_NO_SITES = 'publishers_no_sites';
+
+    public const AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES = 'publishers_no_active_sites';
 
     public const AUDIENCE_ADVERTISERS_NEVER_DEPOSITED = 'advertisers_never_deposited';
 
+    public const AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS = 'advertisers_deposited_no_orders';
+
     public const PICKER_LIMIT = 200;
+
+    public const EXPORT_LIMIT = 10000;
+
+    /**
+     * @return list<string>
+     */
+    public static function customerPaymentStatuses(): array
+    {
+        return ['paid', 'refunded'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function creditedDepositStatuses(): array
+    {
+        return ['approved', 'completed'];
+    }
 
     /**
      * @return list<string>
@@ -44,8 +68,11 @@ class AudienceInventoryService
             self::AUDIENCE_ADVERTISERS_NO_ORDERS,
             self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT,
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS,
             self::AUDIENCE_PUBLISHERS_NO_SITES,
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES,
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS,
         ];
     }
 
@@ -63,8 +90,11 @@ class AudienceInventoryService
             'no_orders' => self::AUDIENCE_ADVERTISERS_NO_ORDERS,
             'never_checked_out' => self::AUDIENCE_ADVERTISERS_NO_ORDERS,
             'no_paid_orders' => self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
+            'paid_orders' => self::AUDIENCE_ADVERTISERS_PAID_ORDERS,
             'no_sites' => self::AUDIENCE_PUBLISHERS_NO_SITES,
+            'no_active_sites' => self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES,
             'never_deposited' => self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+            'deposited_no_orders' => self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS,
         ];
     }
 
@@ -147,10 +177,29 @@ class AudienceInventoryService
             self::AUDIENCE_BOTH => 'Advertisers + Publishers',
             self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => 'Advertisers (never checked out)',
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => 'Advertisers (no paid orders)',
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => 'Advertisers (paid orders)',
             self::AUDIENCE_PUBLISHERS_NO_SITES => 'Publishers (no sites)',
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'Publishers (no active sites)',
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Advertisers (never deposited)',
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Advertisers (deposited, no orders)',
             self::AUDIENCE_SELECTED => 'Selected users',
             default => ucfirst($audience),
+        };
+    }
+
+    public static function statKeyForTab(string $tab): string
+    {
+        return match ($tab) {
+            'publishers' => 'publishers',
+            'both' => 'both_unique',
+            'no_orders', 'never_checked_out' => 'advertisers_never_checked_out',
+            'no_paid_orders' => 'advertisers_no_paid_orders',
+            'paid_orders' => 'advertisers_paid_orders',
+            'no_sites' => 'publishers_no_sites',
+            'no_active_sites' => 'publishers_no_active_sites',
+            'never_deposited' => 'advertisers_never_deposited',
+            'deposited_no_orders' => 'advertisers_deposited_no_orders',
+            default => 'advertisers',
         };
     }
 
@@ -163,8 +212,11 @@ class AudienceInventoryService
             self::AUDIENCE_BOTH => 'Advertisers + Publishers',
             self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => 'Never checked out',
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => 'No paid orders',
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => 'Paid customers',
             self::AUDIENCE_PUBLISHERS_NO_SITES => 'No sites',
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'No active sites',
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Never deposited',
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'Deposited, no orders',
             default => 'Advertisers',
         };
     }
@@ -203,11 +255,7 @@ class AudienceInventoryService
     {
         $role = Role::query()->where('name', $roleName)->first();
 
-        $query = User::query()
-            ->whereNotNull('email')
-            ->where('email', '!=', '')
-            ->with(['roles', 'activeRoleRelation'])
-            ->orderBy('name');
+        $query = $this->baseUserQuery();
 
         if (! $role) {
             return $query->whereRaw('1 = 0');
@@ -233,13 +281,13 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers who have never completed a paid order.
+     * Advertisers who have never been a customer (no paid or refunded order).
      */
     public function queryAdvertisersNoPaidOrders(): Builder
     {
         return $this->queryForRole('advertiser')
             ->whereDoesntHave('orders', function (Builder $q) {
-                $q->where('payment_status', 'paid');
+                $q->whereIn('payment_status', self::customerPaymentStatuses());
             });
     }
 
@@ -252,17 +300,27 @@ class AudienceInventoryService
     }
 
     /**
+     * Publishers whose listings are all inactive or who never listed a site.
+     */
+    public function queryPublishersNoActiveSites(): Builder
+    {
+        return $this->queryForRole('publisher')
+            ->whereDoesntHave('sites', function (Builder $q) {
+                $q->where('active', 1);
+            });
+    }
+
+    /**
      * Advertisers who have actually bought something.
      *
-     * An abandoned unpaid checkout is not a customer, so the paid gate matters:
-     * the new-sites digest is aimed at people who already know what the catalog
-     * is for.
+     * An abandoned unpaid checkout is not a customer. A later refund still
+     * means they checked out and paid, so paid + refunded both count.
      */
     public function queryAdvertisersWithPaidOrders(): Builder
     {
         return $this->queryForRole('advertiser')
             ->whereHas('orders', function (Builder $q) {
-                $q->where('payment_status', 'paid');
+                $q->whereIn('payment_status', self::customerPaymentStatuses());
             });
     }
 
@@ -276,8 +334,32 @@ class AudienceInventoryService
     {
         return $this->queryForRole('advertiser')
             ->whereDoesntHave('depositRequests', function (Builder $q) {
-                $q->whereIn('status', ['approved', 'completed']);
+                $q->whereIn('status', self::creditedDepositStatuses());
             });
+    }
+
+    /**
+     * Advertisers who funded a wallet but never started checkout.
+     */
+    public function queryAdvertisersDepositedNoOrders(): Builder
+    {
+        return $this->queryForRole('advertiser')
+            ->whereHas('depositRequests', function (Builder $q) {
+                $q->whereIn('status', self::creditedDepositStatuses());
+            })
+            ->whereDoesntHave('orders');
+    }
+
+    public function queryMarketplaceUsers(): Builder
+    {
+        $roleIds = $this->marketplaceRoleIds();
+        $query = $this->baseUserQuery();
+
+        if ($roleIds->isEmpty()) {
+            return $query->whereRaw('1 = 0');
+        }
+
+        return $query->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds));
     }
 
     /**
@@ -288,25 +370,27 @@ class AudienceInventoryService
         return match ($audienceKey) {
             self::AUDIENCE_ADVERTISERS, 'advertiser' => $this->queryForRole('advertiser'),
             self::AUDIENCE_PUBLISHERS, 'publisher' => $this->queryForRole('publisher'),
+            self::AUDIENCE_BOTH => $this->queryMarketplaceUsers(),
             self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->queryAdvertisersNoOrders(),
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->queryAdvertisersNoPaidOrders(),
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => $this->queryAdvertisersWithPaidOrders(),
             self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites(),
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => $this->queryPublishersNoActiveSites(),
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->queryAdvertisersNeverDeposited(),
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->queryAdvertisersDepositedNoOrders(),
             default => User::query()->whereRaw('1 = 0'),
         };
     }
 
-    public function paginate(string $audienceKey, ?string $search = null, int $perPage = 25): LengthAwarePaginator
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function paginate(string $audienceKey, ?string $search = null, int $perPage = 25, array $filters = []): LengthAwarePaginator
     {
         $query = $this->queryForAudienceKey($audienceKey);
-
-        if (filled($search)) {
-            $term = '%'.trim($search).'%';
-            $query->where(function (Builder $q) use ($term) {
-                $q->where('name', 'like', $term)
-                    ->orWhere('email', 'like', $term);
-            });
-        }
+        $this->applySearch($query, $search);
+        $this->applyInventoryFilters($query, $filters, $audienceKey);
+        $this->applyListCounts($query);
 
         return $query->paginate($perPage)->withQueryString();
     }
@@ -319,15 +403,14 @@ class AudienceInventoryService
         return match ($audience) {
             self::AUDIENCE_ADVERTISERS => $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->get(),
             self::AUDIENCE_PUBLISHERS => $this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->get(),
-            self::AUDIENCE_BOTH => $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)
-                ->get()
-                ->merge($this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->get())
-                ->unique('id')
-                ->values(),
+            self::AUDIENCE_BOTH => $this->applyRecipientScope($this->queryMarketplaceUsers(), $includeUnverified)->get(),
             self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->applyRecipientScope($this->queryAdvertisersNoOrders(), $includeUnverified)->get(),
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->get(),
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersWithPaidOrders(), $includeUnverified)->get(),
             self::AUDIENCE_PUBLISHERS_NO_SITES => $this->applyRecipientScope($this->queryPublishersNoSites(), $includeUnverified)->get(),
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => $this->applyRecipientScope($this->queryPublishersNoActiveSites(), $includeUnverified)->get(),
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->applyRecipientScope($this->queryAdvertisersNeverDeposited(), $includeUnverified)->get(),
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->applyRecipientScope($this->queryAdvertisersDepositedNoOrders(), $includeUnverified)->get(),
             self::AUDIENCE_SELECTED => $this->querySelected($selectedIds, $includeUnverified)->get(),
             default => collect(),
         };
@@ -346,8 +429,11 @@ class AudienceInventoryService
             self::AUDIENCE_BOTH => $this->bothUniqueCount($includeUnverified),
             self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->advertisersNoOrdersCount($includeUnverified),
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->advertisersNoPaidOrdersCount($includeUnverified),
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersWithPaidOrders(), $includeUnverified)->count(),
             self::AUDIENCE_PUBLISHERS_NO_SITES => $this->publishersNoSitesCount($includeUnverified),
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => $this->applyRecipientScope($this->queryPublishersNoActiveSites(), $includeUnverified)->count(),
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->advertisersNeverDepositedCount($includeUnverified),
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->applyRecipientScope($this->queryAdvertisersDepositedNoOrders(), $includeUnverified)->count(),
             self::AUDIENCE_SELECTED => $this->querySelected($selectedIds, $includeUnverified)->count(),
             default => 0,
         };
@@ -355,18 +441,7 @@ class AudienceInventoryService
 
     public function bothUniqueCount(bool $includeUnverified = true): int
     {
-        $roleIds = $this->marketplaceRoleIds();
-
-        if ($roleIds->isEmpty()) {
-            return 0;
-        }
-
-        $query = User::query()
-            ->whereNotNull('email')
-            ->where('email', '!=', '')
-            ->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds));
-
-        return $this->applyRecipientScope($query, $includeUnverified)->count();
+        return $this->applyRecipientScope($this->queryMarketplaceUsers(), $includeUnverified)->count();
     }
 
     /**
@@ -426,13 +501,121 @@ class AudienceInventoryService
             ->pluck('id');
     }
 
-    public function exportCsv(string $audienceKey): StreamedResponse
+    protected function baseUserQuery(): Builder
+    {
+        return User::query()
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->with(['roles', 'activeRoleRelation'])
+            ->orderBy('name');
+    }
+
+    protected function applySearch(Builder $query, ?string $search): Builder
+    {
+        if (! filled($search)) {
+            return $query;
+        }
+
+        $like = like_contains($search);
+
+        return $query->where(function (Builder $q) use ($like) {
+            $q->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
+        });
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    protected function applyInventoryFilters(Builder $query, array $filters, string $audienceKey): Builder
+    {
+        $verified = $filters['verified'] ?? 'all';
+        if ($verified === 'yes') {
+            $query->whereNotNull('email_verified_at');
+        } elseif ($verified === 'no') {
+            $query->whereNull('email_verified_at');
+        }
+
+        if (filled($filters['registered_from'] ?? null)) {
+            $query->whereDate('created_at', '>=', $filters['registered_from']);
+        }
+        if (filled($filters['registered_to'] ?? null)) {
+            $query->whereDate('created_at', '<=', $filters['registered_to']);
+        }
+        if (filled($filters['country'] ?? null)) {
+            $query->where('country', $filters['country']);
+        }
+
+        $marketing = $filters['marketing'] ?? 'all';
+        if ($marketing === 'opted_out') {
+            $query->whereHas('emailNotificationPreferences', function (Builder $q) {
+                $q->where('preference_key', 'marketing_emails')->where('enabled', false);
+            });
+        } elseif ($marketing === 'opted_in') {
+            $query->whereDoesntHave('emailNotificationPreferences', function (Builder $q) {
+                $q->where('preference_key', 'marketing_emails')->where('enabled', false);
+            });
+        }
+
+        if (! empty($filters['exclude_dual_role'])) {
+            $other = $this->otherMarketplaceRole($audienceKey);
+            if ($other !== null) {
+                $query->whereDoesntHave('roles', fn (Builder $q) => $q->where('roles.name', $other));
+            }
+        }
+
+        $sort = ($filters['sort'] ?? 'name') === 'registered' ? 'created_at' : 'name';
+        $dir = ($filters['dir'] ?? 'asc') === 'desc' ? 'desc' : 'asc';
+        $query->reorder()->orderBy($sort, $dir)->orderBy('id', $dir);
+
+        return $query;
+    }
+
+    protected function otherMarketplaceRole(string $audienceKey): ?string
+    {
+        return match ($audienceKey) {
+            self::AUDIENCE_ADVERTISERS,
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT,
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
+            self::AUDIENCE_ADVERTISERS_PAID_ORDERS,
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => 'publisher',
+            self::AUDIENCE_PUBLISHERS,
+            self::AUDIENCE_PUBLISHERS_NO_SITES,
+            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => 'advertiser',
+            default => null,
+        };
+    }
+
+    protected function applyListCounts(Builder $query): void
+    {
+        $query->withCount([
+            'orders as paid_orders_count' => fn (Builder $q) => $q->whereIn('payment_status', self::customerPaymentStatuses()),
+            'sites as sites_count',
+            'depositRequests as completed_deposits_count' => fn (Builder $q) => $q->whereIn('status', self::creditedDepositStatuses()),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $filters
+     */
+    public function exportCsv(string $audienceKey, ?string $search = null, array $filters = []): StreamedResponse
     {
         $filename = $audienceKey.'-audience-'.now()->format('Y-m-d-His').'.csv';
-        $users = $this->queryForAudienceKey($audienceKey)->get();
+        $query = $this->queryForAudienceKey($audienceKey);
+        $this->applySearch($query, $search);
+        $this->applyInventoryFilters($query, $filters, $audienceKey);
+        $this->applyListCounts($query);
+        $query->reorder('id');
 
-        return response()->streamDownload(function () use ($users, $audienceKey) {
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ];
+
+        return response()->streamDownload(function () use ($query, $audienceKey) {
             $out = fopen('php://output', 'w');
+            fwrite($out, "\xEF\xBB\xBF");
             fputcsv($out, [
                 'id',
                 'name',
@@ -441,41 +624,84 @@ class AudienceInventoryService
                 'all_roles',
                 'active_role',
                 'email_verified',
+                'country',
+                'paid_orders_count',
+                'sites_count',
+                'completed_deposits_count',
                 'registered_at',
             ]);
 
-            foreach ($users as $user) {
-                fputcsv($out, [
-                    $user->id,
-                    $user->name,
-                    $user->email,
-                    $audienceKey,
-                    $user->roles->pluck('name')->implode('|'),
-                    $user->activeRole(),
-                    $user->hasVerifiedEmail() ? 'yes' : 'no',
-                    optional($user->created_at)?->toDateTimeString(),
-                ]);
-            }
+            $exported = 0;
+            $query->chunkById(200, function (Collection $users) use ($out, $audienceKey, &$exported) {
+                foreach ($users as $user) {
+                    if ($exported >= self::EXPORT_LIMIT) {
+                        fputcsv($out, ['# truncated', '', '', '', '', '', '', '', '', '', '', '']);
+
+                        return false;
+                    }
+
+                    fputcsv($out, [
+                        $user->id,
+                        $this->csvCell($user->name),
+                        $this->csvCell($user->email),
+                        $audienceKey,
+                        $this->csvCell($user->roles->pluck('name')->implode('|')),
+                        $this->csvCell((string) $user->activeRole()),
+                        $user->hasVerifiedEmail() ? 'yes' : 'no',
+                        $this->csvCell((string) ($user->country ?? '')),
+                        (int) ($user->paid_orders_count ?? 0),
+                        (int) ($user->sites_count ?? 0),
+                        (int) ($user->completed_deposits_count ?? 0),
+                        optional($user->created_at)?->toDateTimeString(),
+                    ]);
+                    $exported++;
+                }
+
+                return true;
+            });
 
             fclose($out);
-        }, $filename, [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+        }, $filename, $headers);
+    }
+
+    public function csvCell(mixed $value): string
+    {
+        $s = (string) $value;
+        if ($s !== '' && in_array($s[0], ['=', '+', '-', '@', "\t", "\r"], true)) {
+            return "'".$s;
+        }
+
+        return $s;
     }
 
     public function stats(bool $includeUnverified = true): array
     {
-        $neverCheckedOut = $this->advertisersNoOrdersCount($includeUnverified);
-
-        return [
-            'advertisers' => $this->advertiserCount($includeUnverified),
-            'publishers' => $this->publisherCount($includeUnverified),
-            'both_unique' => $this->bothUniqueCount($includeUnverified),
-            'advertisers_no_orders' => $neverCheckedOut,
-            'advertisers_never_checked_out' => $neverCheckedOut,
-            'advertisers_no_paid_orders' => $this->advertisersNoPaidOrdersCount($includeUnverified),
-            'publishers_no_sites' => $this->publishersNoSitesCount($includeUnverified),
-            'advertisers_never_deposited' => $this->advertisersNeverDepositedCount($includeUnverified),
+        $pairs = [
+            'advertisers' => self::AUDIENCE_ADVERTISERS,
+            'publishers' => self::AUDIENCE_PUBLISHERS,
+            'both_unique' => self::AUDIENCE_BOTH,
+            'advertisers_no_orders' => self::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            'advertisers_no_paid_orders' => self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
+            'advertisers_paid_orders' => self::AUDIENCE_ADVERTISERS_PAID_ORDERS,
+            'publishers_no_sites' => self::AUDIENCE_PUBLISHERS_NO_SITES,
+            'publishers_no_active_sites' => self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES,
+            'advertisers_never_deposited' => self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+            'advertisers_deposited_no_orders' => self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS,
         ];
+
+        $out = [];
+        foreach ($pairs as $statKey => $audienceKey) {
+            $all = $this->count($audienceKey, null, true);
+            $verified = $this->count($audienceKey, null, false);
+            $out[$statKey] = $includeUnverified ? $all : $verified;
+            $out[$statKey.'_all'] = $all;
+            $out[$statKey.'_verified'] = $verified;
+        }
+
+        $out['advertisers_never_checked_out'] = $out['advertisers_no_orders'];
+        $out['advertisers_never_checked_out_all'] = $out['advertisers_no_orders_all'];
+        $out['advertisers_never_checked_out_verified'] = $out['advertisers_no_orders_verified'];
+
+        return $out;
     }
 }

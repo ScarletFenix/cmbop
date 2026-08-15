@@ -393,10 +393,29 @@ class AdminCampaignsTest extends TestCase
             $neverIds
         );
 
+        $refunded = $this->makeUser('advertiser');
+        Order::create([
+            'user_id' => $refunded->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-REFUND-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'refunded',
+            'status' => 'cancelled',
+        ]);
+
         $noPaidIds = $inventory->collect('advertisers_no_paid_orders')->pluck('id')->all();
         $this->assertContains($neverCheckedOut->id, $noPaidIds);
         $this->assertContains($abandoned->id, $noPaidIds);
         $this->assertNotContains($paid->id, $noPaidIds);
+        $this->assertNotContains($refunded->id, $noPaidIds);
+
+        $paidIds = $inventory->collect('advertisers_paid_orders')->pluck('id')->all();
+        $this->assertContains($paid->id, $paidIds);
+        $this->assertContains($refunded->id, $paidIds);
+        $this->assertNotContains($abandoned->id, $paidIds);
 
         $this->actingAs($admin)
             ->get(route('admin.audiences.index', ['tab' => 'no_paid_orders']))

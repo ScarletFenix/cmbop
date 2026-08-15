@@ -17,6 +17,9 @@ class AudienceInventoryKeysTest extends TestCase
         $this->assertSame('advertisers_no_paid_orders', AudienceInventoryService::normalizeAudienceKey('no_paid_orders'));
         $this->assertSame('publishers_no_sites', AudienceInventoryService::normalizeAudienceKey('no_sites'));
         $this->assertSame('advertisers_never_deposited', AudienceInventoryService::normalizeAudienceKey('never_deposited'));
+        $this->assertSame('advertisers_paid_orders', AudienceInventoryService::normalizeAudienceKey('paid_orders'));
+        $this->assertSame('advertisers_deposited_no_orders', AudienceInventoryService::normalizeAudienceKey('deposited_no_orders'));
+        $this->assertSame('publishers_no_active_sites', AudienceInventoryService::normalizeAudienceKey('no_active_sites'));
     }
 
     public function test_never_checked_out_aliases_collapse_to_no_orders(): void
@@ -60,6 +63,9 @@ class AudienceInventoryKeysTest extends TestCase
         $this->assertSame('Advertisers (never deposited)', EmailCampaign::labelForAudience('advertisers_never_deposited'));
         $this->assertSame('Publishers (no sites)', EmailCampaign::labelForAudience('publishers_no_sites'));
         $this->assertSame('Advertisers + Publishers', EmailCampaign::labelForAudience('both'));
+        $this->assertSame('Advertisers (paid orders)', EmailCampaign::labelForAudience('advertisers_paid_orders'));
+        $this->assertSame('Advertisers (deposited, no orders)', EmailCampaign::labelForAudience('advertisers_deposited_no_orders'));
+        $this->assertSame('Publishers (no active sites)', EmailCampaign::labelForAudience('publishers_no_active_sites'));
         $this->assertSame('Selected users', EmailCampaign::labelForAudience('selected'));
         $this->assertSame('Mystery', EmailCampaign::labelForAudience('mystery'));
     }
