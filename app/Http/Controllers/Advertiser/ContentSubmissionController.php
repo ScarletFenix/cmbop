@@ -489,17 +489,35 @@ class ContentSubmissionController extends Controller
 
         if (array_key_exists('links', $data)) {
             $links = ArticleDetectedLinks::normalizeList($data['links'] ?? [], $anchorMax);
-            $html = array_key_exists('preview_html', $data)
-                ? (string) $data['preview_html']
-                : (string) ($submission->preview_html ?? '');
+            if (array_key_exists('preview_html', $data)) {
+                $clean = ArticlePreviewHtml::normalize(
+                    (new ArticleHtmlSanitizer)->sanitize((string) $data['preview_html'])
+                );
+                if ($clean === '') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Article content cannot be empty.',
+                    ], 422);
+                }
+                $html = $clean;
+            } else {
+                $html = (string) ($submission->preview_html ?? '');
+            }
             $submission->syncDetectedLinks($links, $html !== '' ? $html : null);
             unset($data['links'], $data['preview_html']);
             // Primary pair already synced; avoid overwriting with stale single fields if absent.
             unset($data['anchor_text'], $data['target_url']);
-        }
-
-        if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
-            $data['preview_html'] = (new ArticleHtmlSanitizer)->sanitize($data['preview_html']);
+        } elseif (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
+            $sanitizer = new ArticleHtmlSanitizer;
+            $clean = ArticlePreviewHtml::normalize($sanitizer->sanitize($data['preview_html']));
+            if ($clean === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Article content cannot be empty.',
+                ], 422);
+            }
+            $submission->syncDetectedLinks($sanitizer->extractLinksFromHtml($clean), $clean);
+            unset($data['preview_html'], $data['anchor_text'], $data['target_url']);
         }
 
         $submission->fill($data)->save();

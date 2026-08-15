@@ -916,7 +916,7 @@ class ContentSubmission extends Model
             ]];
         }
 
-        if ($links === [] && filled($this->preview_html)) {
+        if ($links === [] && ! $hasStoredList && filled($this->preview_html)) {
             $links = ArticleDetectedLinks::fromHtml((string) $this->preview_html);
         }
 

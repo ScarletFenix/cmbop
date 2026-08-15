@@ -220,6 +220,10 @@ class ContentUploadService
         $attrs['draft_payload'] = $draftPayload;
 
         if ($replace) {
+            $attrs['feature_image_url'] = null;
+            $attrs['publication_mode'] = ContentSubmission::MODE_IMMEDIATE;
+            $attrs['scheduled_publish_at'] = null;
+            $attrs['timezone'] = $cfg['scheduling']['default_timezone'] ?? 'UTC';
             $replace->deleteStoredFile();
             $submission = $replace;
             $submission->fill($attrs)->save();

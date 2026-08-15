@@ -339,7 +339,7 @@
                                     $scoresAdvisory = ($submission->uniqueness_score !== null && $submission->uniqueness_score < $minU)
                                         || ($submission->quality_score !== null && $submission->quality_score < $minQ);
                                 @endphp
-                                @if($scoresAdvisory && $submission->moderation_status === \App\Models\ContentSubmission::STATUS_APPROVED)
+                                @if($scoresAdvisory && $submission->canBeOrdered())
                                     <span class="library-scores-note">Advisory — still orderable</span>
                                 @endif
                             @else
