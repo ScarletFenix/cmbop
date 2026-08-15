@@ -236,6 +236,12 @@ class EmailCampaign extends Model
         }
         self::expireOrphanedQueuedRecipients();
         self::expireOrphanedPendingLogs();
+        // Expire can fail a leftover pending log while the recipient still
+        // points at that id. Heal again so this pass can sync delivered /
+        // failed instead of leaving the row queued until the next recover.
+        foreach (self::healQueuedRecipientsWithTerminalLog() as $id) {
+            static::query()->find($id)?->recountRecipientTotals();
+        }
 
         try {
             if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
@@ -939,6 +945,12 @@ class EmailCampaign extends Model
      * Queued + a terminal log FK is not in-flight. Expire used to skip
      * those rows forever, so a failed campaign could keep a queued leftover.
      *
+     * Look up by audience_campaign:{id}:user:{id}, not only the attached
+     * id. SMTP can persist a delivered row and leave the recipient pointing
+     * at a leftover pending/failed log. Trusting that FK marked a real
+     * send failed, recover finalized the campaign failed, and a later
+     * compose doubled the audience.
+     *
      * @return list<int>
      */
     protected static function healQueuedRecipientsWithTerminalLog(): array
@@ -952,50 +964,146 @@ class EmailCampaign extends Model
         }
 
         $rows = EmailCampaignRecipient::query()
-            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNotNull('email_log_id')
-            ->get(['id', 'email_campaign_id', 'email_log_id']);
+            ->where(function ($query) {
+                $query->whereIn('status', [
+                    EmailCampaignRecipient::STATUS_QUEUED,
+                    EmailCampaignRecipient::STATUS_FAILED,
+                ])->orWhere(function ($skipped) {
+                    $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                        ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                });
+            })
+            ->get(['id', 'email_campaign_id', 'user_id', 'status', 'email_log_id']);
 
         if ($rows->isEmpty()) {
             return [];
         }
 
+        $logIds = $rows->pluck('email_log_id')->unique()->filter()->all();
+        $keys = $rows->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
+            (int) $row->email_campaign_id,
+            (int) $row->user_id
+        ))->unique()->values()->all();
+
         try {
-            $logs = EmailLog::query()
-                ->whereIn('id', $rows->pluck('email_log_id')->unique()->filter()->all())
-                ->whereIn('status', [
-                    EmailLog::STATUS_DELIVERED,
-                    EmailLog::STATUS_FAILED,
-                ])
-                ->get()
-                ->keyBy('id');
+            $allLogs = EmailLog::query()
+                ->where(function ($query) use ($logIds, $keys) {
+                    $query->whereIn('id', $logIds);
+                    if ($keys !== []) {
+                        $query->orWhere(function ($byKey) use ($keys) {
+                            $byKey->whereIn('dedupe_key', $keys)
+                                ->whereIn('status', [
+                                    EmailLog::STATUS_PENDING,
+                                    EmailLog::STATUS_DELIVERED,
+                                    EmailLog::STATUS_FAILED,
+                                ]);
+                        });
+                    }
+                })
+                ->orderByDesc('id')
+                ->get();
         } catch (\Throwable) {
             return [];
         }
 
-        if ($logs->isEmpty()) {
+        if ($allLogs->isEmpty()) {
             return [];
         }
+
+        $logsById = $allLogs->keyBy('id');
+        $logsByKey = $allLogs
+            ->filter(fn (EmailLog $log) => filled($log->dedupe_key))
+            ->groupBy('dedupe_key');
 
         $campaignIds = [];
 
         foreach ($rows as $row) {
-            $log = $logs->get((int) $row->email_log_id);
+            $attached = $logsById->get((int) $row->email_log_id);
+            $group = $logsByKey->get(EmailCampaignRecipient::dedupeKey(
+                (int) $row->email_campaign_id,
+                (int) $row->user_id
+            ));
+
+            $deliveredLog = $group?->first(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
+            );
+            if (! $deliveredLog && $attached?->status === EmailLog::STATUS_DELIVERED) {
+                $deliveredLog = $attached;
+            }
+
+            $pendingLogs = $group
+                ? $group->filter(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)
+                : collect();
+            if ($attached?->status === EmailLog::STATUS_PENDING
+                && ! $pendingLogs->contains(fn (EmailLog $log) => (int) $log->id === (int) $attached->id)) {
+                $pendingLogs = $pendingLogs->push($attached);
+            }
+
+            $failedLog = $group?->first(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
+            );
+            if (! $failedLog && $attached?->status === EmailLog::STATUS_FAILED) {
+                $failedLog = $attached;
+            }
+
+            if ($pendingLogs->isNotEmpty()) {
+                $freshPending = $pendingLogs->first(function (EmailLog $pending) use ($deliveredLog) {
+                    return ! $deliveredLog
+                        || ($pending->updated_at
+                            && $deliveredLog->updated_at
+                            && $pending->updated_at->greaterThan($deliveredLog->updated_at));
+                });
+                if ($freshPending) {
+                    continue;
+                }
+
+                foreach ($pendingLogs as $pending) {
+                    EmailLog::query()
+                        ->whereKey($pending->id)
+                        ->where('status', EmailLog::STATUS_PENDING)
+                        ->update([
+                            'status' => EmailLog::STATUS_FAILED,
+                            'error' => 'Closed: duplicate open log for the same send',
+                        ]);
+                }
+            }
+
+            $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
+            if ($staleSkip && ! $deliveredLog) {
+                continue;
+            }
+            if ($row->status === EmailCampaignRecipient::STATUS_FAILED && ! $deliveredLog) {
+                continue;
+            }
+
+            $log = $deliveredLog;
+            if (! $log && $row->status === EmailCampaignRecipient::STATUS_QUEUED) {
+                $log = $failedLog;
+            }
             if (! $log) {
                 continue;
             }
 
             $delivered = $log->status === EmailLog::STATUS_DELIVERED;
-            EmailCampaignRecipient::query()
+            $query = EmailCampaignRecipient::query()
                 ->whereKey($row->id)
-                ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
-                ->where('email_log_id', (int) $log->id)
-                ->update([
-                    'status' => $delivered
-                        ? EmailCampaignRecipient::STATUS_DELIVERED
-                        : EmailCampaignRecipient::STATUS_FAILED,
-                    'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
-                ]);
+                ->where('email_log_id', (int) $row->email_log_id);
+
+            if ($staleSkip) {
+                $query->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                    ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+            } else {
+                $query->where('status', $row->status);
+            }
+
+            $query->update([
+                'status' => $delivered
+                    ? EmailCampaignRecipient::STATUS_DELIVERED
+                    : EmailCampaignRecipient::STATUS_FAILED,
+                'email_log_id' => (int) $log->id,
+                'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
+            ]);
 
             $campaignIds[(int) $row->email_campaign_id] = true;
         }

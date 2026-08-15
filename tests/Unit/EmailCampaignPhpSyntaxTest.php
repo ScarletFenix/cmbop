@@ -125,6 +125,16 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             preg_match_all('/^\s*return;\s*$/m', $heal[1]),
             'healQueuedRecipientsWithTerminalLog must return [] — a bare return is a TypeError'
         );
+        $this->assertStringContainsString('dedupeKey(', $heal[1]);
+        $this->assertStringContainsString('user_id', $heal[1]);
+        $this->assertStringContainsString('STATUS_DELIVERED', $heal[1]);
+        $this->assertTrue(
+            (bool) preg_match(
+                '/expireOrphanedPendingLogs\(\);.*?healQueuedRecipientsWithTerminalLog\(\)/s',
+                $model
+            ),
+            'heal must run again after pending-log expire so a leftover FK can sync this pass'
+        );
         $this->assertTrue((bool) preg_match(
             '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n    \}\n\}\n/s',
             $model,
