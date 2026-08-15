@@ -851,6 +851,51 @@ class ContentModerationService
     }
 
     /**
+     * Checkout re-scans unless this fingerprint is on the linked override log.
+     * Library force-approve must stamp it or the next order undoes the decision.
+     */
+    public function stampStaffApprovalOverride(ContentSubmission $submission, User $admin, string $notes): ContentModerationLog
+    {
+        $fingerprint = $this->contentFingerprint($submission);
+        $log = $submission->moderation_log_id
+            ? ContentModerationLog::query()->whereKey($submission->moderation_log_id)->first()
+            : null;
+
+        $signals = is_array($log?->signals) ? $log->signals : [];
+        $signals['override_fingerprint'] = $fingerprint;
+
+        $payload = [
+            'user_id' => $submission->user_id,
+            'content_submission_id' => $submission->id,
+            'document_url' => $log?->document_url ?: 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'admin_override' => true,
+            'overridden_by' => $admin->id,
+            'overridden_at' => now(),
+            'admin_notes' => $notes,
+            'scan_token' => $submission->scan_token ?: $log?->scan_token,
+            'word_count' => $submission->word_count,
+            'signals' => $signals,
+        ];
+
+        if ($log) {
+            $log->update($payload);
+        } else {
+            $log = ContentModerationLog::create($payload);
+        }
+
+        if ((int) $submission->moderation_log_id !== (int) $log->id) {
+            $submission->forceFill([
+                'moderation_log_id' => $log->id,
+                'scan_token' => $log->scan_token ?: $submission->scan_token,
+            ])->save();
+        }
+
+        return $log->fresh();
+    }
+
+    /**
      * @return array{ok:bool, submission:?ContentSubmission, message:string}
      */
     public function applyAdminOverride(ContentModerationLog $log, User $admin, string $notes): array
@@ -872,11 +917,11 @@ class ContentModerationService
             return ['ok' => false, 'submission' => null, 'message' => 'The linked article no longer exists.'];
         }
 
-        if ($submission && ! $log->isCurrentDecision($submission)) {
+        if ($submission?->isArchived()) {
             return [
                 'ok' => false,
                 'submission' => $submission,
-                'message' => 'This scan is no longer the current decision. Open the latest scan.',
+                'message' => 'Archived articles cannot be overridden. Restore the article first. The scan log was left unchanged.',
             ];
         }
 
@@ -895,11 +940,18 @@ class ContentModerationService
             $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
             $this->logOverrideActivity($admin, $log, $submission, $notes, ContentSubmission::STATUS_APPROVED);
 
-            $message = $submission
-                ? 'Article #'.$submission->id.' approved by override. Checkout will accept it until the advertiser edits the content.'
-                : 'Scan overridden as approved. No linked article was found to update.';
+            $fresh = $submission?->fresh();
+            if (! $fresh) {
+                $message = 'Scan overridden as approved. No linked article was found to update.';
+            } elseif ($fresh->isReadyForCheckout()) {
+                $message = 'Article #'.$fresh->id.' approved by override. Checkout will accept it until the advertiser edits the content.';
+            } elseif ($fresh->isUsableAfterStaffApproval()) {
+                $message = 'Article #'.$fresh->id.' approved by override. It stays on the open order and can be fulfilled.';
+            } else {
+                $message = 'Article #'.$fresh->id.' approved by override, but it is still not checkout-ready.';
+            }
 
-            return ['ok' => true, 'submission' => $submission?->fresh(), 'message' => $message];
+            return ['ok' => true, 'submission' => $fresh, 'message' => $message];
         });
     }
 

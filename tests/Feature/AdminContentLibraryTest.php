@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\ContentModerationLog;
+use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -163,6 +165,103 @@ class AdminContentLibraryTest extends TestCase
             ->assertOk()
             ->assertSee('Expired But Owned')
             ->assertSee('In progress');
+
+        $this->assertSame('in_progress', $submission->fresh()->load(['order', 'orderItems.order'])->libraryAvailability());
+        $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $order->id));
+    }
+
+    public function test_rejected_owned_article_is_needs_fix_not_in_progress(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Rejected Owned Piece']);
+        $order = $this->orderFor($advertiser);
+        $this->attachToOrder($submission, $order, $site);
+        $submission->update(['moderation_status' => ContentSubmission::STATUS_REJECTED]);
+
+        $this->assertSame('needs_fix', $submission->fresh()->load(['order', 'orderItems.order'])->libraryAvailability());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertDontSee('Rejected Owned Piece');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Rejected Owned Piece');
+    }
+
+    public function test_expired_rejected_leftover_stays_in_needs_fix_not_expired(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Rejected Leftover',
+            'expires_at' => now()->subDay(),
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+        ]);
+        $order = $this->orderFor($advertiser);
+        $this->attachToOrder($submission, $order, $site);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Expired Rejected Leftover');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'expired']))
+            ->assertOk()
+            ->assertDontSee('Expired Rejected Leftover');
+    }
+
+    public function test_owned_leftover_missing_file_is_needs_fix_not_in_progress(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Purged Leftover File',
+            'path' => '',
+        ]);
+        $order = $this->orderFor($advertiser);
+        $this->attachToOrder($submission, $order, $site);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Purged Leftover File');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertDontSee('Purged Leftover File');
     }
 
     public function test_legacy_status_approved_maps_to_available_chip(): void
@@ -292,6 +391,8 @@ class AdminContentLibraryTest extends TestCase
             'title' => 'Support Detail Piece',
             'preview_html' => '<p>Safe intro</p><script>alert(1)</script><img src="/storage/x.jpg" alt="x">',
             'image_rights' => null,
+            'anchor_text' => 'click',
+            'target_url' => 'javascript:alert(1)',
             'evaluation_report' => [
                 'summary' => 'Casino terms found',
                 'matched_terms' => ['casino'],
@@ -326,11 +427,42 @@ class AdminContentLibraryTest extends TestCase
             ->assertSee('https://bad.example/bet')
             ->assertSee('Override approve')
             ->assertDontSee('Override reject')
+            ->assertDontSee('>Re-evaluate<', false)
             ->getContent();
 
         $this->assertStringNotContainsString('<script>alert(1)</script>', $html);
+        $this->assertStringNotContainsString('href="javascript:alert(1)"', $html);
         $this->assertStringContainsString('availability=in_progress', $html);
         $this->assertStringContainsString('user_id='.$advertiser->id, $html);
+    }
+
+    public function test_download_rejects_path_traversal(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'path' => '../content-uploads/escaped.docx',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.download', $submission))
+            ->assertNotFound();
+    }
+
+    public function test_download_unknown_disk_is_404_not_500(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Bad Disk Piece',
+            'disk' => 'not-a-real-disk',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.download', $submission))
+            ->assertNotFound();
     }
 
     public function test_show_hides_download_when_file_missing_on_disk(): void
@@ -382,11 +514,7 @@ class AdminContentLibraryTest extends TestCase
         $this->assertTrue((bool) $log->fresh()->passed);
         $this->assertNotEmpty($log->fresh()->signals['override_fingerprint'] ?? null);
         $this->assertTrue($submission->fresh()->isReadyForCheckout());
-
-        config(['content_moderation.enabled' => true]);
-        $check = app(ContentModerationService::class)
-            ->assertSubmissionsApproved([$submission->fresh()], $advertiser);
-        $this->assertTrue($check['ok'], json_encode($check['failures']));
+        $this->assertTrue(app(ContentModerationService::class)->usableAdminOverride($submission->fresh()->load('moderationLog')));
     }
 
     public function test_reject_while_paid_is_forbidden(): void
@@ -451,6 +579,306 @@ class AdminContentLibraryTest extends TestCase
         $this->assertNull($unused->fresh()->archived_at);
     }
 
+    public function test_retry_on_paid_article_is_forbidden(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $this->attachToOrder($submission, $order, $site);
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.retry', $submission))
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_override_approve_does_not_claim_unready_article_is_orderable(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Still Unready Piece',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'preview_html' => '<p>Hello</p><img src="/storage/x.jpg" alt="x">',
+            'image_rights' => null,
+            'evaluation_report' => [
+                'summary' => 'Casino terms found',
+                'matched_terms' => ['casino'],
+                'checks' => [
+                    ['status' => 'fail', 'detail' => 'Blocked gambling language'],
+                ],
+            ],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Brand name is fine here.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', function ($message) {
+                return is_string($message) && str_contains($message, 'still not checkout-ready');
+            });
+
+        $fresh = $submission->fresh();
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertFalse($fresh->isReadyForCheckout());
+        $this->assertSame([], $fresh->evaluationMatchedTerms());
+        $this->assertSame([], $fresh->evaluationReasonGroups()['blocking']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertDontSee('Blocked gambling language')
+            ->assertSee('Images are not covered by a rights claim');
+
+        $bell = InAppNotification::query()->where('user_id', $advertiser->id)->latest('id')->first();
+        $this->assertNotNull($bell);
+        $this->assertStringNotContainsString('You can attach it in the catalog', (string) $bell->message);
+        $this->assertStringContainsString('availability=needs_fix', (string) $bell->action_url);
+    }
+
+    public function test_override_approve_of_rejected_unpaid_leftover_is_usable_not_needs_fix(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Leftover after decline',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluation_status' => ContentSubmission::STATUS_REJECTED,
+        ]);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'unpaid',
+            'status' => 'pending',
+        ]);
+        $this->attachToOrder($submission, $order, $site);
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Staff restore leftover',
+            ])
+            ->assertRedirect(route('admin.content-library.show', $submission))
+            ->assertSessionHas('success', function ($message) {
+                return is_string($message) && str_contains($message, 'stays on the open order');
+            });
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertTrue($fresh->isUsableAfterStaffApproval());
+        $this->assertFalse($fresh->isReadyForCheckout());
+        $this->assertSame('in_progress', $fresh->libraryAvailability());
+        $this->assertSame(['status' => 'all', 'availability' => 'in_progress'], $fresh->staffApprovalLibraryParams());
+
+        $bell = InAppNotification::query()->where('user_id', $advertiser->id)->latest('id')->first();
+        $this->assertNotNull($bell);
+        $this->assertStringContainsString('continue the open order', (string) $bell->message);
+        $this->assertStringNotContainsString('still needs a fix', (string) $bell->message);
+        $this->assertStringContainsString('availability=in_progress', (string) $bell->action_url);
+    }
+
+    public function test_override_approve_of_unused_expired_article_points_at_expired_chip(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Unused Override',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'expires_at' => now()->subDay(),
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'False positive after expiry.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', function ($message) {
+                return is_string($message) && str_contains($message, 'still not checkout-ready');
+            });
+
+        $fresh = $submission->fresh();
+        $this->assertFalse($fresh->isUsableAfterStaffApproval());
+        $this->assertSame('expired', $fresh->libraryAvailability());
+        $this->assertSame(['status' => 'all', 'availability' => 'expired'], $fresh->staffApprovalLibraryParams());
+
+        $bell = InAppNotification::query()->where('user_id', $advertiser->id)->latest('id')->first();
+        $this->assertNotNull($bell);
+        $this->assertStringContainsString('availability=expired', (string) $bell->action_url);
+        $this->assertStringNotContainsString('availability=needs_fix', (string) $bell->action_url);
+    }
+
+    public function test_library_override_approve_is_honored_at_checkout_until_edit(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $body = 'Play at the best online casino and claim your no deposit bonus for slots and roulette today.';
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $submission->update([
+            'title' => 'Casino guide',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+        ]);
+
+        $scan = app(ContentModerationService::class)->scanExtractedContent(
+            text: $body,
+            html: '<p>'.$body.'</p>',
+            sourceLabel: 'upload:'.$submission->id,
+            user: $advertiser,
+            title: 'Casino guide',
+            links: [],
+            contentSubmissionId: (int) $submission->id,
+        );
+        $submission->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'moderation_log_id' => $scan['log']?->id,
+            'scan_token' => $scan['scan_token'],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'News piece about regulation, not a promo.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $fresh = $submission->fresh()->load('moderationLog');
+        $moderation = app(ContentModerationService::class);
+        $this->assertTrue($moderation->usableAdminOverride($fresh));
+        $check = $moderation->assertSubmissionsApproved([$fresh], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
+
+        $fresh->update([
+            'extracted_text' => $body.' Extra casino bonus codes.',
+        ]);
+        $afterEdit = $moderation->assertSubmissionsApproved([$fresh->fresh()], $advertiser);
+        $this->assertFalse($afterEdit['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $fresh->fresh()->moderation_status);
+    }
+
+    public function test_library_override_approve_without_scan_log_still_honors_checkout(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $body = 'Play at the best online casino and claim your no deposit bonus for slots and roulette today.';
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $submission->update([
+            'title' => 'Casino guide no log',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'moderation_log_id' => null,
+            'scan_token' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Allow this wording for this advertiser.',
+            ])
+            ->assertRedirect();
+
+        $fresh = $submission->fresh()->load('moderationLog');
+        $this->assertNotNull($fresh->moderation_log_id);
+        $moderation = app(ContentModerationService::class);
+        $this->assertTrue($moderation->usableAdminOverride($fresh));
+        $check = $moderation->assertSubmissionsApproved([$fresh], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
+    }
+
+    public function test_moderation_override_does_not_flip_log_when_article_is_archived(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'document_url' => 'https://example.com/doc.docx',
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'scan_token' => 'scan-archived-1',
+            'word_count' => 20,
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'moderation_log_id' => $log->id,
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.moderation.index'))
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Trying to override an archived article.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $this->assertFalse((bool) $log->fresh()->admin_override);
+        $this->assertSame(ContentModerationLog::STATUS_REJECTED, $log->fresh()->status);
+    }
+
+    public function test_moderation_override_does_not_approve_another_users_scan_token(): void
+    {
+        $admin = $this->admin();
+        $owner = $this->advertiser();
+        $other = $this->advertiser();
+        $log = ContentModerationLog::create([
+            'user_id' => $owner->id,
+            'document_url' => 'https://example.com/doc.docx',
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'scan_token' => 'shared-token',
+            'word_count' => 20,
+        ]);
+        $stranger = $this->createApprovedSubmission($other);
+        $stranger->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'scan_token' => 'shared-token',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.moderation.index'))
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Approve this scan only.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $stranger->fresh()->moderation_status);
+        $this->assertTrue((bool) $log->fresh()->admin_override);
+    }
+
     public function test_retry_reevaluates_error_article(): void
     {
         $admin = $this->admin();
@@ -490,11 +918,11 @@ class AdminContentLibraryTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->from(route('admin.content-library.show', $submission))
+            ->from(route('admin.moderation.index'))
             ->post(route('admin.moderation.override', $log), [
                 'notes' => 'False positive on brand name.',
             ])
-            ->assertRedirect(route('admin.content-library.show', $submission))
+            ->assertRedirect()
             ->assertSessionHas('success');
 
         $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
