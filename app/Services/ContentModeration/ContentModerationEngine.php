@@ -354,9 +354,9 @@ class ContentModerationEngine
         $out = [];
         foreach ($links as $link) {
             if (is_string($link)) {
-                $url = trim($link);
+                $url = $this->percentDecode(trim($link));
             } elseif (is_array($link)) {
-                $url = trim((string) ($link['url'] ?? ''));
+                $url = $this->percentDecode(trim((string) ($link['url'] ?? '')));
             } else {
                 continue;
             }
@@ -380,6 +380,7 @@ class ContentModerationEngine
 
     public function hostForMatch(string $url): string
     {
+        $url = $this->percentDecode($url);
         $host = parse_url($url, PHP_URL_HOST);
         if (! is_string($host) || $host === '') {
             // Bare domain / path fragments
@@ -556,6 +557,8 @@ class ContentModerationEngine
         }
         // Combining slashes / accents used to hide "casino" as "c̸a̸s̸i̸n̸o̸".
         $text = preg_replace('/\p{Mn}+/u', '', $text) ?? $text;
+        // After NFKD, fullwidth %HH becomes ASCII so cas％６９no → casino.
+        $text = $this->percentDecode($text);
 
         $text = strtr($text, self::latinConfusables());
 
@@ -603,6 +606,24 @@ class ContentModerationEngine
             '@' => 'a',
             '$' => 's',
         ]);
+    }
+
+    /**
+     * Unfold %69 / %2569 cloaking in URLs, filenames, and body copy.
+     */
+    public function percentDecode(string $text): string
+    {
+        $decoded = $text;
+        for ($i = 0; $i < 3; $i++) {
+            $next = rawurldecode($decoded);
+            $next = str_replace("\0", '', $next);
+            if ($next === $decoded) {
+                break;
+            }
+            $decoded = $next;
+        }
+
+        return $decoded;
     }
 
     /**

@@ -178,6 +178,37 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
     }
 
+    public function test_engine_rejects_percent_encoded_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'Play at the best online cas%69no tonight.',
+            'Play at the best online cas%2569no tonight.',
+            'Play at the best online cas％６９no tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'This article shares helpful SEO strategies for growing organic traffic with useful content.',
+            links: ['https://example.com/best-online-cas%69no-bonus'],
+            categories: $categories,
+        );
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
     public function test_engine_rejects_fullwidth_and_homoglyph_casino(): void
     {
         $engine = new ContentModerationEngine;
