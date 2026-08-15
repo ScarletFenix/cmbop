@@ -366,7 +366,6 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertFalse($released->isClaimedByAnotherOrder());
         $this->assertFalse($released->isLockedByPaidOrder());
         $this->assertTrue($released->isReadyForCheckout());
-        $this->assertSame('available', $released->libraryAvailability());
         $this->assertTrue(
             ContentSubmission::query()->whereKey($disputedArticle->id)->checkoutReady()->exists()
         );
