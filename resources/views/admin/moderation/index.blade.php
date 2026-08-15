@@ -12,15 +12,17 @@
         </a>
     </div>
 
-    {{-- Nothing being flagged looks identical to nothing being submitted, so say
-         out loud when a check is switched off rather than leaving staff to work
-         it out from an empty scan log. --}}
     @php
         $moderationOn = (bool) ($cfg['enabled'] ?? true);
         $offCategories = collect($activeCategories ?? $cfg['categories'] ?? [])
             ->reject(fn ($cat) => (bool) ($cat['enabled'] ?? false))
             ->map(fn ($cat, $key) => $cat['label'] ?? $key)
             ->values();
+        $extraKeywordsText = is_array($extraKeywords)
+            ? collect($extraKeywords)->filter(fn ($e) => is_string($e))->implode("\n")
+            : '';
+        $exceptionsText = collect($exceptions ?? [])->map(fn ($e) => is_string($e) ? $e : '')->filter()->implode("\n");
+        $oldCategories = old('categories');
     @endphp
 
     @if(! $moderationOn)
@@ -44,10 +46,12 @@
     @endif
 
     <div class="row g-3 mb-4">
-        <div class="col-6 col-xl-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Scans</div><h3 class="mb-0">{{ number_format($stats['total']) }}</h3></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Approved</div><h3 class="mb-0 text-success">{{ number_format($stats['approved']) }}</h3></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Rejected</div><h3 class="mb-0 text-danger">{{ number_format($stats['rejected']) }}</h3></div></div></div>
-        <div class="col-6 col-xl-3"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Today</div><h3 class="mb-0">{{ number_format($stats['today']) }}</h3></div></div></div>
+        <div class="col-6 col-xl-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Scans</div><h3 class="mb-0">{{ number_format($stats['total'] ?? 0) }}</h3></div></div></div>
+        <div class="col-6 col-xl-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Approved</div><h3 class="mb-0 text-success">{{ number_format($stats['approved'] ?? 0) }}</h3></div></div></div>
+        <div class="col-6 col-xl-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Rejected</div><h3 class="mb-0 text-danger">{{ number_format($stats['rejected'] ?? 0) }}</h3></div></div></div>
+        <div class="col-6 col-xl-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Errors</div><h3 class="mb-0 text-warning">{{ number_format($stats['errors'] ?? 0) }}</h3></div></div></div>
+        <div class="col-6 col-xl-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Not checked</div><h3 class="mb-0">{{ number_format($stats['skipped'] ?? 0) }}</h3></div></div></div>
+        <div class="col-6 col-xl-2"><div class="card border-0 shadow-sm"><div class="card-body"><div class="text-muted small">Today</div><h3 class="mb-0">{{ number_format($stats['today'] ?? 0) }}</h3></div></div></div>
     </div>
 
     <div class="row g-4">
@@ -55,10 +59,12 @@
             <div class="card border-0 shadow-sm">
                 <div class="card-header bg-white border-0"><strong>Moderation Settings</strong></div>
                 <div class="card-body">
-                    <form method="POST" action="{{ route('admin.moderation.settings') }}">
+                    <form method="POST" action="{{ route('admin.moderation.settings') }}" id="moderation-settings-form"
+                          data-was-enabled="{{ $moderationOn ? '1' : '0' }}">
                         @csrf
+                        <h6 class="fw-semibold">Content policy</h6>
                         <div class="form-check form-switch mb-3">
-                            <input class="form-check-input" type="checkbox" name="enabled" value="1" id="modEnabled" @checked($cfg['enabled'] ?? true)>
+                            <input class="form-check-input" type="checkbox" name="enabled" value="1" id="modEnabled" @checked($errors->any() ? old('enabled') : ($cfg['enabled'] ?? true))>
                             <label class="form-check-label" for="modEnabled">Enable content moderation</label>
                         </div>
                         <div class="mb-3">
@@ -72,21 +78,59 @@
                         </div>
                         <div class="form-check mb-3">
                             <input class="form-check-input" type="checkbox" name="block_on_quality_failure" value="1" id="blockQuality"
-                                @checked($cfg['quality']['block_on_quality_failure'] ?? false)>
+                                @checked($errors->any() ? old('block_on_quality_failure') : ($cfg['quality']['block_on_quality_failure'] ?? false))>
                             <label class="form-check-label" for="blockQuality">Block orders on quality failures (word count / placeholders)</label>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label">Active prohibited categories</label>
+                            <div class="border rounded-3 p-3" style="max-height:220px;overflow:auto;">
+                                @foreach(config('content_moderation.categories', []) as $key => $cat)
+                                    @php
+                                        if (is_array($oldCategories)) {
+                                            $isOn = in_array($key, $oldCategories, true);
+                                        } else {
+                                            $isOn = !in_array($key, $disabledCategories, true)
+                                                && (($cat['enabled'] ?? false) || in_array($key, $enabledCategories, true));
+                                            if ($disabledCategories === [] && $enabledCategories === []) {
+                                                $isOn = (bool) ($cat['enabled'] ?? false);
+                                            }
+                                        }
+                                    @endphp
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" name="categories[]" value="{{ $key }}" id="cat_{{ $key }}" @checked($isOn)>
+                                        <label class="form-check-label" for="cat_{{ $key }}">{{ $cat['label'] }} <span class="text-muted small">({{ $key }})</span></label>
+                                    </div>
+                                @endforeach
+                            </div>
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Extra prohibited keywords (one per line)</label>
+                            <textarea name="extra_keywords" class="form-control" rows="4" placeholder="keyword or phrase">{{ old_text('extra_keywords', $extraKeywordsText) }}</textarea>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Allowed exceptions (one per line)</label>
+                            <textarea name="exceptions" class="form-control" rows="3" placeholder="phrases to ignore">{{ old_text('exceptions', $exceptionsText) }}</textarea>
+                            @if(($builtinExceptions ?? []) !== [])
+                                <div class="form-text">
+                                    Already ignored by default:
+                                    {{ implode(', ', $builtinExceptions) }}.
+                                </div>
+                            @endif
+                        </div>
+
                         <hr class="my-3">
-                        <h6 class="fw-semibold">Content Upload</h6>
+                        <h6 class="fw-semibold">Upload / placement</h6>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="uploads_enabled" value="1" id="uploadsEnabled"
-                                @checked($uploadCfg['enabled'] ?? true)>
+                                @checked($errors->any() ? old('uploads_enabled') : ($uploadCfg['enabled'] ?? true))>
                             <label class="form-check-label" for="uploadsEnabled">Allow new article uploads</label>
                             <div class="form-text">Kill-switch — advertisers can still browse and order existing approved articles when off.</div>
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="require_same_language" value="1" id="requireSameLanguage"
-                                @checked($uploadCfg['placement']['require_same_language'] ?? false)>
+                                @checked($errors->any() ? old('require_same_language') : ($uploadCfg['placement']['require_same_language'] ?? false))>
                             <label class="form-check-label" for="requireSameLanguage">Require same language for placement</label>
                             <div class="form-text">Off (default): soft-prefer matching languages and warn in cart. On: hard-block mismatches.</div>
                         </div>
@@ -126,37 +170,8 @@
                         </div>
                         <div class="form-check form-switch mb-3">
                             <input class="form-check-input" type="checkbox" name="scheduling_enabled" value="1" id="schedEnabled"
-                                @checked($uploadCfg['scheduling']['enabled'] ?? true)>
+                                @checked($errors->any() ? old('scheduling_enabled') : ($uploadCfg['scheduling']['enabled'] ?? true))>
                             <label class="form-check-label" for="schedEnabled">Enable publication scheduling</label>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Active prohibited categories</label>
-                            <div class="border rounded-3 p-3" style="max-height:220px;overflow:auto;">
-                                @foreach(config('content_moderation.categories', []) as $key => $cat)
-                                    @php
-                                        $isOn = !in_array($key, $disabledCategories, true)
-                                            && (($cat['enabled'] ?? false) || in_array($key, $enabledCategories, true));
-                                        // If never overridden, use config default
-                                        if ($disabledCategories === [] && $enabledCategories === []) {
-                                            $isOn = (bool) ($cat['enabled'] ?? false);
-                                        }
-                                    @endphp
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" name="categories[]" value="{{ $key }}" id="cat_{{ $key }}" @checked($isOn)>
-                                        <label class="form-check-label" for="cat_{{ $key }}">{{ $cat['label'] }} <span class="text-muted small">({{ $key }})</span></label>
-                                    </div>
-                                @endforeach
-                            </div>
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Extra prohibited keywords (one per line)</label>
-                            <textarea name="extra_keywords" class="form-control" rows="4" placeholder="keyword or phrase">{{ implode("\n", $extraKeywords) }}</textarea>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Allowed exceptions (one per line)</label>
-                            <textarea name="exceptions" class="form-control" rows="3" placeholder="phrases to ignore">{{ collect($exceptions)->map(fn($e) => is_string($e) ? $e : '')->filter()->implode("\n") }}</textarea>
                         </div>
 
                         <button type="submit" class="btn btn-primary">Save settings</button>
@@ -167,7 +182,49 @@
 
         <div class="col-lg-7">
             <div class="card border-0 shadow-sm">
-                <div class="card-header bg-white border-0"><strong>Moderation Logs</strong></div>
+                <div class="card-header bg-white border-0">
+                    <strong>Moderation Logs</strong>
+                </div>
+                <div class="card-body border-bottom py-3">
+                    <form method="GET" action="{{ route('admin.moderation.index') }}" class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <x-slb-search-field name="q" id="adminModerationSearch" :value="$search ?? ''" placeholder="Email, upload id, URL" />
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small text-muted mb-1">Status</label>
+                            <select name="status" class="form-select form-select-sm" onchange="this.form.submit()">
+                                <option value="all" @selected(($status ?? 'all') === 'all')>All ({{ (int) ($stats['total'] ?? 0) }})</option>
+                                <option value="approved" @selected(($status ?? '') === 'approved')>Approved ({{ (int) ($stats['approved'] ?? 0) }})</option>
+                                <option value="rejected" @selected(($status ?? '') === 'rejected')>Rejected ({{ (int) ($stats['rejected'] ?? 0) }})</option>
+                                <option value="error" @selected(($status ?? '') === 'error')>Errors ({{ (int) ($stats['errors'] ?? 0) }})</option>
+                                <option value="skipped" @selected(($status ?? '') === 'skipped')>Not checked ({{ (int) ($stats['skipped'] ?? 0) }})</option>
+                                <option value="overridden" @selected(($status ?? '') === 'overridden')>Overridden ({{ (int) ($stats['overridden'] ?? 0) }})</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-3">
+                            <label class="form-label small text-muted mb-1">Category</label>
+                            <select name="category" class="form-select form-select-sm" onchange="this.form.submit()">
+                                <option value="all" @selected(($category ?? 'all') === 'all')>All</option>
+                                @foreach(config('content_moderation.categories', []) as $key => $cat)
+                                    <option value="{{ $key }}" @selected(($category ?? '') === $key)>{{ $cat['label'] ?? $key }}</option>
+                                @endforeach
+                                <option value="custom" @selected(($category ?? '') === 'custom')>Extra prohibited keywords</option>
+                            </select>
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label small text-muted mb-1">From</label>
+                            <input type="date" name="from" class="form-control form-control-sm" value="{{ $from ?? '' }}">
+                        </div>
+                        <div class="col-6 col-md-2">
+                            <label class="form-label small text-muted mb-1">To</label>
+                            <input type="date" name="to" class="form-control form-control-sm" value="{{ $to ?? '' }}">
+                        </div>
+                        <div class="col-auto">
+                            <button type="submit" class="btn btn-sm btn-primary">Apply</button>
+                            <a href="{{ route('admin.moderation.index') }}" class="btn btn-sm btn-link">Reset</a>
+                        </div>
+                    </form>
+                </div>
                 <div class="card-body p-0">
                     <div class="table-responsive">
                         <table class="table table-hover align-middle mb-0">
@@ -189,11 +246,6 @@
                                         <td class="small">{{ $log->user?->email ?? '—' }}</td>
                                         <td>
                                             @if($log->wasSkipped())
-                                                {{-- Nothing read this article; calling it Approved would be a lie
-                                                     in the one place built to audit these decisions. The theme
-                                                     flattens warning slabs to a light surface on purpose, so the
-                                                     icon has to carry the signal — otherwise the state that
-                                                     matters most reads quieter than a genuine pass. --}}
                                                 <span class="badge bg-warning text-dark">
                                                     <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>Not checked
                                                 </span>
@@ -208,25 +260,49 @@
                                                 <span class="badge bg-warning text-dark">Override</span>
                                             @endif
                                         </td>
-                                        <td>{{ $log->max_confidence }}%</td>
-                                        <td class="small">{{ $log->detected_category ?: '—' }}</td>
+                                        <td>
+                                            @if($log->status === 'error')
+                                                <span class="small text-muted">{{ $log->error_code ?: 'error' }}</span>
+                                            @else
+                                                {{ $log->max_confidence }}%
+                                            @endif
+                                        </td>
+                                        <td class="small">{{ $log->categoryLabel() }}</td>
                                         <td>{{ $log->word_count }}</td>
                                         <td class="text-end">
-                                            @if(!$log->passed && $log->status === 'rejected')
-                                                <form method="POST" action="{{ route('admin.moderation.override', $log) }}" class="d-inline"
+                                            <a class="btn btn-sm btn-outline-secondary" href="{{ route('admin.moderation.show', $log) }}">View</a>
+                                            @if($log->articleUrl())
+                                                <a class="btn btn-sm btn-outline-secondary"
+                                                   href="{{ $log->articleUrl() }}"
+                                                   @if($log->articleUrlIsExternal()) target="_blank" rel="noopener" @endif>
+                                                    {{ $log->articleUrlIsExternal() ? 'Doc' : 'Article' }}
+                                                </a>
+                                            @endif
+                                            @if(! $log->passed && $log->status === 'rejected' && ! $log->admin_override)
+                                                <form method="POST" action="{{ route('admin.moderation.override', $log) }}" class="d-inline-block mt-1 text-start"
                                                       data-slb-confirm="Approve this submission via admin override?"
                                                       data-slb-confirm-title="Override moderation?"
                                                       data-slb-confirm-text="Approve override"
                                                       data-slb-confirm-icon="warning">
                                                     @csrf
+                                                    <input type="text" name="notes" class="form-control form-control-sm mb-1" placeholder="Reason (required)" required minlength="3" maxlength="2000" style="min-width:11rem;">
                                                     <button class="btn btn-sm btn-outline-primary" type="submit">Override</button>
                                                 </form>
                                             @endif
-                                            <a class="btn btn-sm btn-outline-secondary" href="{{ $log->document_url }}" target="_blank" rel="noopener">Doc</a>
+                                            @if($log->admin_override && $log->submission && (int) $log->submission->moderation_log_id === (int) $log->id)
+                                                <form method="POST" action="{{ route('admin.moderation.revert', $log) }}" class="d-inline"
+                                                      data-slb-confirm="Re-check this article and drop the override?"
+                                                      data-slb-confirm-title="Revert override?"
+                                                      data-slb-confirm-text="Revert"
+                                                      data-slb-confirm-icon="warning">
+                                                    @csrf
+                                                    <button class="btn btn-sm btn-outline-danger" type="submit">Revert</button>
+                                                </form>
+                                            @endif
                                         </td>
                                     </tr>
                                 @empty
-                                    <tr><td colspan="7" class="text-center text-muted py-4">No scans yet.</td></tr>
+                                    <tr><td colspan="7" class="text-center text-muted py-4">No scans match these filters.</td></tr>
                                 @endforelse
                             </tbody>
                         </table>
@@ -240,3 +316,36 @@
     </div>
 </div>
 @endsection
+
+@push('scripts')
+<script>
+(function () {
+    var form = document.getElementById('moderation-settings-form');
+    if (!form || typeof slbConfirm !== 'function') return;
+    form.addEventListener('submit', function (e) {
+        if (form.dataset.slbAllowSubmit === '1') return;
+        var enabled = !!(document.getElementById('modEnabled') && document.getElementById('modEnabled').checked);
+        var cats = form.querySelectorAll('input[name="categories[]"]:checked');
+        var wasEnabled = form.dataset.wasEnabled === '1';
+        var turningOff = wasEnabled && !enabled;
+        var noneOn = cats.length === 0;
+        if (!turningOff && !noneOn) return;
+        e.preventDefault();
+        slbConfirm({
+            title: turningOff ? 'Turn off content moderation?' : 'Disable every category?',
+            text: turningOff
+                ? 'No article will be scanned. Casino, adult and every other restricted category will pass through to checkout.'
+                : 'Every prohibited category is unticked. Restricted articles will not be flagged.',
+            confirmText: 'Save anyway',
+            danger: true,
+            icon: 'warning'
+        }).then(function (ok) {
+            if (!ok) return;
+            form.dataset.slbAllowSubmit = '1';
+            if (typeof form.requestSubmit === 'function') form.requestSubmit();
+            else form.submit();
+        });
+    });
+})();
+</script>
+@endpush

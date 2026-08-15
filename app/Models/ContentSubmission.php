@@ -129,6 +129,11 @@ class ContentSubmission extends Model
         return $this->belongsTo(ContentModerationLog::class, 'moderation_log_id');
     }
 
+    public function moderationLogs(): HasMany
+    {
+        return $this->hasMany(ContentModerationLog::class, 'content_submission_id');
+    }
+
     public function order(): BelongsTo
     {
         return $this->belongsTo(Order::class);

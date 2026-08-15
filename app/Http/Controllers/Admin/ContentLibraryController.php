@@ -67,17 +67,7 @@ class ContentLibraryController extends Controller
 
     public function show(Request $request, ContentSubmission $submission)
     {
-        $submission->load([
-            'user:id,name,email',
-            'order:id,status,payment_status,order_number,user_id',
-            'orderItem.site:id,site_name,site_url',
-            'orderItems.site:id,site_name,site_url',
-            'orderItems.order:id,status,payment_status,order_number',
-        ]);
-
-        $filters = $this->parseFilters($request);
-        $placement = $submission->placementItem();
-        $fileOnDisk = $this->staffActions->fileOnDisk($submission);
+        $submission->load(['user:id,name,email', 'orderItem.site', 'orderItems.site', 'moderationLog.overrider:id,name,email']);
 
         return view('admin.content-library.show', [
             'submission' => $submission,

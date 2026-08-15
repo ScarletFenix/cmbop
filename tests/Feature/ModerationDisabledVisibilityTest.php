@@ -87,6 +87,31 @@ class ModerationDisabledVisibilityTest extends TestCase
         $this->assertTrue($log->wasSkipped(), 'The log row does not record that the scan was skipped.');
     }
 
+    public function test_admin_stats_do_not_count_skipped_scans_as_approved(): void
+    {
+        $this->disableViaDatabase();
+
+        app(ContentModerationService::class)->scanExtractedContent(
+            text: 'Play at the best online casino and claim your no deposit bonus for slots tonight.',
+            html: '<p>Play at the best online casino.</p>',
+            sourceLabel: 'upload:test',
+            user: null,
+            title: 'Casino guide',
+            links: [],
+        );
+
+        $stats = app(ContentModerationService::class)->adminStats();
+        $this->assertSame(0, $stats['approved']);
+        $this->assertSame(1, $stats['skipped']);
+        $this->assertSame(1, $stats['total']);
+
+        $this->actingAs($this->admin())
+            ->get(route('admin.moderation.index'))
+            ->assertOk()
+            ->assertSee('Not checked')
+            ->assertSee('Errors');
+    }
+
     public function test_the_scan_log_shows_not_checked_rather_than_approved(): void
     {
         $this->disableViaDatabase();
