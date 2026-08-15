@@ -1103,7 +1103,7 @@ class OrderPaymentService
     /**
      * @return 'ok'|'missing'|'unready'|'taken'
      */
-    private function libraryContentStateForSettlement(Order $order): string
+    public function libraryContentStateForSettlement(Order $order): string
     {
         $order->loadMissing('items');
         foreach ($order->items as $item) {
@@ -1131,7 +1131,7 @@ class OrderPaymentService
         return 'ok';
     }
 
-    private function refreshOrderItemLibraryFields(Order $order): void
+    public function refreshOrderItemLibraryFields(Order $order): void
     {
         $schema = app(CheckoutSchemaService::class);
         $order->loadMissing('items');
