@@ -30,19 +30,33 @@ class CheckoutIntentService
     {
         Cache::put(self::pendingCheckoutCacheKey($referenceCode), $package, now()->addHours($hours));
 
-        $bonus = round((float) ($package['bonus_applied'] ?? 0), 2);
+        $packageBonus = round((float) ($package['bonus_applied'] ?? 0), 2);
         $userId = isset($package['user_id']) ? (int) $package['user_id'] : null;
+        $existing = $this->findIntent($referenceCode);
+        $liveHold = $userId
+            ? $this->heldBonus($userId, $referenceCode)
+            : ($existing ? round((float) $existing->bonus_applied, 2) : 0.0);
 
-        $this->upsertIntent($referenceCode, [
+        $attributes = [
             'user_id' => $userId,
             'package' => $package,
-            'bonus_applied' => $bonus,
             'expires_at' => now()->addHours($hours),
-        ]);
+        ];
 
-        if ($userId && $bonus > 0) {
-            Cache::put(self::bonusCacheKey($userId, $referenceCode), $bonus, now()->addHours($hours));
+        // takeBonus zeros the live hold but leaves package.bonus_applied for
+        // late pay. Copying that snapshot back onto the row/cache made
+        // heldBonus() look reserved again, so a later cancel/expiry/late-pay
+        // could spend another checkout's wallet reserve.
+        if ($existing && $liveHold <= 0.009) {
+            $attributes['bonus_applied'] = 0;
+        } else {
+            $attributes['bonus_applied'] = $packageBonus;
+            if ($userId && $packageBonus > 0) {
+                Cache::put(self::bonusCacheKey($userId, $referenceCode), $packageBonus, now()->addHours($hours));
+            }
         }
+
+        $this->upsertIntent($referenceCode, $attributes);
     }
 
     public function rememberBonus(int $userId, string $referenceCode, float $amount, int $hours = 720): void
