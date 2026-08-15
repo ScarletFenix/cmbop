@@ -223,6 +223,35 @@ class AdminEmailCenterTest extends TestCase
             ->assertSee('synthetic preview', false);
     }
 
+    public function test_email_center_index_ok_when_log_sent_at_is_unparseable(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => 'leftover-sent@example.com',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now(),
+        ]);
+        DB::table('email_logs')->where('id', $log->id)->update([
+            'sent_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($log->fresh()->sent_at);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->assertSee('leftover-sent@example.com', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.log', $log))
+            ->assertOk()
+            ->assertSee('leftover-sent@example.com', false)
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_admin_can_preview_welcome_and_unknown_key_is_404(): void
     {
         $admin = $this->userWithRole('admin');

@@ -161,6 +161,34 @@ class AdminCampaignsTest extends TestCase
         $this->assertStringNotContainsString('data-slb-confirm', $button[0] ?? '');
     }
 
+    public function test_admin_index_ok_when_campaign_sent_at_is_unparseable(): void
+    {
+        $admin = $this->makeUser('admin');
+        $campaign = EmailCampaign::create([
+            'name' => 'Leftover sent clock',
+            'subject' => 'Leftover Sent Subject',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+            'sent_at' => now()->subHour(),
+        ]);
+        DB::table('email_campaigns')->where('id', $campaign->id)->update([
+            'sent_at' => 'not-a-date',
+        ]);
+
+        $this->assertNull($campaign->fresh()->sent_at);
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.index'))
+            ->assertOk()
+            ->assertSee('Leftover Sent Subject', false)
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_preview_returns_html_for_valid_payload(): void
     {
         $admin = $this->makeUser('admin');
@@ -416,13 +444,18 @@ class AdminCampaignsTest extends TestCase
         $verified = $this->makeUser('advertiser');
         $unverified = $this->makeUser('advertiser');
         $unverified->forceFill(['email_verified_at' => null])->save();
+        $leftover = $this->makeUser('advertiser');
+        DB::table('users')->where('id', $leftover->id)->update([
+            'email_verified_at' => 'not-a-date',
+        ]);
+        $this->assertFalse($leftover->fresh()->hasVerifiedEmail());
 
         $this->actingAs($admin)
             ->getJson(route('admin.campaigns.recipient-count', ['audience' => 'advertisers']))
             ->assertOk()
             ->assertJson([
                 'count' => 1,
-                'unverified_excluded' => 1,
+                'unverified_excluded' => 2,
             ]);
 
         $this->actingAs($admin)
@@ -434,6 +467,7 @@ class AdminCampaignsTest extends TestCase
 
         Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($verified->email));
         Mail::assertNotQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($unverified->email));
+        Mail::assertNotQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($leftover->email));
     }
 
     public function test_include_unverified_sends_to_unverified_users(): void

@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\AudienceInventoryService;
 use App\Support\MailJobPayload;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -17,6 +18,8 @@ use Illuminate\Support\Facades\Schema;
 
 class EmailCampaign extends Model
 {
+    use ToleratesUnparseableDates;
+
     public const STATUS_DRAFT = 'draft';
 
     public const STATUS_QUEUED = 'queued';
