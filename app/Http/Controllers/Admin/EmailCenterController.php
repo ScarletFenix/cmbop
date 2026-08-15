@@ -16,6 +16,7 @@ use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -42,7 +43,10 @@ class EmailCenterController extends Controller
             ->fragment('ec-recent');
 
         $templateStats = EmailLog::query()
-            ->selectRaw('template_key, COUNT(*) as sent_count, MAX(sent_at) as last_sent_at')
+            ->selectRaw(
+                'template_key, COUNT(*) as sent_count, MAX(CASE WHEN sent_at >= ? AND sent_at <= ? THEN sent_at END) as last_sent_at',
+                [EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR, EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL]
+            )
             ->where('status', EmailLog::STATUS_DELIVERED)
             ->whereNotNull('template_key')
             ->groupBy('template_key')
@@ -71,7 +75,7 @@ class EmailCenterController extends Controller
 
         $templates = collect(EmailCatalog::templates())->map(function (array $meta) use ($templateStats, $enabledByType) {
             $row = $templateStats->get($meta['key']);
-            $meta['last_sent_at'] = $row?->last_sent_at;
+            $meta['last_sent_at'] = $this->parseLastSentAt($row?->last_sent_at);
             $meta['sent_count'] = (int) ($row?->sent_count ?? 0);
             $meta['enabled'] = (bool) ($enabledByType[$meta['key']] ?? true);
 
@@ -962,5 +966,37 @@ class EmailCenterController extends Controller
     protected function renderMarkdown(string $view, array $data = []): string
     {
         return app(Markdown::class)->render($view, $data);
+    }
+
+    /**
+     * Hostinger leftover sent_at strings win SQLite MAX() and 500
+     * Carbon::parse() on the template cards.
+     */
+    private function parseLastSentAt(mixed $value): ?Carbon
+    {
+        try {
+            if ($value instanceof Carbon) {
+                return $value;
+            }
+
+            if ($value instanceof \DateTimeInterface) {
+                return Carbon::parse($value->format('Y-m-d H:i:s'));
+            }
+
+            $raw = trim((string) $value);
+            if ($raw === '') {
+                return null;
+            }
+
+            $parsed = Carbon::parse($raw);
+            if ($parsed->lt(EmailLog::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                || $parsed->gt(EmailLog::PLAUSIBLE_SQL_DATETIME_CEIL)) {
+                return null;
+            }
+
+            return $parsed;
+        } catch (\Throwable) {
+            return null;
+        }
     }
 }
