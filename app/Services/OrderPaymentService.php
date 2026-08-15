@@ -546,6 +546,7 @@ class OrderPaymentService
                     ? ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first()
                     : null;
                 $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
+                $attachSubmission = $submission && ! $articleTaken;
 
                 $order = $this->createPaidCardOrderRow($schema, [
                     'user_id' => $userId,
@@ -573,9 +574,6 @@ class OrderPaymentService
                 if ($order === null) {
                     continue;
                 }
-
-                $submissionId = (int) ($line['content_submission_id'] ?? 0);
-                $submission = $submissionId > 0 ? ContentSubmission::query()->find($submissionId) : null;
 
                 $itemPayload = [
                     'order_id' => $order->id,
