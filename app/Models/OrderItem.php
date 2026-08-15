@@ -190,6 +190,19 @@ class OrderItem extends Model
             return route('publisher.content.download', $this->content_submission_id);
         }
 
+        return $this->publisherContentLink();
+    }
+
+    /**
+     * Stored content_link for publisher JSON. Clawed lines must not keep
+     * pointing at the advertiser download route or a live library file.
+     */
+    public function publisherContentLink(): ?string
+    {
+        if ($this->isClawedBack()) {
+            return null;
+        }
+
         return filled($this->content_link) ? (string) $this->content_link : null;
     }
 
