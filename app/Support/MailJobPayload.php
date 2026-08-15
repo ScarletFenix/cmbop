@@ -37,6 +37,31 @@ class MailJobPayload
     }
 
     /**
+     * Match campaignId in raw PHP serialization, JSON-escaped queue
+     * payloads, or a decoded command string. `i:12;` must not match 123.
+     */
+    public static function containsCampaignId(string $payload, int $campaignId): bool
+    {
+        if ($campaignId < 1) {
+            return false;
+        }
+
+        $id = (string) $campaignId;
+        if (preg_match('/s:10:\\\\?"campaignId\\\\?";i:'.$id.';/', $payload)) {
+            return true;
+        }
+
+        if (preg_match('/"campaignId":'.$id.'(?!\d)/', $payload)) {
+            return true;
+        }
+
+        $decoded = json_decode($payload, true);
+        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
+
+        return is_string($command) && (bool) preg_match('/s:10:"campaignId";i:'.$id.';/', $command);
+    }
+
+    /**
      * Match a recipient or dedupe key without treating "welcome:1" as "welcome:10".
      */
     public static function containsToken(string $payload, string $token): bool
