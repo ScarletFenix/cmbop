@@ -56,11 +56,13 @@ class AdminWithdrawalController extends Controller
                 $query->where('payment_method', $request->payment_method);
             }
 
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
+            $dateFrom = search_text($request->input('date_from'));
+            if ($dateFrom !== '') {
+                $query->whereDate('created_at', '>=', $dateFrom);
             }
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
+            $dateTo = search_text($request->input('date_to'));
+            if ($dateTo !== '') {
+                $query->whereDate('created_at', '<=', $dateTo);
             }
 
             // Open queue: oldest unpaid first. History: newest first.

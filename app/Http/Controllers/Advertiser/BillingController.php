@@ -41,12 +41,14 @@ class BillingController extends Controller
             $query->where('type', $request->type);
         }
 
-        if ($request->filled('from')) {
-            $query->whereDate('invoice_date', '>=', $request->from);
+        $from = search_text($request->input('from'));
+        if ($from !== '') {
+            $query->whereDate('invoice_date', '>=', $from);
         }
 
-        if ($request->filled('to')) {
-            $query->whereDate('invoice_date', '<=', $request->to);
+        $to = search_text($request->input('to'));
+        if ($to !== '') {
+            $query->whereDate('invoice_date', '<=', $to);
         }
 
         $invoices = $query->latest('invoice_date')->latest('id')->paginate(20)->withQueryString();
