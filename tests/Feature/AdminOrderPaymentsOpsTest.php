@@ -916,7 +916,10 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString('willMoveMoney', $html);
         $this->assertStringContainsString('does not credit the wallet again', $html);
         $this->assertStringContainsString('Choose a payment status first.', $html);
+        $this->assertStringContainsString(json_encode(route('admin.payments.data', absolute: false)), $html);
+        $this->assertStringNotContainsString('const PAYMENTS_DATA = '.json_encode(route('admin.payments.data')), $html);
         $blade = file_get_contents(resource_path('views/admin/payments.blade.php'));
         $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $blade);
+        $this->assertStringContainsString("route('admin.payments.data', absolute: false)", $blade);
     }
 }

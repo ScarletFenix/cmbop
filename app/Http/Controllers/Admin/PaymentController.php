@@ -76,7 +76,7 @@ class PaymentController extends Controller
                 ],
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fetching payments: '.$e->getMessage());
 
             return response()->json([

@@ -125,6 +125,8 @@ class AdminPaymentsNamedRoutesNotificationTest extends TestCase
         $this->assertStringContainsString('__ID__', $html);
         $this->assertStringContainsString('payments\\/__ID__\\/update-status', $html);
         $this->assertStringContainsString('orders\\/__ID__', $html);
+        $this->assertStringContainsString(json_encode(route('admin.payments.data', absolute: false)), $html);
+        $this->assertStringNotContainsString('const PAYMENTS_DATA = '.json_encode(route('admin.payments.data')), $html);
 
         $this->assertStringNotContainsString("/admin/payments/' + orderId", $html);
         $this->assertStringNotContainsString("url: '/admin/payments/data'", $html);
