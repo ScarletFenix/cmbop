@@ -114,7 +114,7 @@ class PublisherReportsController extends Controller
                 ]);
             }
 
-            $query = OrderItem::with(['order'])
+            $query = OrderItem::with(['order', 'disputes'])
                 ->whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
                     // Financial reports: paid only (exclude abandoned card checkouts).
@@ -151,7 +151,7 @@ class PublisherReportsController extends Controller
                     'id' => $item->id,
                     'site_name' => $item->site_name,
                     'site_url' => $item->site_url,
-                    'content_link' => $item->content_link,
+                    'content_link' => $item->publisherContentLink(),
                     'live_url' => $item->live_url,
                     'sensitive_type' => $item->sensitive_type,
                     'additional_price' => $additional,
@@ -191,7 +191,7 @@ class PublisherReportsController extends Controller
         try {
             $userId = auth()->id();
 
-            $orderItem = OrderItem::with(['order', 'site'])
+            $orderItem = OrderItem::with(['order', 'site', 'disputes'])
                 ->whereHas('site', function ($q) use ($userId) {
                     $q->where('publisher_id', $userId);
                 })
@@ -209,7 +209,7 @@ class PublisherReportsController extends Controller
                     'id' => $orderItem->id,
                     'site_name' => $orderItem->site_name,
                     'site_url' => $orderItem->site_url,
-                    'content_link' => $orderItem->content_link,
+                    'content_link' => $orderItem->publisherContentLink(),
                     'live_url' => $orderItem->live_url,
                     'sensitive_type' => $orderItem->sensitive_type,
                     'additional_price' => $additional,
