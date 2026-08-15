@@ -351,6 +351,7 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) 
 // Marketing unsubscribe (signed GET confirm + POST one-click). Same route name
 // so one signature works for both methods. CSRF is excepted for Gmail POSTs.
 Route::match(['get', 'post'], '/email/unsubscribe/{user}', EmailUnsubscribeController::class)
+    ->whereNumber('user')
     ->middleware('throttle:30,1')
     ->name('email.unsubscribe');
 
@@ -629,7 +630,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
         Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
         Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
-        Route::get('/campaigns/recipient-count', [AdminCampaignController::class, 'recipientCount'])
+        Route::match(['get', 'post'], '/campaigns/recipient-count', [AdminCampaignController::class, 'recipientCount'])
             ->middleware('throttle:30,1')
             ->name('campaigns.recipient-count');
         Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])

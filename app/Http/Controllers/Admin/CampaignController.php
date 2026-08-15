@@ -20,6 +20,12 @@ class CampaignController extends Controller
 {
     public function index(AudienceInventoryService $inventory)
     {
+        try {
+            EmailCampaign::recoverStalled();
+        } catch (\Throwable $e) {
+            Log::warning('Campaign stall recovery failed', ['error' => $e->getMessage()]);
+        }
+
         $stats = $inventory->stats(includeUnverified: false);
         $campaigns = EmailCampaign::query()
             ->with('creator')
@@ -65,12 +71,7 @@ class CampaignController extends Controller
 
     public function recipientCount(Request $request, AudienceInventoryService $inventory)
     {
-        $data = $request->validate([
-            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
-            'user_ids' => ['nullable', 'array'],
-            'user_ids.*' => ['integer', 'exists:users,id'],
-            'include_unverified' => ['boolean'],
-        ]);
+        $data = $request->validate($this->audienceInputRules());
 
         $includeUnverified = $request->boolean('include_unverified');
         $ids = $data['user_ids'] ?? [];
@@ -89,25 +90,21 @@ class CampaignController extends Controller
 
     public function send(Request $request, AudienceInventoryService $inventory)
     {
-        $data = $request->validate([
+        $data = $request->validate(array_merge($this->audienceInputRules(), [
             'name' => ['nullable', 'string', 'max:120'],
             'subject' => ['required', 'string', 'max:180'],
             'body_html' => ['required', 'string', 'max:20000'],
-            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
-            'user_ids' => ['nullable', 'array'],
-            'user_ids.*' => ['integer', 'exists:users,id'],
             'cta_label' => ['nullable', 'string', 'max:80'],
             'cta_url' => $this->ctaUrlRules(),
             'respect_preferences' => ['boolean'],
-            'include_unverified' => ['boolean'],
-        ]);
+        ]));
 
         if ($data['audience'] === 'selected' && empty($data['user_ids'])) {
             return back()->withInput()->with('error', 'Select at least one user for a custom audience.');
         }
 
         $includeUnverified = $request->boolean('include_unverified');
-        $recipients = $inventory->collect($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
+        $recipients = $inventory->collectRecipientRows($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
             ->unique('id')
             ->values();
         if ($recipients->isEmpty()) {
@@ -194,6 +191,19 @@ class CampaignController extends Controller
         return redirect()
             ->route('admin.campaigns.index')
             ->with('success', "Campaign queued for {$count} recipient(s).");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    protected function audienceInputRules(): array
+    {
+        return [
+            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
+            'user_ids' => ['nullable', 'array', 'max:'.(AudienceInventoryService::PICKER_LIMIT * 2)],
+            'user_ids.*' => ['integer'],
+            'include_unverified' => ['boolean'],
+        ];
     }
 
     /**
