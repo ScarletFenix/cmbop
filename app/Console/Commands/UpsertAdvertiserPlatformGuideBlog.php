@@ -2,8 +2,8 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Blog;
 use App\Models\User;
+use App\Services\CuratedBlogWriter;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BlogInlineImages;
 use Illuminate\Console\Command;
@@ -20,30 +20,14 @@ class UpsertAdvertiserPlatformGuideBlog extends Command
         $this->ensureImages();
 
         $payload = AdvertiserPlatformGuideBlogPost::payload();
-        unset($payload['faq']);
-
-        $existing = Blog::query()->where('slug', AdvertiserPlatformGuideBlogPost::SLUG)->first();
         $authorUser = User::query()->orderBy('id')->first();
+        $blog = CuratedBlogWriter::upsert(AdvertiserPlatformGuideBlogPost::SLUG, $payload, $authorUser?->id);
 
-        $data = array_merge($payload, [
-            'updated_by' => $authorUser?->id,
-        ]);
+        if (! $blog) {
+            $this->warn('Skipped deleted curated slug '.AdvertiserPlatformGuideBlogPost::SLUG);
 
-        if (! $existing) {
-            $data['published_at'] = now();
-            $data['created_by'] = $authorUser?->id;
-        } else {
-            $data['published_at'] = $existing->published_at ?? now();
-            $data['created_by'] = $existing->created_by ?? $authorUser?->id;
-            if ($existing->author) {
-                $data['author'] = $existing->author;
-            }
+            return self::SUCCESS;
         }
-
-        $blog = Blog::updateOrCreate(
-            ['slug' => AdvertiserPlatformGuideBlogPost::SLUG],
-            $data
-        );
 
         $this->info('Upserted blog #'.$blog->id.' ('.$blog->slug.') primary_locale='.($blog->primary_locale ?: 'null'));
 

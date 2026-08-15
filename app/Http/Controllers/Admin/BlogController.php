@@ -7,6 +7,7 @@ use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
+use App\Services\CuratedBlogWriter;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
@@ -286,6 +287,7 @@ class BlogController extends Controller
                 'tags' => $tags,
                 'status' => $request->status,
                 'updated_by' => auth()->id(),
+                'manually_edited_at' => now(),
             ];
 
             $existingEn = $blog->translations()->where('locale', 'en')->first();
@@ -383,6 +385,7 @@ class BlogController extends Controller
             }
 
             $blogTitle = $blog->title;
+            CuratedBlogWriter::rememberDeleted($blog);
             $blog->delete();
 
             Log::info('Blog deleted successfully', [
