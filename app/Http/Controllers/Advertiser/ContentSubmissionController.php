@@ -720,6 +720,8 @@ class ContentSubmissionController extends Controller
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
             'image_rights_covers' => $s->imageRightsCoverContent(),
+            'editor_notice' => $s->editorNotice(),
+            'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),

@@ -514,6 +514,9 @@ class ContentLibraryController extends Controller
                 'moderation_status' => $result['submission']->moderation_status ?? null,
                 'can_order' => false,
                 'editable' => true,
+                'needs_image_rights' => (bool) ($result['submission']?->hasImages() && ! $result['submission']->imageRightsCoverContent()),
+                'editor_notice' => $result['message'] ?? null,
+                'editor_notice_ok' => false,
             ];
         }
 
@@ -549,7 +552,9 @@ class ContentLibraryController extends Controller
         if (! $submission->canBeOrdered()) {
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
-                : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.';
+                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
+                    ? ContentUploadService::imageRightsRequiredMessage()
+                    : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
 
             return redirect()
                 ->route('advertiser.content-library')
@@ -610,6 +615,8 @@ class ContentLibraryController extends Controller
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
             'image_rights_covers' => $s->imageRightsCoverContent(),
+            'editor_notice' => $s->editorNotice(),
+            'editor_notice_ok' => false,
         ];
     }
 
@@ -642,6 +649,8 @@ class ContentLibraryController extends Controller
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
             'image_rights_covers' => $s->imageRightsCoverContent(),
+            'editor_notice' => $s->editorNotice(),
+            'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),

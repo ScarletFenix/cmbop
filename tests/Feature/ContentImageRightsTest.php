@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ContentEvaluationResult;
 use App\Models\ContentSubmission;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -12,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
+use ZipArchive;
 
 class ContentImageRightsTest extends TestCase
 {
@@ -353,6 +356,111 @@ class ContentImageRightsTest extends TestCase
         $this->assertFalse(ContentSubmission::imageRightsNeedsSource(ContentSubmission::IMAGE_RIGHTS_OWN));
     }
 
+    public function test_approval_mail_waits_until_image_rights_are_declared(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+            'approval_notified_at' => null,
+            'evaluation_report' => ['summary' => 'Your article was approved for publication.'],
+        ]);
+
+        $uploads = app(ContentUploadService::class);
+        $first = $uploads->reEvaluateSubmission($submission->fresh());
+
+        $this->assertFalse($first['approved']);
+        $this->assertSame('needs_image_rights', $first['notify_status'] ?? null);
+        $this->assertStringContainsString('Confirm you own them', (string) $first['message']);
+        Mail::assertSent(ContentEvaluationResult::class, 1);
+        Mail::assertSent(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
+            return ($mail->result['notify_status'] ?? null) === 'needs_image_rights'
+                && ($mail->result['approved'] ?? true) === false;
+        });
+
+        $uploads->reEvaluateSubmission($submission->fresh());
+        Mail::assertSent(ContentEvaluationResult::class, 1);
+
+        $submission->fresh()->update([
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $second = $uploads->reEvaluateSubmission($submission->fresh());
+        $this->assertTrue($second['approved']);
+        $this->assertSame('approved', $second['notify_status'] ?? null);
+        Mail::assertSent(ContentEvaluationResult::class, 2);
+        Mail::assertSent(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
+            return ($mail->result['notify_status'] ?? null) === 'approved'
+                && ($mail->result['approved'] ?? false) === true;
+        });
+    }
+
+    public function test_upload_json_does_not_claim_the_article_is_orderable_without_rights(): void
+    {
+        Storage::fake('local');
+        Storage::fake('public');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/image-rights-img-'.uniqid('', true).'.docx';
+        $this->makeDocxFileWithImage($path);
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title' => 'Illustrated article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+        @unlink($path);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('approved', false)
+            ->assertJsonPath('submission.needs_image_rights', true)
+            ->assertJsonPath('submission.can_order', false)
+            ->assertJsonPath('submission.editor_notice_ok', false);
+        $this->assertStringContainsString('Confirm you own them', (string) $response->json('message'));
+        $this->assertStringContainsString('Confirm you own them', (string) $response->json('submission.editor_notice'));
+        $this->assertStringNotContainsString('place an order', strtolower((string) $response->json('message')));
+    }
+
+    public function test_save_payload_includes_editor_notice_when_rights_are_missing(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Body still has a picture.</p><img src="/storage/content-articles/1/x.png" alt="">',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.editor_notice', '')
+            ->assertJsonPath('submission.needs_image_rights', false);
+    }
+
     public function test_library_upload_modal_defers_rights_until_the_editor(): void
     {
         $advertiser = $this->advertiser();
@@ -399,9 +507,40 @@ class ContentImageRightsTest extends TestCase
         $this->assertStringContainsString('window.deleteLibraryArticle = deleteLibraryArticle', $js);
         $this->assertStringContainsString('window.restoreLibraryArticle = restoreLibraryArticle', $js);
         $this->assertStringNotContainsString('readImageRights(this)', $js);
+        $this->assertStringContainsString('data.submission.editor_notice', $js);
+        $this->assertStringNotContainsString(
+            "editor_notice: data.submission.needs_image_rights\n                    ? ''",
+            $js
+        );
 
         $declaration = file_get_contents(resource_path('views/advertiser/partials/image-rights-declaration.blade.php'));
         $this->assertStringContainsString('image_rights', $declaration);
         $this->assertStringContainsString('image_rights_source', $declaration);
+    }
+
+    private function makeDocxFileWithImage(string $absolutePath): void
+    {
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+        $text = str_repeat('Useful editorial content about productivity software for busy teams. ', 60);
+        $zip = new ZipArchive;
+        $zip->open($absolutePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            .'Target="media/image1.png"/>'
+            .'</Relationships>');
+        $zip->addFromString('word/media/image1.png', $png);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+            .'<w:body><w:p><w:r><w:t>'.htmlspecialchars($text, ENT_XML1).'</w:t></w:r></w:p>'
+            .'<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData>'
+            .'<a:blip r:embed="rIdImg1"/>'
+            .'</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
+            .'</w:body></w:document>');
+        $zip->close();
     }
 }

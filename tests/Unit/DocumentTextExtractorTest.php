@@ -209,6 +209,51 @@ class DocumentTextExtractorTest extends TestCase
         $this->assertSame(1, preg_match_all('/<img\b/i', (string) $result['html']));
     }
 
+    public function test_grouped_drawing_with_two_embeds_keeps_both_images(): void
+    {
+        $path = sys_get_temp_dir().'/cmbop-group-'.uniqid('', true).'.docx';
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            .'Target="media/image1.png"/>'
+            .'<Relationship Id="rIdImg2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            .'Target="media/image2.png"/>'
+            .'</Relationships>');
+        $zip->addFromString('word/media/image1.png', $png);
+        $zip->addFromString('word/media/image2.png', $png);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+            .'<w:body><w:p><w:r><w:t>Intro paragraph before the grouped figures for image extraction coverage.</w:t></w:r></w:p>'
+            .'<w:p><w:r><w:drawing>'
+            .'<wp:inline><a:graphic><a:graphicData><a:blip r:embed="rIdImg1"/></a:graphicData></a:graphic></wp:inline>'
+            .'<wp:inline><a:graphic><a:graphicData><a:blip r:embed="rIdImg2"/></a:graphicData></a:graphic></wp:inline>'
+            .'</w:drawing></w:r></w:p>'
+            .'<w:p><w:r><w:t>Closing paragraph after the grouped figures continues the article body text.</w:t></w:r></w:p>'
+            .'</w:body></w:document>');
+        $zip->close();
+
+        $result = (new DocumentTextExtractor)->extract(
+            $path,
+            'docx',
+            function (string $binary, string $ext, string $originalName): string {
+                return 'https://cdn.example.test/articles/'.$originalName;
+            }
+        );
+        @unlink($path);
+
+        $this->assertTrue($result['ok']);
+        $this->assertSame(2, preg_match_all('/<img\b/i', (string) $result['html']));
+        $this->assertStringContainsString('image1.png', (string) $result['html']);
+        $this->assertStringContainsString('image2.png', (string) $result['html']);
+    }
+
     public function test_a_failing_image_store_does_not_reject_the_docx(): void
     {
         $path = sys_get_temp_dir().'/cmbop-image-throw-'.uniqid('', true).'.docx';

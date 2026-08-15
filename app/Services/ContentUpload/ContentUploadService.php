@@ -239,10 +239,7 @@ class ContentUploadService
             $previewHtml = ArticlePreviewHtml::normalize((string) $result['highlighted_html']);
         }
 
-        $report = $result['report'] ?? [];
-        if (! empty($result['highlighted_html'])) {
-            $report['highlighted_preview'] = true;
-        }
+        $report = $this->evaluationReportWithNotifyStatus($submission, $result);
 
         $submission->update([
             'preview_html' => $previewHtml,
@@ -260,6 +257,7 @@ class ContentUploadService
         $fresh = $submission->fresh();
         $this->reconcileImageRightsAfterParse($fresh, $imageRights, $imageRightsSource);
         $fresh = $fresh->fresh();
+        $result = $this->presentEvaluationResult($fresh, $result);
         $this->notifyAdvertiserOfEvaluation($fresh, $result);
 
         // Upload was accepted into the library; approval is separate.
@@ -318,18 +316,17 @@ class ContentUploadService
                 return;
             }
 
-            $approved = (bool) ($result['approved'] ?? false);
-            $status = (string) ($result['moderation_status'] ?? $submission->moderation_status);
-            $result = $this->notificationResultForSubmission($submission, $result);
-            $approved = (bool) ($result['approved'] ?? false);
+            $result = $this->presentEvaluationResult($submission, $result);
+            $status = (string) ($result['notify_status'] ?? $result['moderation_status'] ?? $submission->moderation_status);
 
-            // Allow a later approval email after an earlier rejection/needs-fix notice.
-            $alreadyNotifiedSameOutcome = $submission->approval_notified_at
-                && $approved
-                && $submission->isApproved()
-                && ($submission->evaluation_report['notified_status'] ?? null) === $status;
+            // Same outcome (including "confirm rights") must not resend. A later
+            // approval after rights are declared uses a different notify_status.
+            if ($submission->approval_notified_at
+                && ($submission->evaluation_report['notified_status'] ?? null) === $status) {
+                return;
+            }
 
-            if (! $alreadyNotifiedSameOutcome && $user->email) {
+            if ($user->email) {
                 $mailable = new ContentEvaluationResult($submission, $result);
                 $mailable->notificationType = 'content_evaluation_result';
                 $mailable->dedupeKey = 'content_eval:'.$submission->id.':'.$status;
@@ -362,7 +359,7 @@ class ContentUploadService
      * @param  array<string, mixed>  $result
      * @return array<string, mixed>
      */
-    protected function notificationResultForSubmission(ContentSubmission $submission, array $result): array
+    public function presentEvaluationResult(ContentSubmission $submission, array $result): array
     {
         if (($result['approved'] ?? false)
             && $submission->hasImages()
@@ -370,9 +367,41 @@ class ContentUploadService
             $result['approved'] = false;
             $result['title'] = 'Confirm image rights';
             $result['message'] = $submission->editorNotice();
+            $result['notify_status'] = 'needs_image_rights';
+
+            return $result;
         }
 
+        $result['notify_status'] = ! empty($result['approved'])
+            ? 'approved'
+            : (string) ($result['moderation_status'] ?? 'needs_fix');
+
         return $result;
+    }
+
+    /**
+     * Keep the last mailed outcome across re-evaluations so the same
+     * notify_status is not sent twice.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function evaluationReportWithNotifyStatus(ContentSubmission $submission, array $result): array
+    {
+        $report = $result['report'] ?? [];
+        if (! is_array($report)) {
+            $report = [];
+        }
+        if (! empty($result['highlighted_html'])) {
+            $report['highlighted_preview'] = true;
+        }
+
+        $previous = $submission->evaluation_report;
+        if (is_array($previous) && isset($previous['notified_status'])) {
+            $report['notified_status'] = $previous['notified_status'];
+        }
+
+        return $report;
     }
 
     /**
@@ -529,10 +558,7 @@ class ContentUploadService
             $previewHtml = ArticlePreviewHtml::normalize((string) $result['highlighted_html']);
         }
 
-        $report = $result['report'] ?? [];
-        if (! empty($result['highlighted_html'])) {
-            $report['highlighted_preview'] = true;
-        }
+        $report = $this->evaluationReportWithNotifyStatus($submission, $result);
 
         $submission->update([
             'preview_html' => $previewHtml,
@@ -548,6 +574,7 @@ class ContentUploadService
         ]);
 
         $fresh = $submission->fresh();
+        $result = $this->presentEvaluationResult($fresh, $result);
         if ($notify) {
             $this->notifyAdvertiserOfEvaluation($fresh, $result);
         }
@@ -559,6 +586,7 @@ class ContentUploadService
             'message' => (string) ($result['message'] ?? ''),
             'report' => $report,
             'moderation_status' => (string) ($result['moderation_status'] ?? $fresh->moderation_status),
+            'notify_status' => (string) ($result['notify_status'] ?? $result['moderation_status'] ?? $fresh->moderation_status),
         ];
     }
 

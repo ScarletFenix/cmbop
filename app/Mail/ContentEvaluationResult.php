@@ -16,7 +16,7 @@ class ContentEvaluationResult extends PlatformMailable
         parent::__construct();
         $this->notificationType = 'content_evaluation_result';
         $this->recipientUser = $submission->user;
-        $this->dedupeKey = 'content_eval:'.$submission->id.':'.($result['moderation_status'] ?? 'unknown');
+        $this->dedupeKey = 'content_eval:'.$submission->id.':'.($result['notify_status'] ?? $result['moderation_status'] ?? 'unknown');
     }
 
     public function build()

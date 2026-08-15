@@ -36,6 +36,7 @@ let previewModalState = { title: '', submissionId: null, editable: false, html: 
 let pendingLibraryLanding = null;
 let skipEditorListLanding = false;
 let skipPreviewListLanding = false;
+let previewOpenedFromEditor = false;
 let libraryUploadAbort = null;
 let libraryUploadHandoff = false;
 let libraryUploadClosingForEditor = false;
@@ -695,6 +696,16 @@ function bindLibraryResultLanding() {
                 skipPreviewListLanding = false;
                 return;
             }
+            if (previewOpenedFromEditor) {
+                previewOpenedFromEditor = false;
+                const editorEl = document.getElementById('articleEditorModal');
+                if (articleEditorSubmissionId && articleQuill
+                    && Number(articleEditorSubmissionId) === Number(previewModalState.submissionId)
+                    && editorEl && typeof bootstrap !== 'undefined') {
+                    bootstrap.Modal.getOrCreateInstance(editorEl).show();
+                }
+                return;
+            }
             if (!pendingLibraryLanding) return;
             const next = pendingLibraryLanding;
             goToLibraryResult(next.submission, next.message, next.ok);
@@ -848,7 +859,10 @@ document.getElementById('articleCopyContentBtn')?.addEventListener('click', asyn
         return;
     }
     try {
-        await tools.copyHtml(body.innerHTML, body.innerText);
+        const html = previewModalState.html || '';
+        const tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        await tools.copyHtml(html, tmp.innerText || body.innerText);
         tools.toast('Article copied — paste into your CMS');
     } catch (e) {
         tools.toast('Could not copy article', false);
@@ -1724,6 +1738,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
             true
         );
     };
+    previewOpenedFromEditor = true;
     if (editorEl && editorEl.classList.contains('show') && typeof bootstrap !== 'undefined') {
         skipEditorListLanding = true;
         editorEl.addEventListener('hidden.bs.modal', function onEditorHidden() {
@@ -1737,6 +1752,7 @@ document.getElementById('articleEditorPreviewBtn')?.addEventListener('click', fu
 });
 
 function returnToEditorFromPreview() {
+    previewOpenedFromEditor = false;
     const previewEl = document.getElementById('articlePreviewModal');
     const editorEl = document.getElementById('articleEditorModal');
     const id = previewModalState.submissionId;
@@ -2039,10 +2055,11 @@ document.getElementById('libraryUploadForm')?.addEventListener('submit', async f
                 !!data.submission.can_order
             );
             const submission = await submissionForEditor(Object.assign({}, data.submission, {
-                editor_notice: data.submission.needs_image_rights
-                    ? ''
-                    : (data.approved ? '' : (data.message || '')),
-                editor_notice_ok: !!data.approved && !data.submission.needs_image_rights,
+                editor_notice: data.submission.editor_notice
+                    || (data.submission.needs_image_rights
+                        ? (data.message || '')
+                        : (data.approved ? '' : (data.message || ''))),
+                editor_notice_ok: !!data.submission.editor_notice_ok,
             }));
             openArticleEditor(submission);
         } else {

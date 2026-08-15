@@ -6,6 +6,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Tests\Support\CreatesContentSubmissions;
@@ -156,6 +157,22 @@ class ContentLibraryCatalogOrderTest extends TestCase
         $this->assertSame(1, OrderItem::where('content_submission_id', $article->id)->count());
         $this->assertNotNull($article->fresh()->order_id);
         $this->assertNotNull($usSite);
+    }
+
+    public function test_order_is_blocked_when_approved_images_lack_rights(): void
+    {
+        $advertiser = $this->advertiser();
+        $article = $this->createApprovedSubmission($advertiser);
+        $article->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $article))
+            ->assertRedirect(route('advertiser.content-library'))
+            ->assertSessionHas('error', ContentUploadService::imageRightsRequiredMessage());
     }
 
     public function test_catalog_array_content_submission_id_attaches_the_named_article(): void

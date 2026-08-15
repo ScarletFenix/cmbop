@@ -78,15 +78,20 @@ class DocumentTextExtractor
             $zip->close();
         }
 
-        // Replace drawings / pictures with stable markers before text extraction
+        // Choice/Fallback pairs share one picture set — prefer the drawing embeds.
+        $xml = preg_replace_callback(
+            '/<mc:AlternateContent\b[\s\S]*?<\/mc:AlternateContent>/iu',
+            function (array $m) use ($imageUrlsByRid): string {
+                return $this->imageMarkersFromXml($m[0], $imageUrlsByRid, true);
+            },
+            $xml
+        ) ?? $xml;
+
+        // Replace leftover drawings / pictures with stable markers before text extraction
         $xml = preg_replace_callback(
             '/<w:drawing\b[\s\S]*?<\/w:drawing>/iu',
             function (array $m) use ($imageUrlsByRid): string {
-                if (preg_match('/r:embed="([^"]+)"/i', $m[0], $em) && isset($imageUrlsByRid[$em[1]])) {
-                    return '<w:r><w:t>[[IMG:'.$em[1].']]</w:t></w:r>';
-                }
-
-                return '';
+                return $this->imageMarkersFromXml($m[0], $imageUrlsByRid, false);
             },
             $xml
         ) ?? $xml;
@@ -94,12 +99,7 @@ class DocumentTextExtractor
         $xml = preg_replace_callback(
             '/<w:pict\b[\s\S]*?<\/w:pict>/iu',
             function (array $m) use ($imageUrlsByRid): string {
-                $rid = $this->pictRelationshipId($m[0]);
-                if ($rid !== null && isset($imageUrlsByRid[$rid])) {
-                    return '<w:r><w:t>[[IMG:'.$rid.']]</w:t></w:r>';
-                }
-
-                return '';
+                return $this->imageMarkersFromXml($m[0], $imageUrlsByRid, false);
             },
             $xml
         ) ?? $xml;
@@ -141,6 +141,44 @@ class DocumentTextExtractor
             'error_code' => null,
             'error_message' => null,
         ];
+    }
+
+    /**
+     * @param  array<string, string>  $imageUrlsByRid
+     */
+    protected function imageMarkersFromXml(string $xml, array $imageUrlsByRid, bool $preferDrawing): string
+    {
+        $source = $xml;
+        if ($preferDrawing && preg_match_all('/<w:drawing\b[\s\S]*?<\/w:drawing>/iu', $xml, $drawings) && $drawings[0] !== []) {
+            $source = implode('', $drawings[0]);
+        }
+
+        $ids = [];
+        if (preg_match_all('/r:embed=("|\')(.*?)\1/i', $source, $embeds)) {
+            foreach ($embeds[2] as $id) {
+                if ($id !== '' && isset($imageUrlsByRid[$id])) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+        if ($ids === [] && preg_match_all('/<(?:v:)?imagedata\b[^>]*\br:id=("|\')(.*?)\1/i', $source, $rids)) {
+            foreach ($rids[2] as $id) {
+                if ($id !== '' && isset($imageUrlsByRid[$id])) {
+                    $ids[$id] = true;
+                }
+            }
+        }
+
+        if ($ids === [] && $preferDrawing) {
+            return $this->imageMarkersFromXml($xml, $imageUrlsByRid, false);
+        }
+
+        $markers = '';
+        foreach (array_keys($ids) as $id) {
+            $markers .= '<w:r><w:t>[[IMG:'.$id.']]</w:t></w:r>';
+        }
+
+        return $markers;
     }
 
     protected function pictRelationshipId(string $pictXml): ?string
