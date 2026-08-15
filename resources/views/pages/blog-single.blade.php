@@ -7,11 +7,12 @@
     $resolvedExcerpt = $activeTranslation?->excerpt ?: $blog->excerpt;
     $resolvedContent = $activeTranslation?->content ?: $blog->content;
     $blogCanonical = $canonicalUrl ?? $blog->canonicalUrl($activeTranslation?->locale ?: app()->getLocale(), 'en');
-    $blogDescription = $resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160);
+    $blogDescription = $activeTranslation?->meta_description ?: ($resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160));
+    $blogPageTitle = $activeTranslation?->meta_title ?: ($resolvedTitle ?? 'Blog');
     $blogFaq = \App\Support\CuratedBlogCatalog::faqForSlug($resolvedSlug);
 @endphp
 
-@section('title', ($resolvedTitle ?? 'Blog').' — SEOLinkBuildings')
+@section('title', $blogPageTitle.' — SEOLinkBuildings')
 @section('description', $blogDescription)
 @section('canonical', $blogCanonical)
 @section('hreflang_x_default', in_array('en', ($availableLocales ?? []), true) ? 'en' : (($activeTranslation?->locale) ?: 'en'))

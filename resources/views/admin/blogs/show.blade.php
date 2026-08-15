@@ -14,6 +14,11 @@
             <a href="{{ route('admin.blogs.edit', $blog->id) }}" class="btn btn-primary">
                 <i class="fa fa-edit me-2"></i> Edit
             </a>
+            @if($blog->status === 'published')
+                <a href="{{ $blog->canonicalUrl() }}" class="btn btn-outline-secondary" target="_blank" rel="noopener noreferrer">
+                    <i class="fa fa-external-link me-2"></i> View live
+                </a>
+            @endif
         </div>
     </div>
 

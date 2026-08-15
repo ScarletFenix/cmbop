@@ -94,6 +94,13 @@
                                        title="View" aria-label="View {{ $blog->title }}">
                                         <i class="fa fa-eye" aria-hidden="true"></i>
                                     </a>
+                                    @if($blog->status === 'published')
+                                        <a href="{{ $blog->canonicalUrl() }}" class="btn btn-sm btn-outline-secondary"
+                                           target="_blank" rel="noopener noreferrer"
+                                           title="View live" aria-label="View live {{ $blog->title }}">
+                                            <i class="fa fa-external-link" aria-hidden="true"></i>
+                                        </a>
+                                    @endif
                                     <a href="{{ route('admin.blogs.edit', $blog->id) }}" class="btn btn-sm btn-outline-primary"
                                        title="Edit" aria-label="Edit {{ $blog->title }}">
                                         <i class="fa fa-edit" aria-hidden="true"></i>

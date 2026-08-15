@@ -102,6 +102,48 @@
                                     </div>
 
                                     <div class="mb-3">
+                                        <label class="form-label fw-semibold">SEO title</label>
+                                        <input
+                                            type="text"
+                                            name="translations[{{ $locale }}][meta_title]"
+                                            class="form-control @error($prefix.'.meta_title') is-invalid @enderror"
+                                            value="{{ old_text('translations.'.$locale.'.meta_title', $t?->meta_title) }}"
+                                            maxlength="70"
+                                            placeholder="Optional. Defaults to the post title."
+                                        >
+                                        @error($prefix.'.meta_title')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">SEO description</label>
+                                        <textarea
+                                            name="translations[{{ $locale }}][meta_description]"
+                                            rows="2"
+                                            class="form-control @error($prefix.'.meta_description') is-invalid @enderror"
+                                            maxlength="180"
+                                            placeholder="Optional. Defaults to the meta excerpt."
+                                        >{{ old_text('translations.'.$locale.'.meta_description', $t?->meta_description) }}</textarea>
+                                        @error($prefix.'.meta_description')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+
+                                    <div class="form-check mb-3">
+                                        <input type="hidden" name="translations[{{ $locale }}][is_published]" value="0">
+                                        <input
+                                            type="checkbox"
+                                            name="translations[{{ $locale }}][is_published]"
+                                            id="published-{{ $locale }}"
+                                            class="form-check-input"
+                                            value="1"
+                                            {{ old('translations.'.$locale.'.is_published', $t?->is_published ?? true) ? 'checked' : '' }}
+                                        >
+                                        <label class="form-check-label" for="published-{{ $locale }}">Publish this locale</label>
+                                    </div>
+
+                                    <div class="mb-3">
                                         <label class="form-label fw-semibold">Content {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
                                         <div id="quillEditor-{{ $locale }}" class="border rounded bg-white" style="height: 320px;"></div>
                                         <input type="hidden" name="translations[{{ $locale }}][content]" id="contentInput-{{ $locale }}">
