@@ -125,18 +125,6 @@ class BlogController extends Controller
     public function store(StoreBlogRequest $request)
     {
         try {
-            $this->hydrateLegacyTranslationInput($request);
-            $request->validate([
-                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'tags' => 'nullable|string',
-                'status' => 'required|in:draft,published',
-                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-            ] + $this->translationValidationRules());
-
-            if (! auth()->check()) {
-                throw new \Exception('You must be logged in to create a blog post.');
-            }
-
             $featuredImage = null;
             if ($request->hasFile('featured_image')) {
                 $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
@@ -263,14 +251,6 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::findOrFail($id);
-
-            $request->validate([
-                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'remove_featured_image' => 'nullable|boolean',
-                'tags' => 'nullable|string',
-                'status' => 'required|in:draft,published',
-                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-            ] + $this->translationValidationRules());
 
             $tags = null;
             if ($request->tags) {
@@ -656,10 +636,14 @@ class BlogController extends Controller
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
-            $content = trim((string) ($item['content'] ?? ''));
-            if (BlogHtmlSanitizer::isBlank($content)) {
-                $content = '';
-            }
+            $metaTitle = isset($item['meta_title']) ? trim((string) $item['meta_title']) : null;
+            $metaDescription = isset($item['meta_description']) ? trim((string) $item['meta_description']) : null;
+            $isPublished = ! array_key_exists('is_published', $item)
+                || filter_var($item['is_published'], FILTER_VALIDATE_BOOLEAN);
+            $rawContent = trim((string) ($item['content'] ?? ''));
+            $content = BlogHtmlSanitizer::isBlank($rawContent)
+                ? ''
+                : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {

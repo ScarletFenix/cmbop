@@ -48,13 +48,6 @@ class BlogHtmlSanitizer
         return $text === '';
     }
 
-    public function sanitize(?string $html): string
-    {
-        $html = trim((string) $html);
-
-        return $html === '' || $html === '<p><br></p>' || $html === '<p></p>';
-    }
-
     /**
      * Encode stored HTML for a <script type="application/json"> payload.
      * JSON_HEX_TAG prevents </script> in the body from breaking the edit page.
@@ -95,7 +88,7 @@ class BlogHtmlSanitizer
 
     public function sanitize(?string $html): string
     {
-        if (self::isEmptyHtml($html)) {
+        if (self::isBlank($html)) {
             return '';
         }
 
