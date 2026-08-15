@@ -762,19 +762,15 @@ class CatalogController extends Controller
             return null;
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-            (int) auth()->id(),
-            [$id]
-        );
-
+        // Browsing the catalog must not cancel Pay again. Order / assign /
+        // a payable checkout replace the leftover when the advertiser proceeds.
         $submission = ContentSubmission::query()
             ->forArticlePicker()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->checkoutReady()
             ->first();
 
-        if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+        if (! $submission || ! $submission->canOrderFromLibrary()) {
             session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
 
             return null;
@@ -1600,19 +1596,13 @@ class CatalogController extends Controller
 
             if (session('ordering_from_library') && session('checkout_content_submission_id')) {
                 $sessionArticleId = (int) session('checkout_content_submission_id');
-                app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-                    (int) auth()->id(),
-                    [$sessionArticleId]
-                );
-
                 $librarySubmission = ContentSubmission::query()
                     ->forArticlePicker()
                     ->where('id', $sessionArticleId)
                     ->where('user_id', auth()->id())
-                    ->checkoutReady()
                     ->first();
 
-                if (! $librarySubmission || ! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
+                if (! $librarySubmission || ! $librarySubmission->canOrderFromLibrary()) {
                     session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
                     $librarySubmission = null;
                 } else {
@@ -1633,7 +1623,17 @@ class CatalogController extends Controller
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
 
                     if (! $alreadyAssigned) {
-                        $attachArticleId = (int) $librarySubmission->id;
+                        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+                            (int) auth()->id(),
+                            [$sessionArticleId]
+                        );
+                        $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
+                        if (! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
+                            session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
+                            $librarySubmission = null;
+                        } else {
+                            $attachArticleId = (int) $librarySubmission->id;
+                        }
                     }
                 }
             }
@@ -2112,11 +2112,43 @@ class CatalogController extends Controller
                 }
             }
 
+            // Resolve articles + schedule before cancelling leftovers. A bad
+            // date or live-policy reject must not drop Pay again.
+            $sessionSchedule = session('checkout_schedule', []);
+            $checkoutContent = $this->resolveCheckoutContent(
+                $preview['payable'],
+                $contentSubmissions,
+                [
+                    'mode' => $request->input('publication_mode', $sessionSchedule['mode'] ?? null),
+                    'date' => $request->input('scheduled_date', $sessionSchedule['date'] ?? null),
+                    'time' => $request->input('scheduled_time', $sessionSchedule['time'] ?? null),
+                    'timezone' => $request->input('timezone', $sessionSchedule['timezone'] ?? null),
+                ],
+                true
+            );
+            if ($checkoutContent instanceof JsonResponse) {
+                return $checkoutContent;
+            }
+
+            $checkoutContent = $this->excludeSelfOwnedCheckoutLines($checkoutContent, (int) $userId);
+            if ($checkoutContent['lines'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'You cannot order placements on your own websites.',
+                ], 422);
+            }
+
+            $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
+
             // Unlock leftovers only for lines we are about to charge.
             $this->cancelConflictingUnpaidCardOrders(
                 (int) $userId,
                 $this->collectSubmissionIdsFromCartRows($preview['payable'])
             );
+            $checkoutContent = $this->refreshResolvedCheckoutSubmissions($checkoutContent);
+            if ($checkoutContent instanceof JsonResponse) {
+                return $checkoutContent;
+            }
 
             // Only charge sites that are ready for checkout (approved article) and need payment.
             $partition = $this->partitionCartByCheckoutReadiness(
@@ -2133,32 +2165,6 @@ class CatalogController extends Controller
                     'message' => 'No websites are ready for checkout yet. Assign an approved article to at least one site, then pay.',
                 ], 422);
             }
-
-            // Resolve approved library articles + schedule (session fallback from Content Library)
-            $sessionSchedule = session('checkout_schedule', []);
-            $checkoutContent = $this->resolveCheckoutContent(
-                $payableCart,
-                $contentSubmissions,
-                [
-                    'mode' => $request->input('publication_mode', $sessionSchedule['mode'] ?? null),
-                    'date' => $request->input('scheduled_date', $sessionSchedule['date'] ?? null),
-                    'time' => $request->input('scheduled_time', $sessionSchedule['time'] ?? null),
-                    'timezone' => $request->input('timezone', $sessionSchedule['timezone'] ?? null),
-                ],
-            );
-            if ($checkoutContent instanceof JsonResponse) {
-                return $checkoutContent;
-            }
-
-            $checkoutContent = $this->excludeSelfOwnedCheckoutLines($checkoutContent, (int) $userId);
-            if ($checkoutContent['lines'] === []) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'You cannot order placements on your own websites.',
-                ], 422);
-            }
-
-            $this->persistCheckoutScheduleSession($checkoutContent['schedule']);
 
             // Keep not-ready sites in the cart after this payment.
             session()->put('checkout_deferred_cart', array_values($deferredCart));
@@ -4516,7 +4522,7 @@ class CatalogController extends Controller
      *
      * @return array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}|JsonResponse
      */
-    private function resolveCheckoutContent(array $cart, ?array $contentSubmissions, array $scheduleInput): array|JsonResponse
+    private function resolveCheckoutContent(array $cart, ?array $contentSubmissions, array $scheduleInput, bool $allowReplaceableLeftover = false): array|JsonResponse
     {
         try {
             $expandedOrders = $this->cartPricing()->expandCart($cart, auth()->id());
@@ -4578,20 +4584,19 @@ class CatalogController extends Controller
             $submission = ContentSubmission::query()
                 ->where('id', $submissionId)
                 ->where('user_id', auth()->id())
-                ->orderable()
+                ->when(! $allowReplaceableLeftover, fn ($q) => $q->orderable())
                 ->first();
 
-            if (! $submission || ! $submission->canBeOrdered()) {
+            $ready = $submission && (
+                $allowReplaceableLeftover
+                    ? $submission->canOrderFromLibrary()
+                    : ($submission->canBeOrdered() && $submission->isReadyForCheckout())
+            );
+            if (! $ready) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
-                ], 422);
-            }
-
-            if (! $submission->isReadyForCheckout()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => $submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                    'message' => $submission?->libraryFixSummary()
+                        ?: 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
                 ], 422);
             }
 
@@ -4632,6 +4637,36 @@ class CatalogController extends Controller
             'lines' => $lines,
             'schedule' => $schedule,
         ];
+    }
+
+    /**
+     * @param  array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}  $checkoutContent
+     * @return array{lines: array<int, array{orderItem: array, submission: ContentSubmission}>, schedule: array}|JsonResponse
+     */
+    private function refreshResolvedCheckoutSubmissions(array $checkoutContent): array|JsonResponse
+    {
+        foreach ($checkoutContent['lines'] as $index => $line) {
+            $submission = $line['submission'] ?? null;
+            if (! $submission instanceof ContentSubmission) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
+                ], 422);
+            }
+
+            $fresh = $submission->fresh() ?? $submission;
+            if (! $fresh->canBeOrdered() || ! $fresh->isReadyForCheckout()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $fresh->libraryFixSummary()
+                        ?: 'Only approved Content Library articles can be ordered. Edit and resubmit articles that need correction.',
+                ], 422);
+            }
+
+            $checkoutContent['lines'][$index]['submission'] = $fresh;
+        }
+
+        return $checkoutContent;
     }
 
     private function initialOrderStatus(array $schedule): string

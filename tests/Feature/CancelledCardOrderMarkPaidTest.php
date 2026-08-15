@@ -1081,7 +1081,7 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
     }
 
-    public function test_catalog_query_releases_abandoned_wise_leftover(): void
+    public function test_catalog_query_does_not_release_abandoned_wise_leftover(): void
     {
         $advertiser = $this->makeUser('advertiser');
         $publisher = $this->makeUser('publisher');
@@ -1119,10 +1119,153 @@ class CancelledCardOrderMarkPaidTest extends TestCase
             ->assertOk();
 
         $stale->refresh();
-        $this->assertSame('cancelled', $stale->status);
-        $this->assertNull($submission->fresh()->order_id);
+        $this->assertSame('pending', $stale->status);
+        $this->assertSame($stale->id, (int) $submission->fresh()->order_id);
         $this->assertSame($submission->id, (int) session('checkout_content_submission_id'));
         $this->assertTrue((bool) session('ordering_from_library'));
+    }
+
+    public function test_add_to_cart_language_mismatch_does_not_cancel_ready_leftover(): void
+    {
+        config([
+            'content_moderation.enabled' => false,
+            'content_upload.placement.require_same_language' => true,
+        ]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'German Add Cart Site',
+            'site_url' => 'https://de-add-cart.example',
+            'domain' => 'de-add-cart.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'countries' => ['de'],
+            'languages' => ['de'],
+            'category' => 'Technology',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('German add cart site. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ADD-CART-LANG-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'ordering_from_library' => true,
+                'checkout_content_submission_id' => $submission->id,
+                'cart' => [],
+            ])
+            ->postJson(route('advertiser.cart.add'), [
+                'id' => $site->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('language_mismatch', true);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+    }
+
+    public function test_invalid_schedule_does_not_cancel_ready_leftover(): void
+    {
+        config([
+            'content_moderation.enabled' => false,
+            'content_upload.scheduling.enabled' => true,
+        ]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 200,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-BAD-SCHEDULE-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-BAD-SCHEDULE-SHOULD-NOT-REPLACE',
+                'publication_mode' => 'scheduled',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertStatus(422);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertNull(Order::query()->where('reference_code', 'REF-BAD-SCHEDULE-SHOULD-NOT-REPLACE')->first());
     }
 
     public function test_late_stripe_webhook_after_replace_credits_wallet_instead_of_rematerializing(): void
