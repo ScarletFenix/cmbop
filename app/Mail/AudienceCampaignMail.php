@@ -63,7 +63,7 @@ class AudienceCampaignMail extends PlatformMailable
     {
         $result = parent::send($mailer);
 
-        if ($result === null) {
+        if ($result === null && $this->suppressReason !== 'duplicate') {
             $this->markRecipientSkipped($this->skipReasonForSuppressedSend());
         }
 
@@ -96,12 +96,13 @@ class AudienceCampaignMail extends PlatformMailable
 
     protected function skipReasonForSuppressedSend(): string
     {
-        if ($this->isStale()) {
+        if ($this->suppressReason === 'stale' || $this->isStale()) {
             return EmailCampaignRecipient::SKIP_STALE;
         }
 
-        if ($this->campaign->respect_preferences
-            && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails')) {
+        if ($this->suppressReason === 'preference'
+            || ($this->campaign->respect_preferences
+                && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails'))) {
             return EmailCampaignRecipient::SKIP_PREFERENCE;
         }
 
@@ -158,6 +159,7 @@ class AudienceCampaignMail extends PlatformMailable
                 ->whereIn('status', [
                     EmailCampaignRecipient::STATUS_PENDING,
                     EmailCampaignRecipient::STATUS_QUEUED,
+                    EmailCampaignRecipient::STATUS_FAILED,
                 ])
                 ->update($payload);
 

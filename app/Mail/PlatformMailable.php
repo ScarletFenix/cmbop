@@ -44,6 +44,9 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     /** Email Center test send: deliver now and skip admin/user/dedupe gates */
     public bool $forceSend = false;
 
+    /** Why send() returned null (stale / disabled / preference / duplicate). */
+    public ?string $suppressReason = null;
+
     public function __construct()
     {
         $this->onConnection(static::resolveQueueConnection());
@@ -114,19 +117,24 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 $this->dedupeKey = 'email_center_test:'.($type ?: 'unknown').':'.(string) Str::uuid();
             }
         } elseif ($this->isStale()) {
+            $this->suppressReason = 'stale';
             Log::info('Email dropped as stale', [
                 'type' => $this->notificationType,
                 'queued_at' => $this->queuedAt,
                 'to' => $this->recipientUser?->email,
             ]);
+            $this->abandonOpenLog($this->suppressErrorMessage());
 
             return null;
         } elseif (! $this->passesNotificationPolicy()) {
+            $this->suppressReason = $this->suppressReason ?: 'policy';
             Log::info('Email suppressed by notification policy', [
                 'type' => $this->notificationType,
                 'dedupe' => $this->dedupeKey,
                 'to' => $this->recipientUser?->email,
+                'reason' => $this->suppressReason,
             ]);
+            $this->abandonOpenLog($this->suppressErrorMessage());
 
             return null;
         }
@@ -196,12 +204,16 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         $this->recipientUser = $recipient;
 
         if ($type && ! EmailNotificationSetting::isEnabled($type)) {
+            $this->suppressReason = 'disabled';
+
             return false;
         }
 
         if ($type && ! $this->skipUserPreference) {
             $preference = config("email_notifications.types.{$type}.preference");
             if (! EmailNotificationPreference::allows($recipient, $preference)) {
+                $this->suppressReason = 'preference';
+
                 return false;
             }
         }
@@ -211,6 +223,8 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         }
 
         if ($this->dedupeKey && $this->isDuplicate($this->dedupeKey)) {
+            $this->suppressReason = 'duplicate';
+
             return false;
         }
 
@@ -275,6 +289,46 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
     protected function dedupeVariant(): ?string
     {
         return null;
+    }
+
+    protected function suppressErrorMessage(): string
+    {
+        return match ($this->suppressReason) {
+            'stale' => 'Dropped as stale',
+            'disabled' => 'Suppressed: notification type disabled',
+            'preference' => 'Suppressed: recipient opted out',
+            'duplicate' => 'Suppressed: duplicate of a recent send',
+            default => 'Suppressed by notification policy',
+        };
+    }
+
+    /**
+     * A retried job that is dropped (stale/policy) still completes successfully,
+     * so close the open Email Center log or it stays pending forever.
+     */
+    protected function abandonOpenLog(string $error): void
+    {
+        try {
+            $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
+            if (! $existing) {
+                return;
+            }
+
+            $existing->fill([
+                'status' => EmailLog::STATUS_FAILED,
+                'error' => $error,
+            ]);
+            $existing->meta = array_filter(array_merge((array) $existing->meta, [
+                'suppressed' => $this->suppressReason ?: 'policy',
+            ]));
+            $existing->save();
+        } catch (\Throwable $e) {
+            Log::warning('Failed to close suppressed mail log', [
+                'mailable' => static::class,
+                'dedupe' => $this->dedupeKey,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     protected function isDuplicate(string $key): bool

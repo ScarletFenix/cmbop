@@ -18,6 +18,17 @@ class LogSentEmail
 {
     public function handle(MessageSent $event): void
     {
+        try {
+            $this->record($event);
+        } catch (\Throwable $e) {
+            Log::error('Failed to record sent email', [
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
+    protected function record(MessageSent $event): void
+    {
         $message = $event->message;
         $to = $this->firstAddress($message->getTo());
         $from = $this->firstAddress($message->getFrom());
