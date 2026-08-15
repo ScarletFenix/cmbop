@@ -43,6 +43,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
+        $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
@@ -56,6 +57,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
         $this->assertStringContainsString('delivered log still wins when a', $body);
+        $this->assertStringContainsString('Lost transactional pending logs', $body);
+        $this->assertStringContainsString('must **not** abort that expire', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 

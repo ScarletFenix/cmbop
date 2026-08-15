@@ -476,6 +476,33 @@ class AdminActivityLogTest extends TestCase
         $this->assertNull(AdminActivityDisplay::subjectUrl($gone, AdminActivityDisplay::preload([$gone])));
     }
 
+    public function test_dispute_row_links_to_the_order_and_has_a_label(): void
+    {
+        $log = $this->makeLog([
+            'action' => 'dispute.upheld',
+            'description' => 'Upheld a clawback',
+            'subject_type' => Order::class,
+            'subject_id' => 7,
+            'subject_label' => 'Order #ORD-7',
+            'properties' => ['dispute_id' => 3, 'advertiser_credited' => 115],
+        ]);
+
+        $this->assertSame(
+            route('admin.orders.show', 7),
+            AdminActivityDisplay::subjectUrl($log, [
+                'existingOrderIds' => [7 => true],
+            ])
+        );
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Upheld order dispute', false)
+            ->getContent();
+
+        $this->assertStringContainsString('value="dispute.upheld"', $html);
+    }
+
     public function test_batch_payout_and_inbox_rows_have_labels_and_safe_links(): void
     {
         $this->makeLog([

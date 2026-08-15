@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
 use App\Mail\OrderApprovedByAdvertiser;
+use App\Models\ActivityLog;
 use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -152,6 +153,7 @@ class OrderDisputeClawbackTest extends TestCase
             'status' => OrderItemDispute::STATUS_OPEN,
             'opened_by' => $advertiser->id,
         ]);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'dispute.opened')->count());
     }
 
     public function test_advertiser_cannot_open_dispute_outside_window(): void
@@ -170,6 +172,7 @@ class OrderDisputeClawbackTest extends TestCase
 
         $response->assertStatus(422)->assertJson(['success' => false]);
         $this->assertDatabaseCount('order_item_disputes', 0);
+        $this->assertSame(0, ActivityLog::query()->where('action', 'dispute.opened')->count());
     }
 
     public function test_advertiser_cannot_dispute_non_completed_order(): void
@@ -301,6 +304,7 @@ class OrderDisputeClawbackTest extends TestCase
 
         Mail::assertQueued(DisputeClawbackPublisher::class);
         Mail::assertQueued(DisputeRefundAdvertiser::class);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'dispute.upheld')->count());
 
         // Full clawback with no debt — withdrawal still allowed.
         $this->assertFalse($pubWallet->hasDebt());
@@ -708,6 +712,8 @@ class OrderDisputeClawbackTest extends TestCase
             route('admin.orders.disputes.uphold', $dispute->id),
             ['admin_notes' => 'Second uphold must be rejected as already resolved.']
         )->assertStatus(422);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'dispute.upheld')->count());
     }
 
     public function test_dismiss_leaves_balances_unchanged(): void
@@ -742,6 +748,8 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertSame(5.0, (float) $advWallet->balance);
         $this->assertSame('paid', $order->payment_status);
         $this->assertSame(OrderItemDispute::STATUS_DISMISSED, $dispute->status);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'dispute.dismissed')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'dispute.upheld')->count());
     }
 
     public function test_manual_approve_sets_completed_at(): void
