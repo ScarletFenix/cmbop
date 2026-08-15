@@ -49,6 +49,51 @@ class AdminPromotionsFiltersTest extends TestCase
             ->assertDontSee('Live row', false);
     }
 
+    public function test_trashed_filter_excludes_unparseable_deleted_at(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $role = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ]);
+        $admin->roles()->attach($role->id);
+
+        $real = SiteAnnouncement::create([
+            'title' => 'Really trashed',
+            'message' => 'x',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+        $real->delete();
+
+        $leftover = SiteAnnouncement::create([
+            'title' => 'Garbage deleted',
+            'message' => 'y',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+        DB::table('site_announcements')->where('id', $leftover->id)->update([
+            'deleted_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.announcements.index', ['status' => 'trashed']))
+            ->assertOk()
+            ->assertSee('Really trashed', false)
+            ->assertDontSee('Garbage deleted', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.announcements.index', ['status' => 'live']))
+            ->assertOk()
+            ->assertSee('Garbage deleted', false)
+            ->assertDontSee('Really trashed', false);
+    }
+
     public function test_active_scope_excludes_unparseable_ends_at(): void
     {
         $live = SiteAnnouncement::create([

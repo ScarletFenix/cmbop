@@ -230,6 +230,32 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
         $this->assertNull($copy->safeEndsAt());
     }
 
+    public function test_restore_heals_unparseable_deleted_at(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Leftover trash',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'deleted_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($announcement->fresh()->trashed());
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.announcements.restore', $announcement->id))
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $raw = DB::table('site_announcements')->where('id', $announcement->id)->value('deleted_at');
+        $this->assertNull($raw);
+        $this->assertTrue(SiteAnnouncement::query()->whereKey($announcement->id)->exists());
+    }
+
     public function test_hub_ok_when_latest_welcome_bonus_claim_date_is_unparseable(): void
     {
         $claim = WelcomeBonusClaim::query()->create([
