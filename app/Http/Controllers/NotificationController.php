@@ -198,6 +198,11 @@ class NotificationController extends Controller
             return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
         }
 
+        if ($isPublisher && ! $isAdvertiser && ! $isStaff
+            && ($order->payment_status !== 'paid' || $order->status === 'cancelled')) {
+            return response()->json(['success' => false, 'message' => 'Unauthorized'], 403);
+        }
+
         $activities = OrderActivity::where('order_id', $order->id)
             ->orderBy('created_at')
             ->orderBy('id')

@@ -598,6 +598,15 @@ class OrderController extends Controller
             // Lock order to prevent double-reject / double-refund races
             $order = Order::where('id', $orderItem->order_id)->lockForUpdate()->firstOrFail();
 
+            if ($order->payment_status !== 'paid') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order payment is not confirmed yet',
+                ], 400);
+            }
+
             if ($order->status === 'cancelled' || $order->payment_status === 'refunded') {
                 DB::rollBack();
 

@@ -492,6 +492,55 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->assertSame('pending', $order->fresh()->payment_status);
     }
 
+    public function test_untyped_session_with_reference_code_does_not_settle_orders(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'UNTYPED-REF-SESSION',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $event = [
+            'id' => 'evt_untyped_ref_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_untyped_ref',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'payment_intent' => 'pi_untyped_ref',
+                    'amount_total' => 8000,
+                    'metadata' => [
+                        'reference_code' => $order->reference_code,
+                        'user_id' => (string) $advertiser->id,
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
+        $this->assertSame('pending', $order->fresh()->payment_status);
+    }
+
     public function test_order_payment_intent_without_succeeded_status_is_rejected(): void
     {
         $advertiser = $this->makeUser('advertiser');

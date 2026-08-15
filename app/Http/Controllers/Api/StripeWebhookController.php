@@ -164,8 +164,13 @@ class StripeWebhookController extends Controller
         }
 
         if (isset($metadata['reference_code'])) {
-            Log::info('Detected order payment by reference_code field');
-            $this->handleOrderPaymentSession($session);
+            // Wallet deposits also carry reference_code. Without an explicit
+            // order type, guessing here could settle catalog orders from a
+            // top-up. Typed order_payment / order sessions are routed above.
+            Log::warning('Ignoring untyped checkout session with reference_code', [
+                'session_id' => $session->id ?? null,
+                'type' => $metadata['type'] ?? null,
+            ]);
 
             return;
         }

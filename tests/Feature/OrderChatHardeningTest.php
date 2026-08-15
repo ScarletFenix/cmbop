@@ -213,6 +213,14 @@ class OrderChatHardeningTest extends TestCase
             'order_id' => $order->id,
             'message' => 'Can we start before payment?',
         ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertForbidden();
+
+        $this->actingAs($publisher)
+            ->getJson(route('notifications.order-timeline', $order->id))
+            ->assertForbidden();
     }
 
     public function test_publisher_unread_ignores_unpaid_and_cancelled_orders(): void

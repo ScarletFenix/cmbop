@@ -122,10 +122,9 @@ class OrderRefundService
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
         } else {
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
-            // in reserved. Restore that slice as spend-only; credit only the
-            // captured cash. Crediting the full line minted withdrawable cash
-            // from promotional credit.
-            $bonusShare = min($amount, max(0, round((float) $wallet->bonus_reserved, 2)));
+            // in reserved. Restore only this line's share so a sibling reject
+            // cannot unlock the whole checkout promo while other paid rows remain.
+            $bonusShare = $this->cardCheckoutBonusShare($wallet, $order, $amount);
             $cashShare = round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;
@@ -180,5 +179,41 @@ class OrderRefundService
         if ($bonus > 0) {
             $wallet->consumeReserved($bonus);
         }
+    }
+
+    /**
+     * Split leftover checkout bonus across still-paid siblings that share
+     * the same Stripe/card reference. Using the whole reserved bucket on the
+     * first reject unlocked promo that the advertiser could spend again
+     * while another paid line was still open.
+     */
+    private function cardCheckoutBonusShare(Wallet $wallet, Order $order, float $amount): float
+    {
+        $reserved = max(0, round((float) $wallet->bonus_reserved, 2));
+        if ($reserved <= 0 || $amount <= 0) {
+            return 0.0;
+        }
+
+        $reference = (string) ($order->reference_code ?? '');
+        $siblingTotal = 0.0;
+        if ($reference !== '') {
+            $siblingTotal = round((float) Order::query()
+                ->where('reference_code', $reference)
+                ->where('user_id', $order->user_id)
+                ->where('id', '!=', $order->id)
+                ->where('payment_status', 'paid')
+                ->sum('total_amount'), 2);
+        }
+
+        if ($siblingTotal <= 0) {
+            return min($amount, $reserved);
+        }
+
+        $pool = round($amount + $siblingTotal, 2);
+        if ($pool <= 0) {
+            return min($amount, $reserved);
+        }
+
+        return min($amount, max(0, round($reserved * ($amount / $pool), 2)));
     }
 }
