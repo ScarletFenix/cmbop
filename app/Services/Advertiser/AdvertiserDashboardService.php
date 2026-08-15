@@ -53,7 +53,7 @@ class AdvertiserDashboardService
             'recommendedSites' => $this->recommendedSites($user),
             'hasOrderableArticle' => ContentSubmission::query()
                 ->where('user_id', $user->id)
-                ->availableForPicker()
+                ->checkoutReady()
                 ->exists(),
             'isNewAdvertiser' => $isNewAdvertiser,
             'upcomingScheduledCount' => $upcomingScheduledCount,
