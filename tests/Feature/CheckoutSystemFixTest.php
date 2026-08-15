@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\OrderPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
@@ -193,7 +194,7 @@ class CheckoutSystemFixTest extends TestCase
         $this->assertNull($sub->fresh()->order_id);
         $this->assertTrue($sub->fresh()->canBeOrdered());
         $this->assertSame(0, Order::where('reference_code', 'CAN1')->count());
-        $this->assertNull(Cache::get('pending_card_checkout:CAN1'));
+        $this->assertNotNull(app(OrderPaymentService::class)->getPendingCheckout('CAN1'));
         $this->assertNotEmpty(session('cart'));
         $this->assertSame($sub->id, session('checkout_content_submission_id'));
     }

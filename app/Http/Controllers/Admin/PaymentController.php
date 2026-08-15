@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
+use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
@@ -23,6 +24,7 @@ use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -53,6 +55,7 @@ class PaymentController extends Controller
             $perPage = (int) $request->input('per_page', 20);
             $perPage = max(1, min(100, $perPage));
             $orders = $query->paginate($perPage);
+            $this->attachInvoiceDocuments($orders->getCollection());
 
             $unpaid = Order::query()->unpaidOps();
 
@@ -138,7 +141,8 @@ class PaymentController extends Controller
     public function show($id)
     {
         try {
-            $order = Order::with('user:id,name,email')->findOrFail($id);
+            $order = Order::with(['user', 'items.site'])->findOrFail($id);
+            $this->attachInvoiceDocuments(collect([$order]));
 
             return response()->json([
                 'success' => true,

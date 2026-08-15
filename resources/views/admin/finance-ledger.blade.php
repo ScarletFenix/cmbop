@@ -28,42 +28,49 @@
         </div>
     @endif
 
-    <form method="GET" class="card border-0 shadow-sm mb-3">
+    <form method="GET" class="card border-0 shadow-sm mb-3 finance-ledger-filters">
         <div class="card-body">
             @if($ledgerUser)
                 <input type="hidden" name="user_id" value="{{ $ledgerUser->id }}">
             @endif
-            <div class="row g-2 align-items-end">
-                <div class="col-md-3">
-                    <x-slb-search-field name="search" id="adminFinanceLedgerSearch" :value="is_string(request('search')) ? request('search') : ''" placeholder="User, email, reference…" />
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-sm-6 col-lg">
+                    <x-slb-search-field
+                        name="search"
+                        id="adminFinanceLedgerSearch"
+                        :value="is_string(request('search')) ? request('search') : ''"
+                        placeholder="User, email, reference…"
+                        label-class="form-label small text-muted mb-1"
+                    />
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted">Type</label>
-                    <select name="type" class="form-select form-select-sm">
+                <div class="col-6 col-sm-6 col-lg">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceLedgerType">Type</label>
+                    <select name="type" id="adminFinanceLedgerType" class="form-select form-select-sm">
                         <option value="">All types</option>
                         @foreach($types as $type)
                             <option value="{{ $type }}" @selected(request('type') === $type)>{{ (new \App\Models\WalletTransaction(['type' => $type]))->typeLabel() }}</option>
                         @endforeach
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted">Direction</label>
-                    <select name="direction" class="form-select form-select-sm">
+                <div class="col-6 col-sm-6 col-lg">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceLedgerDirection">Direction</label>
+                    <select name="direction" id="adminFinanceLedgerDirection" class="form-select form-select-sm">
                         <option value="">Any</option>
                         <option value="credit" @selected(request('direction') === 'credit')>Credit</option>
                         <option value="debit" @selected(request('direction') === 'debit')>Debit</option>
                     </select>
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted">From</label>
-                    <input type="date" name="date_from" value="{{ search_text(request('date_from')) }}" class="form-control form-control-sm">
+                <div class="col-6 col-sm-6 col-lg">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceLedgerDateFrom">From</label>
+                    <input type="date" id="adminFinanceLedgerDateFrom" name="date_from" value="{{ search_text(request('date_from')) }}" class="form-control form-control-sm">
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label small text-muted">To</label>
-                    <input type="date" name="date_to" value="{{ search_text(request('date_to')) }}" class="form-control form-control-sm">
+                <div class="col-6 col-sm-6 col-lg">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceLedgerDateTo">To</label>
+                    <input type="date" id="adminFinanceLedgerDateTo" name="date_to" value="{{ search_text(request('date_to')) }}" class="form-control form-control-sm">
                 </div>
-                <div class="col-md-1">
-                    <button class="btn btn-sm btn-primary w-100">Filter</button>
+                <div class="col-12 col-sm-6 col-lg-auto finance-ledger-filters__action">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceLedgerFilter">&nbsp;</label>
+                    <button type="submit" id="adminFinanceLedgerFilter" class="btn btn-sm btn-primary">Filter</button>
                 </div>
             </div>
         </div>

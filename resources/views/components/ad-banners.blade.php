@@ -28,9 +28,9 @@
                     <a href="{{ $href }}"
                        class="ad-banner__link"
                        @if($banner->open_in_new_tab) target="_blank" rel="noopener sponsored" @endif
-                       aria-label="{{ $banner->alt_text ?: ($banner->title ?: $banner->name) }}">
+                       aria-label="{{ scalar_text($banner->alt_text ?: ($banner->title ?: $banner->name)) }}">
                         <img src="{{ $src }}"
-                             alt="{{ $banner->alt_text ?: ($banner->title ?: $banner->name) }}"
+                             alt="{{ scalar_text($banner->alt_text ?: ($banner->title ?: $banner->name)) }}"
                              width="{{ $banner->width }}"
                              height="{{ $banner->height }}"
                              loading="lazy"
@@ -38,14 +38,14 @@
                     </a>
                 @else
                     <img src="{{ $src }}"
-                         alt="{{ $banner->alt_text ?: ($banner->title ?: $banner->name) }}"
+                         alt="{{ scalar_text($banner->alt_text ?: ($banner->title ?: $banner->name)) }}"
                          width="{{ $banner->width }}"
                          height="{{ $banner->height }}"
                          loading="lazy"
                          class="ad-banner__img">
                 @endif
                 @if($banner->title)
-                    <div class="ad-banner__caption">{{ $banner->title }}</div>
+                    <div class="ad-banner__caption">{{ scalar_text($banner->title) }}</div>
                 @endif
             </div>
         @endif

@@ -143,13 +143,20 @@
                         <tr>
                             <td>#{{ $deposit->id }}</td>
                             <td>
+                                @php
+                                    $depositUser = $deposit->user;
+                                    $depositUserName = $depositUser->name ?? 'Unknown';
+                                    $depositUserInitial = strtoupper(substr($depositUserName, 0, 1) ?: '?');
+                                @endphp
                                 <div class="d-flex align-items-center">
                                     <div class="avatar-circle me-2" style="width: 32px; height: 32px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-weight: 600;">
-                                        {{ strtoupper(substr($deposit->user->name, 0, 1)) }}
+                                        {{ $depositUserInitial }}
                                     </div>
                                     <div>
-                                        <strong>{{ $deposit->user->name }}</strong><br>
-                                        <small class="text-muted slb-text-break">{{ $deposit->user->email }}</small>
+                                        <strong>{{ $depositUserName }}</strong><br>
+                                        @if($depositUser?->email)
+                                            <small class="text-muted slb-text-break">{{ $depositUser->email }}</small>
+                                        @endif
                                     </div>
                                 </div>
                             </td>
@@ -176,9 +183,18 @@
                             </td>
                             <td>{{ $deposit->created_at->format('M d, Y') }}</td>
                             <td>
-                                <button class="btn btn-sm btn-outline-primary view-deposit" data-id="{{ $deposit->id }}">
-                                    <i class="fa fa-eye"></i> View
-                                </button>
+                                <div class="d-flex flex-wrap gap-1">
+                                    <button class="btn btn-sm btn-outline-primary view-deposit"
+                                            data-id="{{ $deposit->id }}"
+                                            data-show-url="{{ route('admin.deposits.show', $deposit->id) }}">
+                                        <i class="fa fa-eye"></i> View
+                                    </button>
+                                    @if(!empty($invoiceLinks[$deposit->id]))
+                                        <a href="{{ $invoiceLinks[$deposit->id]['url'] }}" class="btn btn-sm btn-outline-secondary">
+                                            Invoice
+                                        </a>
+                                    @endif
+                                </div>
                             </td>
                         </tr>
                         @empty
@@ -225,22 +241,59 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+    const csrfToken = @json(csrf_token());
+    const approveUrlTemplate = @json(route('admin.deposits.approve', ['id' => '__ID__']));
+    const rejectUrlTemplate = @json(route('admin.deposits.reject', ['id' => '__ID__']));
+
+    function depositActionUrl(template, id) {
+        return String(template).replace('__ID__', encodeURIComponent(id));
+    }
+
+    function jsonHeaders(extra) {
+        return Object.assign({
+            'Accept': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRF-TOKEN': csrfToken
+        }, extra || {});
+    }
+
+    function readJsonResponse(response) {
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.includes('application/json')) {
+            const expired = response.status === 419;
+            return Promise.reject(new Error(expired
+                ? 'Your session expired. Refresh the page and try again.'
+                : 'Request failed (' + response.status + ').'));
+        }
+
+        return response.json().then(function (data) {
+            if (!data || typeof data !== 'object') {
+                return { success: false, message: 'Request failed (' + response.status + ').' };
+            }
+            if (!data.message && !response.ok) {
+                data.message = 'Request failed (' + response.status + ').';
+            }
+            return data;
+        });
+    }
+
     // View deposit details
     document.querySelectorAll('.view-deposit').forEach(button => {
         button.addEventListener('click', function() {
-            const id = this.dataset.id;
-            
-            fetch('/admin/deposits/' + id, {
+            const url = this.dataset.showUrl;
+            if (!url) {
+                Swal.fire('Error', 'Failed to load deposit details', 'error');
+                return;
+            }
+
+            fetch(url, {
                 method: 'GET',
-                headers: {
-                    'X-Requested-With': 'XMLHttpRequest',
-                    'Accept': 'application/json'
-                }
+                headers: jsonHeaders()
             })
-            .then(response => response.json())
+            .then(readJsonResponse)
             .then(data => {
                 if (data.success) {
-                    renderDepositModal(data.deposit);
+                    renderDepositModal(data.deposit, data.invoice);
                     const modal = new bootstrap.Modal(document.getElementById('depositModal'));
                     modal.show();
                 } else {
@@ -249,12 +302,12 @@ document.addEventListener('DOMContentLoaded', function() {
             })
             .catch(error => {
                 console.error('Error:', error);
-                Swal.fire('Error', 'Failed to load deposit details', 'error');
+                Swal.fire('Error', error.message || 'Failed to load deposit details', 'error');
             });
         });
     });
     
-    function renderDepositModal(deposit) {
+    function renderDepositModal(deposit, invoice) {
         let statusBadge = '';
         if (deposit.status === 'pending') {
             statusBadge = '<span class="badge bg-warning">Pending</span>';
@@ -266,17 +319,22 @@ document.addEventListener('DOMContentLoaded', function() {
             statusBadge = '<span class="badge bg-danger">Rejected</span>';
         }
         
+        const user = deposit.user || {};
+        const userName = user.name || 'Unknown';
+        const userEmail = user.email || '';
+        const userInitial = String(userName).charAt(0).toUpperCase() || '?';
+
         let html = `
             <div class="mb-3">
                 <label class="fw-semibold text-muted small">User Information</label>
                 <div class="border rounded p-3 mt-1 bg-light">
                     <div class="d-flex align-items-center">
                         <div class="avatar-circle me-3" style="width: 48px; height: 48px; background: linear-gradient(135deg, #1a585e 0%, #3faeb2 100%); border-radius: 50%; display: flex; align-items: center; justify-content: center; color: white; font-size: 20px; font-weight: 600;">
-                            ${escapeHtml(String(deposit.user.name || '?').charAt(0).toUpperCase())}
+                            ${escapeHtml(userInitial)}
                         </div>
                         <div>
-                            <h6 class="mb-1">${escapeHtml(deposit.user.name)}</h6>
-                            <small class="text-muted">${escapeHtml(deposit.user.email)}</small>
+                            <h6 class="mb-1">${escapeHtml(userName)}</h6>
+                            ${userEmail ? `<small class="text-muted">${escapeHtml(userEmail)}</small>` : ''}
                         </div>
                     </div>
                 </div>
@@ -321,6 +379,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
             </div>
         `;
+
+        if (invoice && invoice.url) {
+            html += `
+                <div class="mb-3">
+                    <label class="fw-semibold text-muted small">Invoice</label>
+                    <div class="border rounded p-3 mt-1 bg-light">
+                        <a href="${escapeHtml(invoice.url)}">${escapeHtml(invoice.invoice_number || 'Open invoice')}</a>
+                        <span class="text-muted"> · ${escapeHtml(invoice.type_label || 'Deposit Receipt')}</span>
+                    </div>
+                </div>
+            `;
+        }
         
         if (deposit.admin_notes) {
             html += `
@@ -389,15 +459,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
                 
-                fetch(`/admin/deposits/${id}/approve`, {
+                fetch(depositActionUrl(approveUrlTemplate, id), {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
+                    headers: jsonHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ admin_notes: notes })
                 })
-                .then(response => response.json())
+                .then(readJsonResponse)
                 .then(data => {
                     if (data.success) {
                         let message = data.message;
@@ -415,7 +482,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    Swal.fire('Error', 'Failed to approve deposit', 'error');
+                    Swal.fire('Error', error.message || 'Failed to approve deposit', 'error');
                 });
             }
         });
@@ -444,15 +511,12 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 });
                 
-                fetch(`/admin/deposits/${id}/reject`, {
+                fetch(depositActionUrl(rejectUrlTemplate, id), {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
+                    headers: jsonHeaders({ 'Content-Type': 'application/json' }),
                     body: JSON.stringify({ admin_notes: notes })
                 })
-                .then(response => response.json())
+                .then(readJsonResponse)
                 .then(data => {
                     if (data.success) {
                         let message = data.message;
@@ -470,7 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 .catch(error => {
                     console.error('Error:', error);
-                    Swal.fire('Error', 'Failed to reject deposit', 'error');
+                    Swal.fire('Error', error.message || 'Failed to reject deposit', 'error');
                 });
             }
         });

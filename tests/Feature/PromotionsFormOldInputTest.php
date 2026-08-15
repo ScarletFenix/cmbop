@@ -7,6 +7,9 @@ use App\Models\Role;
 use App\Models\SiteAnnouncement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\MessageBag;
+use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 /**
@@ -182,5 +185,78 @@ class PromotionsFormOldInputTest extends TestCase
         $this->assertSame('plain', old_text('missing', 'plain'));
         $this->assertSame('', old_text('missing'));
         $this->assertSame('0', old_text('missing', 0));
+    }
+
+    public function test_blade_echo_flattens_arrays_before_htmlspecialchars(): void
+    {
+        $this->assertTrue(function_exists('blade_e'));
+        $this->assertSame('Recoverable', blade_e(['Recoverable', 'ignored']));
+        $this->assertSame('plain', blade_e('plain'));
+        $this->assertSame('&lt;b&gt;', blade_e('<b>'));
+
+        $compiled = app('blade.compiler')->compileString('{{ $value }}');
+        $this->assertStringContainsString('blade_e', $compiled);
+
+        $html = Blade::render('{{ $value }}', [
+            'value' => ['Hello from array', 'ignored'],
+        ]);
+        $this->assertSame('Hello from array', trim($html));
+        $this->assertStringNotContainsString('htmlspecialchars', $html);
+    }
+
+    public function test_announcement_create_survives_array_posts_and_array_error_lines(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->from(route('admin.promotions.announcements.create'))
+            ->post(route('admin.promotions.announcements.store'), [
+                'title' => ['Black Friday'],
+                'message' => ['Save 20%'],
+                'type' => ['limited_offer'],
+                'style' => ['promo'],
+                'audience' => ['all'],
+                'cta_label' => ['Shop'],
+                'cta_url' => ['https://example.com'],
+                'priority' => ['10'],
+            ])
+            ->assertRedirect(route('admin.promotions.announcements.create'));
+
+        $this->get(route('admin.promotions.announcements.create'))
+            ->assertOk()
+            ->assertDontSee('htmlspecialchars', false);
+
+        $errors = (new ViewErrorBag)->put('default', new MessageBag([
+            'title' => [['Must be a string', 'ignored']],
+        ]));
+
+        $this->actingAs($admin)
+            ->withSession([
+                '_old_input' => [
+                    'title' => ['Poisoned title'],
+                    'message' => ['Poisoned message'],
+                ],
+                'errors' => $errors,
+            ])
+            ->get(route('admin.promotions.announcements.create'))
+            ->assertOk()
+            ->assertSee('New Announcement', false)
+            ->assertSee('Poisoned title', false)
+            ->assertDontSee('htmlspecialchars', false);
+    }
+
+    public function test_promotions_hub_survives_array_error_flash(): void
+    {
+        $admin = $this->admin();
+        $errors = (new ViewErrorBag)->put('default', new MessageBag([
+            'form' => [['Hub line', 'ignored']],
+        ]));
+
+        $this->actingAs($admin)
+            ->withSession(['errors' => $errors])
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Promotions Center', false)
+            ->assertDontSee('htmlspecialchars', false);
     }
 }

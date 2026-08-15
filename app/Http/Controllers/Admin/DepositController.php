@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Mail\DepositRejected;
 use App\Models\DepositRequest;
 use App\Services\ActivityLogger;
+use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\InAppNotificationService;
 use App\Services\Wallet\ManualDepositAlreadyProcessedException;
 use App\Services\Wallet\ManualDepositApprovalService;
@@ -53,7 +54,9 @@ class DepositController extends Controller
             ->latest()
             ->paginate(20);
 
-        return view('admin.deposits', compact('deposits', 'stats'));
+        $invoiceLinks = app(AdminInvoiceLinks::class)->forDeposits($deposits->getCollection());
+
+        return view('admin.deposits', compact('deposits', 'stats', 'invoiceLinks'));
     }
 
     public function show($id)
@@ -67,14 +70,19 @@ class DepositController extends Controller
             ]);
         }
 
+        $invoice = app(AdminInvoiceLinks::class)->forDeposits(collect([$deposit]))->get((int) $deposit->id);
+
         return response()->json([
             'success' => true,
             'deposit' => $deposit,
+            'invoice' => $invoice,
         ]);
     }
 
     public function approve(Request $request, $id, ManualDepositApprovalService $approvals)
     {
+        $notes = $this->validatedAdminNotes($request);
+
         $deposit = DepositRequest::find($id);
 
         if (! $deposit) {
@@ -88,7 +96,7 @@ class DepositController extends Controller
             $result = $approvals->approve(
                 $deposit,
                 $request->user(),
-                $request->input('admin_notes')
+                $notes
             );
 
             return response()->json([
@@ -113,6 +121,8 @@ class DepositController extends Controller
 
     public function reject(Request $request, $id)
     {
+        $notes = $this->validatedAdminNotes($request);
+
         $deposit = DepositRequest::find($id);
 
         if (! $deposit) {
@@ -145,7 +155,7 @@ class DepositController extends Controller
 
             $deposit->update([
                 'status' => 'rejected',
-                'admin_notes' => $request->admin_notes,
+                'admin_notes' => $notes,
                 'rejected_at' => now(),
             ]);
 
@@ -201,5 +211,16 @@ class DepositController extends Controller
             'message' => $message,
             'email_sent' => $emailSent,
         ]);
+    }
+
+    private function validatedAdminNotes(Request $request): ?string
+    {
+        $data = $request->validate([
+            'admin_notes' => ['nullable', 'string', 'max:1000'],
+        ]);
+
+        $notes = $data['admin_notes'] ?? null;
+
+        return is_string($notes) ? $notes : null;
     }
 }
