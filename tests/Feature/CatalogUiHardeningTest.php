@@ -474,7 +474,7 @@ class CatalogUiHardeningTest extends TestCase
         $this->assertStringContainsString('<strong>world</strong>', $site->safeDescriptionHtml());
         $blade = file_get_contents(resource_path('views/advertiser/partials/catalog-results.blade.php'));
         $this->assertStringContainsString('site_description_excerpt($site->description)', $blade);
-        $this->assertStringContainsString('safeDescriptionHtml()', $blade);
+        $this->assertStringContainsString('catalogDescriptionHtml()', $blade);
     }
 
     public function test_the_more_filters_drawer_fits_twelve_columns(): void

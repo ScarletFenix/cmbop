@@ -117,6 +117,41 @@ class ArticleEvaluationService
         $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
         $title = $this->moderation->scanTitle($submission);
 
+        if ($this->moderation->storedFileUnreadable($submission)) {
+            $message = 'The stored Word file could not be re-checked. Please re-upload the article.';
+            $report = [
+                'word_count' => str_word_count($text),
+                'summary' => $message,
+                'fix_hints' => [$message],
+                'matched_terms' => [],
+                'checks' => [[
+                    'key' => 'stored_file',
+                    'label' => 'Stored Word file',
+                    'status' => 'fail',
+                    'detail' => $message,
+                ]],
+                'passed_compliance' => false,
+                'passed_language' => true,
+                'passed_uniqueness' => true,
+                'passed_quality' => true,
+            ];
+
+            return [
+                'approved' => false,
+                'moderation_status' => ContentSubmission::STATUS_ERROR,
+                'evaluation_status' => 'error',
+                'uniqueness_score' => 0,
+                'quality_score' => 0,
+                'report' => $report,
+                'title' => 'Unable to Check Article',
+                'message' => $message,
+                'log' => null,
+                'highlighted_html' => null,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
         // 0) Language vs selection — hard-block only on high-confidence mismatch;
         // mid-confidence / mixed copy is advisory (warn) and does not reject.
         $languageCheck = $this->languageGuard->assertMatches(
@@ -200,7 +235,7 @@ class ArticleEvaluationService
         }
 
         // 1) Policy compliance (casino / gambling / betting / adult) — includes cloaked hrefs,
-        // bare/www domains in body text, stored backlink anchors, and image alt text.
+        // stored .docx parts the publisher downloads, backlink anchors, and image alt text.
         $linkUrls = $this->moderation->linksFromSubmission($submission);
 
         $scan = $this->moderation->scanExtractedContent(

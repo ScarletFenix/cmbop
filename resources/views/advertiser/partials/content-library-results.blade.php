@@ -165,7 +165,9 @@
                 @forelse($submissions as $submission)
                     @php
                         $availability = $submission->libraryAvailability();
-                        $placement = $submission->placementItem();
+                        $placement = $submission->currentPaidPlacementItem()
+                            ?: $submission->placementItem();
+                        $libraryOrder = $submission->libraryOrder();
                         $liveUrl = $submission->liveUrl();
                         $siteName = $placement?->site_name
                             ?: $placement?->site?->site_name
@@ -206,8 +208,8 @@
                                         @else
                                             <div><strong>Status:</strong> Placement completed</div>
                                         @endif
-                                        @if($submission->order_id)
-                                            <div><strong>Order:</strong> #{{ $submission->order_id }}</div>
+                                        @if($libraryOrder)
+                                            <div><strong>Order:</strong> #{{ $libraryOrder->id }}</div>
                                         @endif
                                         @if($placement?->price !== null)
                                             <div><strong>Price:</strong> €{{ number_format((float) $placement->price, 2) }}</div>
@@ -234,9 +236,9 @@
                                         <div class="library-live-meta mt-1">Live URL not available</div>
                                     @endif
                                 </div>
-                            @elseif($availability === 'in_progress' && $submission->order_id)
+                            @elseif($availability === 'in_progress' && $libraryOrder)
                                 <div class="library-live-link text-muted">
-                                    Order #{{ $submission->order_id }}
+                                    Order #{{ $libraryOrder->id }}
                                     @if($siteName) · {{ $siteName }} @endif
                                 </div>
                             @elseif($availability === 'needs_fix')
@@ -374,7 +376,7 @@
                             </div>
                             @else
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-                                @if($submission->isAvailableForPicker())
+                                @if($submission->canOrderFromLibrary())
                                     <a class="btn btn-sm btn-primary"
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
