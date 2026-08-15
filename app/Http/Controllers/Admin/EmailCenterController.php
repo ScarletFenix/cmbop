@@ -597,7 +597,7 @@ class EmailCenterController extends Controller
 
     protected function failedJobMatchesLog(string $payload, EmailLog $log): bool
     {
-        return MailJobPayload::matchesEmailLog($payload, $log);
+        return MailJobPayload::matchesEmailLog($payload, $log, requireToken: true);
     }
 
     protected function refreshFailedJobQueuedAt(string $uuid): void

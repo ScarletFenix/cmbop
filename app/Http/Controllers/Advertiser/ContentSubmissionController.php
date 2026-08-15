@@ -441,6 +441,9 @@ class ContentSubmissionController extends Controller
         if (array_key_exists('title', $data)) {
             $title = trim((string) $data['title']);
             $data['title'] = $title !== '' ? $title : null;
+            if ((string) $data['title'] !== trim((string) ($submission->title ?? ''))) {
+                $contentChanged = true;
+            }
         }
 
         if (array_key_exists('anchor_text', $data)) {

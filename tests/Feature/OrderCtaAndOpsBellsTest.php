@@ -206,6 +206,7 @@ class OrderCtaAndOpsBellsTest extends TestCase
 
         $notifications->notifyAdminsStalledOrder($this->order, $item, $this->publisher, 'accept', 96);
         $notifications->notifyAdminsCatalogPace($this->advertiser, 40, 30, 'review');
+        $notifications->notifyAdminsCatalogCopyStrike($this->advertiser, 'warning', 12);
         $notifications->notifyAdminsNewUser($this->advertiser);
 
         $dispute = OrderItemDispute::create([
@@ -220,12 +221,13 @@ class OrderCtaAndOpsBellsTest extends TestCase
         $titles = [
             'Order #'.$this->order->order_number.' needs attention',
             'Heavy catalog activity',
+            'Catalog copy warning',
             'New advertiser registered',
             'Dispute opened on order #'.$this->order->order_number,
         ];
 
         $this->assertSame(
-            4,
+            5,
             InAppNotification::query()
                 ->where('user_id', $this->admin->id)
                 ->whereIn('title', $titles)
