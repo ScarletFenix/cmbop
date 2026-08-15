@@ -1136,4 +1136,89 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         );
         $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
+
+    public function test_release_abandoned_bonus_lets_a_retry_reserve_again(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'retry-bonus.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'RETRY-BONUS-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->fresh()->lockedBonusBalance(), 0.01);
+
+        $payments->releaseAbandonedStripeFirstBonus($advertiser->id, $ref);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+    }
+
+    public function test_release_abandoned_bonus_does_not_touch_paid_checkout_hold(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+
+        Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'PAID-HOLD-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+
+        app(OrderPaymentService::class)->releaseAbandonedStripeFirstBonus($advertiser->id, 'NEW-REF-1');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_stale_cheaper_session_credits_card_and_leaves_package_for_matching_pay(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'stale-cheap.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'STALE-CHEAP-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 80));
+
+        $stale = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 50, 'cs_stale_cheap')
+        );
+
+        $this->assertCount(0, $stale);
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(50.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_current_full')
+        );
+
+        $this->assertCount(1, $created);
+        $this->assertEqualsWithDelta(80.0, (float) $created->first()->total_amount, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+    }
 }
