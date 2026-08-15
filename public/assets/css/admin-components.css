@@ -353,6 +353,25 @@
   padding: 0.4em 0.65em;
 }
 
+/* ——— Finance overview header actions ——— */
+
+.admin-finance-toolbar__search {
+  min-width: 220px;
+}
+
+/* Status under the dossier field reserves a line. Collapse it when empty so
+   align-items-end keeps Open / ledger / export on the input baseline. */
+.admin-finance-toolbar .slb-search-status:empty {
+  min-height: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.admin-finance-toolbar .btn {
+  min-height: calc(1.5em + 0.5rem + 2px);
+}
+
 /* ——— Wallet ledger filters ——— */
 
 .finance-ledger-filters .row > [class*="col-"] {

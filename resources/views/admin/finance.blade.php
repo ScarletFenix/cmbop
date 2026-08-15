@@ -13,9 +13,9 @@
                 Accounting truth for the period — GMV vs platform fees, cash in bank vs internal wallets, and what you owe publishers.
             </p>
         </div>
-        <div class="d-flex flex-wrap gap-2 align-items-start">
-            <form method="GET" action="{{ route('admin.finance') }}" class="d-flex flex-wrap gap-2 align-items-end">
-                <div style="min-width:220px">
+        <div class="admin-finance-toolbar d-flex flex-wrap align-items-end gap-2">
+            <form method="GET" action="{{ route('admin.finance') }}" class="d-flex flex-wrap align-items-end gap-2">
+                <div class="admin-finance-toolbar__search">
                     <x-slb-search-field
                         name="q"
                         id="adminFinanceUserSearch"
@@ -24,7 +24,7 @@
                         label="Find user dossier"
                     />
                 </div>
-                <button class="btn btn-sm btn-outline-primary mb-3">Open</button>
+                <button type="submit" class="btn btn-sm btn-outline-primary">Open</button>
             </form>
             <a href="{{ route('admin.finance.ledger') }}" class="btn btn-sm btn-outline-secondary">
                 <i class="fa fa-book me-1"></i> Wallet ledger

@@ -427,6 +427,32 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString('.finance-ledger-filters__action .btn', $css);
     }
 
+    public function test_overview_toolbar_aligns_actions_with_dossier_input(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance'))
+            ->assertOk()
+            ->assertSee('Find user dossier')
+            ->assertSee('Wallet ledger')
+            ->assertSee('Export period CSV')
+            ->getContent();
+
+        $this->assertStringContainsString('admin-finance-toolbar', $html);
+        $this->assertStringContainsString('admin-finance-toolbar d-flex flex-wrap align-items-end', $html);
+        $this->assertStringContainsString('admin-finance-toolbar__search', $html);
+        $this->assertStringContainsString('for="adminFinanceUserSearch"', $html);
+
+        $blade = (string) file_get_contents(resource_path('views/admin/finance.blade.php'));
+        $this->assertStringNotContainsString('admin-finance-toolbar d-flex flex-wrap gap-2 align-items-start', $blade);
+        $this->assertStringNotContainsString('btn-outline-primary mb-3', $blade);
+
+        $css = (string) file_get_contents(public_path('assets/css/admin-components.css'));
+        $this->assertStringContainsString('.admin-finance-toolbar .slb-search-status:empty', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar .btn', $css);
+    }
+
     public function test_ledger_rejects_invalid_dates_and_array_search(): void
     {
         $admin = $this->makeUser('admin');
