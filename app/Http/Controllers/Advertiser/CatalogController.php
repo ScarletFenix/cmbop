@@ -1473,29 +1473,17 @@ class CatalogController extends Controller
             return response()->json(array_merge(['success' => true, 'message' => 'Article cleared for this placement.'], $this->cartPayloadForClient()));
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-            (int) auth()->id(),
-            [$submissionId]
-        );
-
         $submission = ContentSubmission::query()
             ->forArticlePicker()
             ->where('id', $submissionId)
             ->where('user_id', auth()->id())
-            ->orderable()
             ->first();
 
-        if (! $submission || ! $submission->canBeOrdered()) {
+        if (! $submission || ! $submission->canOrderFromLibrary()) {
             return response()->json([
                 'success' => false,
-                'error' => 'Choose an approved Content Library article that is still available to order.',
-            ], 422);
-        }
-
-        if (! $submission->isReadyForCheckout()) {
-            return response()->json([
-                'success' => false,
-                'error' => $submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                'error' => $submission?->libraryFixSummary()
+                    ?: 'Choose an approved Content Library article that is still available to order.',
             ], 422);
         }
 
@@ -1517,6 +1505,20 @@ class CatalogController extends Controller
                 'success' => false,
                 'error' => 'Same-language placement is required. '.$note,
                 'language_mismatch' => true,
+            ], 422);
+        }
+
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            (int) auth()->id(),
+            [$submissionId]
+        );
+        $submission = $submission->fresh() ?? $submission;
+
+        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+            return response()->json([
+                'success' => false,
+                'error' => $submission->libraryFixSummary()
+                    ?: 'Choose an approved Content Library article that is still available to order.',
             ], 422);
         }
 
@@ -2050,20 +2052,77 @@ class CatalogController extends Controller
             $userId = auth()->id();
             $paymentMethod = $request->payment_method;
             $userReferenceCode = $request->reference_code;
+            $contentSubmissions = is_array($request->content_submissions) ? $request->content_submissions : null;
+            $librarySubmissionId = session('checkout_content_submission_id')
+                ? (int) session('checkout_content_submission_id')
+                : null;
 
-            // Unlock articles claimed by this advertiser's unpaid leftovers
-            // before readiness — otherwise the claim keeps the line deferred
-            // and the replace never runs.
+            // Bank / Wise / crypto never create an order here. Do not cancel
+            // leftovers before sending the advertiser to Add Funds.
+            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'], true)) {
+                $cartTotal = $this->estimateCartTotal($cart, (int) $userId);
+
+                return response()->json([
+                    'success' => false,
+                    'code' => 'fund_wallet_first',
+                    'message' => 'Bank, Wise, and crypto payments go to your wallet first. Add funds with an invoice, then pay this order from your wallet.',
+                    'redirect_url' => route('advertiser.add-funds', [
+                        'amount' => max(10, (int) ceil($cartTotal)),
+                        'method' => $paymentMethod,
+                    ]),
+                    'suggested_amount' => $cartTotal,
+                ], 422);
+            }
+
+            if (! in_array($paymentMethod, ['wallet', 'card'], true)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid payment method',
+                ]);
+            }
+
+            if ($paymentMethod === 'card'
+                && (! config('services.stripe.secret') || config('services.stripe.secret') === '')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Stripe is not configured. Please contact support.',
+                ], 503);
+            }
+
+            // Treat replaceable leftovers as ready so we can see what would
+            // actually be charged — without cancelling Pay again yet.
+            $preview = $this->partitionCartByCheckoutReadiness(
+                $cart,
+                $contentSubmissions,
+                $librarySubmissionId,
+                true
+            );
+            if ($preview['payable'] === []) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'No websites are ready for checkout yet. Assign an approved article to at least one site, then pay.',
+                ], 422);
+            }
+
+            $useBonus = $request->boolean('use_bonus');
+            if ($paymentMethod === 'wallet') {
+                $walletBlock = $this->walletCheckoutPreflight($preview['payable'], (int) $userId, $useBonus);
+                if ($walletBlock instanceof JsonResponse) {
+                    return $walletBlock;
+                }
+            }
+
+            // Unlock leftovers only for lines we are about to charge.
             $this->cancelConflictingUnpaidCardOrders(
                 (int) $userId,
-                $this->collectSubmissionIdsFromRequest($cart, $request)
+                $this->collectSubmissionIdsFromCartRows($preview['payable'])
             );
 
             // Only charge sites that are ready for checkout (approved article) and need payment.
             $partition = $this->partitionCartByCheckoutReadiness(
                 $cart,
-                is_array($request->content_submissions) ? $request->content_submissions : null,
-                session('checkout_content_submission_id') ? (int) session('checkout_content_submission_id') : null
+                $contentSubmissions,
+                $librarySubmissionId
             );
             $payableCart = $partition['payable'];
             $deferredCart = $partition['deferred'];
@@ -2079,7 +2138,7 @@ class CatalogController extends Controller
             $sessionSchedule = session('checkout_schedule', []);
             $checkoutContent = $this->resolveCheckoutContent(
                 $payableCart,
-                is_array($request->content_submissions) ? $request->content_submissions : null,
+                $contentSubmissions,
                 [
                     'mode' => $request->input('publication_mode', $sessionSchedule['mode'] ?? null),
                     'date' => $request->input('scheduled_date', $sessionSchedule['date'] ?? null),
@@ -2111,48 +2170,22 @@ class CatalogController extends Controller
                 (int) $userId
             );
             session(['checkout_reference_code' => $referenceCode]);
-            $useBonus = $request->boolean('use_bonus');
-
-            // Bank / Wise / crypto fund the wallet via invoice — not order checkout.
-            if (in_array($paymentMethod, ['wise', 'crypto', 'bank'], true)) {
-                $expanded = array_column($checkoutContent['lines'], 'orderItem');
-                $cartTotal = round(array_sum(array_column($expanded, 'price')), 2);
-
-                return response()->json([
-                    'success' => false,
-                    'code' => 'fund_wallet_first',
-                    'message' => 'Bank, Wise, and crypto payments go to your wallet first. Add funds with an invoice, then pay this order from your wallet.',
-                    'redirect_url' => route('advertiser.add-funds', [
-                        'amount' => max(10, (int) ceil($cartTotal)),
-                        'method' => $paymentMethod,
-                    ]),
-                    'suggested_amount' => $cartTotal,
-                ], 422);
-            }
 
             // For wallet payment - check balance and reserve funds
             if ($paymentMethod === 'wallet') {
                 return $this->processWalletPayment($payableCart, $checkoutContent, $referenceCode, $userId, $useBonus);
             }
 
-            // For card payments — Stripe-first (Add Funds style), then materialize paid orders.
-            if ($paymentMethod === 'card') {
-                $savedCardId = $request->input('payment_method_id');
+            $savedCardId = $request->input('payment_method_id');
 
-                return $this->processCardPayment(
-                    $payableCart,
-                    $checkoutContent,
-                    $referenceCode,
-                    $userId,
-                    $useBonus,
-                    is_string($savedCardId) ? $savedCardId : null
-                );
-            }
-
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid payment method',
-            ]);
+            return $this->processCardPayment(
+                $payableCart,
+                $checkoutContent,
+                $referenceCode,
+                $userId,
+                $useBonus,
+                is_string($savedCardId) ? $savedCardId : null
+            );
 
         } catch (\Exception $e) {
             Log::error('Order processing failed: '.$e->getMessage());
@@ -5033,7 +5066,8 @@ class CatalogController extends Controller
     private function partitionCartByCheckoutReadiness(
         array $cart,
         ?array $contentSubmissions = null,
-        ?int $librarySubmissionId = null
+        ?int $librarySubmissionId = null,
+        bool $allowReplaceableLeftover = false
     ): array {
         $payable = [];
         $deferred = [];
@@ -5080,10 +5114,15 @@ class CatalogController extends Controller
                 $submission = ContentSubmission::query()
                     ->where('id', $submissionId)
                     ->where('user_id', auth()->id())
-                    ->orderable()
+                    ->when(! $allowReplaceableLeftover, fn ($q) => $q->orderable())
                     ->first();
 
-                if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+                $ready = $submission && (
+                    $allowReplaceableLeftover
+                        ? $submission->canOrderFromLibrary()
+                        : ($submission->canBeOrdered() && $submission->isReadyForCheckout())
+                );
+                if (! $ready) {
                     $lineReady = false;
                     break;
                 }
@@ -5338,13 +5377,16 @@ class CatalogController extends Controller
     }
 
     /**
-     * @param  array<int, mixed>  $cart
+     * @param  array<int, mixed>  $rows
      * @return array<int, int>
      */
-    private function collectSubmissionIdsFromRequest(array $cart, Request $request): array
+    private function collectSubmissionIdsFromCartRows(array $rows): array
     {
         $ids = [];
-        foreach ($cart as $row) {
+        foreach ($rows as $row) {
+            if (! is_array($row)) {
+                continue;
+            }
             if (! empty($row['content_submission_id'])) {
                 $ids[] = (int) $row['content_submission_id'];
             }
@@ -5353,20 +5395,77 @@ class CatalogController extends Controller
             }
         }
 
-        $map = $request->input('content_submissions');
-        if (is_array($map)) {
-            foreach ($map as $copies) {
-                foreach ((array) $copies as $sid) {
-                    $ids[] = (int) $sid;
-                }
-            }
-        }
-
-        if ($sessionId = session('checkout_content_submission_id')) {
-            $ids[] = (int) $sessionId;
-        }
-
         return array_values(array_unique(array_filter($ids)));
+    }
+
+    /**
+     * @param  array<int, mixed>  $cart
+     */
+    private function estimateCartTotal(array $cart, int $userId): float
+    {
+        try {
+            $expanded = $this->cartPricing()->expandCart($cart, $userId);
+        } catch (\Throwable) {
+            return 0.0;
+        }
+
+        return round((float) array_sum(array_column($expanded, 'price')), 2);
+    }
+
+    /**
+     * @param  array<int, mixed>  $payableCart
+     */
+    private function walletCheckoutPreflight(array $payableCart, int $userId, bool $useBonus): ?JsonResponse
+    {
+        $advertiserRoleId = Wallet::advertiserRoleId();
+        if (! $advertiserRoleId) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Advertiser role not configured.',
+            ]);
+        }
+
+        try {
+            $expanded = $this->cartPricing()->expandCart($payableCart, $userId);
+        } catch (\Throwable $e) {
+            return response()->json([
+                'success' => false,
+                'message' => UserFacingError::message($e, 'Some items in your cart are no longer available. Please review your cart.'),
+            ], 422);
+        }
+
+        $totalAmount = round((float) array_sum(array_column($expanded, 'price')), 2);
+        $wallet = Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $advertiserRoleId)
+            ->first();
+        if (! $wallet) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Insufficient wallet balance. Available cash: €0.00. Required: €'
+                    .number_format($totalAmount, 2).'.',
+            ]);
+        }
+
+        $spendable = round((float) $wallet->balance, 2);
+        $cashAvailable = $wallet->withdrawableBalance();
+        $bonusAvailable = $wallet->lockedBonusBalance();
+        $effectiveAvailable = $useBonus ? $spendable : $cashAvailable;
+        if ($effectiveAvailable + 0.009 >= $totalAmount) {
+            return null;
+        }
+
+        $hint = (! $useBonus && $bonusAvailable > 0)
+            ? ' Tip: enable “Use bonus balance” (€'.number_format($bonusAvailable, 2).') to apply your promotional credit.'
+            : '';
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Insufficient wallet balance. Available cash: €'
+                .number_format($cashAvailable, 2)
+                .($bonusAvailable > 0 ? ' · Bonus: €'.number_format($bonusAvailable, 2) : '')
+                .'. Required: €'.number_format($totalAmount, 2).'.'.$hint,
+        ]);
     }
 
     private function releaseContentSubmissionsForOrder(Order $order): void
