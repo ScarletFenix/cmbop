@@ -6,6 +6,7 @@ use App\Models\ProblemReport;
 use App\Models\Suggestion;
 use App\Services\ActivityLogger;
 use App\Services\CommunityInboxNotifier;
+use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -17,7 +18,7 @@ class FeedbackController extends Controller
         $rules = [
             'subject' => 'required|string|max:160',
             'message' => 'required|string|min:10|max:3000',
-            'page_url' => 'nullable|string|max:500',
+            'page_url' => 'nullable|string|max:'.CommunityInbox::PAGE_URL_MAX,
         ];
 
         if (! $user) {
@@ -36,7 +37,7 @@ class FeedbackController extends Controller
             'email' => $data['email'] ?? $user?->email,
             'subject' => $data['subject'],
             'message' => $data['message'],
-            'page_url' => $data['page_url'] ?? $request->headers->get('referer'),
+            'page_url' => CommunityInbox::storedPageUrl($data['page_url'] ?? $request->headers->get('referer')),
             'role_context' => $user?->activeRole(),
             'status' => 'pending',
         ]);
@@ -67,7 +68,7 @@ class FeedbackController extends Controller
         $rules = [
             'category' => 'nullable|string|in:general,feature,ux,pricing,other',
             'message' => 'required|string|min:10|max:3000',
-            'page_url' => 'nullable|string|max:500',
+            'page_url' => 'nullable|string|max:'.CommunityInbox::PAGE_URL_MAX,
         ];
 
         if (! $user) {
@@ -86,7 +87,7 @@ class FeedbackController extends Controller
             'email' => $data['email'] ?? $user?->email,
             'category' => $data['category'] ?? 'general',
             'message' => $data['message'],
-            'page_url' => $data['page_url'] ?? $request->headers->get('referer'),
+            'page_url' => CommunityInbox::storedPageUrl($data['page_url'] ?? $request->headers->get('referer')),
             'status' => 'pending',
         ]);
 

@@ -10,7 +10,11 @@
         <div class="col-md-6 text-end d-flex justify-content-end gap-2 flex-wrap">
             <form action="{{ route('admin.blogs.sync-curated') }}" method="POST" class="d-inline">
                 @csrf
-                <button type="submit" class="btn btn-outline-primary" title="Import/update curated SEO pillar posts into this list">
+                <button type="submit" class="btn btn-outline-primary"
+                        title="Import/update curated SEO pillar posts into this list"
+                        data-slb-confirm="This updates unedited pillar posts from code. Posts you edited are kept. Deleted pillar posts stay deleted."
+                        data-slb-confirm-title="Sync curated SEO blogs?"
+                        data-slb-confirm-text="Sync">
                     <i class="fa fa-sync me-2"></i> Sync curated SEO blogs
                 </button>
             </form>
@@ -26,6 +30,47 @@
         <strong>Missing curated posts?</strong>
         Code deploy alone does not insert blog rows. Click <em>Sync curated SEO blogs</em> (or run <code>php artisan blog:upsert-curated</code>) to load pillar posts so you can edit, unpublish, or delete them here.
     </div>
+
+    <form method="GET" action="{{ route('admin.blogs.index') }}" class="row g-2 align-items-end mb-4">
+        <div class="col-md-3">
+            <x-slb-search-field name="q" id="adminBlogsSearch" :value="request('q')" placeholder="Title, slug, author…" />
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="adminBlogsStatus">Status</label>
+            <select name="status" id="adminBlogsStatus" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="published" @selected(request('status') === 'published')>Published</option>
+                <option value="draft" @selected(request('status') === 'draft')>Draft</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="adminBlogsLocale">Primary locale</label>
+            <select name="locale" id="adminBlogsLocale" class="form-select form-select-sm">
+                <option value="">All</option>
+                @foreach(\App\Support\PublicI18n::supported() as $code)
+                    <option value="{{ $code }}" @selected(request('locale') === $code)>{{ strtoupper($code) }}</option>
+                @endforeach
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <label class="form-label small text-muted mb-1" for="adminBlogsKind">Kind</label>
+            <select name="kind" id="adminBlogsKind" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="curated" @selected(request('kind') === 'curated')>Curated</option>
+                <option value="custom" @selected(request('kind') === 'custom')>Custom</option>
+            </select>
+        </div>
+        <div class="col-6 col-md-2">
+            <div class="form-check mt-4">
+                <input type="checkbox" name="missing_translations" value="1" id="adminBlogsMissing"
+                       class="form-check-input" @checked(request()->boolean('missing_translations'))>
+                <label class="form-check-label small" for="adminBlogsMissing">Missing translations</label>
+            </div>
+        </div>
+        <div class="col-auto">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Filter</button>
+        </div>
+    </form>
 
     <div class="card border-0 shadow-sm">
         <div class="card-body p-0">
@@ -59,16 +104,26 @@
                             </td>
                             <td>
                                 <strong>{{ Str::limit($blog->title, 50) }}</strong>
-                                <div class="small text-muted">/blog/{{ $blog->slug }}</div>
+                                @if($blog->curated_key)
+                                    <span class="badge bg-info-subtle text-info-emphasis ms-1">Curated</span>
+                                @endif
+                                <div class="small text-muted">{{ parse_url($blog->canonicalUrl(), PHP_URL_PATH) }}</div>
                             </td>
                             <td>
-                                @if($blog->primary_locale)
-                                    <span class="badge bg-light text-dark text-uppercase">{{ $blog->primary_locale }}</span>
-                                @else
-                                    <span class="text-muted">—</span>
-                                @endif
+                                @foreach(\App\Support\PublicI18n::supported() as $code)
+                                    @php
+                                        $translation = $blog->translations->firstWhere('locale', $code);
+                                    @endphp
+                                    @if($translation && $translation->is_published)
+                                        <span class="badge bg-success-subtle text-success-emphasis text-uppercase">{{ $code }}</span>
+                                    @elseif($translation)
+                                        <span class="badge bg-warning-subtle text-warning-emphasis text-uppercase">{{ $code }}</span>
+                                    @else
+                                        <span class="badge bg-light text-muted text-uppercase">{{ $code }}</span>
+                                    @endif
+                                @endforeach
                             </td>
-                            <td>{{ $blog->author ?? $blog->creator->name ?? 'Admin' }}</td>
+                            <td>{{ $blog->author ?? $blog->creator?->name ?? 'Admin' }}</td>
                             <td>
                                 @if($blog->status === 'published')
                                     <span class="badge bg-success">Published</span>
@@ -90,15 +145,23 @@
                                        title="View" aria-label="View {{ $blog->title }}">
                                         <i class="fa fa-eye" aria-hidden="true"></i>
                                     </a>
+                                    @if($blog->status === 'published')
+                                        <a href="{{ $blog->canonicalUrl() }}" class="btn btn-sm btn-outline-secondary"
+                                           target="_blank" rel="noopener noreferrer"
+                                           title="View live" aria-label="View live {{ $blog->title }}">
+                                            <i class="fa fa-external-link" aria-hidden="true"></i>
+                                        </a>
+                                    @endif
                                     <a href="{{ route('admin.blogs.edit', $blog->id) }}" class="btn btn-sm btn-outline-primary"
                                        title="Edit" aria-label="Edit {{ $blog->title }}">
                                         <i class="fa fa-edit" aria-hidden="true"></i>
                                     </a>
                                     @php $toggleLabel = $blog->status === 'published' ? 'Unpublish' : 'Publish'; @endphp
-                                    <a href="{{ route('admin.blogs.toggle-status', $blog->id) }}" class="btn btn-sm btn-outline-warning"
-                                       title="{{ $toggleLabel }}" aria-label="{{ $toggleLabel }} {{ $blog->title }}">
+                                    <button type="submit" form="toggleBlog{{ $blog->id }}"
+                                            class="btn btn-sm btn-outline-warning"
+                                            title="{{ $toggleLabel }}" aria-label="{{ $toggleLabel }} {{ $blog->title }}">
                                         <i class="fa {{ $blog->status === 'published' ? 'fa-eye-slash' : 'fa-check-circle' }}" aria-hidden="true"></i>
-                                    </a>
+                                    </button>
                                     {{-- Same confirm helper as every other destructive admin action.
                                          The form lives outside the group so the button stays a direct
                                          .btn-group child and keeps its grouped shape. --}}
@@ -113,6 +176,10 @@
                                     </button>
                                 </div>
 
+                                <form id="toggleBlog{{ $blog->id }}" class="d-none"
+                                      action="{{ route('admin.blogs.toggle-status', $blog->id) }}" method="POST">
+                                    @csrf
+                                </form>
                                 <form id="deleteBlog{{ $blog->id }}" class="d-none"
                                       action="{{ route('admin.blogs.destroy', $blog->id) }}" method="POST">
                                     @csrf

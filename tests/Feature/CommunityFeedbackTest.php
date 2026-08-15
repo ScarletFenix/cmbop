@@ -73,6 +73,32 @@ class CommunityFeedbackTest extends TestCase
         ]);
     }
 
+    public function test_guest_problem_drops_an_oversized_or_unsafe_referer_instead_of_500ing(): void
+    {
+        $this->withHeaders([
+            'Referer' => 'https://app.example/'.str_repeat('a', 400),
+        ])->postJson(route('feedback.problem'), [
+            'name' => 'Guest User',
+            'email' => 'guest@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The checkout button does nothing on mobile.',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertDatabaseHas('problem_reports', [
+            'email' => 'guest@example.com',
+            'subject' => 'Checkout broken',
+            'page_url' => null,
+        ]);
+
+        $this->postJson(route('feedback.problem'), [
+            'name' => 'Guest User',
+            'email' => 'guest2@example.com',
+            'subject' => 'Too long page',
+            'message' => 'The checkout button does nothing on mobile.',
+            'page_url' => 'https://app.example/'.str_repeat('b', 400),
+        ])->assertStatus(422)->assertJsonValidationErrors(['page_url']);
+    }
+
     public function test_user_can_send_suggestion(): void
     {
         $user = $this->userWithRole('advertiser');
@@ -703,6 +729,114 @@ class CommunityFeedbackTest extends TestCase
         Mail::assertNothingQueued();
     }
 
+    public function test_listing_handoff_uses_site_url_when_domain_is_blank(): void
+    {
+        Mail::fake();
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $suggestion = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Owned News Daily',
+            'website_url' => 'https://owned-news.example',
+            'domain' => 'owned-news.example',
+            'status' => 'pending',
+        ]);
+        $site = $this->siteFor($publisher);
+        $site->domain = '';
+
+        app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
+            (int) $suggestion->id,
+            $site,
+            $admin
+        );
+
+        $this->assertSame('accepted', $suggestion->fresh()->status);
+        $this->assertStringContainsString('Listing created: owned-news.example', (string) $suggestion->fresh()->admin_notes);
+    }
+
+    public function test_status_update_still_succeeds_when_submitter_notify_throws(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $report = ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $this->mock(CommunityInboxNotifier::class, function ($mock) {
+            $mock->shouldReceive('notifySubmitterReviewed')
+                ->once()
+                ->andThrow(new \RuntimeException('mail down'));
+        });
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+        ])->assertOk()->assertJson(['success' => true]);
+
+        $this->assertSame('resolved', $report->fresh()->status);
+    }
+
+    public function test_listing_handoff_accepts_a_rejected_suggestion_for_the_same_domain(): void
+    {
+        Mail::fake();
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $suggestion = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Owned News Daily',
+            'website_url' => 'https://owned-news.example',
+            'domain' => 'owned-news.example',
+            'status' => 'rejected',
+            'admin_notes' => 'Not a fit yet.',
+        ]);
+        $site = $this->siteFor($publisher);
+
+        app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
+            (int) $suggestion->id,
+            $site,
+            $admin
+        );
+
+        $suggestion->refresh();
+        $this->assertSame('accepted', $suggestion->status);
+        $this->assertStringContainsString('Listing created: '.$site->domain, (string) $suggestion->admin_notes);
+        Mail::assertQueued(WebsiteSuggestionReviewed::class, 1);
+
+        app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
+            (int) $suggestion->id,
+            $site,
+            $admin
+        );
+        Mail::assertQueued(WebsiteSuggestionReviewed::class, 1);
+    }
+
+    public function test_array_suggestion_id_query_does_not_prefill_site_create(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://fresh-tech.example',
+            'domain' => 'fresh-tech.example',
+            'status' => 'pending',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.sites.create', ['suggestion_id' => ['1']]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Prefilling from website suggestion', $html);
+        $this->assertStringNotContainsString('name="suggestion_id"', $html);
+    }
+
     public function test_inactive_community_tabs_are_not_paginated(): void
     {
         $admin = $this->userWithRole('admin');
@@ -744,6 +878,8 @@ class CommunityFeedbackTest extends TestCase
         $this->assertInstanceOf(WebsiteSuggestionReviewed::class, $website);
         $this->assertStringContainsString('We reviewed your problem report', $feedback->render());
         $this->assertStringContainsString('We will try to add', $website->render());
+        $this->assertStringContainsString(rtrim(app_public_url(), '/'), $feedback->render());
+        $this->assertStringContainsString('/advertiser/catalog', $website->render());
     }
 
     public function test_blank_report_email_falls_back_to_the_user_account(): void

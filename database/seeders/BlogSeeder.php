@@ -3,6 +3,7 @@
 namespace Database\Seeders;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Database\Seeder;
@@ -64,7 +65,7 @@ HTML,
         foreach ($posts as $index => $post) {
             $slug = Str::slug($post['title']);
 
-            Blog::updateOrCreate(
+            $blog = Blog::updateOrCreate(
                 ['slug' => $slug],
                 [
                     'title' => $post['title'],
@@ -77,6 +78,20 @@ HTML,
                     'published_at' => now()->subDays($index + 1),
                     'created_by' => $author?->id,
                     'updated_by' => $author?->id,
+                ]
+            );
+
+            BlogTranslation::updateOrCreate(
+                [
+                    'blog_id' => $blog->id,
+                    'locale' => 'en',
+                ],
+                [
+                    'title' => $post['title'],
+                    'slug' => $slug,
+                    'excerpt' => $post['excerpt'],
+                    'content' => $post['content'],
+                    'is_published' => true,
                 ]
             );
         }

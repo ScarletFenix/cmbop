@@ -95,9 +95,52 @@
                                     </div>
 
                                     <div class="mb-3">
+                                        <label class="form-label fw-semibold">SEO title</label>
+                                        <input
+                                            type="text"
+                                            name="translations[{{ $locale }}][meta_title]"
+                                            class="form-control @error($prefix.'.meta_title') is-invalid @enderror"
+                                            value="{{ old_text('translations.'.$locale.'.meta_title') }}"
+                                            maxlength="70"
+                                            placeholder="Optional. Defaults to the post title."
+                                        >
+                                        @error($prefix.'.meta_title')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+
+                                    <div class="mb-3">
+                                        <label class="form-label fw-semibold">SEO description</label>
+                                        <textarea
+                                            name="translations[{{ $locale }}][meta_description]"
+                                            rows="2"
+                                            class="form-control @error($prefix.'.meta_description') is-invalid @enderror"
+                                            maxlength="180"
+                                            placeholder="Optional. Defaults to the meta excerpt."
+                                        >{{ old_text('translations.'.$locale.'.meta_description') }}</textarea>
+                                        @error($prefix.'.meta_description')
+                                            <div class="invalid-feedback">{{ $message }}</div>
+                                        @enderror
+                                    </div>
+
+                                    <div class="form-check mb-3">
+                                        <input type="hidden" name="translations[{{ $locale }}][is_published]" value="0">
+                                        <input
+                                            type="checkbox"
+                                            name="translations[{{ $locale }}][is_published]"
+                                            id="published-{{ $locale }}"
+                                            class="form-check-input"
+                                            value="1"
+                                            {{ old('translations.'.$locale.'.is_published', '1') ? 'checked' : '' }}
+                                        >
+                                        <label class="form-check-label" for="published-{{ $locale }}">Publish this locale</label>
+                                    </div>
+
+                                    <div class="mb-3">
                                         <label class="form-label fw-semibold">Content {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}</label>
                                         <div id="quillEditor-{{ $locale }}" class="border rounded bg-white" style="height: 320px;"></div>
                                         <input type="hidden" name="translations[{{ $locale }}][content]" id="contentInput-{{ $locale }}">
+                                        <script type="application/json" id="existingContent-{{ $locale }}">{!! \App\Services\BlogHtmlSanitizer::encodeForScript(old('translations.'.$locale.'.content', '')) !!}</script>
                                         @error($prefix.'.content')
                                             <div class="text-danger small mt-1">{{ $message }}</div>
                                         @enderror
@@ -132,6 +175,14 @@
                             </div>
                             @error('featured_image')
                                 <div class="text-danger small mt-1">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label fw-semibold">Author</label>
+                            <input type="text" name="author" class="form-control @error('author') is-invalid @enderror" value="{{ old_text('author', auth()->user()?->name) }}" maxlength="120">
+                            @error('author')
+                                <div class="invalid-feedback">{{ $message }}</div>
                             @enderror
                         </div>
 
@@ -184,12 +235,7 @@
     </div>
 </div>
 
-<link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
-<script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-<script src="{{ asset('assets/js/admin-blog-images.js') }}"></script>
-
-<input type="file" id="quillImageInput" class="d-none" accept="image/*">
+@include('admin.blogs.partials.quill-editors')
 
 <script>
 var quillUploadUrl = @json(route('admin.blogs.upload-image'));
@@ -305,21 +351,6 @@ document.getElementById('featuredImageInput').addEventListener('change', functio
 document.getElementById('featuredImageClearBtn').addEventListener('click', function () {
     document.getElementById('featuredImageInput').value = '';
     showFeaturedPlaceholder();
-});
-
-var form = document.getElementById('blogForm');
-form.addEventListener('submit', function (e) {
-    Object.keys(quills).forEach(function (locale) {
-        var content = quills[locale].root.innerHTML.trim();
-        document.getElementById('contentInput-' + locale).value = content;
-    });
-
-    var enContent = (document.getElementById('contentInput-en')?.value || '').trim();
-    if (!enContent || enContent === '<p><br></p>' || enContent === '<p></p>') {
-        e.preventDefault();
-        Swal.fire('Error', 'Please enter English content before submitting.', 'error');
-        return false;
-    }
 });
 </script>
 @endsection

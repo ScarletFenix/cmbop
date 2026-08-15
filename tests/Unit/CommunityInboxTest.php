@@ -94,6 +94,10 @@ class CommunityInboxTest extends TestCase
         $this->assertNull(CommunityInbox::safeHttpUrl('javascript:alert(1)'));
         $this->assertNull(CommunityInbox::safeHttpUrl('/relative'));
         $this->assertNull(CommunityInbox::safeHttpUrl(['https://x.example']));
+        $this->assertNull(CommunityInbox::safeHttpUrl("https://app.example/x\r\nLocation: https://evil.example"));
+        $this->assertNull(CommunityInbox::safeHttpUrl('https://app.example/has space'));
+        $this->assertNull(CommunityInbox::storedPageUrl('https://app.example/'.str_repeat('a', 300)));
+        $this->assertSame('https://app.example/checkout', CommunityInbox::storedPageUrl('https://app.example/checkout'));
     }
 
     public function test_status_badge_classes(): void
@@ -163,5 +167,17 @@ class CommunityInboxTest extends TestCase
             'domain' => null,
         ]);
         $this->assertSame('', CommunityInbox::suggestionLookupDomain($unsafe));
+    }
+
+    public function test_suggestion_id_from_keeps_scalars_and_drops_arrays(): void
+    {
+        $this->assertSame(12, CommunityInbox::suggestionIdFrom(12));
+        $this->assertSame(12, CommunityInbox::suggestionIdFrom('12'));
+        $this->assertSame(0, CommunityInbox::suggestionIdFrom(['12']));
+        $this->assertSame(0, CommunityInbox::suggestionIdFrom(true));
+        $this->assertSame(0, CommunityInbox::suggestionIdFrom(null));
+        $this->assertSame(0, CommunityInbox::suggestionIdFrom(''));
+        $this->assertSame(0, CommunityInbox::suggestionIdFrom('12e2'));
+        $this->assertSame(0, CommunityInbox::suggestionIdFrom('12.5'));
     }
 }
