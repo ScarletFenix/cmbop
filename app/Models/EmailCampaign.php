@@ -937,7 +937,7 @@ class EmailCampaign extends Model
     {
         try {
             if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
-                return;
+                return [];
             }
         } catch (\Throwable) {
             return [];
@@ -962,7 +962,7 @@ class EmailCampaign extends Model
                 ->get()
                 ->keyBy('id');
         } catch (\Throwable) {
-            return;
+            return [];
         }
 
         if ($logs->isEmpty()) {
