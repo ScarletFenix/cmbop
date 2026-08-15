@@ -2554,13 +2554,7 @@ class CatalogController extends Controller
 
                 $created = $paymentService->finalizeStripeFirstCheckout($referenceCode, $intent);
                 if ($created->isEmpty()) {
-                    $created = Order::query()
-                        ->where('reference_code', $referenceCode)
-                        ->where('payment_method', 'card')
-                        ->where('user_id', $userId)
-                        ->where('payment_status', 'paid')
-                        ->where('status', '!=', 'cancelled')
-                        ->get();
+                    $created = $this->paidCardOrdersForCheckout($referenceCode, $userId);
                 }
 
                 if ($created->isEmpty()) {
@@ -2579,8 +2573,7 @@ class CatalogController extends Controller
                     throw new \RuntimeException('Saved card payment succeeded but orders were not created');
                 }
 
-                $paymentService->notifyPublishersOfPaidOrders($created);
-                $this->restoreDeferredCartAfterPayment();
+                $this->finishSavedCardCheckoutAfterSettle($paymentService, $created);
 
                 $orderNumbers = $created->pluck('order_number')->filter()->implode(', ');
 
@@ -2619,6 +2612,26 @@ class CatalogController extends Controller
                 'message' => 'Could not charge this card. Try another card or pay with a new card.',
             ], 422);
         } catch (\Throwable $e) {
+            $paid = $this->paidCardOrdersForCheckout($referenceCode, $userId);
+            if ($paid->isNotEmpty()) {
+                // Finalize already created paid leftover orders and remembered
+                // the leftover hold. Refund/forget here would drop that hold so
+                // a later reject mints promo as cash when another checkout is open.
+                Log::error('Saved card order checkout failed after payment settled: '.$e->getMessage(), [
+                    'reference_code' => $referenceCode,
+                    'user_id' => $userId,
+                ]);
+                $this->finishSavedCardCheckoutAfterSettle($paymentService, $paid);
+
+                $orderNumbers = $paid->pluck('order_number')->filter()->implode(', ');
+
+                return response()->json([
+                    'success' => true,
+                    'message' => $paid->count().' order(s) paid with your saved card. Order numbers: '.$orderNumbers,
+                    'reference_code' => $referenceCode,
+                ]);
+            }
+
             $this->refundCheckoutBonus($userId, $referenceCode);
             $paymentService->forgetPendingCheckout($referenceCode);
 
@@ -2631,6 +2644,38 @@ class CatalogController extends Controller
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Saved card payment failed. Please try again or use a new card.'),
             ], 422);
+        }
+    }
+
+    /**
+     * @return Collection<int, Order>
+     */
+    private function paidCardOrdersForCheckout(string $referenceCode, int $userId)
+    {
+        return Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('user_id', $userId)
+            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled')
+            ->get();
+    }
+
+    /**
+     * @param  iterable<Order>  $orders
+     */
+    private function finishSavedCardCheckoutAfterSettle(OrderPaymentService $paymentService, iterable $orders): void
+    {
+        try {
+            $paymentService->notifyPublishersOfPaidOrders($orders);
+        } catch (\Throwable $e) {
+            Log::warning('notify after saved-card settle failed: '.$e->getMessage());
+        }
+
+        try {
+            $this->restoreDeferredCartAfterPayment();
+        } catch (\Throwable $e) {
+            Log::warning('restore cart after saved-card settle failed: '.$e->getMessage());
         }
     }
 

@@ -233,13 +233,23 @@ class OrderPaymentService
             $total = $bonusApplied;
         }
 
-        app(WalletLedgerService::class)->recordPurchaseOnce(
-            $wallet,
-            $total,
-            $bonusApplied,
-            $orders->first(),
-            $referenceCode
-        );
+        try {
+            app(WalletLedgerService::class)->recordPurchaseOnce(
+                $wallet,
+                $total,
+                $bonusApplied,
+                $orders->first(),
+                $referenceCode
+            );
+        } catch (\Throwable $e) {
+            // Orders and leftover hold are already settled. A thrown ledger
+            // write must not unwind the caller into refund/forget.
+            Log::error('Advertiser purchase ledger write failed after paid checkout', [
+                'reference_code' => $referenceCode,
+                'user_id' => $userId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**
