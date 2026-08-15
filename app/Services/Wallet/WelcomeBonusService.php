@@ -85,8 +85,14 @@ class WelcomeBonusService
                 return false;
             }
 
+            $allowed = $this->amount();
+            if ($allowed <= 0 || $amount > $allowed + 0.001) {
+                return false;
+            }
+            $amount = round(min($amount, $allowed), 2);
+
             $ip = $this->normalizedIp($request);
-            if ($ip === null || $this->ipAlreadyClaimed($ip)) {
+            if ($ip === null || $this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
                 return false;
             }
 
@@ -204,18 +210,35 @@ class WelcomeBonusService
         return IpUtils::checkIp($ip, $cidrs);
     }
 
-    public function ipAlreadyClaimed(string $ip): bool
+    public function ipAlreadyClaimed(string $ip, bool $lock = false): bool
     {
         if (! $this->claimsTableReady()) {
             return true;
         }
 
         try {
-            if (WelcomeBonusClaim::query()->whereIn('ip_address', $this->ipClaimKeys($ip))->exists()) {
+            $query = WelcomeBonusClaim::query()->whereIn('ip_address', $this->ipClaimKeys($ip));
+            if ($lock) {
+                $query->lockForUpdate();
+            }
+            if ($query->exists()) {
                 return true;
             }
 
-            return $this->legacyIpv6AllocationClaimed($ip);
+            return $this->legacyIpv6AllocationClaimed($ip, $lock);
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    private function userAlreadyClaimed(int $userId): bool
+    {
+        if ($userId < 1 || ! $this->claimsTableReady()) {
+            return true;
+        }
+
+        try {
+            return WelcomeBonusClaim::query()->where('user_id', $userId)->lockForUpdate()->exists();
         } catch (\Throwable) {
             return true;
         }
@@ -256,16 +279,18 @@ class WelcomeBonusService
      * Exact-key lookup misses those, so a second signup in the same
      * allocation would collect another €20.
      */
-    private function legacyIpv6AllocationClaimed(string $ip): bool
+    private function legacyIpv6AllocationClaimed(string $ip, bool $lock = false): bool
     {
         $wanted = $this->ipv6AllocationKey($ip);
         if ($wanted === null) {
             return false;
         }
 
-        $stored = WelcomeBonusClaim::query()
-            ->where('ip_address', 'like', '%:%')
-            ->pluck('ip_address');
+        $query = WelcomeBonusClaim::query()->where('ip_address', 'like', '%:%');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+        $stored = $query->pluck('ip_address');
 
         foreach ($stored as $rowIp) {
             if ($this->ipv6AllocationKey((string) $rowIp) === $wanted) {

@@ -76,6 +76,23 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_record_claim_rejects_a_second_claim_for_the_same_user(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertTrue($this->service->recordClaim($user, $this->request('10.1.0.1'), 20.0, 'registration'));
+        $this->assertFalse($this->service->recordClaim($user, $this->request('10.1.0.2'), 20.0, 'registration'));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_record_claim_rejects_an_amount_above_the_configured_bonus(): void
+    {
+        $user = User::factory()->create();
+
+        $this->assertFalse($this->service->recordClaim($user, $this->request('10.2.0.1'), 2000.0, 'registration'));
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
     public function test_oversized_ip_does_not_break_signup_and_does_not_grant(): void
     {
         $request = $this->request(str_repeat('1', 50));

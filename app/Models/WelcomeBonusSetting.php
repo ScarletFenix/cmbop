@@ -99,23 +99,32 @@ class WelcomeBonusSetting extends Model
             return;
         }
 
-        DB::transaction(function () use ($enabled, $updatedBy) {
-            $row = static::query()->where('key', 'config')->lockForUpdate()->first();
-            try {
-                $current = is_array($row?->value) ? $row->value : [];
-            } catch (\Throwable) {
-                $current = [];
-            }
+        $write = function () use ($enabled, $updatedBy): void {
+            DB::transaction(function () use ($enabled, $updatedBy) {
+                $row = static::query()->where('key', 'config')->lockForUpdate()->first();
+                try {
+                    $current = is_array($row?->value) ? $row->value : [];
+                } catch (\Throwable) {
+                    $current = [];
+                }
 
-            $current['enabled'] = $enabled;
-            $current['updated_at'] = now()->toIso8601String();
-            if ($updatedBy !== null) {
-                $current['updated_by'] = $updatedBy;
-            }
+                $current['enabled'] = $enabled;
+                $current['updated_at'] = now()->toIso8601String();
+                if ($updatedBy !== null) {
+                    $current['updated_by'] = $updatedBy;
+                }
 
-            static::query()->updateOrCreate(['key' => 'config'], ['value' => $current]);
-            Cache::forget('welcome_bonus_setting:config');
-        });
+                static::query()->updateOrCreate(['key' => 'config'], ['value' => $current]);
+                Cache::forget('welcome_bonus_setting:config');
+            });
+        };
+
+        try {
+            $write();
+        } catch (UniqueConstraintViolationException) {
+            // First grant may insert the settings row in the same window.
+            $write();
+        }
     }
 
     public static function clearCache(): void

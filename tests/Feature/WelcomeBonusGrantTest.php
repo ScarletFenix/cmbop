@@ -364,6 +364,35 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_registration_pair_does_not_credit_without_a_claim(): void
+    {
+        $user = User::factory()->create();
+        $advertiserRoleId = (int) Role::where('name', 'advertiser')->value('id');
+        $publisherRoleId = (int) Role::where('name', 'publisher')->value('id');
+
+        Wallet::insertRegistrationPair($user->id, $advertiserRoleId, $publisherRoleId, 20.0);
+
+        $this->assertAdvertiserBonus($user, 0.0);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_registration_pair_caps_credit_to_the_recorded_claim(): void
+    {
+        $user = User::factory()->create();
+        WelcomeBonusClaim::query()->create([
+            'user_id' => $user->id,
+            'ip_address' => '203.0.113.93',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+        $advertiserRoleId = (int) Role::where('name', 'advertiser')->value('id');
+        $publisherRoleId = (int) Role::where('name', 'publisher')->value('id');
+
+        Wallet::insertRegistrationPair($user->id, $advertiserRoleId, $publisherRoleId, 2000.0);
+
+        $this->assertAdvertiserBonus($user, 20.0);
+    }
+
     public function test_register_page_hides_bonus_copy_when_disabled(): void
     {
         app(WelcomeBonusService::class)->setEnabled(false);
