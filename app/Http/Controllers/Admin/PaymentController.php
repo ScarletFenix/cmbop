@@ -532,7 +532,7 @@ class PaymentController extends Controller
      */
     private function bonusShareCapForRefund(Order $order): ?float
     {
-        $peek = app(CheckoutIntentService::class)->peekBonus(
+        $peek = app(CheckoutIntentService::class)->heldBonus(
             (int) $order->user_id,
             (string) $order->reference_code
         );

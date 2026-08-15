@@ -91,7 +91,6 @@ class CheckoutIntentService
 
     /**
      * Bonus still held for this reference (cache / intent row, not the package snapshot).
-     * After takeBonus the package JSON may still list bonus_applied; that is not a live hold.
      */
     public function heldBonus(int $userId, string $referenceCode): float
     {
@@ -107,19 +106,16 @@ class CheckoutIntentService
     }
 
     /**
-     * Read leftover checkout bonus for this reference without consuming it.
+     * Live leftover checkout bonus for this reference, plus an explicit fallback.
+     * Package JSON is a snapshot, not a hold — after takeBonus it must not
+     * cap or release another checkout's reserved promo.
      */
     public function peekBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
-        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
-        $intent = $this->findIntent($referenceCode);
-        $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
-        $fromPackage = is_array($intent?->package)
-            ? round((float) ($intent->package['bonus_applied'] ?? 0), 2)
-            : 0.0;
-        $bonus = max($fromCache, $fromRow, $fromPackage, round((float) ($fallback ?? 0), 2));
-
-        return $bonus > 0 ? $bonus : 0.0;
+        return max(
+            $this->heldBonus($userId, $referenceCode),
+            round((float) ($fallback ?? 0), 2)
+        );
     }
 
     /**
@@ -128,11 +124,7 @@ class CheckoutIntentService
     public function takeBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
         $bonus = $this->peekBonus($userId, $referenceCode, $fallback);
-        Cache::forget(self::bonusCacheKey($userId, $referenceCode));
-        $intent = $this->findIntent($referenceCode);
-        if ($intent && (float) $intent->bonus_applied > 0) {
-            $intent->update(['bonus_applied' => 0]);
-        }
+        $this->writeLiveBonus($userId, $referenceCode, 0);
 
         return $bonus;
     }
@@ -147,31 +139,13 @@ class CheckoutIntentService
             return;
         }
 
-        $intent = $this->findIntent($referenceCode);
-        $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
-        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
-        $current = max($fromRow, $fromCache);
-        $left = max(0, round($current - $amount, 2));
-
-        if ($intent) {
-            $intent->update(['bonus_applied' => $left]);
-        }
-
-        $key = self::bonusCacheKey($userId, $referenceCode);
-        if ($left > 0) {
-            Cache::put($key, $left, now()->addHours(720));
-        } else {
-            Cache::forget($key);
-        }
+        $left = max(0, round($this->heldBonus($userId, $referenceCode) - $amount, 2));
+        $this->writeLiveBonus($userId, $referenceCode, $left);
     }
 
     public function forgetBonus(int $userId, string $referenceCode): void
     {
-        Cache::forget(self::bonusCacheKey($userId, $referenceCode));
-        $intent = $this->findIntent($referenceCode);
-        if ($intent && (float) $intent->bonus_applied > 0) {
-            $intent->update(['bonus_applied' => 0]);
-        }
+        $this->writeLiveBonus($userId, $referenceCode, 0);
     }
 
     public function forget(string $referenceCode, ?int $userId = null): void
@@ -219,6 +193,41 @@ class CheckoutIntentService
                 'reference_code' => $referenceCode,
                 'error' => $e->getMessage(),
             ]);
+        }
+    }
+
+    /**
+     * Persist the live hold and scrub package.bonus_applied so cancel/refund
+     * fallbacks cannot re-read a released snapshot.
+     */
+    private function writeLiveBonus(int $userId, string $referenceCode, float $amount): void
+    {
+        $amount = round(max(0, $amount), 2);
+        $key = self::bonusCacheKey($userId, $referenceCode);
+        if ($amount > 0) {
+            Cache::put($key, $amount, now()->addHours(720));
+        } else {
+            Cache::forget($key);
+        }
+
+        $intent = $this->findIntent($referenceCode);
+        if ($intent) {
+            $attrs = ['bonus_applied' => $amount];
+            if (is_array($intent->package)) {
+                $package = $intent->package;
+                $package['bonus_applied'] = $amount;
+                $attrs['package'] = $package;
+            }
+            $intent->update($attrs);
+        }
+
+        $cached = Cache::get(self::pendingCheckoutCacheKey($referenceCode));
+        if (is_array($cached)) {
+            $cached['bonus_applied'] = $amount;
+            $ttl = $intent?->expires_at ? (int) now()->diffInSeconds($intent->expires_at, false) : 3600;
+            if ($ttl > 0) {
+                Cache::put(self::pendingCheckoutCacheKey($referenceCode), $cached, now()->addSeconds($ttl));
+            }
         }
     }
 
