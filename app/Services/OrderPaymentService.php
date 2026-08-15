@@ -63,12 +63,7 @@ class OrderPaymentService
             $newlyPaid = collect();
 
             foreach ($orders as $order) {
-                if (! $this->canMarkCardOrderPaid($order)) {
-                    continue;
-                }
-
-                // Keep publisher-visible pending status (scheduled date is in publication_mode).
-                $order->update([
+                $settled = $this->settleExistingCardOrder($order, [
                     'stripe_session_id' => $session->id ?? $order->stripe_session_id,
                     'stripe_payment_intent_id' => $session->payment_intent ?? $order->stripe_payment_intent_id,
                     'stripe_response' => method_exists($session, 'toArray')
@@ -78,8 +73,9 @@ class OrderPaymentService
                     'payment_status' => 'paid',
                     'status' => 'pending',
                 ]);
-
-                $newlyPaid->push($order->fresh('items'));
+                if ($settled) {
+                    $newlyPaid->push($settled);
+                }
             }
 
             if ($newlyPaid->isNotEmpty()) {
@@ -145,11 +141,7 @@ class OrderPaymentService
 
             $newlyPaid = collect();
             foreach ($orders as $order) {
-                if (! $this->canMarkCardOrderPaid($order)) {
-                    continue;
-                }
-
-                $order->update([
+                $settled = $this->settleExistingCardOrder($order, [
                     'stripe_payment_intent_id' => $intent->id ?? $order->stripe_payment_intent_id,
                     'stripe_response' => method_exists($intent, 'toArray')
                         ? json_encode($intent->toArray())
@@ -158,7 +150,9 @@ class OrderPaymentService
                     'payment_status' => 'paid',
                     'status' => 'pending',
                 ]);
-                $newlyPaid->push($order->fresh('items'));
+                if ($settled) {
+                    $newlyPaid->push($settled);
+                }
             }
 
             if ($newlyPaid->isNotEmpty()) {
@@ -1063,6 +1057,104 @@ class OrderPaymentService
         $this->evaluateSpendBudgetAfterPaidOrders($created);
 
         return $created;
+    }
+
+    /**
+     * @param  array<string, mixed>  $paidAttributes
+     */
+    private function settleExistingCardOrder(Order $order, array $paidAttributes): ?Order
+    {
+        if (! $this->canMarkCardOrderPaid($order)) {
+            return null;
+        }
+
+        $libraryState = $this->libraryContentStateForSettlement($order);
+        if ($libraryState !== 'ok') {
+            $order->update($paidAttributes);
+            $reason = $libraryState === 'taken'
+                ? 'Content Library article was already purchased on another checkout'
+                : 'Content Library article is no longer available for checkout';
+            app(OrderRefundService::class)->cancelAndRefund($order, $reason);
+            Log::warning('Refunded legacy card mark-paid for an unusable Content Library article', [
+                'order_id' => $order->id,
+                'reference_code' => $order->reference_code,
+                'library_state' => $libraryState,
+            ]);
+
+            return null;
+        }
+
+        $this->refreshOrderItemLibraryFields($order);
+        $order->update($paidAttributes);
+
+        return $order->fresh('items');
+    }
+
+    /**
+     * @return 'ok'|'missing'|'unready'|'taken'
+     */
+    private function libraryContentStateForSettlement(Order $order): string
+    {
+        $order->loadMissing('items');
+        foreach ($order->items as $item) {
+            $id = (int) ($item->content_submission_id ?? 0);
+            if ($id <= 0) {
+                if ($this->itemLooksLikeLibraryLine($item)) {
+                    return 'missing';
+                }
+
+                continue;
+            }
+
+            $submission = ContentSubmission::query()->whereKey($id)->lockForUpdate()->first();
+            if (! $submission) {
+                return 'missing';
+            }
+            if ($submission->isClaimedByAnotherOrder((int) $order->id)) {
+                return 'taken';
+            }
+            if (! $submission->isReadyToFulfill((int) $order->id)) {
+                return 'unready';
+            }
+        }
+
+        return 'ok';
+    }
+
+    private function itemLooksLikeLibraryLine(OrderItem $item): bool
+    {
+        return (int) ($item->content_submission_id ?? 0) > 0
+            || filled($item->content_path)
+            || filled($item->content_original_name);
+    }
+
+    private function refreshOrderItemLibraryFields(Order $order): void
+    {
+        $schema = app(CheckoutSchemaService::class);
+        $order->loadMissing('items');
+        foreach ($order->items as $item) {
+            $id = (int) ($item->content_submission_id ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $submission = ContentSubmission::query()->whereKey($id)->first();
+            if (! $submission) {
+                continue;
+            }
+            $fields = $schema->filterExistingColumns('order_items', [
+                'anchor_text' => $submission->anchor_text,
+                'target_url' => $submission->target_url,
+                'feature_image_url' => $submission->feature_image_url,
+                'content_disk' => $submission->disk,
+                'content_path' => $submission->path,
+                'content_original_name' => $submission->original_filename,
+                'content_mime' => $submission->mime,
+                'moderation_status' => $submission->moderation_status,
+            ]);
+            if ($fields !== []) {
+                $item->update($fields);
+            }
+        }
     }
 
     /**

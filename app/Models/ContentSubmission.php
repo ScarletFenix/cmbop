@@ -1155,6 +1155,30 @@ class ContentSubmission extends Model
         return $this->canBeOrdered() && $this->hasCheckoutReadyLinks();
     }
 
+    /**
+     * Pay/attach gate that still works after this order has claimed the row
+     * (canBeOrdered() is false once order_id is set).
+     */
+    public function isReadyToFulfill(?int $orderId = null): bool
+    {
+        if ($this->isClaimedByAnotherOrder($orderId)) {
+            return false;
+        }
+
+        if ($this->order_id === null) {
+            return $this->isReadyForCheckout();
+        }
+
+        return $this->moderation_status === self::STATUS_APPROVED
+            && filled($this->path)
+            && ! $this->isArchived()
+            && ($this->expires_at === null || $this->expires_at->isFuture())
+            && filled($this->country)
+            && filled($this->language)
+            && $this->imageRightsCoverContent()
+            && $this->hasCheckoutReadyLinks();
+    }
+
     public function deleteStoredFile(): void
     {
         if ($this->path && Storage::disk($this->disk ?: 'local')->exists($this->path)) {
