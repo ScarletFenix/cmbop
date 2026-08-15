@@ -5,7 +5,6 @@ namespace App\Services\ContentUpload;
 use App\Models\ContentModerationLog;
 use App\Models\ContentSubmission;
 use App\Models\User;
-use App\Services\ActivityLogger;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\Storage;
@@ -49,7 +48,7 @@ class AdminLibraryStaffActions
             ]);
         }
 
-        if ($submission->isExpired() && ! $submission->isInUse()) {
+        if ($submission->isUnusedExpired()) {
             throw ValidationException::withMessages([
                 'submission' => 'Expired unused articles are preview only. Ask the advertiser to upload a new file.',
             ]);
@@ -82,60 +81,13 @@ class AdminLibraryStaffActions
             ]);
         }
 
-        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
-        $report['admin_override'] = [
-            'at' => now()->toIso8601String(),
-            'by' => $admin->id,
-            'decision' => $decision,
-            'notes' => $notes,
-        ];
-        $report['summary'] = $decision === ContentSubmission::STATUS_APPROVED
-            ? 'Manually approved by staff: '.$notes
-            : 'Manually rejected by staff: '.$notes;
-
-        if ($decision === ContentSubmission::STATUS_APPROVED) {
-            $report['matched_terms'] = [];
-            $report['blocked_urls'] = [];
-            $checks = is_array($report['checks'] ?? null) ? $report['checks'] : [];
-            $report['checks'] = array_values(array_filter($checks, static function ($check) {
-                if (! is_array($check)) {
-                    return false;
-                }
-
-                return strtolower((string) ($check['status'] ?? '')) !== 'fail';
-            }));
-        }
-
-        $submission->forceFill([
-            'moderation_status' => $decision,
-            'evaluation_status' => $decision,
-            'evaluated_at' => now(),
-            'evaluation_report' => $report,
-        ])->save();
-
-        if ($decision === ContentSubmission::STATUS_APPROVED) {
-            $this->moderation->stampStaffApprovalOverride($submission, $admin, $notes);
-        } elseif ($submission->moderation_log_id) {
-            ContentModerationLog::query()
-                ->whereKey($submission->moderation_log_id)
-                ->update([
-                    'passed' => false,
-                    'status' => ContentModerationLog::STATUS_REJECTED,
-                    'admin_override' => true,
-                    'overridden_by' => $admin->id,
-                    'overridden_at' => now(),
-                    'admin_notes' => $notes,
-                ]);
-        }
-
-        $submission = $result['submission'] ?? $submission->fresh();
-        if (! $submission) {
+        $result = $this->moderation->applyStaffOverride($submission, $decision, $admin, $notes);
+        $fresh = $result['submission'] ?? null;
+        if (! ($result['ok'] ?? false) || ! $fresh) {
             throw ValidationException::withMessages([
                 'submission' => $result['message'] ?: 'Override failed.',
             ]);
         }
-
-        $fresh = $submission->fresh();
         $owner = $fresh?->user;
         if ($owner && $fresh) {
             try {

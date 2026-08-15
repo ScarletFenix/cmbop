@@ -1044,6 +1044,72 @@ class ContentLibraryImprovementsTest extends TestCase
         );
     }
 
+    public function test_expired_item_only_leftover_can_be_edited_and_replaced(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'expired-item-edit');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+        $submission->update([
+            'order_id' => null,
+            'order_item_id' => null,
+            'expires_at' => now()->subDay(),
+            'target_url' => null,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isExpired());
+        $this->assertFalse($fresh->isUnusedExpired());
+        $this->assertTrue($fresh->canEditArticle());
+
+        $html = '<p>Fixed expired leftover with a <a href="https://example.com/tools">complete link</a> for marketers.</p>'
+            .'<p>More compliant content about software tools and productivity for digital teams worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => 'Fixed Expired Leftover',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $leftover->id));
+
+        $path = sys_get_temp_dir().'/replace-expired-leftover-'.uniqid('', true).'.docx';
+        $this->makeDocxFile($path);
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-library.upload'), [
+                'file' => new UploadedFile(
+                    $path,
+                    'revised.docx',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    null,
+                    true
+                ),
+                'country' => 'us',
+                'language' => 'en',
+                'replace_id' => $submission->id,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_NONE,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+        @unlink($path);
+    }
+
     public function test_owned_leftover_missing_image_rights_is_needs_fix_not_in_progress(): void
     {
         $advertiser = $this->advertiser();

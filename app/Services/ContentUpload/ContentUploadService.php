@@ -121,7 +121,7 @@ class ContentUploadService
             return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Market required', 'message' => $marketError];
         }
 
-        if ($replace?->isExpired()) {
+        if ($replace?->isUnusedExpired()) {
             return [
                 'ok' => false,
                 'accepted' => false,
@@ -521,7 +521,7 @@ class ContentUploadService
             return ['ok' => false, 'approved' => false, 'message' => 'This article is already linked to an order and cannot be edited.'];
         }
 
-        if ($submission->isExpired()) {
+        if ($submission->isUnusedExpired()) {
             return ['ok' => false, 'approved' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'];
         }
 
