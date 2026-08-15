@@ -3931,13 +3931,10 @@ class CatalogController extends Controller
                     'status' => 'pending',
                 ]);
 
-            // Pay again settles leftover rows, not the abandoned Stripe-first
-            // package. Drop it so success-URL finalize cannot treat the new
-            // session as a stale package mismatch and skip mark-paid.
-            app(OrderPaymentService::class)->forgetPendingCheckoutKeepLeftoverHold(
-                $referenceCode,
-                (int) auth()->id()
-            );
+            // Pay again settles leftover rows at the full card total. Drop the
+            // package and fail snapshot — keeping bonus_applied made later
+            // reject/clawback treat the full-card pay as leftover promo.
+            app(OrderPaymentService::class)->forgetPendingCheckout($referenceCode);
 
             session()->put('pending_card_reference', $referenceCode);
 
