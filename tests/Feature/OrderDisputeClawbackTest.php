@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\CheckoutIntentService;
 use App\Services\Wallet\WalletLedgerService;
 use App\Support\EmailCatalog;
 use Database\Seeders\RolesTableSeeder;
@@ -810,6 +811,94 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertEqualsWithDelta(125.0, (float) $advWallet->balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $advWallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(105.0, $advWallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, $advWallet->lockedBonusBalance(), 0.01);
+    }
+
+    public function test_uphold_after_admin_mark_paid_restores_promo_as_spend_only(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $this->publisherWallet($publisher, 100);
+        $advWallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 20,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'debt_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ADMIN-CLAW-BONUS',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'price' => 80,
+            'publisher_price' => 70,
+            'platform_fee_amount' => 10,
+            'additional_price' => 0,
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $order->reference_code, 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('wallet_transactions', [
+            'wallet_id' => $advWallet->id,
+            'type' => WalletTransaction::TYPE_PURCHASE,
+            'reference' => $order->reference_code,
+            'bonus_amount' => 20,
+        ]);
+
+        $order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://clawback-blog.example/admin-mark-paid-live',
+            'live_url_submitted_at' => now()->subHour(),
+            'accepted_at' => now()->subHours(2),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'The live article was deleted two days after completion.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed 404. Admin mark-paid promo must stay spend-only.']
+        )->assertOk()->assertJson(['success' => true]);
+
+        $advWallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $advWallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $advWallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $advWallet->withdrawableBalance(), 0.01);
         $this->assertEqualsWithDelta(20.0, $advWallet->lockedBonusBalance(), 0.01);
     }
 
