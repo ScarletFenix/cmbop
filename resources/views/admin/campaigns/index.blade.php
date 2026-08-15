@@ -2,10 +2,8 @@
 
 @section('content')
 @php
-    $preselect = request('audience', 'advertisers');
-    if ($preselect === 'advertisers_never_checked_out') {
-        $preselect = 'advertisers_no_orders';
-    }
+    $preselect = \App\Services\AudienceInventoryService::canonicalAudienceKey((string) request('audience', 'advertisers'))
+        ?? 'advertisers';
     if (!in_array($preselect, \App\Services\AudienceInventoryService::audienceKeys(), true)) {
         $preselect = 'advertisers';
     }
@@ -122,6 +120,15 @@
                                     </option>
                                     <option value="advertisers_never_deposited" @selected(old('audience', $preselect) === 'advertisers_never_deposited')>
                                         Advertisers: never deposited ({{ $stats['advertisers_never_deposited'] ?? 0 }})
+                                    </option>
+                                    <option value="advertisers_paid_orders" @selected(old('audience', $preselect) === 'advertisers_paid_orders')>
+                                        Advertisers: paid customers ({{ $stats['advertisers_paid_orders'] ?? 0 }})
+                                    </option>
+                                    <option value="advertisers_deposited_no_orders" @selected(old('audience', $preselect) === 'advertisers_deposited_no_orders')>
+                                        Advertisers: deposited, no orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
+                                    </option>
+                                    <option value="publishers_no_active_sites" @selected(old('audience', $preselect) === 'publishers_no_active_sites')>
+                                        Publishers: no active sites ({{ $stats['publishers_no_active_sites'] ?? 0 }})
                                     </option>
                                     <option value="selected" @selected(old('audience', $preselect) === 'selected')>Select specific users…</option>
                                 </select>

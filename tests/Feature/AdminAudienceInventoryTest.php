@@ -1,0 +1,318 @@
+<?php
+
+namespace Tests\Feature;
+
+use App\Mail\AudienceCampaignMail;
+use App\Models\ActivityLog;
+use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
+use App\Models\EmailNotificationPreference;
+use App\Models\Order;
+use App\Models\Role;
+use App\Models\Site;
+use App\Models\User;
+use App\Services\AudienceInventoryService;
+use Database\Seeders\RolesTableSeeder;
+use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Tests\TestCase;
+
+class AdminAudienceInventoryTest extends TestCase
+{
+    use RefreshDatabase;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+        $this->seed(RolesTableSeeder::class);
+    }
+
+    private function makeUser(string $roleName, array $overrides = []): User
+    {
+        $role = Role::where('name', $roleName)->firstOrFail();
+        $user = User::factory()->create(array_merge([
+            'email_verified_at' => now(),
+            'active_role_id' => $role->id,
+        ], $overrides));
+        $user->roles()->attach($role->id);
+
+        return $user->fresh();
+    }
+
+    private function attachRole(User $user, string $roleName): void
+    {
+        $role = Role::where('name', $roleName)->firstOrFail();
+        $user->roles()->syncWithoutDetaching([$role->id]);
+    }
+
+    private function makeSite(User $publisher, array $overrides = []): Site
+    {
+        return Site::create(array_merge([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Inventory Site',
+            'site_url' => 'https://inventory-site.example',
+            'domain' => 'inventory-site.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 500,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Audience inventory test site description.',
+            'verified' => false,
+            'active' => false,
+        ], $overrides));
+    }
+
+    private function deposit(User $user, string $status): DepositRequest
+    {
+        return DepositRequest::create([
+            'user_id' => $user->id,
+            'reference_code' => (string) random_int(100000, 999999),
+            'amount' => 50,
+            'payment_method' => 'wise',
+            'status' => $status,
+        ]);
+    }
+
+    public function test_inventory_shows_all_and_verified_counts(): void
+    {
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+        $this->makeUser('advertiser', ['email_verified_at' => null]);
+
+        $stats = app(AudienceInventoryService::class)->stats();
+        $this->assertSame(2, $stats['advertisers']);
+        $this->assertSame(2, $stats['advertisers_all']);
+        $this->assertSame(1, $stats['advertisers_verified']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index'))
+            ->assertOk()
+            ->assertSee('emailable (verified)', false)
+            ->assertSee('Campaigns email verified users only', false);
+    }
+
+    public function test_search_treats_percent_as_literal(): void
+    {
+        $admin = $this->makeUser('admin');
+        $match = $this->makeUser('advertiser', ['name' => 'Offer 100% Club']);
+        $other = $this->makeUser('advertiser', ['name' => 'Offer 100 Club']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'q' => '100%']))
+            ->assertOk()
+            ->assertSee($match->email, false)
+            ->assertDontSee($other->email, false);
+    }
+
+    public function test_search_is_applied_to_export(): void
+    {
+        $admin = $this->makeUser('admin');
+        $match = $this->makeUser('advertiser', ['email' => 'keep-me@example.com']);
+        $other = $this->makeUser('advertiser', ['email' => 'skip-me@example.com']);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.audiences.export', ['audience' => 'advertisers', 'q' => 'keep-me']))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString($match->email, $csv);
+        $this->assertStringNotContainsString($other->email, $csv);
+        $this->assertStringStartsWith("\xEF\xBB\xBF", $csv);
+    }
+
+    public function test_both_tab_and_export_are_unique(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $dual = $this->makeUser('advertiser');
+        $this->attachRole($dual, 'publisher');
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'both']))
+            ->assertOk()
+            ->assertSee($advertiser->email, false)
+            ->assertSee($publisher->email, false)
+            ->assertSee($dual->email, false)
+            ->assertSee(route('admin.campaigns.index', ['audience' => 'both'], false), false);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.audiences.export', ['audience' => 'both']))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertSame(1, substr_count($csv, $dual->email));
+        $this->assertStringContainsString('both', $csv);
+    }
+
+    public function test_name_links_to_admin_user_profile(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index'))
+            ->assertOk()
+            ->assertSee(route('admin.users.index', ['user' => $advertiser->id], false), false);
+    }
+
+    public function test_paid_and_deposited_intersection_tabs(): void
+    {
+        $admin = $this->makeUser('admin');
+        $customer = $this->makeUser('advertiser');
+        Order::create([
+            'user_id' => $customer->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-CUST-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+
+        $fundedIdle = $this->makeUser('advertiser');
+        $this->deposit($fundedIdle, 'completed');
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'paid_orders']))
+            ->assertOk()
+            ->assertSee($customer->email, false)
+            ->assertDontSee($fundedIdle->email, false)
+            ->assertSee(route('admin.campaigns.index', ['audience' => 'advertisers_paid_orders'], false), false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'deposited_no_orders']))
+            ->assertOk()
+            ->assertSee($fundedIdle->email, false)
+            ->assertDontSee($customer->email, false);
+    }
+
+    public function test_no_active_sites_includes_draft_only_publishers(): void
+    {
+        $admin = $this->makeUser('admin');
+        $draftOnly = $this->makeUser('publisher');
+        $this->makeSite($draftOnly, ['active' => false, 'domain' => 'draft-only.example', 'site_url' => 'https://draft-only.example']);
+        $live = $this->makeUser('publisher');
+        $this->makeSite($live, ['active' => true, 'verified' => true, 'domain' => 'live-site.example', 'site_url' => 'https://live-site.example']);
+        $empty = $this->makeUser('publisher');
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'no_active_sites']))
+            ->assertOk()
+            ->assertSee($draftOnly->email, false)
+            ->assertSee($empty->email, false)
+            ->assertDontSee($live->email, false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'no_sites']))
+            ->assertOk()
+            ->assertSee($empty->email, false)
+            ->assertDontSee($draftOnly->email, false);
+    }
+
+    public function test_verified_and_country_filters(): void
+    {
+        $admin = $this->makeUser('admin');
+        $de = $this->makeUser('advertiser', ['country' => 'DE']);
+        $fr = $this->makeUser('advertiser', ['country' => 'FR']);
+        $unverified = $this->makeUser('advertiser', ['email_verified_at' => null, 'country' => 'DE']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'verified' => 'yes', 'country' => 'DE']))
+            ->assertOk()
+            ->assertSee($de->email, false)
+            ->assertDontSee($fr->email, false)
+            ->assertDontSee($unverified->email, false);
+    }
+
+    public function test_marketing_and_dual_role_filters(): void
+    {
+        $admin = $this->makeUser('admin');
+        $optedOut = $this->makeUser('advertiser');
+        EmailNotificationPreference::create([
+            'user_id' => $optedOut->id,
+            'preference_key' => 'marketing_emails',
+            'enabled' => false,
+        ]);
+        $dual = $this->makeUser('advertiser');
+        $this->attachRole($dual, 'publisher');
+        $plain = $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'marketing' => 'opted_in']))
+            ->assertOk()
+            ->assertSee($plain->email, false)
+            ->assertDontSee($optedOut->email, false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'exclude_dual_role' => 1]))
+            ->assertOk()
+            ->assertSee($plain->email, false)
+            ->assertDontSee($dual->email, false);
+    }
+
+    public function test_csv_sanitizes_formula_cells_and_logs_export(): void
+    {
+        $admin = $this->makeUser('admin');
+        $risky = $this->makeUser('advertiser', ['name' => '=1+1']);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.audiences.export', ['audience' => 'advertisers']))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString("'=1+1", $csv);
+        $this->assertStringContainsString($risky->email, $csv);
+
+        $this->assertTrue(
+            ActivityLog::query()->where('action', 'audience.exported')->exists()
+        );
+    }
+
+    public function test_empty_filters_show_clear_copy(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.audiences.index', ['tab' => 'advertisers', 'q' => 'nobody-matches-this']))
+            ->assertOk()
+            ->assertSee('No users match these filters', false);
+    }
+
+    public function test_campaign_send_accepts_new_audience_keys(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $target = $this->makeUser('advertiser');
+        $this->deposit($target, 'completed');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), [
+                'name' => 'Funded idle',
+                'subject' => 'Place your first order',
+                'body_html' => '<p>You already have wallet funds.</p>',
+                'audience' => 'advertisers_deposited_no_orders',
+                'cta_label' => 'Browse catalog',
+                'cta_url' => url('/advertiser/catalog'),
+                'respect_preferences' => false,
+            ])
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertSame('advertisers_deposited_no_orders', $campaign->audience);
+        $this->assertSame('Advertisers (deposited, no orders)', $campaign->audienceLabel());
+        $this->assertSame(1, $campaign->recipients_count);
+
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($target->email));
+    }
+}
