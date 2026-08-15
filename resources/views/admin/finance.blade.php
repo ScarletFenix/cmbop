@@ -298,12 +298,12 @@
                 <div class="col-6 col-lg">
                     <div class="text-muted small">GMV (completed paid)</div>
                     <div class="fs-5 fw-bold">{{ $euro($d['platform']['gmv_completed']) }}</div>
-                    <div class="small text-muted">What advertisers paid on completed orders</div>
+                    <div class="small text-muted">What advertisers paid on completed orders · Dated by completed date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Order platform fees</div>
                     <div class="fs-5 fw-bold text-success">{{ $euro($d['platform']['order_fees']) }}</div>
-                    <div class="small text-muted">Your real product revenue</div>
+                    <div class="small text-muted">Your real product revenue · Dated by completed date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Withdrawal fees</div>
@@ -311,9 +311,9 @@
                     <div class="small text-muted">Config {{ rtrim(rtrim(number_format($d['platform']['withdrawal_fee_percent'], 2), '0'), '.') }}%</div>
                 </div>
                 <div class="col-6 col-lg">
-                    <div class="text-muted small">Refunds</div>
+                    <div class="text-muted small">Refunds (order totals)</div>
                     <div class="fs-5 fw-bold text-danger">{{ $euro($d['platform']['refunds']) }}</div>
-                    <div class="small text-muted">{{ $d['platform']['refund_orders_count'] }} orders · wallet refunds {{ $euro($d['platform']['wallet_refunds']) }}</div>
+                    <div class="small text-muted">{{ $d['platform']['refund_orders_count'] }} orders · fee reversals {{ $euro($d['platform']['refunded_order_fees'] ?? 0) }} · wallet refunds {{ $euro($d['platform']['wallet_refunds']) }} · Dated by refund date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Bonuses issued</div>
@@ -321,9 +321,9 @@
                     <div class="small text-muted">Promo cost (not cash)</div>
                 </div>
                 <div class="col-6 col-lg">
-                    <div class="text-muted small">Est. margin</div>
+                    <div class="text-muted small">Est. fee margin</div>
                     <div class="fs-5 fw-bold {{ $d['platform']['margin'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $euro($d['platform']['margin']) }}</div>
-                    <div class="small text-muted">Fees − refunds − bonuses<br><span class="fst-italic">Stripe fees not tracked</span></div>
+                    <div class="small text-muted">Fees − fee reversals − bonuses<br><span class="fst-italic">Stripe fees not tracked</span></div>
                 </div>
             </div>
         </div>
@@ -340,7 +340,7 @@
                             <span class="text-muted small">Deposits completed</span>
                             <strong>{{ $euro($d['money_in']['deposits_completed']['amount']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_in']['deposits_completed']['count'] }} requests · Stripe {{ $euro($d['money_in']['deposits_completed']['stripe']) }} · Manual {{ $euro($d['money_in']['deposits_completed']['manual']) }}</div>
+                        <div class="small text-muted">{{ $d['money_in']['deposits_completed']['count'] }} requests · Stripe {{ $euro($d['money_in']['deposits_completed']['stripe']) }} · Manual {{ $euro($d['money_in']['deposits_completed']['manual']) }} · Dated by approved date</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
@@ -351,6 +351,7 @@
                             Card {{ $euro($d['money_in']['orders_paid']['stripe_card']) }} ·
                             Wallet {{ $euro($d['money_in']['orders_paid']['wallet']) }} ·
                             Manual {{ $euro($d['money_in']['orders_paid']['manual']) }}
+                            · Dated by paid date
                         </div>
                     </div>
                     <div>
@@ -375,14 +376,14 @@
                             <span class="text-muted small">Earnings credited</span>
                             <strong>{{ $euro($d['money_out']['earnings_credited']['amount']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_out']['earnings_credited']['count'] }} line items · ledger transfer-in {{ $euro($d['money_out']['earnings_credited']['ledger_transfer_in']) }}</div>
+                        <div class="small text-muted">{{ $d['money_out']['earnings_credited']['count'] }} line items · ledger transfer-in {{ $euro($d['money_out']['earnings_credited']['ledger_transfer_in']) }} · Dated by completed date</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted small">Withdrawals paid (net)</span>
                             <strong>{{ $euro($d['money_out']['withdrawals_paid']['net']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_out']['withdrawals_paid']['count'] }} payouts · fees kept {{ $euro($d['money_out']['withdrawals_paid']['fees']) }}</div>
+                        <div class="small text-muted">{{ $d['money_out']['withdrawals_paid']['count'] }} payouts · fees kept {{ $euro($d['money_out']['withdrawals_paid']['fees']) }} · Dated by processed date</div>
                     </div>
                     <div>
                         <div class="d-flex justify-content-between">
