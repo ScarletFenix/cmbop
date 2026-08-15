@@ -74,6 +74,16 @@ class AdminActivityLogTest extends TestCase
         $this->makeLog(['description' => 'Kept when dates are bad']);
 
         $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', [
+                'user' => ['injected'],
+                'action' => ['login'],
+                'from' => ['2026-01-01'],
+                'to' => ['2026-12-31'],
+            ]))
+            ->assertOk()
+            ->assertSee('Use a valid From date.', false);
+
+        $this->actingAs($this->admin)
             ->get(route('admin.activity-logs.index', ['from' => 'not-a-date', 'to' => 'also-bad']))
             ->assertOk()
             ->assertSee('Use a valid From date.', false)
