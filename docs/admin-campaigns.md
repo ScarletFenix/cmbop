@@ -84,6 +84,7 @@ or marketing, even if that staff account also has a marketplace role.
    instead of counting as a fake send. A delivered log still wins when a
    pending Email Center row exists for the same key — skipping that attach
    let expire mark a real send stale, and a later retry doubled it.
+   A delivered log is attached even when the queued row is younger than the stall window — waiting let reclaim dispatch a second send.
    Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
