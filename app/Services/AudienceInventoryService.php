@@ -49,6 +49,126 @@ class AudienceInventoryService
         ];
     }
 
+    /**
+     * Inventory tab slug => canonical audience key (aliases included).
+     *
+     * @return array<string, string>
+     */
+    public static function inventoryTabs(): array
+    {
+        return [
+            'advertisers' => self::AUDIENCE_ADVERTISERS,
+            'publishers' => self::AUDIENCE_PUBLISHERS,
+            'both' => self::AUDIENCE_BOTH,
+            'no_orders' => self::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            'never_checked_out' => self::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            'no_paid_orders' => self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
+            'no_sites' => self::AUDIENCE_PUBLISHERS_NO_SITES,
+            'never_deposited' => self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+        ];
+    }
+
+    /**
+     * Map a tab slug, legacy alias, or already-canonical key to a campaign key.
+     * Unknown values become advertisers (same as the old controller default).
+     */
+    public static function normalizeAudienceKey(string $raw): string
+    {
+        return self::canonicalAudienceKey($raw) ?? self::AUDIENCE_ADVERTISERS;
+    }
+
+    /**
+     * @return string|null Canonical key, or null when $raw is not a known segment
+     */
+    public static function canonicalAudienceKey(string $raw): ?string
+    {
+        $raw = trim($raw);
+        if ($raw === '') {
+            return null;
+        }
+
+        if ($raw === 'advertiser') {
+            return self::AUDIENCE_ADVERTISERS;
+        }
+        if ($raw === 'publisher') {
+            return self::AUDIENCE_PUBLISHERS;
+        }
+
+        $tabs = self::inventoryTabs();
+        if (isset($tabs[$raw])) {
+            return $tabs[$raw];
+        }
+
+        if ($raw === self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT) {
+            return self::AUDIENCE_ADVERTISERS_NO_ORDERS;
+        }
+
+        if (in_array($raw, self::audienceKeys(), true)) {
+            return $raw;
+        }
+
+        return null;
+    }
+
+    public static function isListableKey(string $key): bool
+    {
+        $canonical = self::canonicalAudienceKey($key);
+
+        return $canonical !== null && $canonical !== self::AUDIENCE_SELECTED;
+    }
+
+    /**
+     * Canonical inventory tab for a key (never_checked_out collapses to no_orders).
+     */
+    public static function tabForAudienceKey(string $key): string
+    {
+        $canonical = self::normalizeAudienceKey($key);
+
+        foreach (self::inventoryTabs() as $tab => $audienceKey) {
+            if ($audienceKey === $canonical && $tab !== 'never_checked_out') {
+                return $tab;
+            }
+        }
+
+        return 'advertisers';
+    }
+
+    public static function label(?string $audience): string
+    {
+        if ($audience === null || $audience === '') {
+            return '';
+        }
+
+        $key = self::canonicalAudienceKey($audience) ?? $audience;
+
+        return match ($key) {
+            self::AUDIENCE_ADVERTISERS => 'Advertisers',
+            self::AUDIENCE_PUBLISHERS => 'Publishers',
+            self::AUDIENCE_BOTH => 'Advertisers + Publishers',
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => 'Advertisers (never checked out)',
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => 'Advertisers (no paid orders)',
+            self::AUDIENCE_PUBLISHERS_NO_SITES => 'Publishers (no sites)',
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Advertisers (never deposited)',
+            self::AUDIENCE_SELECTED => 'Selected users',
+            default => ucfirst($audience),
+        };
+    }
+
+    public static function exportLabel(string $tabOrKey): string
+    {
+        $key = self::canonicalAudienceKey($tabOrKey) ?? $tabOrKey;
+
+        return match ($key) {
+            self::AUDIENCE_PUBLISHERS => 'Publishers',
+            self::AUDIENCE_BOTH => 'Advertisers + Publishers',
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => 'Never checked out',
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => 'No paid orders',
+            self::AUDIENCE_PUBLISHERS_NO_SITES => 'No sites',
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => 'Never deposited',
+            default => 'Advertisers',
+        };
+    }
+
     public function advertiserCount(bool $includeUnverified = true): int
     {
         return $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->count();

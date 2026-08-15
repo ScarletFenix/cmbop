@@ -2,10 +2,8 @@
 
 @section('content')
 @php
-    $preselect = request('audience', 'advertisers');
-    if ($preselect === 'advertisers_never_checked_out') {
-        $preselect = 'advertisers_no_orders';
-    }
+    $preselect = \App\Services\AudienceInventoryService::canonicalAudienceKey((string) request('audience', 'advertisers'))
+        ?? 'advertisers';
     if (!in_array($preselect, \App\Services\AudienceInventoryService::audienceKeys(), true)) {
         $preselect = 'advertisers';
     }

@@ -140,14 +140,7 @@
             </form>
             <div class="d-flex gap-2">
                 @php
-                    $exportLabel = match ($tab) {
-                        'publishers' => 'Publishers',
-                        'no_orders' => 'Never checked out',
-                        'no_paid_orders' => 'No paid orders',
-                        'no_sites' => 'No sites',
-                        'never_deposited' => 'Never deposited',
-                        default => 'Advertisers',
-                    };
+                    $exportLabel = \App\Services\AudienceInventoryService::exportLabel($tab);
                 @endphp
                 <a href="{{ route('admin.audiences.export', ['audience' => $tab]) }}" class="btn btn-sm btn-outline-success">
                     <i class="fa fa-download me-1"></i> Download {{ $exportLabel }} CSV
