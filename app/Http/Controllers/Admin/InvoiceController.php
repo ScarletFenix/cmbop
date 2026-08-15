@@ -18,8 +18,8 @@ class InvoiceController extends Controller
     {
         $query = Invoice::query()->with(['user:id,name,email', 'order:id,order_number']);
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('order_number', 'like', "%{$search}%")
@@ -84,6 +84,7 @@ class InvoiceController extends Controller
         return view('admin.invoices.index', [
             'invoices' => $invoices,
             'stats' => $stats,
+            'filterSearch' => $search,
             'filterFrom' => $from?->toDateString(),
             'filterTo' => $to?->toDateString(),
             'currencySymbol' => (string) config('billing.currency_symbol', '€'),
@@ -101,16 +102,9 @@ class InvoiceController extends Controller
             'events' => fn ($q) => $q->latest()->limit(30),
         ]);
 
-        $depositId = (int) data_get($invoice->meta, 'deposit_request_id');
-        $withdrawalId = (int) data_get($invoice->meta, 'withdrawal_id');
-        if ($withdrawalId <= 0 && preg_match('/^WD-(\d+)$/', (string) $invoice->reference_code, $matches)) {
-            $withdrawalId = (int) $matches[1];
-        }
-
         return view('admin.invoices.show', [
             'invoice' => $invoice,
-            'depositId' => $depositId > 0 ? $depositId : null,
-            'withdrawalId' => $withdrawalId > 0 ? $withdrawalId : null,
+            'relatedUrl' => $invoice->relatedAdminUrl(),
             'currencySymbol' => (string) config('billing.currency_symbol', '€'),
         ]);
     }
@@ -254,11 +248,11 @@ class InvoiceController extends Controller
 
     private function parseDate(mixed $value): ?Carbon
     {
-        if ($value === null || $value === '') {
+        if (! is_string($value) || $value === '') {
             return null;
         }
 
-        $raw = trim((string) $value);
+        $raw = trim($value);
         if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
             return null;
         }

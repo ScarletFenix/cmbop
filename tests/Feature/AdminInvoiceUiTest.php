@@ -291,7 +291,7 @@ class AdminInvoiceUiTest extends TestCase
             ->assertOk()
             ->assertSee('DEP-UI-1', false)
             ->assertSee('Wallet top-up', false)
-            ->assertSee(route('admin.deposits.show', 77), false)
+            ->assertSee(route('admin.deposits', ['search' => 'DEP-UI-1']), false)
             ->assertDontSee('Cancel invoice', false);
     }
 }

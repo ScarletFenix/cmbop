@@ -493,9 +493,27 @@
                     <p class="text-muted small mb-3">
                         To mark paid, failed, or refunded, use the Order Payments tools. This screen is inspection-only.
                     </p>
-                    <a href="{{ $paymentsUrl }}" class="btn btn-primary btn-sm">
-                        <i class="fa fa-money-bill me-1"></i> Open Order Payments
-                    </a>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ $paymentsUrl }}" class="btn btn-primary btn-sm">
+                            <i class="fa fa-money-bill me-1"></i> Open Order Payments
+                        </a>
+                        <a href="{{ route('admin.invoices.index', ['search' => $order->order_number]) }}" class="btn btn-outline-secondary btn-sm">
+                            <i class="fa fa-file-invoice-dollar me-1"></i> Search invoices
+                        </a>
+                    </div>
+                    @if($order->invoices->isNotEmpty())
+                        <div class="mt-3">
+                            <div class="small text-muted mb-2">Billing documents</div>
+                            <ul class="list-unstyled mb-0">
+                                @foreach($order->invoices as $doc)
+                                    <li class="mb-1">
+                                        <a href="{{ route('admin.invoices.show', $doc) }}">{{ $doc->invoice_number }}</a>
+                                        <span class="text-muted">· {{ $doc->typeLabel() }}</span>
+                                    </li>
+                                @endforeach
+                            </ul>
+                        </div>
+                    @endif
                 </div>
             </div>
         </div>

@@ -64,7 +64,7 @@
         <div class="card-body">
             <form method="GET" class="row g-3 align-items-end">
                 <div class="col-md-4">
-                    <x-slb-search-field name="search" id="adminInvoicesSearch" :value="request('search')" placeholder="Invoice, customer, order, email…" />
+                    <x-slb-search-field name="search" id="adminInvoicesSearch" :value="$filterSearch ?? ''" placeholder="Invoice, customer, order, email…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted mb-1">Status</label>
@@ -89,11 +89,11 @@
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted mb-1">From</label>
-                    <input type="date" name="from" value="{{ $filterFrom ?? request('from') }}" class="form-control form-control-sm">
+                    <input type="date" name="from" value="{{ $filterFrom }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted mb-1">To</label>
-                    <input type="date" name="to" value="{{ $filterTo ?? request('to') }}" class="form-control form-control-sm">
+                    <input type="date" name="to" value="{{ $filterTo }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-12 d-flex gap-2">
                     <button class="btn btn-sm btn-primary">Filter</button>
@@ -141,8 +141,8 @@
                                 <div class="text-muted">{{ $invoice->customer_email }}</div>
                             </td>
                             <td class="small">
-                                @if($invoice->order_id)
-                                    <a href="{{ route('admin.orders.show', $invoice->order_id) }}" class="admin-id-clamp" title="{{ $refTitle }}">{{ $invoice->referenceLabel() }}</a>
+                                @if($invoice->relatedAdminUrl())
+                                    <a href="{{ $invoice->relatedAdminUrl() }}" class="admin-id-clamp" title="{{ $refTitle }}">{{ $invoice->referenceLabel() }}</a>
                                 @else
                                     <span class="admin-id-clamp" title="{{ $refTitle }}">{{ $invoice->referenceLabel() }}</span>
                                 @endif
