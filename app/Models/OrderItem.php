@@ -134,6 +134,39 @@ class OrderItem extends Model
      * Upheld dispute clawback already refunded this line. It must not keep
      * claiming the Content Library article after order_id is released.
      */
+    /**
+     * Lines still earning fees/payout: not clawed, or on a fully refunded
+     * sale (those fees are recognized then reversed separately).
+     */
+    public function scopeRecognizedForFinance($query)
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return $query;
+        }
+
+        return $query->where(function ($q) {
+            $q->whereHas('order', fn ($order) => $order->where('payment_status', 'refunded'))
+                ->orWhereDoesntHave('disputes', function ($disputes) {
+                    $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+                });
+        });
+    }
+
+    /**
+     * Clawed lines on a sale that is still paid (partial dispute).
+     */
+    public function scopeClawedBackOnPaidSale($query)
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'))
+            ->whereHas('disputes', function ($disputes) {
+                $disputes->where('status', OrderItemDispute::STATUS_UPHELD);
+            });
+    }
+
     public function isClawedBack(): bool
     {
         if (! OrderItemDispute::tableAvailable()) {

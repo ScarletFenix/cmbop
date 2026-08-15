@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\SiteFeaturePurchase;
@@ -468,6 +469,7 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString('unfulfilled_card_credits', $csv);
         $this->assertStringContainsString('stripe_card_collected', $csv);
         $this->assertStringContainsString('site_feature_stripe', $csv);
+        $this->assertStringContainsString('failed_external_collected', $csv);
     }
 
     public function test_billing_config_exposes_withdrawal_fee_percent(): void
@@ -611,6 +613,114 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(115.0, $overview['platform']['refunds']);
         $this->assertEquals(0.0, $overview['platform']['margin']);
         $this->assertEquals(115.0, $overview['cash_split']['cash_in_bank']);
+    }
+
+    public function test_partial_clawback_drops_clawed_line_from_earnings_and_reverses_its_fee(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher);
+        $order->update(['subtotal' => 230, 'total_amount' => 230]);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Second Fee Site',
+            'site_url' => 'https://second-fee-site.test',
+            'domain' => 'second-fee-'.uniqid().'.test',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 100,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Second line for partial clawback finance test.',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $clawed = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article-2',
+            'price' => 115,
+            'additional_price' => 0,
+            'publisher_price' => 100,
+            'platform_fee_percent' => 15,
+            'platform_fee_amount' => 15,
+        ]);
+
+        OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $clawed->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => now(),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(230.0, $overview['money_in']['orders_paid']['gmv']);
+        $this->assertEquals(230.0, $overview['cash_split']['cash_in_bank']);
+        $this->assertEquals(100.0, $overview['money_out']['earnings_credited']['amount']);
+        $this->assertEquals(15.0, $overview['platform']['order_fees']);
+        $this->assertEquals(15.0, $overview['platform']['refunded_order_fees']);
+        $this->assertEquals(115.0, $overview['platform']['refunds']);
+        $this->assertEquals(0.0, $overview['platform']['margin']);
+    }
+
+    public function test_failed_after_paid_card_capture_still_counts_as_cash_in(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $advRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => $advRole->id,
+            'balance' => 80,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-FIN-FAILED-CARD',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+            'paid_at' => null,
+        ]);
+
+        app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            80,
+            0,
+            $order,
+            $order->order_number
+        );
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(0.0, $overview['money_in']['orders_paid']['gmv']);
+        $this->assertEquals(0.0, $overview['money_in']['stripe_card_collected']);
+        $this->assertEquals(80.0, $overview['money_in']['failed_external_collected']);
+        $this->assertEquals(80.0, $overview['cash_split']['cash_in_bank']);
+        $this->assertEquals(80.0, $overview['platform']['refunds']);
     }
 
     public function test_null_paid_at_does_not_enter_every_period(): void
