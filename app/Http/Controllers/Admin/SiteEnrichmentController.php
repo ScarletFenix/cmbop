@@ -271,15 +271,18 @@ class SiteEnrichmentController extends Controller
             return back()->withErrors(['metrics_manual' => (string) data_get($denied->getData(true), 'message', 'Not allowed.')]);
         }
 
+        $alreadyUnlocked = ! (bool) $site->metrics_manual;
         $site->forceFill(['metrics_manual' => false])->save();
 
-        ActivityLogger::log(
-            'site.metrics_api_unlocked',
-            auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
-            $site,
-            [],
-            $site->site_name
-        );
+        if (! $alreadyUnlocked) {
+            ActivityLogger::log(
+                'site.metrics_api_unlocked',
+                auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
+                $site,
+                [],
+                $site->site_name
+            );
+        }
 
         $message = 'API overwrite allowed. Queue Enrich to fetch live metrics.';
 

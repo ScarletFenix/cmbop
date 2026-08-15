@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
+use App\Support\AdminActivityDisplay;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Carbon;
@@ -352,6 +353,73 @@ class AdminActivityLogTest extends TestCase
         $this->assertStringContainsString($dossier, $html);
         $this->assertStringNotContainsString(route('admin.deposits.show', $deposit->id), $html);
         $this->assertStringNotContainsString(route('admin.withdrawals.show', $withdrawal->id), $html);
+    }
+
+    public function test_deposit_with_missing_user_links_to_deposits_list_not_a_404_dossier(): void
+    {
+        $log = $this->makeLog([
+            'action' => 'deposit.approved',
+            'description' => 'Approved an orphan deposit',
+            'subject_type' => DepositRequest::class,
+            'subject_id' => 42,
+            'subject_label' => 'Deposit #42',
+        ]);
+
+        $url = AdminActivityDisplay::subjectUrl($log, [
+            'existingDepositIds' => [42 => 999999],
+            'existingUserIds' => [],
+        ]);
+
+        $this->assertSame(route('admin.deposits'), $url);
+        $this->assertNotSame(route('admin.finance.user', 999999), $url);
+        $this->assertNotSame(route('admin.deposits.show', 42), $url);
+    }
+
+    public function test_regranting_marketing_does_not_write_another_grant_row(): void
+    {
+        $marketerRole = Role::where('name', 'marketing')->firstOrFail();
+        $member = User::factory()->create(['email_verified_at' => now()]);
+        $member->roles()->attach($marketerRole->id);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.users.updateRoles', $member->id), [
+                'marketing' => true,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(0, ActivityLog::query()->where('action', 'user.marketing_granted')->count());
+    }
+
+    public function test_retired_catalog_pace_code_filters_with_the_live_action(): void
+    {
+        $this->makeLog([
+            'action' => 'catalog_activity.exempt_toggled',
+            'description' => 'Granted a live pace exemption',
+            'subject_label' => 'Live Exempt User',
+        ]);
+        $this->makeLog([
+            'action' => 'catalog_pace_exempted',
+            'description' => 'Granted a legacy pace exemption',
+            'subject_label' => 'Legacy Exempt User',
+        ]);
+        $this->makeLog([
+            'action' => 'site.approved',
+            'description' => 'Unrelated approval',
+            'subject_label' => 'Other Site',
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', ['action' => 'catalog_pace_exempted']))
+            ->assertOk()
+            ->assertSee('Live Exempt User', false)
+            ->assertSee('Legacy Exempt User', false)
+            ->assertDontSee('Other Site', false)
+            ->getContent();
+
+        $this->assertSame(1, substr_count($html, 'value="catalog_activity.exempt_toggled"'));
+        $this->assertStringNotContainsString('value="catalog_pace_exempted"', $html);
+        $this->assertStringContainsString('Toggled catalog pace exemption (2)', $html);
     }
 
     public function test_search_activate_does_not_match_deactivated(): void

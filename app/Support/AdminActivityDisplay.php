@@ -110,16 +110,27 @@ class AdminActivityDisplay
             }
         }
 
+        $depositUsers = self::existingUserMap(DepositRequest::class, $buckets['deposit']);
+        $withdrawalUsers = self::existingUserMap(Withdrawal::class, $buckets['withdrawal']);
+        $walletUsers = self::existingUserMap(Wallet::class, $buckets['wallet']);
+        foreach ([$depositUsers, $withdrawalUsers, $walletUsers] as $map) {
+            foreach ($map as $userId) {
+                if ((int) $userId > 0) {
+                    $buckets['user'][(int) $userId] = (int) $userId;
+                }
+            }
+        }
+
         return [
             'existingSiteIds' => self::existingKeys(Site::class, $buckets['site']),
             'existingBulkIds' => self::existingKeys(BulkSiteRequest::class, $buckets['bulk']),
             'existingUserIds' => self::existingKeys(User::class, $buckets['user']),
             'existingOrderIds' => self::existingKeys(Order::class, $buckets['order']),
-            'existingDepositIds' => self::existingUserMap(DepositRequest::class, $buckets['deposit']),
-            'existingWithdrawalIds' => self::existingUserMap(Withdrawal::class, $buckets['withdrawal']),
+            'existingDepositIds' => $depositUsers,
+            'existingWithdrawalIds' => $withdrawalUsers,
             'existingInvoiceIds' => self::existingKeys(Invoice::class, $buckets['invoice']),
             'existingBlogIds' => self::existingKeys(Blog::class, $buckets['blog']),
-            'existingWalletIds' => self::existingUserMap(Wallet::class, $buckets['wallet']),
+            'existingWalletIds' => $walletUsers,
             'existingAnnouncementIds' => self::existingKeys(SiteAnnouncement::class, $buckets['announcement']),
             'existingBannerIds' => self::existingKeys(AdBanner::class, $buckets['banner']),
             'existingSubmissionIds' => self::existingKeys(ContentSubmission::class, $buckets['submission']),
@@ -358,10 +369,11 @@ class AdminActivityDisplay
         }
 
         $userId = (int) $lookup[$key][$id];
+        if ($userId > 0 && isset($lookup['existingUserIds'][$userId])) {
+            return route('admin.finance.user', $userId);
+        }
 
-        return $userId > 0
-            ? route('admin.finance.user', $userId)
-            : route($fallbackRoute);
+        return route($fallbackRoute);
     }
 
     /**
@@ -390,9 +402,7 @@ class AdminActivityDisplay
             Blog::class => isset($lookup['existingBlogIds'][$id])
                 ? route('admin.blogs.edit', $id)
                 : null,
-            Wallet::class => ($lookup['existingWalletIds'][$id] ?? 0) > 0
-                ? route('admin.finance.user', $lookup['existingWalletIds'][$id])
-                : null,
+            Wallet::class => self::moneySubjectUrl($lookup, 'existingWalletIds', $id, 'admin.finance'),
             SiteAnnouncement::class => isset($lookup['existingAnnouncementIds'][$id])
                 ? route('admin.promotions.announcements.edit', $id)
                 : null,

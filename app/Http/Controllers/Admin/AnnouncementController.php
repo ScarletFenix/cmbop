@@ -132,8 +132,11 @@ class AnnouncementController extends Controller
             $data['version'] = ((int) $announcement->version ?: 1) + 1;
         }
 
+        $resetDismissals = $request->boolean('reset_dismissals');
         $announcement->update($data);
-        $this->log('announcement.updated', $announcement, 'updated announcement');
+        if ($announcement->wasChanged() || $resetDismissals) {
+            $this->log('announcement.updated', $announcement, 'updated announcement');
+        }
 
         return redirect()
             ->route(staff_route_prefix().'promotions.announcements.index')

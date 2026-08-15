@@ -31,15 +31,20 @@ class ActivityLogController extends Controller
             ->groupBy('action')
             ->pluck('aggregate', 'action');
 
-        if ($meta['selectedAction'] !== '') {
-            $query->where('action', $meta['selectedAction']);
-        }
+        $this->applySelectedAction($query, $meta['selectedAction']);
 
         $logs = $query->latest('id')->paginate(25)->withQueryString();
 
         if ($request->integer('page') > 1 && $logs->total() > 0 && $logs->count() === 0) {
             return redirect()->to($logs->url(max(1, $logs->lastPage())));
         }
+
+        $collapsedCounts = [];
+        foreach ($actionCounts as $code => $total) {
+            $canonical = activity_action_canonical((string) $code);
+            $collapsedCounts[$canonical] = ($collapsedCounts[$canonical] ?? 0) + (int) $total;
+        }
+        $actionCounts = collect($collapsedCounts);
 
         $actions = array_keys(activity_action_labels());
         foreach ($actionCounts->keys() as $code) {
@@ -73,9 +78,7 @@ class ActivityLogController extends Controller
                 ->with('error', implode(' ', $meta['dateErrors']));
         }
 
-        if ($meta['selectedAction'] !== '') {
-            $query->where('action', $meta['selectedAction']);
-        }
+        $this->applySelectedAction($query, $meta['selectedAction']);
 
         $limit = $this->exportLimit();
         if ((clone $query)->count() > $limit) {
@@ -182,6 +185,9 @@ class ActivityLogController extends Controller
         if ($selectedAction !== '' && ! preg_match('/^[a-z0-9_.]+$/', $selectedAction)) {
             $selectedAction = '';
         }
+        if ($selectedAction !== '') {
+            $selectedAction = activity_action_canonical($selectedAction);
+        }
 
         $filtersActive = $term !== ''
             || $userId > 0
@@ -200,6 +206,26 @@ class ActivityLogController extends Controller
                 'selectedRole' => $selectedRole,
             ],
         ];
+    }
+
+    private function applySelectedAction(Builder $query, string $selectedAction): void
+    {
+        if ($selectedAction === '') {
+            return;
+        }
+
+        $codes = activity_action_equivalent_codes($selectedAction);
+        if ($codes === []) {
+            return;
+        }
+
+        if (count($codes) === 1) {
+            $query->where('action', $codes[0]);
+
+            return;
+        }
+
+        $query->whereIn('action', $codes);
     }
 
     private function exportLimit(): int

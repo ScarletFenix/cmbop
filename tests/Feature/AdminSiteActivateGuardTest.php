@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Role;
@@ -263,6 +264,16 @@ class AdminSiteActivateGuardTest extends TestCase
         $this->assertTrue((bool) $fresh->verified);
         $this->assertTrue($fresh->isCatalogVisible());
         $this->assertNull($fresh->onboarding_status);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.activated')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.approved')->count());
     }
 
     public function test_marketer_list_allows_activate_for_unverified_review_site(): void

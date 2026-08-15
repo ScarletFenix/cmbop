@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Jobs\EnrichSiteJob;
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -515,7 +516,15 @@ class SiteEnrichmentTest extends TestCase
         $site->refresh();
         $this->assertFalse((bool) $site->metrics_manual);
         $this->assertSame(40, $site->dr);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.metrics_api_unlocked')->count());
         Queue::assertNothingPushed();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.allow-api-metrics', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.metrics_api_unlocked')->count());
     }
 
     public function test_site_edit_unlock_is_not_nested_inside_the_update_form(): void

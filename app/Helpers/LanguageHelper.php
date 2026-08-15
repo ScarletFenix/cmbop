@@ -610,13 +610,58 @@ if (! function_exists('activity_action_labels')) {
     }
 }
 
+if (! function_exists('activity_action_aliases')) {
+    /**
+     * Retired writer codes that must still filter and label with the live code.
+     *
+     * @return array<string, string>
+     */
+    function activity_action_aliases(): array
+    {
+        return [
+            'catalog_pace_exempted' => 'catalog_activity.exempt_toggled',
+        ];
+    }
+}
+
+if (! function_exists('activity_action_canonical')) {
+    function activity_action_canonical(?string $action): string
+    {
+        $action = (string) $action;
+
+        return activity_action_aliases()[$action] ?? $action;
+    }
+}
+
+if (! function_exists('activity_action_equivalent_codes')) {
+    /**
+     * @return list<string>
+     */
+    function activity_action_equivalent_codes(?string $action): array
+    {
+        $canonical = activity_action_canonical($action);
+        if ($canonical === '') {
+            return [];
+        }
+
+        $codes = [$canonical];
+        foreach (activity_action_aliases() as $alias => $target) {
+            if ($target === $canonical) {
+                $codes[] = $alias;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+}
+
 if (! function_exists('activity_action_label')) {
     /**
      * Human-readable title for an admin activity action code.
      */
     function activity_action_label(?string $action): string
     {
-        $action = (string) $action;
+        $action = activity_action_canonical($action);
         $labels = activity_action_labels();
         if (isset($labels[$action])) {
             return $labels[$action];
@@ -656,11 +701,23 @@ if (! function_exists('activity_action_actions_matching')) {
                 || preg_match($pattern, $codeRaw)
                 || preg_match($pattern, $codeWords)
             ) {
-                $matched[] = $code;
+                foreach (activity_action_equivalent_codes($code) as $equiv) {
+                    $matched[] = $equiv;
+                }
             }
         }
 
-        return $matched;
+        foreach (activity_action_aliases() as $alias => $canonical) {
+            $aliasRaw = strtolower((string) $alias);
+            $aliasWords = str_replace(['.', '_'], ' ', $aliasRaw);
+            if (preg_match($pattern, $aliasRaw) || preg_match($pattern, $aliasWords)) {
+                foreach (activity_action_equivalent_codes($canonical) as $equiv) {
+                    $matched[] = $equiv;
+                }
+            }
+        }
+
+        return array_values(array_unique($matched));
     }
 }
 
