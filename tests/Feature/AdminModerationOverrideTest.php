@@ -1272,6 +1272,26 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 
+    public function test_casino_split_across_score_windows_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $hidden = str_repeat('x', ContentModerationEngine::SCORE_TEXT_CHARS - 4)
+            .' casino tonight and claim your bonus.';
+        $submission->update([
+            'extracted_text' => $hidden,
+            'preview_html' => '<p>'.$hidden.'</p>',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     public function test_casino_only_in_docx_svg_text_fails_live_policy(): void
     {
         $advertiser = $this->advertiser();
