@@ -138,7 +138,7 @@ class CuratedBlogCatalog
             }
 
             $locale = function_exists('public_locale') ? public_locale() : 'en';
-            $pillars = Blog::query()
+            $pillars = Blog::published()
                 ->whereNotNull('curated_key')
                 ->where('curated_key', '!=', '')
                 ->with(['translations' => function ($query) {
@@ -182,7 +182,7 @@ class CuratedBlogCatalog
         ));
 
         $rewritten = preg_replace_callback(
-            '~((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(?=["\'?#\s>]|$)~i',
+            '~((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(/)?(?=["\'?#\s>]|$)~i',
             static function (array $matches) use ($map): string {
                 $catalog = $matches[4];
                 $public = $map[$catalog] ?? $catalog;
@@ -193,7 +193,7 @@ class CuratedBlogCatalog
                     }
                 }
 
-                return $matches[1].$matches[2].$matches[3].$public;
+                return $matches[1].$matches[2].$matches[3].$public.($matches[5] ?? '');
             },
             $html
         );

@@ -24,7 +24,7 @@ class PublicMediaController extends Controller
     {
         $normalized = ltrim(str_replace('\\', '/', $path), '/');
         $normalized = rawurldecode($normalized);
-        if ($normalized === '' || str_contains($normalized, '..') || str_contains($normalized, '%')) {
+        if ($normalized === '' || str_contains($normalized, '..') || str_contains($normalized, '%') || str_contains($normalized, "\0")) {
             abort(404);
         }
 
