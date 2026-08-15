@@ -215,7 +215,7 @@ class CatalogController extends Controller
         try {
             $orderableScope = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->checkoutReady();
+                ->availableForPicker();
 
             // Count must not reuse a limited list — same exists-style gate as the dashboard.
             $approvedArticleCount = (clone $orderableScope)->count();
@@ -762,6 +762,11 @@ class CatalogController extends Controller
             return null;
         }
 
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            (int) auth()->id(),
+            [$id]
+        );
+
         $submission = ContentSubmission::query()
             ->forArticlePicker()
             ->where('id', $id)
@@ -1083,8 +1088,9 @@ class CatalogController extends Controller
 
         $approved = ContentSubmission::query()
             ->forArticlePicker()
+            ->with(['order', 'orderItems.order'])
             ->where('user_id', auth()->id())
-            ->checkoutReady()
+            ->availableForPicker()
             ->latest('id')
             ->limit(100)
             ->get();
@@ -1108,12 +1114,13 @@ class CatalogController extends Controller
                 if (! $submission) {
                     $submission = ContentSubmission::query()
                         ->forArticlePicker()
+                        ->with(['order', 'orderItems.order'])
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
-                        ->checkoutReady()
+                        ->availableForPicker()
                         ->first();
                 }
-                if (! $submission || ! $submission->isReadyForCheckout()) {
+                if (! $submission || ! $submission->isAvailableForPicker()) {
                     $cleaned[$copyIndex] = 0;
                     $lineDirty = true;
                 } elseif ($site && ! $submission->matchesSite($site, $requireSame)) {
@@ -3446,7 +3453,7 @@ class CatalogController extends Controller
 
         $articles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->checkoutReady()
+            ->availableForPicker()
             ->latest('id')
             ->limit(50)
             ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
@@ -4819,7 +4826,7 @@ class CatalogController extends Controller
             ->forCheckoutSummary()
             ->where('id', $librarySubmissionId)
             ->where('user_id', auth()->id())
-            ->checkoutReady()
+            ->availableForPicker()
             ->first();
     }
 

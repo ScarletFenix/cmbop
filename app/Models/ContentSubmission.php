@@ -300,6 +300,59 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Own unpaid leftover that Order / a new checkout may replace.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeReplaceableUnpaidLeftover($query)
+    {
+        return $query->where(function ($claim) {
+            $claim->whereHas('order', function ($order) {
+                $this->constrainReplaceableLeftoverOrder($order);
+            });
+
+            if (Schema::hasColumn('order_items', 'content_submission_id')) {
+                $claim->orWhereHas('orderItems', function ($item) {
+                    $item->whereHas('order', function ($order) {
+                        $this->constrainReplaceableLeftoverOrder($order);
+                    });
+                });
+            }
+        });
+    }
+
+    /**
+     * Catalog / wizard / cart pickers: free checkout-ready rows, plus this
+     * advertiser's replaceable unpaid leftovers. Failed card leftovers stay
+     * hidden so Pay again is the only path.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeAvailableForPicker($query)
+    {
+        return $query->where(function ($outer) {
+            $outer->where(function ($ready) {
+                $ready->checkoutReady();
+            })->orWhere(function ($leftover) {
+                $leftover->replaceableUnpaidLeftover()
+                    ->where('moderation_status', self::STATUS_APPROVED)
+                    ->hasCheckoutReadyLinks()
+                    ->withImageRightsCover()
+                    ->whereNotNull('path')
+                    ->where('path', '!=', '')
+                    ->whereNull('archived_at')
+                    ->whereNotNull('country')->where('country', '!=', '')
+                    ->whereNotNull('language')->where('language', '!=', '')
+                    ->where(function ($exp) {
+                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                    });
+            });
+        });
+    }
+
+    /**
      * SQL mirror of canBeOrdered() for list/exists queries (cart, checkout, dashboard).
      *
      * @param  Builder<static>  $query
@@ -858,6 +911,30 @@ class ContentSubmission extends Model
                 $this->constrainReplaceableLeftoverOrder($q);
             })
             ->exists();
+    }
+
+    /**
+     * Catalog / wizard / cart may list this row. Replace runs on assign,
+     * checkout, or Order — not when the picker merely opens.
+     */
+    public function isAvailableForPicker(): bool
+    {
+        if ($this->isReadyForCheckout()) {
+            return true;
+        }
+
+        if (! $this->canReplaceUnpaidLeftover()) {
+            return false;
+        }
+
+        return $this->moderation_status === self::STATUS_APPROVED
+            && filled($this->path)
+            && ! $this->isArchived()
+            && ($this->expires_at === null || $this->expires_at->isFuture())
+            && filled($this->country)
+            && filled($this->language)
+            && $this->imageRightsCoverContent()
+            && $this->hasCheckoutReadyLinks();
     }
 
     /**
