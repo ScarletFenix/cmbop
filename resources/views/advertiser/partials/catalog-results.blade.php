@@ -845,17 +845,18 @@
                             @else
                                 @php
                                     $sampleUrl = safe_external_url($site->example_url);
+                                    $sampleVisit = route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]);
                                 @endphp
                                 @if($sampleUrl !== '#')
                                     <div class="d-flex align-items-center gap-2">
-                                        <a href="{{ $sampleUrl }}"
+                                        <a href="{{ $sampleVisit }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
                                            class="text-decoration-none"
                                            style="word-break: break-all;">
                                             {{ Str::limit($site->example_url, 50) }}
                                         </a>
-                                        <a href="{{ $sampleUrl }}"
+                                        <a href="{{ $sampleVisit }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
                                            class="text-muted d-inline-flex align-items-center"
@@ -1462,7 +1463,7 @@
                         @if($inCatalogHideMode && ! $showsIdentity)
                             Use the eye to show this listing’s name and URL, then the sample article link appears.
                         @elseif($site->example_url && ($mobileSampleUrl = safe_external_url($site->example_url)) !== '#')
-                            <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">
+                            <a href="{{ route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]) }}" target="_blank" rel="noopener noreferrer">
                                 {{ Str::limit($site->example_url, 46) }}
                             </a>
                         @else

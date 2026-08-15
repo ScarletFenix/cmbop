@@ -8,6 +8,7 @@ use App\Models\SiteUrlReveal;
 use App\Services\Catalog\RevealPaceGuard;
 use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -23,6 +24,7 @@ use Illuminate\Support\Facades\Log;
 class SiteVisitController extends Controller
 {
     public function __invoke(
+        Request $request,
         int $site,
         SiteUrlVisibility $visibility,
         RevealPaceGuard $pace,
@@ -62,6 +64,15 @@ class SiteVisitController extends Controller
         }
 
         $url = $model->site_url;
+        // Sample-article links must not put the publisher URL in href —
+        // "Copy link address" would bypass copy-track. Click still lands
+        // on the article via ?sample=1.
+        if ($request->boolean('sample')) {
+            $sample = safe_external_url($model->example_url, '');
+            if (str_starts_with($sample, 'http://') || str_starts_with($sample, 'https://')) {
+                $url = $sample;
+            }
+        }
 
         if (! str_starts_with($url, 'http://') && ! str_starts_with($url, 'https://')) {
             $url = 'https://'.ltrim($url, '/');

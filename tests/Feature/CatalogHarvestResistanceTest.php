@@ -259,6 +259,47 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->assertStringContainsString('/advertiser/go/', $html);
     }
 
+    public function test_sample_article_href_is_our_redirect_not_the_publisher_url(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'sample-href.example');
+        $site->update(['example_url' => 'https://sample-href.example/guest-post']);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('guest-post', $html);
+        $this->assertStringNotContainsString('href="https://sample-href.example/guest-post"', $html);
+        $this->assertStringContainsString('/advertiser/go/'.$site->id.'?sample=1', $html);
+    }
+
+    public function test_sample_article_opens_through_our_redirect(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'sample-redirect.example');
+        $site->update(['example_url' => 'https://sample-redirect.example/guest-post']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]))
+            ->assertRedirect('https://sample-redirect.example/guest-post');
+    }
+
+    public function test_sample_visit_falls_back_to_the_listing_when_example_url_is_unsafe(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher, 'sample-fallback.example');
+        $site->update(['example_url' => 'javascript:alert(1)']);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]))
+            ->assertRedirect('https://sample-fallback.example');
+    }
+
     public function test_clicking_through_sends_them_to_the_site(): void
     {
         $advertiser = $this->userWithRole('advertiser');
