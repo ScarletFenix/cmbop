@@ -257,6 +257,61 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $this->assertSame('cs_test_open_first', Cache::get('pending_card_checkout:CARD42')['stripe_session_id'] ?? null);
     }
 
+    public function test_card_checkout_rotates_reference_when_pending_stripe_session_exists(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = $this->activeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('CARD42', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'CARD42',
+            'order_total' => 100,
+            'amount_due' => 80,
+            'bonus_applied' => 20,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+            'stripe_session_id' => OrderPaymentService::PENDING_STRIPE_SESSION_ID,
+        ]);
+
+        $this->fakeStripeCheckoutSession('cs_test_pending_second');
+        $second = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'price' => 100,
+                    'sensitive_type' => null,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'card',
+                'reference_code' => 'CARD42',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJson(['success' => true, 'requires_payment' => true]);
+
+        $newRef = (string) $second->json('reference_code');
+        $this->assertNotSame('CARD42', $newRef);
+        $this->assertNotNull(Cache::get('pending_card_checkout:CARD42'));
+        $this->assertSame(
+            OrderPaymentService::PENDING_STRIPE_SESSION_ID,
+            Cache::get('pending_card_checkout:CARD42')['stripe_session_id'] ?? null
+        );
+        $this->assertNotNull(Cache::get('pending_card_checkout:'.$newRef));
+        $this->assertSame('cs_test_pending_second', Cache::get('pending_card_checkout:'.$newRef)['stripe_session_id'] ?? null);
+    }
+
     public function test_card_checkout_rolls_back_pending_orders_when_stripe_fails(): void
     {
         config(['content_moderation.enabled' => false]);

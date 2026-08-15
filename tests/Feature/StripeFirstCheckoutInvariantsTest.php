@@ -1667,6 +1667,87 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
+    public function test_release_abandoned_does_not_steal_from_cancelled_leftover_package_snapshot(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'cancelled-leftover-hold.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $payments = app(OrderPaymentService::class);
+        $intents = app(CheckoutIntentService::class);
+
+        $cancelledRef = 'CANCELLED-LEFTOVER-1';
+        $payments->storePendingCheckout($cancelledRef, $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20));
+        $intents->rememberBonus($advertiser->id, $cancelledRef, 20);
+        $wallet->reserveBonusOnly(20);
+
+        app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
+            $advertiser->id,
+            $cancelledRef,
+            collect(),
+            20
+        );
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, $cancelledRef), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            (float) ($payments->getPendingCheckout($cancelledRef)['bonus_applied'] ?? 0),
+            0.01
+        );
+
+        $liveRef = 'LIVE-CART-1';
+        $livePackage = $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20);
+        $livePackage['stripe_session_id'] = 'cs_live_second';
+        $payments->storePendingCheckout($liveRef, $livePackage);
+        $intents->rememberBonus($advertiser->id, $liveRef, 20);
+        $wallet->reserveBonusOnly(20);
+
+        $payments->releaseAbandonedStripeFirstBonus($advertiser->id, 'NEW-CART-1');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, $liveRef), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, $cancelledRef), 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($cancelledRef));
+        $this->assertNotNull($payments->getPendingCheckout($liveRef));
+    }
+
+    public function test_release_abandoned_does_not_steal_pending_session_hold(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'pending-session-hold.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'PENDING-SESSION-HOLD-1';
+        $payments = app(OrderPaymentService::class);
+        $package = $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20);
+        $package['stripe_session_id'] = OrderPaymentService::PENDING_STRIPE_SESSION_ID;
+        $payments->storePendingCheckout($ref, $package);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
+
+        $payments->releaseAbandonedStripeFirstBonus($advertiser->id, 'NEW-REF-1');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+        $this->assertSame(
+            OrderPaymentService::PENDING_STRIPE_SESSION_ID,
+            $payments->getPendingCheckout($ref)['stripe_session_id'] ?? null
+        );
+    }
+
     public function test_stale_cheaper_session_credits_card_and_leaves_package_for_matching_pay(): void
     {
         $advertiser = $this->makeUser('advertiser');
