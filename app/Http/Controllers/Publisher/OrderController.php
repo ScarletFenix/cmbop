@@ -1366,6 +1366,7 @@ class OrderController extends Controller
                 'completed_orders' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),
                 'rejected_orders' => Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count(),
                 'total_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
+                    ->recognizedForFinance()
                     ->whereHas('order', function ($q) {
                         $q->where('status', 'completed')
                             ->where('payment_status', 'paid');

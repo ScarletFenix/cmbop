@@ -588,6 +588,51 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(115.0, $all['money_in']['stripe_card_collected']);
     }
 
+    public function test_refund_ledger_date_is_not_moved_by_later_order_update(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $advRole = Role::firstOrCreate(['name' => 'advertiser']);
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-07-20 12:00:00'),
+        ]);
+
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => $advRole->id,
+            'balance' => 115,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+        $refund = app(WalletLedgerService::class)->recordRefund(
+            $wallet,
+            115,
+            0,
+            $order,
+            $order->order_number
+        );
+        $refund->forceFill(['created_at' => Carbon::parse('2026-07-25 12:00:00')])->save();
+
+        $order->forceFill([
+            'payment_status' => 'refunded',
+            'updated_at' => Carbon::parse('2026-08-10 12:00:00'),
+        ])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(115.0, $july['platform']['refunds']);
+        $this->assertEquals(15.0, $july['platform']['refunded_order_fees']);
+        $this->assertEquals(0.0, $august['platform']['refunds']);
+        $this->assertEquals(0.0, $august['platform']['refunded_order_fees']);
+    }
+
     public function test_in_progress_refund_does_not_reverse_unearned_fees(): void
     {
         $advertiser = $this->makeUser('advertiser');

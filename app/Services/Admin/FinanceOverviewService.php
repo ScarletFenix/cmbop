@@ -102,7 +102,7 @@ class FinanceOverviewService
                 'deposits' => 'approved_at',
                 'orders_paid' => 'paid_at',
                 'completed' => 'completed_at',
-                'refunds' => 'updated_at',
+                'refunds' => 'refund_ledger_or_updated_at',
                 'withdrawals_paid' => 'processed_at',
                 'ledger' => 'created_at',
             ],
@@ -841,9 +841,35 @@ class FinanceOverviewService
         }
     }
 
+    /**
+     * Prefer the last wallet-refund write for this order so a later admin
+     * note / save does not move the refund into another period.
+     */
     private function applyRefundWindow($query, ?Carbon $start, Carbon $end): void
     {
-        $this->applyCoalesceWindow($query, $start, $end, 'orders.updated_at', 'orders.updated_at');
+        if (! Schema::hasTable('wallet_transactions')) {
+            $this->applyCoalesceWindow($query, $start, $end, 'orders.updated_at', 'orders.updated_at');
+
+            return;
+        }
+
+        $refundAt = '(SELECT MAX(wallet_transactions.created_at) FROM wallet_transactions'
+            .' WHERE wallet_transactions.related_id = orders.id'
+            .' AND wallet_transactions.related_type = ?'
+            .' AND wallet_transactions.type = ?'
+            .' AND wallet_transactions.direction = ?)';
+        $expr = 'COALESCE('.$refundAt.', orders.updated_at)';
+        $bindings = [
+            (new Order)->getMorphClass(),
+            WalletTransaction::TYPE_REFUND,
+            'credit',
+        ];
+
+        if ($start) {
+            $query->whereRaw($expr.' BETWEEN ? AND ?', [...$bindings, $start, $end]);
+        } else {
+            $query->whereRaw($expr.' <= ?', [...$bindings, $end]);
+        }
     }
 
     private function applyCreatedOrPaidWindow($query, ?Carbon $start, Carbon $end, string $preferred): void
