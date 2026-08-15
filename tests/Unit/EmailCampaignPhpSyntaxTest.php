@@ -94,14 +94,18 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
-        $center = (string) file_get_contents($files[3]);
-        $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
-        $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
-
-        $payloadTest = (string) file_get_contents($files[4]);
-        $this->assertSame(1, preg_match_all(
-            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
-            $payloadTest
+        $model = (string) file_get_contents($files[0]);
+        $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
+        $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
+        $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId\): \?array\s*\{(.*?)\n    protected static function hasQueuedSendJob/s',
+            $model,
+            $inFlight
         ));
+        $this->assertStringContainsString('$mailFailed = true;', $inFlight[1]);
+        $this->assertStringNotContainsString('if (! Schema::hasColumn($table, \'payload\')) {
+                    return null;', $inFlight[1]);
     }
 }

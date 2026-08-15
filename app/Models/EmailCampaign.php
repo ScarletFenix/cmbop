@@ -417,6 +417,7 @@ class EmailCampaign extends Model
 
         $ids = [];
         $sawUnscoped = false;
+        $mailFailed = false;
         $prefix = 'audience_campaign:'.$campaignId.':user:';
 
         $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
@@ -440,48 +441,97 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // Same unused-table hole as hasQueuedSendJob: a second
+                // database connection without payload must not look like
+                // "mail in flight" or orphans never reclaim.
                 if (! Schema::hasColumn($table, 'payload')) {
-                    return null;
+                    if ($connection === $mail) {
+                        $mailFailed = true;
+                    }
+
+                    continue;
                 }
 
-                DB::table($table)
-                    ->where(function ($query) use ($prefix) {
-                        $query->where('payload', 'like', '%AudienceCampaignMail%')
-                            ->orWhere('payload', 'like', '%'.$prefix.'%');
-                    })
-                    ->orderBy('id')
-                    ->select(['id', 'payload'])
-                    ->chunkById(100, function ($rows) use ($campaignId, &$ids, &$sawUnscoped) {
-                        foreach ($rows as $row) {
-                            $payload = (string) $row->payload;
-                            if (! MailJobPayload::containsCampaignMail($payload, $campaignId)) {
-                                continue;
-                            }
-
-                            $extracted = MailJobPayload::campaignMailUserIds($payload, $campaignId);
-                            if ($extracted === []) {
-                                $sawUnscoped = true;
-
-                                return false;
-                            }
-
-                            foreach ($extracted as $userId) {
-                                $ids[$userId] = true;
-                            }
-                        }
-
-                        return true;
-                    });
+                self::collectCampaignMailUserIdsFromTable(
+                    $table,
+                    $campaignId,
+                    $prefix,
+                    $ids,
+                    $sawUnscoped
+                );
             } catch (\Throwable) {
-                return null;
+                if ($connection === $mail) {
+                    $mailFailed = true;
+                }
             }
         }
 
-        if ($sawUnscoped) {
+        // A mailable that already failed is still retryable from Email
+        // Center. Reclaiming that user would dispatch a second send.
+        try {
+            $failedTable = (string) config('queue.failed.table', 'failed_jobs');
+            if (Schema::hasTable($failedTable)) {
+                if (! Schema::hasColumn($failedTable, 'payload')) {
+                    return null;
+                }
+
+                self::collectCampaignMailUserIdsFromTable(
+                    $failedTable,
+                    $campaignId,
+                    $prefix,
+                    $ids,
+                    $sawUnscoped
+                );
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($sawUnscoped || $mailFailed) {
             return null;
         }
 
         return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * @param  array<int, true>  $ids
+     */
+    protected static function collectCampaignMailUserIdsFromTable(
+        string $table,
+        int $campaignId,
+        string $prefix,
+        array &$ids,
+        bool &$sawUnscoped
+    ): void {
+        DB::table($table)
+            ->where(function ($query) use ($prefix) {
+                $query->where('payload', 'like', '%AudienceCampaignMail%')
+                    ->orWhere('payload', 'like', '%'.$prefix.'%');
+            })
+            ->orderBy('id')
+            ->select(['id', 'payload'])
+            ->chunkById(100, function ($rows) use ($campaignId, &$ids, &$sawUnscoped) {
+                foreach ($rows as $row) {
+                    $payload = (string) $row->payload;
+                    if (! MailJobPayload::containsCampaignMail($payload, $campaignId)) {
+                        continue;
+                    }
+
+                    $extracted = MailJobPayload::campaignMailUserIds($payload, $campaignId);
+                    if ($extracted === []) {
+                        $sawUnscoped = true;
+
+                        return false;
+                    }
+
+                    foreach ($extracted as $userId) {
+                        $ids[$userId] = true;
+                    }
+                }
+
+                return true;
+            });
     }
 
     /**
