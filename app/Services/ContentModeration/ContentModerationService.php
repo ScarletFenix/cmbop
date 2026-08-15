@@ -905,6 +905,48 @@ class ContentModerationService
     }
 
     /**
+     * Inline CSS the sanitizer leaves on span/div (background url, content).
+     *
+     * @return list<string>
+     */
+    public function htmlStyleTexts(string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (! preg_match_all('/\bstyle\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            return [];
+        }
+
+        foreach ($matches[2] as $style) {
+            $style = html_entity_decode((string) $style, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if (preg_match_all('/url\(\s*([\'"]?)(.*?)\1\s*\)/iu', $style, $urls)) {
+                foreach ($urls[2] as $url) {
+                    $url = trim((string) $url);
+                    if ($url !== '') {
+                        $texts[] = $url;
+                    }
+                }
+            }
+            if (preg_match_all('/content\s*:\s*([\'"])(.*?)\1/iu', $style, $contents)) {
+                foreach ($contents[2] as $content) {
+                    $content = trim((string) $content);
+                    if ($content !== '') {
+                        $texts[] = $content;
+                    }
+                }
+            }
+        }
+
+        $texts = array_values(array_unique($texts));
+        sort($texts);
+
+        return $texts;
+    }
+
+    /**
      * Restricted-term haystack: body + stored anchors + HTML attributes/src +
      * filename + the Word package the publisher downloads.
      * Keep language / uniqueness on scanTextFromSubmission() so a short
@@ -917,6 +959,7 @@ class ContentModerationService
             implode("\n", $this->anchorTextsFromSubmission($submission)),
             implode("\n", $this->htmlAttributeTexts((string) ($submission->preview_html ?? ''))),
             implode("\n", $this->htmlResourceTexts((string) ($submission->preview_html ?? ''))),
+            implode("\n", $this->htmlStyleTexts((string) ($submission->preview_html ?? ''))),
             trim((string) ($submission->original_filename ?? '')),
             $this->storedFilePolicySignals($submission)['text'],
         ];

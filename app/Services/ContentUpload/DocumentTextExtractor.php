@@ -24,7 +24,8 @@ class DocumentTextExtractor
     /**
      * Policy-only read of the stored package. Includes headers, footers,
      * notes, comments, document properties, custom XML, image descr/tooltips,
-     * and every external hyperlink. Does not store images or build preview HTML.
+     * media filenames, and every external hyperlink. Does not store images
+     * or build preview HTML.
      *
      * @return array{ok:bool, text:string, links:list<string>}
      */
@@ -50,6 +51,14 @@ class DocumentTextExtractor
                 }
                 $name = str_replace('\\', '/', $name);
                 $lower = strtolower($name);
+                if (preg_match('/\.(png|jpe?g|gif|webp|bmp|emf|wmf|tiff?)$/i', $lower)) {
+                    $base = pathinfo($name, PATHINFO_FILENAME);
+                    if ($base !== '' && ! preg_match('/^(image|img|picture|pic)[\s_\-]?\d*$/i', $base)) {
+                        $texts[] = $base;
+                    }
+
+                    continue;
+                }
                 $xml = (string) $zip->getFromIndex($i);
                 if ($xml === '') {
                     continue;
