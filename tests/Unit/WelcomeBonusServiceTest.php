@@ -8,6 +8,7 @@ use App\Models\WelcomeBonusSetting;
 use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class WelcomeBonusServiceTest extends TestCase
@@ -87,6 +88,21 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_missing_claims_table_does_not_grant(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_claims'));
+
+        $this->assertFalse($this->service->canGrant());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
+    }
+
     public function test_forwarded_for_header_cannot_spoof_the_claim_ip(): void
     {
         $request = $this->request('1.2.3.4', [], [
@@ -134,6 +150,28 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame('8.8.8.8', $this->service->normalizedIp($request));
     }
 
+    public function test_ipv6_addresses_in_the_same_slash64_share_the_claim(): void
+    {
+        $first = $this->request('2001:db8:1:2:aaaa::1');
+        $second = $this->request('2001:db8:1:2:bbbb::2');
+        $otherNet = $this->request('2001:db8:1:3::1');
+
+        $this->assertSame('2001:db8:1:2::', $this->service->normalizedIp($first));
+        $this->assertSame('2001:db8:1:2::', $this->service->normalizedIp($second));
+        $this->assertSame('2001:db8:1:3::', $this->service->normalizedIp($otherNet));
+
+        $this->assertTrue($this->service->recordClaim(User::factory()->create(), $first, 20.0, 'registration'));
+        $this->assertSame(0.0, $this->service->amountFor($second, 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $second,
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(20.0, $this->service->amountFor($otherNet, 'advertiser'));
+        $this->assertSame('2001:db8:1:2::', WelcomeBonusClaim::query()->value('ip_address'));
+    }
+
     public function test_ipv4_mapped_ipv6_shares_the_ipv4_claim_key(): void
     {
         $mapped = $this->request('::ffff:1.2.3.4');
@@ -150,6 +188,18 @@ class WelcomeBonusServiceTest extends TestCase
             20.0,
             'registration'
         ));
+    }
+
+    public function test_legacy_mapped_ipv4_claim_row_blocks_the_ipv4_key(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '::ffff:1.2.3.4',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
     }
 
     public function test_invalid_ip_string_is_ignored(): void

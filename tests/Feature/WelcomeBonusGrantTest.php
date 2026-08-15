@@ -13,6 +13,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Schema;
 use Laravel\Socialite\Contracts\Provider;
 use Laravel\Socialite\Facades\Socialite;
 use Laravel\Socialite\Two\User as SocialiteUser;
@@ -32,6 +33,7 @@ class WelcomeBonusGrantTest extends TestCase
         RateLimiter::clear('register:10.0.0.2');
         RateLimiter::clear('register:127.0.0.1');
         RateLimiter::clear('register:8.8.8.8');
+        RateLimiter::clear('register:11.11.11.11');
     }
 
     public function test_first_advertiser_from_ip_receives_bonus_and_claim(): void
@@ -98,6 +100,31 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertAdvertiserBonus($second, 0.0);
         $this->assertSame(0, WelcomeBonusClaim::query()->where('user_id', $second->id)->count());
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_register_succeeds_without_bonus_when_claims_table_is_missing(): void
+    {
+        Notification::fake();
+        Schema::dropIfExists('welcome_bonus_claims');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_claims'));
+
+        $this->withServerVariables(['REMOTE_ADDR' => '11.11.11.11'])
+            ->postJson('/register', $this->registerPayload('no-claims-table@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $user = User::where('email', 'no-claims-table@example.com')->first();
+        $this->assertAdvertiserBonus($user, 0.0);
+    }
+
+    public function test_register_page_hides_bonus_copy_when_claims_table_is_missing(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertSee('const welcomeBonusEnabled = false', false);
     }
 
     public function test_disabled_bonus_skips_credit_on_new_ip(): void
