@@ -202,12 +202,14 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertNotNull($payments->getPendingCheckout($ref));
     }
 
-    public function test_payment_intent_amount_mismatch_refuses_to_mark_paid(): void
+    public function test_payment_intent_amount_mismatch_credits_card_and_leaves_order_unpaid(): void
     {
         $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
         $publisher = $this->makeUser('publisher');
         $site = $this->makeSite($publisher, 'pi-mismatch.example');
         $ref = 'PI-MISMATCH-1';
+        $payments = app(OrderPaymentService::class);
 
         $order = Order::create([
             'user_id' => $advertiser->id,
@@ -241,22 +243,23 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
             ],
         ];
 
-        try {
-            app(OrderPaymentService::class)->markOrdersPaidFromPaymentIntent($ref, $intent);
-            $this->fail('PaymentIntent amount mismatch should refuse to mark the order paid.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('does not match', $e->getMessage());
-        }
+        $paid = $payments->markOrdersPaidFromPaymentIntent($ref, $intent);
 
+        $this->assertCount(0, $paid);
         $this->assertSame('pending', $order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(1.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(1.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
-    public function test_checkout_session_with_bonus_metadata_still_asserts_stripe_amount(): void
+    public function test_checkout_session_with_bonus_metadata_credits_mismatch_and_leaves_order_unpaid(): void
     {
         $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
         $publisher = $this->makeUser('publisher');
         $site = $this->makeSite($publisher, 'session-bonus-mismatch.example');
         $ref = 'CS-BONUS-MISMATCH-1';
+        $payments = app(OrderPaymentService::class);
 
         $order = Order::create([
             'user_id' => $advertiser->id,
@@ -290,14 +293,117 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
             ],
         ];
 
-        try {
-            app(OrderPaymentService::class)->markOrdersPaidFromStripeSession($ref, $session);
-            $this->fail('Checkout session amount mismatch should refuse to mark the order paid.');
-        } catch (\RuntimeException $e) {
-            $this->assertStringContainsString('does not match', $e->getMessage());
-        }
+        $paid = $payments->markOrdersPaidFromStripeSession($ref, $session);
 
+        $this->assertCount(0, $paid);
         $this->assertSame('pending', $order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(1.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(1.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_stale_pending_order_session_credits_card_and_matching_pay_still_marks_paid(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'stale-pending-order.example', 80);
+        $ref = 'STALE-PENDING-1';
+        $payments = app(OrderPaymentService::class);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $stale = $payments->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 50, 'cs_stale_pending')
+        );
+        $this->assertCount(0, $stale);
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+
+        $paid = $payments->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_matching_pending')
+        );
+        $this->assertCount(1, $paid);
+        $this->assertSame('paid', $order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(50.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_webhook_credits_stale_pending_order_capture_without_500(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'wh-stale-pending.example', 80);
+        $ref = 'WH-STALE-PENDING-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $this->signedWebhook([
+            'id' => 'evt_wh_stale_pending_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_wh_stale_pending',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 5000,
+                    'payment_intent' => 'pi_wh_stale_pending',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(50.0, app(OrderPaymentService::class)->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
     public function test_session_expiry_refunds_bonus_when_no_order_rows_exist(): void

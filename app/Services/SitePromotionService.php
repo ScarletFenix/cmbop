@@ -88,6 +88,8 @@ class SitePromotionService
 
                 $lockedSite = Site::query()->whereKey($site->id)->lockForUpdate()->firstOrFail();
                 if (! $lockedSite->isCatalogVisible()) {
+                    $wallet->credit($price);
+
                     return [
                         'success' => false,
                         'message' => 'This listing is not in the catalog and cannot be promoted.',

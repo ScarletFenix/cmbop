@@ -34,7 +34,8 @@ class OrderPaymentService
     {
         $this->assertStripeObjectIsOrderPayment($session);
         $sessionMeta = $this->sessionMetadataArray($session);
-        $newlyPaid = DB::transaction(function () use ($referenceCode, $session) {
+        $amountMismatch = false;
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $session, &$amountMismatch) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -52,12 +53,10 @@ class OrderPaymentService
 
             $meta = $this->sessionMetadataArray($session);
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
-            if ($hasMarkable) {
-                $this->assertStripeAmountMatchesExpected(
-                    $session,
-                    $this->expectedStripeEurosForOrders($orders, $meta),
-                    $referenceCode
-                );
+            if ($hasMarkable && ! $this->allowStripeCaptureForOrders($session, $orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
             }
 
             $newlyPaid = collect();
@@ -96,6 +95,10 @@ class OrderPaymentService
             return $newlyPaid;
         });
 
+        if ($amountMismatch) {
+            return collect();
+        }
+
         $this->recordAdvertiserPurchaseForPaidCheckout(
             $referenceCode,
             $newlyPaid,
@@ -123,7 +126,8 @@ class OrderPaymentService
                 : (method_exists($intent->metadata, 'toArray') ? $intent->metadata->toArray() : (array) $intent->metadata);
         }
 
-        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent, $meta) {
+        $amountMismatch = false;
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent, $meta, &$amountMismatch) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -135,12 +139,10 @@ class OrderPaymentService
             }
 
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
-            if ($hasMarkable) {
-                $this->assertStripeAmountMatchesExpected(
-                    $intent,
-                    $this->expectedStripeEurosForOrders($orders, $meta),
-                    $referenceCode
-                );
+            if ($hasMarkable && ! $this->allowStripeCaptureForOrders($intent, $orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
             }
 
             $newlyPaid = collect();
@@ -173,6 +175,10 @@ class OrderPaymentService
 
             return $newlyPaid;
         });
+
+        if ($amountMismatch) {
+            return collect();
+        }
 
         $this->recordAdvertiserPurchaseForPaidCheckout(
             $referenceCode,
@@ -387,7 +393,7 @@ class OrderPaymentService
         }
 
         $intents = app(CheckoutIntentService::class);
-        $held = $intents->peekBonus($userId, $referenceCode);
+        $held = $intents->heldBonus($userId, $referenceCode);
         $need = round(max(0, $bonusApplied - $held), 2);
         if ($need <= 0) {
             return 0.0;
@@ -1107,15 +1113,15 @@ class OrderPaymentService
     }
 
     /**
+     * Card cash still owed for these order rows. Ignore session metadata
+     * expected_amount — a stale cheaper Checkout session baked its own figure
+     * and must not mark the current totals paid.
+     *
      * @param  Collection<int, Order>  $orders
      * @param  array<string, mixed>  $meta
      */
     private function expectedStripeEurosForOrders(Collection $orders, array $meta): float
     {
-        if (isset($meta['expected_amount']) && $meta['expected_amount'] !== '') {
-            return round((float) $meta['expected_amount'], 2);
-        }
-
         $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
 
@@ -1358,6 +1364,51 @@ class OrderPaymentService
         }
 
         return $stripeCents === null ? null : StripePaymentService::fromCents($stripeCents);
+    }
+
+    /**
+     * Credit a captured Stripe amount that does not match pending/failed card
+     * orders. Returns true when that capture may mark those orders paid.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function allowStripeCaptureForOrders(
+        object $session,
+        Collection $orders,
+        array $meta,
+        string $referenceCode
+    ): bool {
+        $expected = $this->expectedStripeEurosForOrders($orders, $meta);
+        $stripeEuros = $this->stripeEurosFromSession($session);
+        if ($stripeEuros === null) {
+            $this->assertStripeAmountMatchesExpected($session, $expected, $referenceCode);
+
+            return true;
+        }
+        if (abs($stripeEuros - $expected) <= 0.01) {
+            return true;
+        }
+
+        $userId = (int) ($orders->first()?->user_id ?? 0);
+        $sessionId = (string) ($session->id ?? '');
+        if ($userId > 0 && $stripeEuros > 0.009) {
+            $this->creditUnfulfilledCardCapture(
+                $userId,
+                $referenceCode,
+                $stripeEuros,
+                $sessionId !== '' ? $sessionId : null
+            );
+        }
+        Log::warning('Stripe session amount does not match pending card orders', [
+            'reference_code' => $referenceCode,
+            'expected_euros' => $expected,
+            'stripe_euros' => $stripeEuros,
+            'session_id' => $session->id ?? null,
+            'user_id' => $userId,
+        ]);
+
+        return false;
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\CheckoutIntent;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -152,6 +153,72 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_late_mark_paid_rereserves_bonus_when_package_json_still_lists_it(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-STALE-PKG-BONUS', 'pending');
+        $payments = app(OrderPaymentService::class);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-STALE-PKG-BONUS', 20);
+
+        $payments->markOrdersFailedFromReference('REF-STALE-PKG-BONUS', 'expired');
+        CheckoutIntent::query()->create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-STALE-PKG-BONUS',
+            'bonus_applied' => 0,
+            'package' => [
+                'user_id' => $advertiser->id,
+                'order_total' => 80,
+                'amount_due' => 60,
+                'bonus_applied' => 20,
+                'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+                'lines' => [],
+            ],
+            'expires_at' => now()->addDay(),
+        ]);
+
+        $wallet->refresh();
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(
+            0.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-STALE-PKG-BONUS'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-STALE-PKG-BONUS'),
+            0.01
+        );
+
+        $session = (object) [
+            'id' => 'cs_stale_pkg_bonus',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_stale_pkg_bonus',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-STALE-PKG-BONUS',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        $payments->markOrdersPaidFromStripeSession('REF-STALE-PKG-BONUS', $session);
+
+        $this->assertSame('paid', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+
+        app(OrderRefundService::class)->cancelAndRefund($item->order->fresh());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, $wallet->lockedBonusBalance(), 0.01);
     }
 
     private function fakePaidStripeSession(string $sessionId): void
