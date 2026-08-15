@@ -288,6 +288,30 @@ class SitePromotionTest extends TestCase
         $this->assertNull($site->fresh()->custom_discount_notified_at);
     }
 
+    public function test_expiry_job_clears_sale_when_notified_at_is_leftover(): void
+    {
+        Mail::fake();
+        $publisher = $this->publisherWithWallet();
+        $site = $this->site($publisher);
+        $this->actingAs($publisher)->postJson(route('publisher.sites.discount', $site->id), [
+            'percent' => 20,
+            'days' => 1,
+        ])->assertOk();
+
+        DB::table('sites')->where('id', $site->id)->update([
+            'custom_discount_ends_at' => now()->subMinute()->toDateTimeString(),
+            'custom_discount_notified_at' => 'not-a-date',
+        ]);
+
+        $sent = app(SitePromotionService::class)->notifyExpiredCustomDiscounts();
+        $this->assertSame(1, $sent);
+        Mail::assertQueued(SiteDiscountEnded::class);
+
+        $fresh = $site->fresh();
+        $this->assertNull($fresh->custom_discount_percent);
+        $this->assertInstanceOf(\DateTimeInterface::class, $fresh->custom_discount_notified_at);
+    }
+
     public function test_promotions_wallet_summary_uses_withdrawable_not_bonus(): void
     {
         $publisher = $this->publisherWithWallet(50);

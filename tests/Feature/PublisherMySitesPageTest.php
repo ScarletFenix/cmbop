@@ -537,6 +537,52 @@ class PublisherMySitesPageTest extends TestCase
         $this->assertStringContainsString('btn-reject-assignment', $inviteHtml);
     }
 
+    public function test_leftover_publisher_accepted_at_stays_in_invites_not_my_sites(): void
+    {
+        $staff = User::factory()->create(['email_verified_at' => now()]);
+        $invite = $this->makeSite([
+            'site_name' => 'Leftover Accept Stamp',
+            'site_url' => 'https://leftover-accept.example',
+            'domain' => 'leftover-accept.example',
+            'verified' => false,
+            'active' => false,
+            'assigned_by_user_id' => $staff->id,
+            'publisher_accepted_at' => now(),
+        ]);
+        DB::table('sites')->where('id', $invite->id)->update([
+            'publisher_accepted_at' => 'not-a-date',
+        ]);
+
+        $invite->refresh();
+        $this->assertTrue($invite->isPendingPublisherAcceptance());
+        $this->assertFalse($invite->isAcceptedByPublisher());
+        $this->assertFalse($invite->needsAdminReview());
+        $this->assertTrue(
+            Site::query()->whereKey($invite->id)->pendingPublisherAcceptance()->exists()
+        );
+        $this->assertFalse(
+            Site::query()->whereKey($invite->id)->acceptedByPublisher()->exists()
+        );
+
+        $inviteHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'invites']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('Leftover Accept Stamp', $inviteHtml);
+        $this->assertStringContainsString('btn-accept-assignment', $inviteHtml);
+
+        $pendingHtml = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('Leftover Accept Stamp', $pendingHtml);
+
+        $this->actingAs($this->publisher)
+            ->getJson(route('publisher.sites.edit-data', $invite->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+    }
+
     public function test_active_and_pending_counts_exclude_archived_sites(): void
     {
         $live = $this->makeSite([

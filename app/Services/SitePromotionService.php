@@ -433,7 +433,13 @@ class SitePromotionService
             ->where('custom_discount_ends_at', '<=', now())
             ->where('custom_discount_ends_at', '>=', Site::PLAUSIBLE_SQL_DATETIME_FLOOR)
             ->where('custom_discount_ends_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL)
-            ->whereNull('custom_discount_notified_at')
+            ->where(function ($query) {
+                // Leftover Hostinger strings are not null, so a bare whereNull
+                // would leave the expired sale percent on the listing forever.
+                $query->whereNull('custom_discount_notified_at')
+                    ->orWhere('custom_discount_notified_at', '>', Site::PLAUSIBLE_SQL_DATETIME_CEIL)
+                    ->orWhere('custom_discount_notified_at', '<', Site::PLAUSIBLE_SQL_DATETIME_FLOOR);
+            })
             ->whereNotNull('custom_discount_percent')
             ->limit($limit)
             ->get();

@@ -314,11 +314,9 @@ class Site extends Model
             });
 
         // Staff-assigned listings wait on publisher accept before the review queue.
+        // Leftover accepted_at is not acceptance — reuse acceptedByPublisher().
         if (static::hasSitesColumn('publisher_accepted_at')) {
-            $query->where(function ($q) {
-                $q->whereNotNull('publisher_accepted_at')
-                    ->orWhereNull('assigned_by_user_id');
-            });
+            $query->acceptedByPublisher();
         }
 
         return $query->notFromCancelledBulk();
@@ -1298,8 +1296,10 @@ class Site extends Model
         }
 
         return $query->where(function ($q) {
-            $q->whereNotNull('publisher_accepted_at')
-                ->orWhereNull('assigned_by_user_id');
+            $q->whereNull('assigned_by_user_id')
+                ->orWhere(function ($accepted) {
+                    $accepted->wherePublisherAcceptanceIsRecorded();
+                });
         });
     }
 
@@ -1315,8 +1315,37 @@ class Site extends Model
         }
 
         return $query
-            ->whereNull('publisher_accepted_at')
+            ->wherePublisherAcceptanceIsMissing()
             ->whereNotNull('assigned_by_user_id');
+    }
+
+    /**
+     * Real Gregorian publisher_accepted_at. Leftover Hostinger strings are not
+     * acceptance — PHP casts them to null via ToleratesUnparseableDates.
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeWherePublisherAcceptanceIsRecorded($query)
+    {
+        return $query->whereNotNull('publisher_accepted_at')
+            ->where('publisher_accepted_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('publisher_accepted_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
+    /**
+     * Missing or leftover publisher_accepted_at (same as PHP null after cast).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeWherePublisherAcceptanceIsMissing($query)
+    {
+        return $query->where(function ($inner) {
+            $inner->whereNull('publisher_accepted_at')
+                ->orWhere('publisher_accepted_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('publisher_accepted_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
     }
 
     /**
@@ -1460,8 +1489,9 @@ class Site extends Model
 
     /**
      * Staff-assigned listing waiting for publisher Accept/Decline.
-     * Requires publisher_accepted_at IS NULL and assigned_by_user_id set
-     * (plain publisher drafts are not invites).
+     * Requires no plausible publisher_accepted_at and assigned_by_user_id set
+     * (plain publisher drafts are not invites). Leftover Hostinger strings
+     * are not acceptance.
      */
     public function isPendingPublisherAcceptance(): bool
     {
@@ -1469,8 +1499,8 @@ class Site extends Model
             return false;
         }
 
-        return $this->publisher_accepted_at === null
-            && filled($this->assigned_by_user_id);
+        return filled($this->assigned_by_user_id)
+            && ! ($this->safeDateAttribute('publisher_accepted_at') instanceof \DateTimeInterface);
     }
 
     public function isAcceptedByPublisher(): bool
@@ -1479,12 +1509,13 @@ class Site extends Model
             return true;
         }
 
-        // Legacy / self-created rows are accepted; only staff-assigned nulls wait.
-        if ($this->publisher_accepted_at !== null) {
+        // Legacy / self-created rows are accepted; only staff-assigned
+        // listings without a plausible timestamp wait.
+        if (blank($this->assigned_by_user_id)) {
             return true;
         }
 
-        return blank($this->assigned_by_user_id);
+        return $this->safeDateAttribute('publisher_accepted_at') instanceof \DateTimeInterface;
     }
 
     public function claims()
