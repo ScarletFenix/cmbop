@@ -449,8 +449,12 @@ class FinanceOverviewService
      */
     public function platform(?Carbon $start, Carbon $end): array
     {
+        // Completed lines keep their recognized fee even after a later partial
+        // clawback; the clawed slice is reversed in refunded_order_fees (same
+        // recognize-then-reverse as a completed-then-refunded sale). Using
+        // recognizedForFinance() here would drop the fee twice and also pull a
+        // later clawback out of the completion month.
         $feeItems = OrderItem::query()
-            ->recognizedForFinance()
             ->whereHas('order', function ($q) use ($start, $end) {
                 $this->constrainRecognizedCompleted($q);
                 $this->applyCompletedWindow($q, $start, $end);
@@ -496,7 +500,9 @@ class FinanceOverviewService
             'withdrawal_fee_percent' => (float) config('billing.withdrawal_fee_percent', 0),
             'refunds' => round($refundOrderSum, 2),
             'refunded_order_fees' => round($refundedOrderFees, 2),
-            'refund_orders_count' => (clone $refundOrders)->count() + (clone $failedRefundOrders)->count(),
+            'refund_orders_count' => (clone $refundOrders)->count()
+                + (clone $failedRefundOrders)->count()
+                + $this->partialClawbackRefundOrderCount($start, $end),
             'wallet_refunds' => (float) (clone $walletRefunds)->sum('amount'),
             'bonuses_issued' => (float) (clone $bonuses)->sum('amount'),
             'payment_processor_costs_tracked' => false,
@@ -756,7 +762,26 @@ class FinanceOverviewService
     }
 
     /**
+     * Distinct still-paid orders that returned advertiser credit this window.
+     */
+    private function partialClawbackRefundOrderCount(?Carbon $start, Carbon $end): int
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return 0;
+        }
+
+        $query = OrderItemDispute::query()
+            ->where('status', OrderItemDispute::STATUS_UPHELD)
+            ->where('advertiser_credited', '>', 0)
+            ->whereHas('order', fn ($order) => $order->where('payment_status', 'paid'));
+        $this->applyCreatedOrPaidWindow($query, $start, $end, 'resolved_at');
+
+        return $query->pluck('order_id')->unique()->count();
+    }
+
+    /**
      * Platform fees on clawed lines that are still on a paid completed sale.
+     * Dated by dispute resolution, not the original completion date.
      */
     private function partialClawbackRecognizedFees(?Carbon $start, Carbon $end): float
     {

@@ -345,7 +345,7 @@
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Order platform fees</div>
                     <div class="fs-5 fw-bold text-success">{{ $euro($d['platform']['order_fees']) }}</div>
-                    <div class="small text-muted">Your real product revenue · Dated by completed date</div>
+                    <div class="small text-muted">Recognized on completed lines · later clawbacks reverse that line’s fee on the refund date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Withdrawal fees</div>

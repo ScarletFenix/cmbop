@@ -718,10 +718,83 @@ class AdminFinanceHubTest extends TestCase
         $this->assertEquals(230.0, $overview['money_in']['orders_paid']['gmv']);
         $this->assertEquals(230.0, $overview['cash_split']['cash_in_bank']);
         $this->assertEquals(100.0, $overview['money_out']['earnings_credited']['amount']);
-        $this->assertEquals(15.0, $overview['platform']['order_fees']);
+        $this->assertEquals(30.0, $overview['platform']['order_fees']);
         $this->assertEquals(15.0, $overview['platform']['refunded_order_fees']);
         $this->assertEquals(115.0, $overview['platform']['refunds']);
-        $this->assertEquals(0.0, $overview['platform']['margin']);
+        $this->assertEquals(1, $overview['platform']['refund_orders_count']);
+        $this->assertEquals(15.0, $overview['platform']['margin']);
+    }
+
+    public function test_partial_clawback_reverses_fee_on_resolution_date_not_completion(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-07-20 12:00:00'),
+        ]);
+        $order->update(['subtotal' => 230, 'total_amount' => 230]);
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Second Fee Site',
+            'site_url' => 'https://second-fee-site.test',
+            'domain' => 'second-fee-'.uniqid().'.test',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 100,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Second line for partial clawback period finance test.',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $clawed = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article-2',
+            'price' => 115,
+            'additional_price' => 0,
+            'publisher_price' => 100,
+            'platform_fee_percent' => 15,
+            'platform_fee_amount' => 15,
+        ]);
+
+        OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $clawed->id,
+            'opened_by' => $admin->id,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'Live URL was removed after the report window started.',
+            'resolved_at' => Carbon::parse('2026-08-12 12:00:00'),
+            'advertiser_credited' => 115,
+            'publisher_debited' => 100,
+        ]);
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(30.0, $july['platform']['order_fees']);
+        $this->assertEquals(0.0, $july['platform']['refunded_order_fees']);
+        $this->assertEquals(0.0, $july['platform']['refunds']);
+        $this->assertEquals(30.0, $july['platform']['margin']);
+        $this->assertEquals(0.0, $august['platform']['order_fees']);
+        $this->assertEquals(15.0, $august['platform']['refunded_order_fees']);
+        $this->assertEquals(115.0, $august['platform']['refunds']);
+        $this->assertEquals(1, $august['platform']['refund_orders_count']);
+        $this->assertEquals(-15.0, $august['platform']['margin']);
     }
 
     public function test_failed_after_paid_card_capture_still_counts_as_cash_in(): void
