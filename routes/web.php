@@ -628,7 +628,9 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         });
 
         Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
-        Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
+        Route::get('/audiences/export', [AdminAudienceController::class, 'export'])
+            ->middleware('throttle:12,1')
+            ->name('audiences.export');
         Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
         Route::match(['get', 'post'], '/campaigns/recipient-count', [AdminCampaignController::class, 'recipientCount'])
             ->middleware('throttle:30,1')

@@ -2,7 +2,7 @@
 
 namespace App\Models;
 
-use App\Jobs\SendEmailCampaignJob;
+use App\Services\AudienceInventoryService;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -86,17 +86,7 @@ class EmailCampaign extends Model
 
     public static function labelForAudience(?string $audience): string
     {
-        return match ($audience) {
-            'advertisers' => 'Advertisers',
-            'publishers' => 'Publishers',
-            'both' => 'Advertisers + Publishers',
-            'advertisers_no_orders', 'advertisers_never_checked_out' => 'Advertisers (never checked out)',
-            'advertisers_no_paid_orders' => 'Advertisers (no paid orders)',
-            'publishers_no_sites' => 'Publishers (no sites)',
-            'advertisers_never_deposited' => 'Advertisers (never deposited)',
-            'selected' => 'Selected users',
-            default => ucfirst((string) $audience),
-        };
+        return AudienceInventoryService::label($audience);
     }
 
     public function audienceLabel(): string
