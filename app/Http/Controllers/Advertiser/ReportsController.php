@@ -232,11 +232,13 @@ class ReportsController extends Controller
                     ->whereNotIn('status', ['cancelled', 'rejected', 'failed']);
             })->whereNotNull('sensitive_type');
 
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
+            $dateFrom = search_text($request->input('date_from'));
+            if ($dateFrom !== '') {
+                $query->whereDate('created_at', '>=', $dateFrom);
             }
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
+            $dateTo = search_text($request->input('date_to'));
+            if ($dateTo !== '') {
+                $query->whereDate('created_at', '<=', $dateTo);
             }
 
             $sensitiveItems = $query->with('order')->get();
@@ -280,14 +282,17 @@ class ReportsController extends Controller
             $query = DepositRequest::where('user_id', $userId)
                 ->orderBy('created_at', 'desc');
 
-            if ($request->filled('date_from')) {
-                $query->whereDate('created_at', '>=', $request->date_from);
+            $dateFrom = search_text($request->input('date_from'));
+            if ($dateFrom !== '') {
+                $query->whereDate('created_at', '>=', $dateFrom);
             }
-            if ($request->filled('date_to')) {
-                $query->whereDate('created_at', '<=', $request->date_to);
+            $dateTo = search_text($request->input('date_to'));
+            if ($dateTo !== '') {
+                $query->whereDate('created_at', '<=', $dateTo);
             }
-            if ($request->filled('status')) {
-                $query->where('status', $request->status);
+            $status = search_text($request->input('status'));
+            if ($status !== '') {
+                $query->where('status', $status);
             }
 
             $perPage = $request->get('per_page', 20);

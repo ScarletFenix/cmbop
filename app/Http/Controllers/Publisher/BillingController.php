@@ -129,8 +129,8 @@ class BillingController extends Controller
             return null;
         }
 
-        $raw = trim((string) $value);
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
+        $raw = search_text($value);
+        if ($raw === '' || ! preg_match('/^\d{4}-\d{2}-\d{2}$/', $raw)) {
             return null;
         }
 

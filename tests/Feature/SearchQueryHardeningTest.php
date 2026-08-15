@@ -201,6 +201,85 @@ class SearchQueryHardeningTest extends TestCase
             ->assertOk();
     }
 
+    public function test_date_filters_ignore_arrays(): void
+    {
+        $this->actingAs($this->advertiser)
+            ->get(route('advertiser.orders', [
+                'date_from' => ['2026-01-01'],
+                'date_to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+
+        $this->actingAs($this->advertiser)
+            ->get(route('advertiser.billing.index', [
+                'from' => ['2026-01-01'],
+                'to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+
+        $this->actingAs($this->advertiser)
+            ->getJson(route('advertiser.reports.funds', [
+                'date_from' => ['2026-01-01'],
+                'status' => ['completed'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($this->publisher)
+            ->get(route('publisher.billing.index', [
+                'from' => ['2026-01-01'],
+                'to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+
+        $this->actingAs($this->publisher)
+            ->getJson(route('publisher.withdrawals.history', [
+                'from_date' => ['2026-01-01'],
+                'to_date' => ['2026-12-31'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.finance', [
+                'period' => ['month'],
+                'date_from' => ['2026-01-01'],
+                'date_to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.finance.ledger', [
+                'date_from' => ['2026-01-01'],
+                'date_to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index', [
+                'user' => ['injected'],
+                'action' => ['login'],
+                'from' => ['2026-01-01'],
+                'to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+
+        $this->actingAs($this->admin)
+            ->getJson(route('admin.withdrawals.data', [
+                'date_from' => ['2026-01-01'],
+                'date_to' => ['2026-12-31'],
+            ]))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.history', [
+                'from' => ['2026-01-01'],
+                'to' => ['2026-12-31'],
+            ]))
+            ->assertOk();
+    }
+
     private function makeUser(string $roleName): User
     {
         $role = Role::where('name', $roleName)->firstOrFail();

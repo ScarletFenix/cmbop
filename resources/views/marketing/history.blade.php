@@ -38,11 +38,11 @@
                 </div>
                 <div class="col-6 col-md-3 col-lg-2">
                     <label class="form-label small mb-1" for="history-from">From</label>
-                    <input id="history-from" type="date" name="from" value="{{ request('from') }}" class="form-control form-control-sm">
+                    <input id="history-from" type="date" name="from" value="{{ search_text(request('from')) }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-6 col-md-3 col-lg-2">
                     <label class="form-label small mb-1" for="history-to">To</label>
-                    <input id="history-to" type="date" name="to" value="{{ request('to') }}" class="form-control form-control-sm">
+                    <input id="history-to" type="date" name="to" value="{{ search_text(request('to')) }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-12 col-lg-auto d-flex flex-wrap gap-2">
                     <button class="btn btn-sm btn-primary" type="submit">Apply filters</button>

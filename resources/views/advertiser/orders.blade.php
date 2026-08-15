@@ -150,13 +150,13 @@
                                    id="dateFrom"
                                    class="form-control form-control-sm" 
                                    placeholder="From"
-                                   value="{{ request('date_from') }}">
+                                   value="{{ search_text(request('date_from')) }}">
                             <input type="date" 
                                    name="date_to" 
                                    id="dateTo"
                                    class="form-control form-control-sm" 
                                    placeholder="To"
-                                   value="{{ request('date_to') }}">
+                                   value="{{ search_text(request('date_to')) }}">
                         </div>
                     </div>
 
