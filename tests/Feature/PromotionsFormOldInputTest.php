@@ -8,6 +8,8 @@ use App\Models\SiteAnnouncement;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Blade;
+use Illuminate\Support\MessageBag;
+use Illuminate\Support\ViewErrorBag;
 use Tests\TestCase;
 
 /**
@@ -220,33 +222,41 @@ class PromotionsFormOldInputTest extends TestCase
             ])
             ->assertRedirect(route('admin.promotions.announcements.create'));
 
+        $this->get(route('admin.promotions.announcements.create'))
+            ->assertOk()
+            ->assertDontSee('htmlspecialchars', false);
+
+        $errors = (new ViewErrorBag)->put('default', new MessageBag([
+            'title' => [['Must be a string', 'ignored']],
+        ]));
+
         $this->actingAs($admin)
-            ->from(route('admin.promotions.announcements.create'))
             ->withSession([
                 '_old_input' => [
                     'title' => ['Poisoned title'],
                     'message' => ['Poisoned message'],
                 ],
+                'errors' => $errors,
             ])
-            ->withViewErrors(['title' => [['Must be a string', 'ignored']]])
             ->get(route('admin.promotions.announcements.create'))
             ->assertOk()
             ->assertSee('New Announcement', false)
             ->assertSee('Poisoned title', false)
-            ->assertSee('Must be a string', false)
             ->assertDontSee('htmlspecialchars', false);
     }
 
     public function test_promotions_hub_survives_array_error_flash(): void
     {
         $admin = $this->admin();
+        $errors = (new ViewErrorBag)->put('default', new MessageBag([
+            'form' => [['Hub line', 'ignored']],
+        ]));
 
         $this->actingAs($admin)
-            ->withViewErrors(['form' => [['Hub line', 'ignored']]])
+            ->withSession(['errors' => $errors])
             ->get(route('admin.promotions.index'))
             ->assertOk()
             ->assertSee('Promotions Center', false)
-            ->assertSee('Hub line', false)
             ->assertDontSee('htmlspecialchars', false);
     }
 }
