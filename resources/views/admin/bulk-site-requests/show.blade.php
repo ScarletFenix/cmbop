@@ -152,13 +152,25 @@
 
                     @if($errors->any())
                         <div class="alert alert-danger py-2 small">
-                            <strong>Finish the boxes first.</strong>
+                            <strong>
+                                @if($errors->has('rejection_note') && ! $errors->has('items'))
+                                    Add a publisher note.
+                                @else
+                                    Finish the boxes first.
+                                @endif
+                            </strong>
                             {{ $errors->first() }}
                         </div>
                     @endif
 
                     @if($pendingItems->isEmpty())
-                        <div class="form-text">All submitted rows are already added.</div>
+                        <div class="form-text">
+                            @if($bulkRequest->sites->isNotEmpty())
+                                All submitted rows are already added.
+                            @else
+                                No pending websites left on this request.
+                            @endif
+                        </div>
                     @else
                         <form method="POST"
                               action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
@@ -228,7 +240,8 @@
                                                             class="form-select form-select-sm @error('items.'.$item->id.'.country') is-invalid @enderror"
                                                             required
                                                             data-bulk-required
-                                                            data-bulk-country>
+                                                            data-bulk-country
+                                                            @disabled($isRejected)>
                                                         <option value="">Select…</option>
                                                         @foreach($countries as $country)
                                                             <option value="{{ strtolower($country->code) }}"
@@ -247,7 +260,7 @@
                                                             required
                                                             data-bulk-required
                                                             data-bulk-language
-                                                            @disabled($oldCountry === '')>
+                                                            @disabled($isRejected || $oldCountry === '')>
                                                         <option value="">{{ $oldCountry === '' ? 'Select country first' : 'Select…' }}</option>
                                                         @if($oldCountry !== '')
                                                             @foreach(($countryLanguageMap[$oldCountry] ?? []) as $lang)
@@ -271,7 +284,8 @@
                                                            value="{{ $old['da'] ?? '' }}"
                                                            required
                                                            data-bulk-required
-                                                           data-score-clamp="100">
+                                                           data-score-clamp="100"
+                                                           @disabled($isRejected)>
                                                     @error('items.'.$item->id.'.da')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
@@ -285,7 +299,8 @@
                                                            value="{{ $old['dr'] ?? '' }}"
                                                            required
                                                            data-bulk-required
-                                                           data-score-clamp="100">
+                                                           data-score-clamp="100"
+                                                           @disabled($isRejected)>
                                                     @error('items.'.$item->id.'.dr')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
@@ -303,7 +318,8 @@
                                                            value="{{ $old['traffic'] ?? '' }}"
                                                            required
                                                            data-bulk-required
-                                                           data-traffic-input>
+                                                           data-traffic-input
+                                                           @disabled($isRejected)>
                                                     @error('items.'.$item->id.'.traffic')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
@@ -314,7 +330,8 @@
                                                            id="selectedCategories-{{ $uid }}"
                                                            value="{{ $oldCategories }}"
                                                            data-bulk-required
-                                                           class="@error('items.'.$item->id.'.categories') is-invalid @enderror">
+                                                           class="@error('items.'.$item->id.'.categories') is-invalid @enderror"
+                                                           @disabled($isRejected)>
                                                     <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}" data-multi-select="category">
                                                         <div class="multi-select-input multi-select-input--sm"
                                                              id="categoryInput-{{ $uid }}"
@@ -489,7 +506,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const noteWrap = document.getElementById('bulkRejectionNoteWrap');
     const noteEl = document.getElementById('rejection_note');
     const rejectedBox = document.getElementById('bulkRejectedIds');
-    const fields = () => Array.from(form.querySelectorAll('[data-bulk-required]'));
+    const fields = () => Array.from(form.querySelectorAll('[data-bulk-done-row]:not([data-bulk-rejected="1"]) [data-bulk-required]'));
     const multiSelects = {};
     const prefills = {};
     const hasServerOld = @json((bool) old('items'));
@@ -636,6 +653,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             const traffic = form.querySelector('input[name="items[' + itemId + '][traffic]"]');
             const row = (country && country.closest('[data-bulk-done-row]'))
                 || (language && language.closest('[data-bulk-done-row]'));
+            if (row && row.getAttribute('data-bulk-rejected') === '1') return;
             if (country && data.country) country.value = data.country;
             if (row) refreshBulkDoneLanguages(row, data.language || '');
             if (language && data.language) language.value = data.language;

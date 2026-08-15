@@ -240,6 +240,12 @@ class BulkDoneRejectRowsTest extends TestCase
                 ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk))
                 ->assertSessionHas('success', fn ($message) => str_contains((string) $message, '2 sites were removed'));
 
+            $this->actingAs($user)
+                ->get(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertOk()
+                ->assertSee('No pending websites left on this request', false)
+                ->assertDontSee('All submitted rows are already added', false);
+
             $this->assertSame(0, Site::query()->where('bulk_site_request_id', $bulk->id)->count());
             $this->assertSame(0, $bulk->fresh()->items()->count());
             $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
@@ -269,7 +275,11 @@ class BulkDoneRejectRowsTest extends TestCase
                     'rejected_item_ids' => [$items[0]->id],
                 ])
                 ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk))
-                ->assertSessionHasErrors('rejection_note');
+                ->assertSessionHasErrors('rejection_note')
+                ->assertSessionHas('error', fn ($message) => str_contains(
+                    (string) $message,
+                    'Add a note for the publisher about the removed sites'
+                ));
 
             $this->assertDatabaseHas('bulk_site_request_items', ['id' => $items[0]->id]);
             Mail::assertNothingQueued();

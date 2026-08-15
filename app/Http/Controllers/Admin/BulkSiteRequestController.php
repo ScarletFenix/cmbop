@@ -278,7 +278,7 @@ class BulkSiteRequestController extends Controller
 
             if ($rejectedItemIds !== []) {
                 $note = trim((string) $request->input('rejection_note', ''));
-                if (strlen($note) < 10) {
+                if (mb_strlen($note) < 10) {
                     $validator->errors()->add(
                         'rejection_note',
                         'Add a note for the publisher about the removed sites (at least 10 characters).'
@@ -373,10 +373,16 @@ class BulkSiteRequestController extends Controller
         });
 
         if ($validator->fails()) {
+            $itemErrors = collect($validator->errors()->keys())
+                ->contains(fn ($key) => $key === 'items' || str_starts_with((string) $key, 'items.'));
+            $flash = (! $itemErrors && $validator->errors()->has('rejection_note'))
+                ? (string) $validator->errors()->first('rejection_note')
+                : 'Finish each started block completely, or clear it and submit only the finished blocks.';
+
             return back()
                 ->withErrors($validator)
                 ->withInput()
-                ->with('error', 'Finish each started block completely, or clear it and submit only the finished blocks.');
+                ->with('error', $flash);
         }
 
         if ($completeItemIds === [] && $rejectedItemIds === []) {
@@ -667,7 +673,7 @@ class BulkSiteRequestController extends Controller
             );
 
             try {
-                if ($publisher?->email) {
+                if ($fresh && $publisher?->email) {
                     Mail::to($publisher->email)->send(
                         new BulkSiteItemsRejected($fresh, $publisher, $deletedDomains, $note)
                     );
@@ -677,8 +683,10 @@ class BulkSiteRequestController extends Controller
             }
 
             try {
-                app(InAppNotificationService::class)
-                    ->notifyPublisherBulkItemsRejected($fresh, $deletedDomains, $note);
+                if ($fresh) {
+                    app(InAppNotificationService::class)
+                        ->notifyPublisherBulkItemsRejected($fresh, $deletedDomains, $note);
+                }
             } catch (\Throwable $e) {
                 Log::warning('Failed to send in-app bulk item reject notice: '.$e->getMessage());
             }
