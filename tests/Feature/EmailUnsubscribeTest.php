@@ -104,8 +104,18 @@ class EmailUnsubscribeTest extends TestCase
         $this->post('/email/unsubscribe/'.$user->id, [
             '_token' => 'invalid',
         ])->assertForbidden();
+        $this->get('/email/unsubscribe/999999')->assertForbidden();
+        $this->post('/email/unsubscribe/999999', [
+            '_token' => 'invalid',
+        ])->assertForbidden();
 
         $this->assertTrue(EmailNotificationPreference::allows($user, 'marketing_emails'));
+    }
+
+    public function test_preview_placeholder_path_does_not_resolve(): void
+    {
+        $this->get('/email/unsubscribe/preview-id')->assertNotFound();
+        $this->post('/email/unsubscribe/preview-id')->assertNotFound();
     }
 
     public function test_opt_out_is_skipped_on_the_next_preference_respecting_campaign(): void

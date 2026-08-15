@@ -22,6 +22,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('List-Unsubscribe', $body);
         $this->assertStringContainsString('includeUnverified', $body);
         $this->assertStringContainsString('advertisers_no_paid_orders', $body);
+        $this->assertStringContainsString('collectRecipientRows', $body);
+        $this->assertStringContainsString('Do **not** use `ShouldBeUnique`', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }

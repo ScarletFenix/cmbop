@@ -381,8 +381,16 @@
             });
         }
 
-        const res = await fetch(countUrl + '?' + params.toString(), {
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        params.set('_token', form.querySelector('[name=_token]').value);
+        const res = await fetch(countUrl, {
+            method: 'POST',
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'Accept': 'application/json',
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                'X-CSRF-TOKEN': form.querySelector('[name=_token]').value,
+            },
+            body: params.toString(),
         });
         if (!res.ok) {
             throw new Error('count-failed');

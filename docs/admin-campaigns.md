@@ -8,21 +8,24 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
 
 1. Compose subject, HTML body, optional CTA, audience, and the two checkboxes
    (`respect_preferences`, `include_unverified`).
-2. Confirm uses `GET /admin/campaigns/recipient-count` so the dialog shows the
-   live count (and how many unverified were excluded). The submit button must
-   **not** carry `data-slb-confirm` — that would let `slb-confirm.js` (document
-   capture) run first and skip the count (or loop). Confirm is imperative
-   `slbConfirm()` from the form script.
+2. Confirm uses `POST /admin/campaigns/recipient-count` (GET still works for
+   small queries) so a 400-id picker does not blow the URL limit. The submit
+   button must **not** carry `data-slb-confirm` — that would let
+   `slb-confirm.js` (document capture) run first and skip the count (or loop).
+   Confirm is imperative `slbConfirm()` from the form script.
 3. `POST /admin/campaigns/send` creates an `email_campaigns` row (`queued`),
    inserts `email_campaign_recipients` (`pending`) in one transaction, logs
    `campaign.queued`, then dispatches `SendEmailCampaignJob` on the **`emails`**
    queue. Flash: **Campaign queued for N recipient(s).**
-4. The job claims only a `queued` row (`queued` → `sending`) so a second
-   worker cannot re-send. It then preference-skips or queues
-   `AudienceCampaignMail`, then finalizes `sent` (if any mail left the job) or
-   `failed`. A thrown handle (or timeout) fails leftover **pending** rows,
-   recounts, and marks the campaign `failed` (not stuck `sending`). Already
-   queued mail can still deliver afterward.
+4. The job claims a `queued` row (`queued` → `sending`) or continues an
+   already-`sending` campaign. Each handle processes at most **20** pending
+   rows (fits the web-drain 30s worker timeout) and re-dispatches itself when
+   more remain. Recipients are claimed `pending` → `queued` atomically so two
+   workers cannot double-send. A thrown handle still fails leftover **pending**
+   rows and marks the campaign `failed`. A **timeout** (or `failed()`) must
+   **not** wipe the rest of the audience — it re-queues the job. Opening
+   Admin → Campaigns also re-dispatches `queued`/`sending` rows that have
+   gone stale (worker died / unique lock dropped the only job).
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
@@ -32,8 +35,14 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
    campaign ends `failed`.
 6. Preview renders a catalog stand-in (not the admin) and a placeholder
    unsubscribe URL. The preview iframe is sandboxed so a click cannot opt
-   the operator out. Job dispatch is unique per campaign; a dispatch failure
-   marks the campaign `failed` instead of leaving it stuck `queued`.
+   the operator out. A dispatch exception marks the campaign `failed` instead
+   of leaving it stuck `queued`. Do **not** use `ShouldBeUnique` on the send
+   job — a stale unique lock silently drops the only dispatch. The `queued` →
+   `sending` claim plus per-row `pending` → `queued` is the mutex. Send
+   hydrates `id`+`email` only (`collectRecipientRows`) so a large audience
+   cannot OOM the compose request. `user_ids` are integers capped at
+   `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
+   422 the whole send).
 
 Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
@@ -71,7 +80,9 @@ and add-site / deposit reminders keep their own queries.
 - `GET|POST /email/unsubscribe/{user}` (`email.unsubscribe`), `throttle:30,1`.
 - HMAC is signed against the **path only** (`absolute: false`) and prefixed with
   `app_public_url()`, same as verify / deposit-approve links. Default expiry
-  `MAIL_UNSUBSCRIBE_EXPIRE_DAYS` (30).
+  `MAIL_UNSUBSCRIBE_EXPIRE_DAYS` (30). The `{user}` segment is numeric; the
+  controller checks the signature **before** loading the user so missing ids
+  and bad signatures both **403** (no existence leak).
 - GET shows a confirm page. POST sets **only** `marketing_emails=false`.
 - One-click (`List-Unsubscribe=One-Click` or JSON) returns empty **200**.
 - CSRF is excepted for `email/unsubscribe/*` (Gmail POSTs have no token).
