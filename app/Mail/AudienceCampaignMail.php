@@ -169,6 +169,25 @@ class AudienceCampaignMail extends PlatformMailable
     }
 
     /**
+     * Failed / skipped sync must not clobber an expire-stale row (leave
+     * stale). Delivered must, or a late SMTP success after expire is lost.
+     *
+     * @return list<string>
+     */
+    protected function syncableStatuses(string $newStatus): array
+    {
+        if ($newStatus === EmailCampaignRecipient::STATUS_DELIVERED) {
+            return EmailCampaignRecipient::statusesOpenForDelivery();
+        }
+
+        return [
+            EmailCampaignRecipient::STATUS_PENDING,
+            EmailCampaignRecipient::STATUS_QUEUED,
+            EmailCampaignRecipient::STATUS_FAILED,
+        ];
+    }
+
+    /**
      * @param  array<string, mixed>  $payload
      */
     protected function syncRecipientRow(array $payload): void
@@ -186,11 +205,7 @@ class AudienceCampaignMail extends PlatformMailable
             $updated = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
-                ->whereIn('status', [
-                    EmailCampaignRecipient::STATUS_PENDING,
-                    EmailCampaignRecipient::STATUS_QUEUED,
-                    EmailCampaignRecipient::STATUS_FAILED,
-                ])
+                ->whereIn('status', $this->syncableStatuses((string) ($payload['status'] ?? '')))
                 ->update($payload);
 
             if ($updated) {

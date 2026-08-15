@@ -2,26 +2,35 @@
 
 namespace App\Models\Concerns;
 
+use DateTimeInterface;
 use Illuminate\Database\Eloquent\Builder;
 
 trait HasPromotionSchedule
 {
+    use ToleratesUnparseableDates;
+
     public function scheduleState(): string
     {
-        if ($this->isCurrentlyLive()) {
-            return 'live';
-        }
+        try {
+            if ($this->isCurrentlyLive()) {
+                return 'live';
+            }
 
-        if (! $this->is_active) {
+            if (! $this->is_active) {
+                return 'paused';
+            }
+
+            $starts = $this->safeStartsAt();
+            if ($starts && $starts->isFuture()) {
+                return 'scheduled';
+            }
+
+            $ends = $this->safeEndsAt();
+            if ($ends && $ends->isPast()) {
+                return 'expired';
+            }
+        } catch (\Throwable) {
             return 'paused';
-        }
-
-        if ($this->starts_at && $this->starts_at->isFuture()) {
-            return 'scheduled';
-        }
-
-        if ($this->ends_at && $this->ends_at->isPast()) {
-            return 'expired';
         }
 
         return 'paused';
@@ -46,18 +55,69 @@ trait HasPromotionSchedule
 
     public function isCurrentlyLive(): bool
     {
-        if (! $this->is_active) {
+        try {
+            if (! $this->is_active) {
+                return false;
+            }
+
+            // A leftover non-null date that Carbon cannot parse is not "no
+            // schedule" — SQL active() already excludes many of these, and
+            // treating them as unrestricted made admin/click disagree.
+            if ($this->scheduleDateUnparseable('starts_at') || $this->scheduleDateUnparseable('ends_at')) {
+                return false;
+            }
+
+            $now = now();
+            $starts = $this->safeStartsAt();
+            if ($starts && $starts->gt($now)) {
+                return false;
+            }
+            $ends = $this->safeEndsAt();
+            if ($ends && $ends->lt($now)) {
+                return false;
+            }
+
+            return true;
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    public function visibleToAudience(string $audience): bool
+    {
+        $mine = scalar_text($this->audience ?: 'all');
+
+        return $mine === 'all' || $mine === $audience;
+    }
+
+    public function safeStartsAt(): ?DateTimeInterface
+    {
+        return $this->safeScheduleDate('starts_at');
+    }
+
+    public function safeEndsAt(): ?DateTimeInterface
+    {
+        return $this->safeScheduleDate('ends_at');
+    }
+
+    private function safeScheduleDate(string $attribute): ?DateTimeInterface
+    {
+        try {
+            $value = $this->{$attribute};
+
+            return $value instanceof DateTimeInterface ? $value : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    private function scheduleDateUnparseable(string $attribute): bool
+    {
+        $raw = $this->getAttributes()[$attribute] ?? null;
+        if ($raw === null || $raw === '') {
             return false;
         }
 
-        $now = now();
-        if ($this->starts_at && $this->starts_at->gt($now)) {
-            return false;
-        }
-        if ($this->ends_at && $this->ends_at->lt($now)) {
-            return false;
-        }
-
-        return true;
+        return $this->safeScheduleDate($attribute) === null;
     }
 }

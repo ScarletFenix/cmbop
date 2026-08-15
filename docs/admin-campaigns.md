@@ -37,8 +37,10 @@ or marketing, even if that staff account also has a marketplace role.
    Recovery **touches** the campaign after a re-dispatch (or when a send
    job is already in the `jobs` table) so a backed-up emails queue cannot
    enqueue another job on every page view. The jobs-table check must
-   match JSON-escaped payloads (`\"campaignId\";i:N;`) — a literal
-   `campaignId";i:N;` LIKE misses every database-queue row. It walks
+   match JSON-escaped payloads (`\"campaignId\";i:N;`) and `"campaignId":N`
+   via `containsSendCampaignJob` → `containsCampaignId` — a literal
+   `campaignId";i:N;` LIKE misses every database-queue row, and `i:12;`
+   must not match campaign 123. It walks
    every send-job connection (mail first, then `queue.default`); a miss
    or error on the first must not skip the other. The send job pins
    `onConnection` to a drainable queue (mail connection first, otherwise
@@ -51,7 +53,19 @@ or marketing, even if that staff account also has a marketplace role.
    connections sync) so a killed inline send is not left `sending` until
    cron. A `sending` campaign that still
    has `queued` recipients is left sending — leftover queued rows are not
-   treated as a successful send. A timeout after the last `pending` →
+   treated as a successful send. When those queued rows have no email log
+   and no `AudienceCampaignMail` on a database queue (timeout after the
+   `pending` → `queued` claim, before `Mail::send()` inserted the job),
+   recover reclaims them to `pending` and dispatches a send job. A
+   Redis/SQS **mail** queue, a missing `payload` column, or a mailable whose
+   user id cannot be parsed is fail-closed: the row stays queued so an
+   in-flight send is not doubled. An unused redis `queue.default` must not
+   block a healthy database mail queue. Give-up can leave a campaign
+   `failed` with leftover `queued` claims — recover now selects those too,
+   reclaims orphans, and puts the campaign back to `sending`. A queued row
+   that already has a delivered/failed log FK is synced to that log
+   (expire/reclaim both require a null FK, so those rows sat queued forever).
+   A timeout after the last `pending` →
    `queued` claim must **not** finalize as sent (`failed()` used to, because
    `sent_count` includes queued). Recount promotes `sending` → `sent` only
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
@@ -60,8 +74,10 @@ or marketing, even if that staff account also has a marketplace role.
    instead of counting as a fake send. Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
-   mailable. A later send suppressed as a duplicate marks the recipient
-   `delivered` (it already went out).
+   mailable. A later SMTP success or a send suppressed as a duplicate
+   still marks the recipient `delivered` (it already went out), including
+   when expire already flipped the row to skipped stale. Recover also
+   attaches a delivered `email_logs` row to those leftovers.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
@@ -85,7 +101,14 @@ or marketing, even if that staff account also has a marketplace role.
    missing `@` is dropped from count/collect (MySQL `TRIM` does not strip
    tabs) and failed at send instead of `Mail::to('')`. Stall recovery
    wraps **each** queue connection in its own try/catch so a broken first
-   connection cannot hide a job on the other (and must stay valid PHP).
+   connection cannot hide a job on the other (and must stay valid PHP —
+   no extra unclosed `try`, and `recipientRowQuery` / `containsCampaignId`
+   must not be declared twice). A scan that throws (lock wait, missing
+   `payload` column) must **not** look like “no job” or recover floods
+   another send. A successful empty scan of the live jobs table must still
+   redispatch even if the unused connection is broken. Live send uses the current `@` address, then the stored
+   recipient email from compose, then fails — a profile wipe after queue
+   must not drop someone we already counted.
    Email Center retry of a failed campaign mailable clears `email_log_id`
    so a lost retry can still expire as stale.
    `user_ids` are integers capped at
@@ -98,7 +121,8 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
 - Body is sanitized with `CampaignHtml` (allowlist `p, br, strong, b, em, i, u,
   ul, ol, li, a, h1–h3, blockquote`). Event handlers and `javascript:` / `data:`
-  hrefs are dropped. CTA URLs must be `http` or `https`.
+  hrefs are dropped. CTA URLs must be `http` or `https`. `&nbsp;`-only bodies
+  are blank and rejected before hydrate.
 - Campaign `collect()` / `count()` default **`includeUnverified = false`**.
   Audience Inventory census (`paginate` / `export` / `stats()`) still includes
   unverified unless asked otherwise. Inventory cards show **all** plus
@@ -123,7 +147,9 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   campaign send / recipient-count.
 - The custom picker lists **verified users first** so unverified names cannot
   crowd them out of the 200-per-role cap. The “showing first 200” warning
-  uses the same picker universe (all emails), not the verified-only KPI.
+  uses the same picker universe (usable emails: not blank/tab-only and
+  containing `@`), not the verified-only KPI. Tab-only / no-`@` accounts
+  must not appear in the picker or they crowd the cap and then fail at send.
 - Inventory search / filters apply to the table and CSV only. **Email this
   audience** still sends the full segment (verified by default).
 - Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,

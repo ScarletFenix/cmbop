@@ -510,7 +510,7 @@ class AudienceInventoryService
     protected function pickerQuery(string $roleName): Builder
     {
         $query = $this->queryForRole($roleName);
-        $this->excludeStaffAccounts($query);
+        $this->constrainUsableEmail($this->excludeStaffAccounts($query));
 
         return $query
             ->setEagerLoads([])
@@ -554,23 +554,6 @@ class AudienceInventoryService
         }
 
         return $query;
-    }
-
-    /**
-     * id + email only, no role eager-loads — used by campaign send so a large
-     * audience cannot OOM the HTTP request before the job is dispatched.
-     */
-    protected function recipientRowQuery(Builder $query, bool $includeUnverified, bool $alreadyScoped = false): Builder
-    {
-        if (! $alreadyScoped) {
-            $query = $this->applyRecipientScope($query, $includeUnverified);
-        }
-
-        return $query
-            ->setEagerLoads([])
-            ->reorder()
-            ->orderBy('users.id')
-            ->select(['users.id', 'users.email']);
     }
 
     /**

@@ -5,7 +5,7 @@ namespace App\Services\ContentUpload;
 use App\Models\ContentModerationLog;
 use App\Models\ContentSubmission;
 use App\Models\User;
-use App\Services\ActivityLogger;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +15,7 @@ class AdminLibraryStaffActions
     public function __construct(
         private ContentUploadService $uploads,
         private InAppNotificationService $notifications,
+        private ContentModerationService $moderation,
     ) {}
 
     public function fileOnDisk(ContentSubmission $submission): bool
@@ -41,7 +42,13 @@ class AdminLibraryStaffActions
             ]);
         }
 
-        if ($submission->isExpired() && ! $submission->isInUse()) {
+        if ($submission->isLockedByPaidOrder()) {
+            throw ValidationException::withMessages([
+                'submission' => 'Cannot re-evaluate an article on a paid order. Use an order dispute if the placement must be unwound.',
+            ]);
+        }
+
+        if ($submission->isUnusedExpired()) {
             throw ValidationException::withMessages([
                 'submission' => 'Expired unused articles are preview only. Ask the advertiser to upload a new file.',
             ]);
@@ -74,72 +81,54 @@ class AdminLibraryStaffActions
             ]);
         }
 
-        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
-        $report['admin_override'] = [
-            'at' => now()->toIso8601String(),
-            'by' => $admin->id,
-            'decision' => $decision,
-            'notes' => $notes,
-        ];
-        $report['summary'] = $decision === ContentSubmission::STATUS_APPROVED
-            ? 'Manually approved by staff: '.$notes
-            : 'Manually rejected by staff: '.$notes;
-
-        $submission->forceFill([
-            'moderation_status' => $decision,
-            'evaluation_status' => $decision,
-            'evaluated_at' => now(),
-            'evaluation_report' => $report,
-        ])->save();
-
-        if ($submission->moderation_log_id) {
-            ContentModerationLog::query()
-                ->whereKey($submission->moderation_log_id)
-                ->update([
-                    'passed' => $decision === ContentSubmission::STATUS_APPROVED,
-                    'status' => $decision === ContentSubmission::STATUS_APPROVED
-                        ? ContentModerationLog::STATUS_APPROVED
-                        : ContentModerationLog::STATUS_REJECTED,
-                    'admin_override' => true,
-                    'overridden_by' => $admin->id,
-                    'overridden_at' => now(),
-                    'admin_notes' => $notes,
-                ]);
+        $result = $this->moderation->applyStaffOverride($submission, $decision, $admin, $notes);
+        $fresh = $result['submission'] ?? null;
+        if (! ($result['ok'] ?? false) || ! $fresh) {
+            throw ValidationException::withMessages([
+                'submission' => $result['message'] ?: 'Override failed.',
+            ]);
         }
-
-        try {
-            ActivityLogger::log(
-                'content_library.override',
-                ($admin->name ?: 'Admin').' '.$decision.' article #'.$submission->id,
-                $submission,
-                [
-                    'decision' => $decision,
-                    'notes' => $notes,
-                    'advertiser_id' => $submission->user_id,
-                ],
-                $submission->title ?: $submission->original_filename
-            );
-        } catch (\Throwable) {
-        }
-
-        $owner = $submission->user;
-        if ($owner) {
+        $owner = $fresh?->user;
+        if ($owner && $fresh) {
             try {
-                $this->notifications->notifyContentEvaluation($owner, $submission->fresh(), [
+                $this->notifications->notifyContentEvaluation($owner, $fresh, [
                     'approved' => $decision === ContentSubmission::STATUS_APPROVED,
                     'title' => $decision === ContentSubmission::STATUS_APPROVED
                         ? 'Article approved'
                         : 'Article needs changes',
-                    'message' => $decision === ContentSubmission::STATUS_APPROVED
-                        ? 'A staff member approved this article. You can attach it in the catalog.'
-                        : 'A staff member rejected this article. '.$notes,
+                    'message' => $this->overrideNotice($fresh, $decision, $notes),
                     'moderation_status' => $decision,
+                    'action_url' => route(
+                        'advertiser.content-library',
+                        $fresh->staffApprovalLibraryParams(),
+                        false
+                    ),
                 ]);
             } catch (\Throwable) {
             }
         }
 
-        return $submission->fresh();
+        return $fresh;
+    }
+
+    protected function overrideNotice(ContentSubmission $submission, string $decision, string $notes): string
+    {
+        if ($decision !== ContentSubmission::STATUS_APPROVED) {
+            return 'A staff member rejected this article. '.$notes;
+        }
+
+        if ($submission->isReadyForCheckout()) {
+            return 'A staff member approved this article. You can attach it in the catalog.';
+        }
+
+        if ($submission->isUsableAfterStaffApproval()) {
+            return 'A staff member approved this article. You can continue the open order it is already attached to.';
+        }
+
+        $notice = trim($submission->editorNotice());
+
+        return 'A staff member approved this article, but it still needs a fix before you can order it.'
+            .($notice !== '' ? ' '.$notice : '');
     }
 
     public function archive(ContentSubmission $submission): ContentSubmission
@@ -166,13 +155,21 @@ class AdminLibraryStaffActions
 
     public function submissionForLog(ContentModerationLog $log): ?ContentSubmission
     {
+        $byLogId = ContentSubmission::query()
+            ->where('moderation_log_id', $log->id)
+            ->first();
+        if ($byLogId) {
+            return $byLogId;
+        }
+
+        if (! filled($log->scan_token) || ! $log->user_id) {
+            return null;
+        }
+
         return ContentSubmission::query()
-            ->where(function ($q) use ($log) {
-                $q->where('moderation_log_id', $log->id);
-                if (filled($log->scan_token)) {
-                    $q->orWhere('scan_token', $log->scan_token);
-                }
-            })
+            ->where('scan_token', $log->scan_token)
+            ->where('user_id', $log->user_id)
+            ->latest('id')
             ->first();
     }
 }

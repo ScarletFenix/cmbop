@@ -25,8 +25,9 @@
     $advertiserUrl = $submission->user
         ? route('admin.users.index', ['user' => $submission->user->id]).'#user-'.$submission->user->id
         : null;
-    $orderUrl = $submission->order_id
-        ? route('admin.orders.show', $submission->order_id)
+    $libraryOrder = $submission->libraryOrder();
+    $orderUrl = $libraryOrder
+        ? route('admin.orders.show', $libraryOrder->id)
         : null;
     $siteName = $placement?->site_name
         ?: $placement?->site?->site_name
@@ -90,8 +91,8 @@
                         <dt class="col-5 text-muted">Order</dt>
                         <dd class="col-7">
                             @if($orderUrl)
-                                <a href="{{ $orderUrl }}">{{ $submission->order?->order_number ?: '#'.$submission->order_id }}</a>
-                                <div class="text-muted">{{ $submission->order?->status }} · {{ $submission->order?->payment_status }}</div>
+                                <a href="{{ $orderUrl }}">{{ $libraryOrder?->order_number ?: '#'.$libraryOrder?->id }}</a>
+                                <div class="text-muted">{{ $libraryOrder?->status }} · {{ $libraryOrder?->payment_status }}</div>
                             @else
                                 —
                             @endif
@@ -106,7 +107,12 @@
                         <dt class="col-5 text-muted">Live URL</dt>
                         <dd class="col-7">
                             @if($liveUrl)
-                                <a href="{{ $liveUrl }}" target="_blank" rel="noopener noreferrer">{{ $liveUrl }}</a>
+                                @php $safeLive = safe_external_url($liveUrl); @endphp
+                                @if($safeLive !== '#')
+                                    <a href="{{ $safeLive }}" target="_blank" rel="noopener noreferrer">{{ $liveUrl }}</a>
+                                @else
+                                    <span class="text-muted">{{ $liveUrl }}</span>
+                                @endif
                             @else
                                 —
                             @endif
@@ -126,7 +132,12 @@
                             @if($submission->hasLink())
                                 {{ $submission->anchor_text }}
                                 <div>
-                                    <a href="{{ $submission->target_url }}" target="_blank" rel="noopener noreferrer">{{ $submission->target_url }}</a>
+                                    @php $safeTarget = safe_external_url($submission->target_url); @endphp
+                                    @if($safeTarget !== '#')
+                                        <a href="{{ $safeTarget }}" target="_blank" rel="noopener noreferrer">{{ $submission->target_url }}</a>
+                                    @else
+                                        <span class="text-muted">{{ $submission->target_url }}</span>
+                                    @endif
                                 </div>
                             @else
                                 —
@@ -171,7 +182,7 @@
                         @if($submission->moderationLog->admin_notes)
                             <p class="mb-2">{{ $submission->moderationLog->admin_notes }}</p>
                         @endif
-                        @if(! $submission->moderationLog->passed && $submission->moderationLog->status === 'rejected')
+                        @if($submission->moderationLog->isOverridable($submission))
                             <form method="POST" action="{{ route('admin.moderation.override', $submission->moderationLog) }}"
                                   data-slb-confirm="Approve this submission via admin override?"
                                   data-slb-confirm-title="Override moderation?"
@@ -181,7 +192,8 @@
                                 <textarea name="notes" class="form-control form-control-sm mb-2" rows="2" required minlength="3" maxlength="2000" placeholder="Why this article is allowed">{{ old_text('notes') }}</textarea>
                                 <button class="btn btn-sm btn-primary" type="submit">Approve override</button>
                             </form>
-                        @elseif($submission->moderationLog->admin_override)
+                        @endif
+                        @if($submission->moderationLog->admin_override)
                             <form method="POST" action="{{ route('admin.moderation.revert', $submission->moderationLog) }}"
                                   data-slb-confirm="Re-check this article and drop the override?"
                                   data-slb-confirm-title="Revert override?"
@@ -252,7 +264,7 @@
                             <div class="d-flex flex-wrap gap-2">
                                 @if($canOverrideApprove)
                                     <button type="submit" name="decision" value="approved" class="btn btn-sm btn-success"
-                                            data-slb-confirm="Force-approve this article? The advertiser will be able to order it."
+                                            data-slb-confirm="Force-approve this article? Restricted wording stays in the file. Checkout honors this until the advertiser edits, and the article still needs a file, market, rights, and a valid link pair."
                                             data-slb-confirm-title="Approve article?"
                                             data-slb-confirm-text="Approve">
                                         Override approve

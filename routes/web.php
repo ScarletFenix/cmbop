@@ -535,6 +535,8 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/activity-logs', [AdminActivityLogController::class, 'index'])
             ->name('activity-logs.index');
+        Route::get('/activity-logs/export', [AdminActivityLogController::class, 'export'])
+            ->name('activity-logs.export');
 
         Route::get('/catalog-activity', [AdminCatalogActivityController::class, 'index'])
             ->name('catalog-activity');

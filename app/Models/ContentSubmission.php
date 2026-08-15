@@ -499,6 +499,7 @@ class ContentSubmission extends Model
     public function scopeExpiredUnused($query)
     {
         return $query->withoutOpenOwnerOrder()
+            ->withoutOpenOrderItemLink()
             ->whereNotNull('expires_at')
             ->where('expires_at', '<=', now());
     }
@@ -530,6 +531,7 @@ class ContentSubmission extends Model
     {
         return $query->where('moderation_status', self::STATUS_APPROVED)
             ->withoutOpenOwnerOrder()
+            ->withoutOpenOrderItemLink()
             ->whereNotNull('expires_at')
             ->where('expires_at', '>', now())
             ->where('expires_at', '<=', now()->addDays(max(1, $withinDays)));
@@ -591,7 +593,12 @@ class ContentSubmission extends Model
      */
     public function scopeInProgressInLibrary($query)
     {
-        return $query->withOpenOwnerOrder()
+        return $query->where('moderation_status', self::STATUS_APPROVED)
+            ->whereNotNull('path')->where('path', '!=', '')
+            ->whereNotNull('country')->where('country', '!=', '')
+            ->whereNotNull('language')->where('language', '!=', '')
+            ->whereNull('archived_at')
+            ->withOpenOwnerOrder()
             ->hasCheckoutReadyLinks()
             ->withImageRightsCover()
             ->withoutCurrentLivePlacement();
@@ -653,6 +660,15 @@ class ContentSubmission extends Model
                             $unready->withoutCheckoutReadyLinks()
                                 ->orWhere(function ($rights) {
                                     $rights->withoutImageRightsCover();
+                                })
+                                ->orWhere(function ($file) {
+                                    $file->whereNull('path')->orWhere('path', '');
+                                })
+                                ->orWhere(function ($country) {
+                                    $country->whereNull('country')->orWhere('country', '');
+                                })
+                                ->orWhere(function ($language) {
+                                    $language->whereNull('language')->orWhere('language', '');
                                 });
                         });
                 })->orWhere(function ($leftover) {
@@ -660,10 +676,24 @@ class ContentSubmission extends Model
                         ->withoutOpenOwnerOrder()
                         ->whereNull('archived_at')
                         ->withActiveOrderClaim();
+                })->orWhere(function ($incomplete) {
+                    $incomplete->where('moderation_status', self::STATUS_APPROVED)
+                        ->withoutOpenOwnerOrder()
+                        ->where(function ($gap) {
+                            $gap->whereNull('path')->orWhere('path', '')
+                                ->orWhereNull('country')->orWhere('country', '')
+                                ->orWhereNull('language')->orWhere('language', '');
+                        });
                 });
             })
             ->where(function ($exp) {
-                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                $exp->where(function ($active) {
+                    $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
+                })->orWhere(function ($owned) {
+                    $owned->withOpenOwnerOrder();
+                })->orWhere(function ($claimed) {
+                    $claimed->withActiveOrderClaim();
+                });
             });
 
         return $query;
@@ -897,16 +927,26 @@ class ContentSubmission extends Model
             return false;
         }
 
-        if ($this->isInUse()) {
-            return true;
-        }
-
-        return ! $this->isExpired();
+        return ! $this->isUnusedExpired();
     }
 
     public function canEditArticle(): bool
     {
-        return ! $this->isLockedByPaidOrder() && ! $this->isArchived() && ! $this->isExpired();
+        if ($this->isLockedByPaidOrder() || $this->isArchived()) {
+            return false;
+        }
+
+        // Catalog expiry is unused-inventory only. A leftover still on an
+        // open order must stay editable so Pay again can be unblocked.
+        return ! $this->isUnusedExpired();
+    }
+
+    /**
+     * Retention clock for unused inventory. Claimed leftovers are not this.
+     */
+    public function isUnusedExpired(): bool
+    {
+        return $this->isExpired() && ! $this->isLinkedToOpenOrderItem();
     }
 
     /**
@@ -996,19 +1036,12 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Catalog / wizard / cart may list this row. Replace runs on assign,
-     * checkout, or Order — not when the picker merely opens.
+     * Approved file + market + rights + a complete HTTPS link pair.
+     * Ignores leftover/paid claims so Order / replace can see whether the
+     * article would be usable after the leftover is released.
      */
-    public function isAvailableForPicker(): bool
+    public function isContentReadyForOrder(): bool
     {
-        if ($this->isReadyForCheckout()) {
-            return true;
-        }
-
-        if (! $this->canReplaceUnpaidLeftover()) {
-            return false;
-        }
-
         return $this->moderation_status === self::STATUS_APPROVED
             && filled($this->path)
             && ! $this->isArchived()
@@ -1017,6 +1050,28 @@ class ContentSubmission extends Model
             && filled($this->language)
             && $this->imageRightsCoverContent()
             && $this->hasCheckoutReadyLinks();
+    }
+
+    /**
+     * Library Order button: free checkout-ready rows, or a leftover whose
+     * article is already content-ready. Unready leftovers keep Pay again.
+     */
+    public function canOrderFromLibrary(): bool
+    {
+        if ($this->isReadyForCheckout()) {
+            return true;
+        }
+
+        return $this->canReplaceUnpaidLeftover() && $this->isContentReadyForOrder();
+    }
+
+    /**
+     * Catalog / wizard / cart may list this row. Replace runs on assign,
+     * checkout, or Order — not when the picker merely opens.
+     */
+    public function isAvailableForPicker(): bool
+    {
+        return $this->canOrderFromLibrary();
     }
 
     /**
@@ -1042,7 +1097,7 @@ class ContentSubmission extends Model
      */
     public function isNearExpiry(int $withinDays = 7): bool
     {
-        if ($this->expires_at === null || $this->isExpired() || $this->isArchived() || $this->isInUse()) {
+        if ($this->expires_at === null || $this->isExpired() || $this->isArchived() || $this->isLinkedToOpenOrderItem()) {
             return false;
         }
 
@@ -1244,6 +1299,50 @@ class ContentSubmission extends Model
         });
     }
 
+    /**
+     * Owner order, or the leftover line still pointing here when order_id
+     * was never written. Admin library "View order" must not go blank.
+     */
+    public function libraryOrder(): ?Order
+    {
+        $claimId = $this->activeClaimOrderId();
+        if ($claimId) {
+            $owner = $this->relatedOwnerOrder();
+            if ($owner instanceof Order && (int) $owner->id === $claimId) {
+                return $owner;
+            }
+
+            $item = $this->placementItem();
+            if ($item && (int) $item->order_id === $claimId) {
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+                if ($order instanceof Order) {
+                    return $order;
+                }
+            }
+
+            return Order::query()->find($claimId);
+        }
+
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order && $owner->status !== 'cancelled') {
+            return $owner;
+        }
+
+        $item = $this->placementItem();
+        if ($item) {
+            $order = $item->relationLoaded('order')
+                ? $item->order
+                : $item->order()->first();
+            if ($order instanceof Order && $order->status !== 'cancelled') {
+                return $order;
+            }
+        }
+
+        return null;
+    }
+
     public function liveUrl(): ?string
     {
         if (! $this->isInUse()) {
@@ -1382,11 +1481,22 @@ class ContentSubmission extends Model
             return 'in_progress';
         }
 
+        // Item-only leftover (order_id never written). Not unused inventory —
+        // Expired / purge must not treat it as a dead row.
+        if ($this->isClaimedByAnotherOrder()) {
+            return 'needs_fix';
+        }
+
         if ($this->isExpired()) {
             return 'expired';
         }
 
         if ($this->needsCorrection()) {
+            return 'needs_fix';
+        }
+
+        if ($this->moderation_status === self::STATUS_APPROVED
+            && (! filled($this->path) || ! filled($this->country) || ! filled($this->language))) {
             return 'needs_fix';
         }
 
@@ -1774,6 +1884,87 @@ class ContentSubmission extends Model
         return $order instanceof Order ? $order : null;
     }
 
+    /**
+     * Direct order_id or a non-clawed line on this order still points here.
+     */
+    public function isOwnedByOrder(?int $orderId): bool
+    {
+        if ($orderId === null || $orderId <= 0) {
+            return false;
+        }
+
+        if ((int) $this->order_id === (int) $orderId) {
+            return true;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            return $this->orderItems->contains(function (OrderItem $item) use ($orderId) {
+                if ($item->isClawedBack() || (int) $item->order_id !== (int) $orderId) {
+                    return false;
+                }
+
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+
+                return $order instanceof Order && $order->status !== 'cancelled';
+            });
+        }
+
+        return $this->orderItems()
+            ->where('order_id', $orderId)
+            ->whereHas('order', function ($order) {
+                $order->where('status', '!=', 'cancelled');
+            })
+            ->tap(fn ($item) => $this->excludeClawedBackItems($item))
+            ->exists();
+    }
+
+    /**
+     * Open owner order, or the first paid/pending/failed leftover still pointing here.
+     */
+    public function activeClaimOrderId(): ?int
+    {
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order && $this->orderLooksLikeActiveClaim($owner)) {
+            return (int) $owner->id;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return null;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            foreach ($this->orderItems as $item) {
+                if ($item->isClawedBack()) {
+                    continue;
+                }
+
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+                if ($order instanceof Order && $this->orderLooksLikeActiveClaim($order)) {
+                    return (int) $order->id;
+                }
+            }
+
+            return null;
+        }
+
+        $item = $this->orderItems()
+            ->whereHas('order', function ($order) {
+                $this->constrainActiveOrderClaim($order);
+            })
+            ->tap(fn ($row) => $this->excludeClawedBackItems($row))
+            ->first();
+
+        return $item ? (int) $item->order_id : null;
+    }
+
     protected function ownerOrderBlocksOrdering(): bool
     {
         $owner = $this->relatedOwnerOrder();
@@ -1793,14 +1984,47 @@ class ContentSubmission extends Model
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
         // claims, including this order when submission.order_id is still null.
-        return $this->moderation_status === self::STATUS_APPROVED
-            && filled($this->path)
-            && ! $this->isArchived()
-            && ($this->expires_at === null || $this->expires_at->isFuture())
-            && filled($this->country)
-            && filled($this->language)
-            && $this->imageRightsCoverContent()
-            && $this->hasCheckoutReadyLinks();
+        return $this->isContentReadyForOrder();
+    }
+
+    /**
+     * True after a staff approve when the advertiser can order it, or keep
+     * paying / fulfilling the open owner order. isReadyForCheckout() is false
+     * once order_id is set, which must not be treated as "still broken".
+     */
+    public function isUsableAfterStaffApproval(): bool
+    {
+        if ($this->isReadyForCheckout()) {
+            return true;
+        }
+
+        $ownerId = (int) ($this->order_id ?? 0);
+        if ($ownerId > 0 && $this->isReadyToFulfill($ownerId)) {
+            return true;
+        }
+
+        $claimId = $this->activeClaimOrderId();
+
+        return $claimId !== null && $this->isReadyToFulfill($claimId);
+    }
+
+    /**
+     * Advertiser library query for the post-approval notification / CTA.
+     *
+     * @return array<string, string>
+     */
+    public function staffApprovalLibraryParams(): array
+    {
+        if ($this->isReadyForCheckout()) {
+            return [];
+        }
+
+        $availability = $this->libraryAvailability();
+        if (in_array($availability, ['in_progress', 'needs_fix', 'expired', 'archived', 'evaluating', 'published'], true)) {
+            return ['status' => 'all', 'availability' => $availability];
+        }
+
+        return ['status' => 'all', 'availability' => 'needs_fix'];
     }
 
     public function deleteStoredFile(): void
