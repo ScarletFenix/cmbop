@@ -56,6 +56,36 @@ class AdminCampaignsTest extends TestCase
         ], $overrides);
     }
 
+    private function useDatabaseMailQueue(): void
+    {
+        config([
+            'email_notifications.queue_connection' => 'database',
+            'queue.default' => 'database',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+    }
+
+    private function insertQueuedCampaignMailJob(int $campaignId, int $userId): void
+    {
+        $dedupe = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+        $command = 'O:32:"App\\Mail\\AudienceCampaignMail":1:{s:9:"dedupeKey";s:'.strlen($dedupe).':"'.$dedupe.'";}';
+
+        DB::table('jobs')->insert([
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => AudienceCampaignMail::class,
+                'data' => [
+                    'commandName' => 'Illuminate\\Mail\\SendQueuedMailable',
+                    'command' => $command,
+                ],
+            ]),
+            'attempts' => 0,
+            'available_at' => time(),
+            'created_at' => time(),
+        ]);
+    }
+
     public function test_guest_is_redirected_from_campaigns(): void
     {
         $this->get(route('admin.campaigns.index'))
@@ -2062,8 +2092,53 @@ class AdminCampaignsTest extends TestCase
 
         EmailCampaign::recoverStalled();
 
-        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $row->fresh()->status);
         $this->assertSame($log->id, $row->fresh()->email_log_id);
+        $this->assertSame(EmailCampaignRecipient::SKIP_ERROR, $row->fresh()->skip_reason);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
+    }
+
+    public function test_queued_recipient_with_a_delivered_log_fk_is_marked_delivered(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'to_email' => $advertiser->email,
+            'subject' => 'Attached delivered',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subMinutes(10),
+        ]);
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Attached delivered',
+            'subject' => 'Attached delivered',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+            'sent_at' => now()->subMinutes(10),
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+            'email_log_id' => $log->id,
+        ]);
+        $row->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
+        $this->assertSame($log->id, $row->fresh()->email_log_id);
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
     }
 
     public function test_job_stays_sending_while_mail_is_only_queued(): void
@@ -2124,6 +2199,7 @@ class AdminCampaignsTest extends TestCase
     public function test_stall_recovery_does_not_mark_queued_mail_as_sent(): void
     {
         Queue::fake();
+        $this->useDatabaseMailQueue();
 
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
@@ -2145,6 +2221,7 @@ class AdminCampaignsTest extends TestCase
             'email' => $advertiser->email,
             'status' => EmailCampaignRecipient::STATUS_QUEUED,
         ]);
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
         $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
 
         $this->assertSame(0, EmailCampaign::recoverStalled());
@@ -2159,9 +2236,254 @@ class AdminCampaignsTest extends TestCase
         Queue::assertNothingPushed();
     }
 
+    public function test_stall_recovery_reclaims_orphaned_queued_recipients_without_a_mailable(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Lost claim',
+            'subject' => 'Lost claim',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(1, EmailCampaign::recoverStalled());
+
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $kept = $this->makeUser('advertiser');
+        $orphan = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Partial loss',
+            'subject' => 'Partial loss',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 2,
+            'sent_count' => 2,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $kept->id,
+            'email' => $kept->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $orphan->id,
+            'email' => $orphan->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $kept->id);
+        $this->insertQueuedCampaignMailJob((int) $campaign->id + 100, (int) $orphan->id);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(1, EmailCampaign::recoverStalled());
+
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $kept->id)->value('status')
+        );
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $orphan->id)->value('status')
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_stall_recovery_reclaims_orphaned_queued_on_a_failed_campaign(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Give up leftover',
+            'subject' => 'Give up leftover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(1, EmailCampaign::recoverStalled());
+
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $fresh->status);
+        $this->assertNull($fresh->sent_at);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_stall_recovery_leaves_failed_campaign_when_queued_mail_is_in_flight(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Failed in flight',
+            'subject' => 'Failed in flight',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertNothingPushed();
+    }
+
+    public function test_stall_recovery_reclaims_when_only_the_unused_default_queue_is_redis(): void
+    {
+        Queue::fake();
+        config([
+            'email_notifications.queue_connection' => 'database',
+            'queue.default' => 'redis',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+            'queue.connections.redis.driver' => 'redis',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Unused redis',
+            'subject' => 'Unused redis',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(1, EmailCampaign::recoverStalled());
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_stall_recovery_does_not_reclaim_queued_when_mail_queue_cannot_be_scanned(): void
+    {
+        Queue::fake();
+        config([
+            'email_notifications.queue_connection' => 'redis',
+            'queue.default' => 'redis',
+            'queue.connections.redis.driver' => 'redis',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Opaque queue',
+            'subject' => 'Opaque queue',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertNothingPushed();
+    }
+
     public function test_stall_recovery_reverts_sent_campaign_that_still_has_queued_mail(): void
     {
         Queue::fake();
+        $this->useDatabaseMailQueue();
 
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
@@ -2184,6 +2506,7 @@ class AdminCampaignsTest extends TestCase
             'email' => $advertiser->email,
             'status' => EmailCampaignRecipient::STATUS_QUEUED,
         ]);
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
         $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
 
         $this->assertSame(0, EmailCampaign::recoverStalled());
@@ -2191,7 +2514,51 @@ class AdminCampaignsTest extends TestCase
         $fresh = $campaign->fresh();
         $this->assertSame(EmailCampaign::STATUS_SENDING, $fresh->status);
         $this->assertNull($fresh->sent_at);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
         Queue::assertNothingPushed();
+    }
+
+    public function test_stall_recovery_reclaims_orphaned_queued_on_a_false_sent_campaign(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'False sent orphan',
+            'subject' => 'False sent orphan',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+            'sent_at' => now()->subMinutes(5),
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(1, EmailCampaign::recoverStalled());
+
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $fresh->status);
+        $this->assertNull($fresh->sent_at);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
     }
 
     public function test_stall_recovery_does_not_redispatch_when_send_job_is_already_queued(): void
@@ -2280,6 +2647,8 @@ class AdminCampaignsTest extends TestCase
             'attempts' => 1,
         ]);
         $log->forceFill(['updated_at' => now()->subHours(2)])->save();
+        $this->useDatabaseMailQueue();
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
         $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
 
         EmailCampaign::recoverStalled();
