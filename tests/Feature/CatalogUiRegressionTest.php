@@ -128,6 +128,11 @@ class CatalogUiRegressionTest extends TestCase
             $js
         );
         $this->assertStringContainsString('syncHideModeFromPayload', $js);
+        $this->assertStringContainsString('window.CatalogCopyTrack', $js);
+        $this->assertMatchesRegularExpression(
+            '/copy-example-url[\s\S]*?CatalogCopyTrack\.report\(/',
+            $js
+        );
         $this->assertMatchesRegularExpression(
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js
@@ -158,6 +163,10 @@ class CatalogUiRegressionTest extends TestCase
         $this->assertStringNotContainsString('id="url-reveal-', $normalHtml);
         $this->assertStringNotContainsString('catalog-url-eye', $normalHtml);
         $this->assertStringContainsString('expand-arrow', $normalHtml);
+        $this->assertMatchesRegularExpression(
+            '/class="[^"]*copy-example-url[^"]*"[^>]*data-site-id="\d+"/',
+            $normalHtml
+        );
 
         $hideHtml = $this->actingAs($this->advertiserInHideMode())
             ->get(route('advertiser.catalog'))

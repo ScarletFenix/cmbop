@@ -4331,6 +4331,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const url = button.dataset.url;
         try {
             await navigator.clipboard.writeText(url);
+            // Same strike path as selecting the rooted URL — this button
+            // copies the listing domain and used to bypass copy-track.
+            if (window.CatalogCopyTrack && typeof window.CatalogCopyTrack.report === 'function') {
+                const siteId = parseInt(button.getAttribute('data-site-id') || '', 10);
+                window.CatalogCopyTrack.report(url, Number.isFinite(siteId) && siteId > 0 ? siteId : null);
+            }
             catalogToast('URL copied to clipboard!', 'success');
             const originalText = button.innerHTML;
             button.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
@@ -4791,4 +4797,9 @@ document.addEventListener('click', async function (e) {
     }
 
     document.addEventListener('copy', onCatalogCopy);
+    document.addEventListener('cut', onCatalogCopy);
+
+    window.CatalogCopyTrack = {
+        report: reportCopy,
+    };
 })();

@@ -868,6 +868,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary copy-example-url"
                                             data-url="{{ $site->example_url }}"
+                                            data-site-id="{{ $site->id }}"
                                             aria-label="Copy the sample article URL for {{ $identityLabel }}"
                                             style="width: fit-content;">
                                         <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL

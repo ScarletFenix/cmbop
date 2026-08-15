@@ -318,6 +318,21 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
     }
 
+    public function test_sample_article_url_counts_as_the_listing_domain(): void
+    {
+        $user = $this->advertiser();
+        $site = $this->site('sample-host.example');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $result = $guard->record($user, $site->id, 'https://sample-host.example/blog/guest-post?ref=1');
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
+        $event = CatalogCopyEvent::where('user_id', $user->id)->first();
+        $this->assertNotNull($event);
+        $this->assertSame($site->id, (int) $event->site_id);
+        $this->assertSame('sample-host.example', $event->normalized_host);
+    }
+
     public function test_normalize_host_keeps_subdomain_strips_path(): void
     {
         $guard = app(CatalogCopyStrikeGuard::class);
