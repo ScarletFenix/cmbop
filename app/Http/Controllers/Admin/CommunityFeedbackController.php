@@ -289,18 +289,38 @@ class CommunityFeedbackController extends Controller
             ], 422);
         }
 
-        $model->refresh();
+        try {
+            $model->refresh();
+            $model->loadMissing('user');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to reload community item after status update: '.$e->getMessage(), [
+                'tab' => $tab,
+                'id' => $model->id,
+            ]);
 
-        ActivityLogger::log(
-            $activityType,
-            auth()->user()->name.' updated '.$activityType.' #'.$model->id,
-            $model,
-            $data
-        );
+            return response()->json([
+                'success' => true,
+                'message' => 'Updated.',
+            ]);
+        }
+
+        try {
+            ActivityLogger::log(
+                $activityType,
+                (auth()->user()?->name ?? 'Staff').' updated '.$activityType.' #'.$model->id,
+                $model,
+                $data
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log community status update: '.$e->getMessage(), [
+                'tab' => $tab,
+                'id' => $model->id,
+            ]);
+        }
 
         if ($leavingPending) {
             try {
-                $this->inboxNotifier->notifySubmitterReviewed($model->fresh(['user']), $tab);
+                $this->inboxNotifier->notifySubmitterReviewed($model, $tab);
             } catch (\Throwable $e) {
                 Log::warning('Failed to notify community submitter: '.$e->getMessage(), [
                     'tab' => $tab,
@@ -312,7 +332,7 @@ class CommunityFeedbackController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Updated.',
-            'item' => $model->fresh(['user:id,name,email', 'reviewer:id,name']),
+            'item' => $model->fresh(['user:id,name,email', 'reviewer:id,name']) ?? $model,
         ]);
     }
 }

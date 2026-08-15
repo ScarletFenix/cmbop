@@ -674,7 +674,7 @@ class SiteController extends Controller
             ? staff_route('sites.index', ['publisher' => $selectedPublisherId])
             : staff_route('sites.index');
 
-        $prefillSiteName = search_text($request->query('site_name'));
+        $prefillSiteName = CommunityInbox::plainLine($request->query('site_name'));
         $prefillSiteUrl = CommunityInbox::safeHttpUrl($request->query('site_url')) ?? '';
         $prefillCountry = strtolower(search_text($request->query('country')));
         if (strlen($prefillCountry) !== 2) {

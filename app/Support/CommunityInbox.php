@@ -128,6 +128,27 @@ class CommunityInbox
 
     public const PAGE_URL_MAX = 255;
 
+    /**
+     * Single-line text for subjects, bells, and mail headers.
+     * Newlines in user-supplied names used to split SMTP subjects.
+     */
+    public static function plainLine(mixed $value, string $fallback = ''): string
+    {
+        $text = trim(preg_replace('/[\r\n]+/', ' ', search_text($value)) ?? '');
+
+        return $text !== '' ? $text : $fallback;
+    }
+
+    public static function validEmail(mixed $email): ?string
+    {
+        $email = search_text($email);
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return null;
+        }
+
+        return $email;
+    }
+
     public static function safeHttpUrl(mixed $url): ?string
     {
         $url = search_text($url);
@@ -135,6 +156,14 @@ class CommunityInbox
             return null;
         }
         if (preg_match('/[\x00-\x1f\x7f\s]/', $url)) {
+            return null;
+        }
+
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return null;
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
             return null;
         }
 
@@ -215,7 +244,7 @@ class CommunityInbox
     public static function createListingQuery(WebsiteSuggestion $suggestion): array
     {
         $params = ['suggestion_id' => (int) $suggestion->id];
-        $name = search_text($suggestion->website_name);
+        $name = self::plainLine($suggestion->website_name);
         if ($name !== '') {
             $params['site_name'] = $name;
         }
