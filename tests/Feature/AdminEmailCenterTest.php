@@ -336,6 +336,10 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_DELIVERED, $log->status);
         $this->assertSame('email_center_test', $log->meta['source'] ?? null);
         $this->assertStringNotContainsString('leaked@example.com', (string) $log->subject);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'email_center.test_sent',
+            'user_id' => $admin->id,
+        ]);
     }
 
     public function test_send_test_bypasses_global_disable_and_dedupe(): void

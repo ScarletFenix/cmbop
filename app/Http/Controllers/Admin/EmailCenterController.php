@@ -9,6 +9,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Support\EmailCatalog;
 use App\Support\MailJobPayload;
 use App\Support\UserFacingError;
@@ -220,6 +221,13 @@ class EmailCenterController extends Controller
             } else {
                 $this->sendFrameworkTestHtml($key, $adminEmail, $dedupe);
             }
+
+            ActivityLogger::tryLog(
+                'email_center.test_sent',
+                (auth()->user()?->name ?? 'Admin').' sent a test email ('.$key.') to '.$adminEmail,
+                null,
+                ['template' => $key, 'email' => $adminEmail]
+            );
 
             return back()->with(
                 'success',

@@ -36,15 +36,12 @@ class WelcomeBonusSettingController extends Controller
             return back()->with('error', 'Could not update the welcome bonus. Please try again.');
         }
 
-        try {
-            ActivityLogger::log(
-                'welcome_bonus.toggled',
-                ($request->user()?->name ?? 'Admin').' '.($enabled ? 'enabled' : 'disabled').' the welcome bonus',
-                null,
-                ['enabled' => $enabled]
-            );
-        } catch (\Throwable) {
-        }
+        ActivityLogger::tryLog(
+            'welcome_bonus.toggled',
+            ($request->user()?->name ?? 'Admin').' '.($enabled ? 'enabled' : 'disabled').' the welcome bonus',
+            null,
+            ['enabled' => $enabled]
+        );
 
         return back()->with(
             'success',
@@ -77,15 +74,12 @@ class WelcomeBonusSettingController extends Controller
             return back()->with('error', 'Could not update the welcome bonus amount. Please try again.');
         }
 
-        try {
-            ActivityLogger::log(
-                'welcome_bonus.amount_changed',
-                ($request->user()?->name ?? 'Admin').' set the welcome bonus to €'.number_format($amount, 2),
-                null,
-                ['amount' => $amount]
-            );
-        } catch (\Throwable) {
-        }
+        ActivityLogger::tryLog(
+            'welcome_bonus.amount_changed',
+            ($request->user()?->name ?? 'Admin').' set the welcome bonus to €'.number_format($amount, 2),
+            null,
+            ['amount' => $amount]
+        );
 
         return back()->with('success', 'Welcome bonus amount set to €'.number_format($amount, 2).'. New advertisers receive this amount. Existing bonuses stay.');
     }

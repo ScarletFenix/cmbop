@@ -7,6 +7,7 @@ use App\Models\CatalogCopyEvent;
 use App\Models\Order;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Services\Catalog\RevealPaceGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
@@ -134,6 +135,14 @@ class CatalogActivityController extends Controller
         $model->catalog_copy_warned_at = null;
         $model->save();
 
+        ActivityLogger::tryLog(
+            'catalog_activity.copy_hide_cleared',
+            (auth()->user()?->name ?? 'Admin').' cleared catalog copy hide for '.$model->email,
+            $model,
+            ['user_id' => $model->id],
+            $model->name
+        );
+
         if (Schema::hasTable('catalog_copy_events')) {
             CatalogCopyEvent::query()->where('user_id', $model->id)->delete();
         }
@@ -226,6 +235,14 @@ class CatalogActivityController extends Controller
             $model->catalog_reveal_exempt_until = null;
             $model->save();
 
+            ActivityLogger::tryLog(
+                'catalog_activity.exempt_toggled',
+                (auth()->user()?->name ?? 'Admin').' ended catalog pace exemption for '.$model->email,
+                $model,
+                ['exempt' => false, 'user_id' => $model->id],
+                $model->name
+            );
+
             return back()->with(
                 'success',
                 $model->email.' is back under the usual pace checks.'
@@ -236,6 +253,14 @@ class CatalogActivityController extends Controller
         $model->catalog_reveal_exempt = true;
         $model->catalog_reveal_exempt_until = $until;
         $model->save();
+
+        ActivityLogger::tryLog(
+            'catalog_activity.exempt_toggled',
+            (auth()->user()?->name ?? 'Admin').' granted catalog pace exemption for '.$model->email,
+            $model,
+            ['exempt' => true, 'until' => $until->toIso8601String(), 'user_id' => $model->id],
+            $model->name
+        );
 
         return back()->with(
             'success',

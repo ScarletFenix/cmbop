@@ -62,6 +62,14 @@ class UserController extends Controller
             $user->company_name = $request->company_name;
             $user->save();
 
+            ActivityLogger::tryLog(
+                'user.company_updated',
+                (auth()->user()?->name ?? 'Admin').' updated company name for user #'.$user->id,
+                $user,
+                ['company_name' => $user->company_name],
+                $user->name
+            );
+
             return response()->json([
                 'success' => true,
                 'message' => 'Company updated successfully',

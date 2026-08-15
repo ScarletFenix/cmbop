@@ -276,6 +276,11 @@ class CatalogPaceGuardTest extends TestCase
             ->post(route('admin.catalog-activity.exempt', $advertiser->id))
             ->assertRedirect();
 
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'catalog_activity.exempt_toggled',
+            'user_id' => $admin->id,
+        ]);
+
         $advertiser->refresh();
         $this->assertTrue((bool) $advertiser->catalog_reveal_exempt);
         $this->assertNotNull($advertiser->catalog_reveal_exempt_until);
