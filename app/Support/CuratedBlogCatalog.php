@@ -100,11 +100,17 @@ class CuratedBlogCatalog
      */
     public static function faqForBlog(Blog $blog, ?string $resolvedSlug = null): array
     {
-        foreach (array_unique(array_filter([
-            $blog->curated_key,
-            $blog->slug,
-            $resolvedSlug,
-        ])) as $slug) {
+        if (filled($blog->curated_key)) {
+            return self::faqForSlug((string) $blog->curated_key);
+        }
+
+        // Legacy unkeyed pillar only. A custom post that reused a catalog
+        // slug must not inherit that pillar's FAQ schema.
+        if ($blog->manually_edited_at) {
+            return [];
+        }
+
+        foreach (array_unique(array_filter([$blog->slug, $resolvedSlug])) as $slug) {
             $items = self::faqForSlug(is_string($slug) ? $slug : null);
             if ($items !== []) {
                 return $items;

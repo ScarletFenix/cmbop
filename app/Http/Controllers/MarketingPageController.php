@@ -3,10 +3,10 @@
 namespace App\Http\Controllers;
 
 use App\Models\Blog;
-use App\Models\BlogTranslation;
 use App\Models\Country;
 use App\Models\Order;
 use App\Models\Site;
+use App\Services\CuratedBlogWriter;
 use App\Services\Marketing\CatalogTeaserService;
 use Throwable;
 
@@ -178,24 +178,24 @@ class MarketingPageController extends Controller
 
         foreach ($slugs as $slug) {
             try {
-                $translation = BlogTranslation::query()
-                    ->where('slug', $slug)
-                    ->where('is_published', true)
-                    ->orderByRaw('CASE WHEN locale = ? THEN 0 ELSE 1 END', [$locale])
-                    ->first();
+                $match = CuratedBlogWriter::findExisting($slug);
+                $blog = $match
+                    ? Blog::published()
+                        ->with(['translations' => function ($query) {
+                            $query->where('is_published', true);
+                        }])
+                        ->where('id', $match->id)
+                        ->first()
+                    : null;
 
-                if (! $translation) {
-                    continue;
-                }
-
-                $blog = Blog::published()->find($translation->blog_id);
                 if (! $blog) {
                     continue;
                 }
 
+                $translation = $blog->displayTranslation($locale, 'en');
                 $links[] = [
-                    'title' => (string) $translation->title,
-                    'url' => localized_url('blog/'.$translation->slug),
+                    'title' => (string) ($translation?->title ?: $blog->title),
+                    'url' => localized_url('blog/'.($translation?->slug ?: $blog->slug)),
                 ];
             } catch (Throwable) {
                 continue;

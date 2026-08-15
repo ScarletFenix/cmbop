@@ -463,6 +463,25 @@ class AdminBlogCuratedSyncTest extends TestCase
             ->assertSee('What to Check After the Live Link', false);
     }
 
+    public function test_custom_post_occupying_catalog_slug_does_not_inherit_pillar_faq(): void
+    {
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body without pillar FAQ.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->get('/blog/'.$slug)
+            ->assertOk()
+            ->assertSee('Custom Occupying Catalog Slug', false)
+            ->assertDontSee('FAQPage', false);
+    }
+
     public function test_sync_primary_translation_uniquifies_when_locale_suffix_is_taken(): void
     {
         $other = Blog::factory()->published()->create([

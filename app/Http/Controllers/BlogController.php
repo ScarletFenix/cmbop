@@ -25,7 +25,7 @@ class BlogController extends Controller
             ->paginate(12);
 
         $blog->getCollection()->transform(function (Blog $post) use ($requestedLocale) {
-            $translation = $post->translationFor($requestedLocale, 'en');
+            $translation = $post->displayTranslation($requestedLocale, 'en');
             if ($translation) {
                 $post->setAttribute('title', $translation->title);
                 $post->setAttribute('slug', $translation->slug);
@@ -101,10 +101,7 @@ class BlogController extends Controller
                 ->firstOrFail();
         }
 
-        $display = $blog->translationFor($requestedLocale, $fallbackLocale)
-            ?: ($blog->primary_locale
-                ? $blog->translationFor($blog->primary_locale, null)
-                : null);
+        $display = $blog->displayTranslation($requestedLocale, $fallbackLocale);
         if ($display) {
             $translation = $display;
         }
@@ -139,7 +136,7 @@ class BlogController extends Controller
             ->get();
 
         $related->transform(function (Blog $post) use ($requestedLocale) {
-            $resolved = $post->translationFor($requestedLocale, 'en');
+            $resolved = $post->displayTranslation($requestedLocale, 'en');
             if ($resolved) {
                 $post->setAttribute('title', $resolved->title);
                 $post->setAttribute('slug', $resolved->slug);

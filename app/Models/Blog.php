@@ -140,6 +140,21 @@ class Blog extends Model
             ->first(fn (BlogTranslation $translation) => $translation->locale === $fallback && $translation->is_published);
     }
 
+    /**
+     * Locale to render on public pages: requested, English, then primary.
+     * Index/footer used to stop at English and keep blogs.slug, which 404s
+     * or shows the wrong language after a DE-primary rename.
+     */
+    public function displayTranslation(?string $locale = null, ?string $fallback = 'en'): ?BlogTranslation
+    {
+        $locale = $locale ?: 'en';
+
+        return $this->translationFor($locale, $fallback)
+            ?: ($this->primary_locale
+                ? $this->translationFor($this->primary_locale, null)
+                : null);
+    }
+
     public function availableLocales(): array
     {
         $translations = $this->relationLoaded('translations')
