@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Advertiser;
 
 use App\Http\Controllers\Controller;
 use App\Models\Site;
+use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
+use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\PlatformFeeService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -17,9 +19,10 @@ class SavedSitesController extends Controller
     /**
      * Dedicated page to manage favorites and blacklisted sites together.
      */
-    public function index(Request $request): View
+    public function index(Request $request, SiteUrlVisibility $visibility): View
     {
-        $userId = auth()->id();
+        $user = auth()->user();
+        $userId = (int) $user->id;
         $tab = in_array($request->get('tab'), ['favorites', 'blacklist'], true)
             ? $request->get('tab')
             : 'favorites';
@@ -29,6 +32,10 @@ class SavedSitesController extends Controller
 
         $favorites = $this->visibleSavedSites($favoriteIds);
         $blacklist = $this->visibleSavedSites($blacklistIds);
+        $visibility->warmFor($user, $favorites->merge($blacklist));
+
+        $favorites->each(fn (Site $site) => $this->applyIdentity($site, $user, $visibility));
+        $blacklist->each(fn (Site $site) => $this->applyIdentity($site, $user, $visibility));
 
         return view('advertiser.saved-sites', [
             'tab' => $tab,
@@ -140,6 +147,16 @@ class SavedSitesController extends Controller
             : app(PlatformFeeService::class)->advertiserBase((float) $site->price);
 
         return $site;
+    }
+
+    /**
+     * Hide mode dual-masks name + host here the same way as the catalog.
+     * Favoriting a masked row must not unmask it on Saved Sites.
+     */
+    private function applyIdentity(Site $site, User $user, SiteUrlVisibility $visibility): void
+    {
+        $site->display_name = $visibility->nameFor($user, $site);
+        $site->display_host = $visibility->hostFor($user, $site);
     }
 
     /**

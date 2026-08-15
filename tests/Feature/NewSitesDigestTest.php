@@ -341,4 +341,22 @@ class NewSitesDigestTest extends TestCase
             return ! $names->contains('Not Verified') && ! $names->contains('Switched Off');
         });
     }
+
+    public function test_hide_mode_skips_the_digest_and_leaves_the_clock(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $this->paidOrderFor($advertiser, $this->site($publisher));
+        $this->stockCatalog($publisher);
+
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
+        $this->artisan('sites:send-new-sites-digest')->assertSuccessful();
+
+        Mail::assertNotQueued(NewSitesDigest::class);
+        $this->assertNull($advertiser->fresh()->new_sites_digest_sent_at);
+    }
 }
