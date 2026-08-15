@@ -46,6 +46,7 @@ class PublisherReportsController extends Controller
                 };
 
                 $totalEarned = (float) OrderItem::whereIn('site_id', $siteIds)
+                    ->recognizedForFinance()
                     ->whereHas('order', $paidCompleted)
                     ->sum(OrderItem::publisherPayoutSqlExpression());
 
