@@ -128,6 +128,11 @@
                         </a>
                     </li>
                     <li>
+                        <a class="dropdown-item" href="{{ route('admin.content-library.index', ['user_id' => $user->id]) }}">
+                            <i class="fa fa-folder-open me-2"></i>Articles
+                        </a>
+                    </li>
+                    <li>
                         <button type="button" class="dropdown-item action-roles" data-id="{{ $user->id }}">
                             <i class="fa fa-bullhorn me-2"></i><span class="btn-text">Marketing</span>
                         </button>

@@ -482,6 +482,13 @@ class OrderPaymentService
                 $fresh->update(['status' => 'cancelled']);
             }
         }
+
+        // Already-failed leftovers skip markOrdersFailedFromReference, so the
+        // Stripe-first package can survive. Drop it so a late webhook credits
+        // the wallet instead of minting a second paid order.
+        foreach ($cardRefs as $referenceCode) {
+            $this->forgetPendingCheckoutKeepLeftoverHold((string) $referenceCode, $userId);
+        }
     }
 
     /**
@@ -914,7 +921,19 @@ class OrderPaymentService
             if ($existingCount > 0) {
                 $newlyPaid = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
                 if ($newlyPaid->isEmpty()) {
-                    $this->creditCapturedCardWhenAlreadySettled($referenceCode, $session);
+                    $hasOpenPaid = Order::query()
+                        ->where('reference_code', $referenceCode)
+                        ->where('payment_method', 'card')
+                        ->where('payment_status', 'paid')
+                        ->where('status', '!=', 'cancelled')
+                        ->exists();
+                    if ($hasOpenPaid) {
+                        $this->creditCapturedCardWhenAlreadySettled($referenceCode, $session);
+                    } else {
+                        // Replaced leftover: cancelled rows remain, but the
+                        // capture still has to land in the advertiser wallet.
+                        $this->creditCapturedCardWhenPackageMissing($referenceCode, $session);
+                    }
                 }
 
                 return $newlyPaid;
@@ -985,6 +1004,37 @@ class OrderPaymentService
         }
 
         $userId = (int) ($package['user_id'] ?? $metaUserId);
+        $existingCardOrders = Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->get();
+        $hasMarkableLeftover = $existingCardOrders->contains(
+            fn (Order $order) => $this->canMarkCardOrderPaid($order)
+        );
+        $hasOpenPaid = $existingCardOrders->contains(
+            fn (Order $order) => $order->payment_status === 'paid' && $order->status !== 'cancelled'
+        );
+        if ($existingCardOrders->isNotEmpty() && ! $hasMarkableLeftover && ! $hasOpenPaid) {
+            $sessionId = (string) ($session->id ?? '');
+            if ($userId > 0) {
+                $this->creditUnfulfilledCardCapture(
+                    $userId,
+                    $referenceCode,
+                    $expected,
+                    $sessionId !== '' ? $sessionId : null
+                );
+            }
+            $this->forgetPendingCheckout($referenceCode);
+            Log::warning('Stripe-first checkout paid after leftover was replaced; credited wallet', [
+                'reference_code' => $referenceCode,
+                'session_id' => $session->id ?? null,
+                'user_id' => $userId,
+                'wallet_credit' => $expected,
+            ]);
+
+            return collect();
+        }
+
         $bonusNeeded = round((float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0), 2);
         if ($userId > 0 && $bonusNeeded > 0.009) {
             $held = $this->ensureCheckoutBonusReserved($userId, $referenceCode, $bonusNeeded);

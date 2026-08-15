@@ -7,6 +7,7 @@ use App\Models\PromotionEvent;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class PromotionTrackingTest extends TestCase
@@ -89,6 +90,17 @@ class PromotionTrackingTest extends TestCase
         $this->get(route('banners.click', $banner))
             ->assertRedirect('https://example.com/offer');
         $this->assertSame(1, (int) $banner->fresh()->clicks);
+    }
+
+    public function test_head_click_does_not_count_or_follow(): void
+    {
+        $banner = $this->liveBanner();
+
+        $this->call('HEAD', route('banners.click', $banner))
+            ->assertNoContent();
+
+        $this->assertSame(0, (int) $banner->fresh()->clicks);
+        $this->assertSame(0, PromotionEvent::query()->count());
     }
 
     public function test_forwarded_for_cannot_mint_a_second_daily_impression(): void
@@ -201,6 +213,50 @@ class PromotionTrackingTest extends TestCase
 
         $this->get(route('banners.click', $banner))->assertRedirect('/');
         $this->assertSame(0, (int) $banner->fresh()->clicks);
+    }
+
+    public function test_image_src_rejects_encoded_dotdot_path(): void
+    {
+        $banner = $this->liveBanner();
+        $banner->update([
+            'image_path' => 'banners/%2e%2e/%2e%2e/etc/passwd',
+            'image_url' => 'https://example.com/safe.png',
+        ]);
+
+        $this->assertSame('https://example.com/safe.png', $banner->fresh()->imageSrc());
+    }
+
+    public function test_image_src_rejects_double_encoded_dotdot_path(): void
+    {
+        $banner = $this->liveBanner();
+        $banner->update([
+            'image_path' => 'banners/%252e%252e/%252e%252e/etc/passwd',
+            'image_url' => 'https://example.com/safe.png',
+        ]);
+
+        $this->assertSame('https://example.com/safe.png', $banner->fresh()->imageSrc());
+    }
+
+    public function test_track_endpoint_is_ok_when_table_is_missing(): void
+    {
+        Schema::dropIfExists('ad_banners');
+
+        $this->postJson(route('promotions.track'), [
+            'subject_type' => 'banner',
+            'subject_id' => 1,
+            'event' => 'impression',
+        ])->assertOk()->assertJson(['ok' => true]);
+    }
+
+    public function test_track_unknown_id_does_not_reveal_missing_subject(): void
+    {
+        $this->postJson(route('promotions.track'), [
+            'subject_type' => 'banner',
+            'subject_id' => 999999,
+            'event' => 'impression',
+        ])->assertOk()->assertJson(['ok' => true]);
+
+        $this->assertSame(0, PromotionEvent::query()->count());
     }
 
     public function test_preview_page_is_staff_only(): void

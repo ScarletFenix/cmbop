@@ -670,8 +670,19 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
 
         Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
         Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
-        Route::get('/content-library/{submission}/preview', [AdminContentLibraryController::class, 'preview'])->name('content-library.preview');
         Route::get('/content-library/{submission}/download', [AdminContentLibraryController::class, 'download'])->name('content-library.download');
+        Route::post('/content-library/{submission}/retry', [AdminContentLibraryController::class, 'retry'])
+            ->middleware('throttle:20,1')
+            ->name('content-library.retry');
+        Route::post('/content-library/{submission}/override', [AdminContentLibraryController::class, 'override'])
+            ->middleware('throttle:20,1')
+            ->name('content-library.override');
+        Route::post('/content-library/{submission}/archive', [AdminContentLibraryController::class, 'archive'])
+            ->middleware('throttle:20,1')
+            ->name('content-library.archive');
+        Route::post('/content-library/{submission}/restore', [AdminContentLibraryController::class, 'restore'])
+            ->middleware('throttle:20,1')
+            ->name('content-library.restore');
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');

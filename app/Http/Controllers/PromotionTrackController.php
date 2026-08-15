@@ -18,15 +18,16 @@ class PromotionTrackController extends Controller
             'event' => ['required', 'in:impression'],
         ]);
 
-        $subject = $data['subject_type'] === 'banner'
-            ? AdBanner::query()->find($data['subject_id'])
-            : SiteAnnouncement::query()->find($data['subject_id']);
-
-        if (! $subject) {
-            return response()->json(['ok' => false], 404);
+        try {
+            $subject = $data['subject_type'] === 'banner'
+                ? AdBanner::query()->find($data['subject_id'])
+                : SiteAnnouncement::query()->find($data['subject_id']);
+            if ($subject) {
+                $tracking->record($subject, $data['event'], $request);
+            }
+        } catch (\Throwable) {
+            // Missing table / paused / unknown id must look the same.
         }
-
-        $tracking->record($subject, $data['event'], $request);
 
         return response()->json(['ok' => true]);
     }
