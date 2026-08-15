@@ -2,13 +2,20 @@
 
 namespace App\Support;
 
+use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\AdminManualPaymentNotification;
 use App\Mail\AdminNewUserRegistered;
 use App\Mail\AdminStalledOrderAlert;
 use App\Mail\AdvertiserOrderStalledNotice;
 use App\Mail\AdvertiserReviewNudge;
+use App\Mail\AudienceCampaignMail;
 use App\Mail\AutoApproveReminderMail;
+use App\Mail\BulkSiteItemsRejected;
+use App\Mail\BulkSiteRequestCancelled;
+use App\Mail\BulkSiteRequestSubmitted;
+use App\Mail\BulkSitesSeededNotification;
 use App\Mail\CommunityFeedbackReviewed;
+use App\Mail\ContentEvaluationResult;
 use App\Mail\ContentRevisionFulfilled;
 use App\Mail\ContentRevisionRequested;
 use App\Mail\DepositApproved;
@@ -33,6 +40,7 @@ use App\Mail\OrderStatusChanged;
 use App\Mail\PaymentFailedMail;
 use App\Mail\PaymentPendingMail;
 use App\Mail\PaymentSuccessfulInvoiceMail;
+use App\Mail\PayoutProfileUpdatedBySupport;
 use App\Mail\PublisherAcceptNudge;
 use App\Mail\PublisherAddSiteReminderMail;
 use App\Mail\PublisherPublishNudge;
@@ -40,6 +48,7 @@ use App\Mail\RefundReceiptMail;
 use App\Mail\SiteClaimOwnershipTransferred;
 use App\Mail\SiteClaimReviewed;
 use App\Mail\SiteClaimSubmitted;
+use App\Mail\SiteDiscountEnded;
 use App\Mail\SiteOwnerOrderNotification;
 use App\Mail\SiteStatusNotification;
 use App\Mail\SpendBudgetAlertMail;
@@ -50,7 +59,10 @@ use App\Mail\WelcomeEmail;
 use App\Mail\WithdrawalRequestedConfirmation;
 use App\Mail\WithdrawalRequestNotification;
 use App\Mail\WithdrawalStatusUpdated;
+use App\Models\BulkSiteRequest;
+use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -309,6 +321,77 @@ class EmailCatalog
                 'mailable' => null,
                 'status' => 'framework',
                 'importance' => 'Managed by Laravel auth — preview shows a branded sample; do not duplicate send logic.',
+            ],
+            'email_verification' => [
+                'name' => 'Email Verification',
+                'description' => 'Laravel auth verification email sent on signup / resend (framework notification).',
+                'category' => 'Auth',
+                'mailable' => null,
+                'status' => 'framework',
+                'importance' => 'Managed by Laravel auth — preview shows a branded sample; the Email Center toggle does not stop verify mail.',
+            ],
+            'content_evaluation_result' => [
+                'name' => 'Content Evaluation Result',
+                'description' => 'Advertiser notified when an uploaded article is approved or needs changes.',
+                'category' => 'Orders',
+                'mailable' => ContentEvaluationResult::class,
+                'status' => 'active',
+            ],
+            'site_discount_ended' => [
+                'name' => 'Site Discount Ended',
+                'description' => 'Publisher notified when a listing discount expires.',
+                'category' => 'Publishers',
+                'mailable' => SiteDiscountEnded::class,
+                'status' => 'active',
+            ],
+            'payout_profile_updated' => [
+                'name' => 'Payout Profile Updated by Support',
+                'description' => 'Publisher notified when support changes their payout details.',
+                'category' => 'Billing',
+                'mailable' => PayoutProfileUpdatedBySupport::class,
+                'status' => 'active',
+            ],
+            'bulk_site_request_submitted' => [
+                'name' => 'Bulk Site Request Submitted',
+                'description' => 'Admins notified when a publisher submits a bulk website request.',
+                'category' => 'Admin',
+                'mailable' => BulkSiteRequestSubmitted::class,
+                'status' => 'active',
+            ],
+            'bulk_sites_seeded' => [
+                'name' => 'Bulk Sites Seeded — Complete Details',
+                'description' => 'Publisher asked to finish details after staff seed a bulk request.',
+                'category' => 'Publishers',
+                'mailable' => BulkSitesSeededNotification::class,
+                'status' => 'active',
+            ],
+            'admin_assigned_site' => [
+                'name' => 'Admin Assigned Site — Accept Listing',
+                'description' => 'Publisher asked to accept a website staff added for them.',
+                'category' => 'Publishers',
+                'mailable' => AdminAssignedSiteNotification::class,
+                'status' => 'active',
+            ],
+            'audience_campaign' => [
+                'name' => 'Updates & Campaigns',
+                'description' => 'Admin-composed marketing / update email to a selected audience.',
+                'category' => 'Growth',
+                'mailable' => AudienceCampaignMail::class,
+                'status' => 'active',
+            ],
+            'bulk_request_cancelled' => [
+                'name' => 'Bulk Website Request Cancelled',
+                'description' => 'Publisher notified when staff cancel a bulk website request.',
+                'category' => 'Publishers',
+                'mailable' => BulkSiteRequestCancelled::class,
+                'status' => 'active',
+            ],
+            'bulk_request_items_rejected' => [
+                'name' => 'Bulk Request Sites Not Added',
+                'description' => 'Publisher notified when some URLs from a bulk request were not added.',
+                'category' => 'Publishers',
+                'mailable' => BulkSiteItemsRejected::class,
+                'status' => 'active',
             ],
             'admin_new_user' => [
                 'name' => 'New User Registered',
@@ -616,6 +699,29 @@ class EmailCatalog
                 'spendable' => 80.0,
                 'low_balance_threshold' => 50.0,
             ]),
+            'content_evaluation_result' => new ContentEvaluationResult(self::sampleContentSubmission(), [
+                'approved' => true,
+                'notify_status' => 'approved',
+                'moderation_status' => 'approved',
+            ]),
+            'site_discount_ended' => new SiteDiscountEnded($site, $user, 20.0, now()->subDay()),
+            'payout_profile_updated' => new PayoutProfileUpdatedBySupport($user, 'paypal'),
+            'bulk_site_request_submitted' => new BulkSiteRequestSubmitted(
+                self::sampleBulkSiteRequest(),
+                rtrim(app_public_url(), '/').'/admin/bulk-site-requests/0',
+                $user
+            ),
+            'bulk_sites_seeded' => new BulkSitesSeededNotification(self::sampleBulkSiteRequest(), 3, $user, ['example.com', 'sample-two.example']),
+            'admin_assigned_site' => new AdminAssignedSiteNotification($site, $user),
+            'audience_campaign' => new AudienceCampaignMail(self::sampleCampaign(), $user),
+            'bulk_request_cancelled' => new BulkSiteRequestCancelled(self::sampleBulkSiteRequest(), $user, 'Sample cancellation reason for preview.'),
+            'bulk_request_items_rejected' => new BulkSiteItemsRejected(
+                self::sampleBulkSiteRequest(),
+                $user,
+                ['rejected.example'],
+                'Did not meet catalog quality guidelines (preview).',
+                [self::PREVIEW_ID]
+            ),
             default => null,
         };
     }
@@ -892,5 +998,55 @@ class EmailCatalog
         $withdrawal->setRelation('user', $user);
 
         return $withdrawal;
+    }
+
+    protected static function sampleContentSubmission(): ContentSubmission
+    {
+        $user = self::sampleUser();
+        $submission = new ContentSubmission([
+            'user_id' => $user->id,
+            'title' => 'Sample guest post for preview',
+            'original_filename' => 'sample-article.docx',
+            'moderation_status' => 'approved',
+        ]);
+        $submission->id = self::PREVIEW_ID;
+        $submission->exists = false;
+        $submission->setRelation('user', $user);
+
+        return $submission;
+    }
+
+    protected static function sampleBulkSiteRequest(): BulkSiteRequest
+    {
+        $user = self::sampleUser();
+        $request = new BulkSiteRequest([
+            'publisher_id' => $user->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 3,
+            'publisher_note' => 'Sample bulk request for email preview.',
+        ]);
+        $request->id = self::PREVIEW_ID;
+        $request->exists = false;
+        $request->setRelation('publisher', $user);
+        $request->setRelation('items', collect());
+
+        return $request;
+    }
+
+    protected static function sampleCampaign(): EmailCampaign
+    {
+        $campaign = new EmailCampaign([
+            'name' => 'Sample campaign',
+            'subject' => 'Sample platform update',
+            'body_html' => '<p>This is a sample campaign body for Email Center preview.</p>',
+            'audience' => 'advertisers',
+            'cta_label' => 'Open catalog',
+            'cta_url' => rtrim(app_public_url(), '/').'/advertiser/catalog',
+            'status' => EmailCampaign::STATUS_DRAFT,
+        ]);
+        $campaign->id = self::PREVIEW_ID;
+        $campaign->exists = false;
+
+        return $campaign;
     }
 }

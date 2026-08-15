@@ -355,4 +355,36 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
         return $this->publicRoute('publisher.tasks', $params);
     }
+
+    public function failed(?\Throwable $exception): void
+    {
+        try {
+            $type = $this->notificationType ?: EmailCatalog::keyFromMailable(static::class);
+            $to = $this->recipientUser?->email
+                ?? data_get($this->to, '0.address')
+                ?? data_get($this->to, '0')
+                ?? 'unknown';
+
+            EmailLog::create([
+                'uuid' => (string) Str::uuid(),
+                'mailable' => static::class,
+                'template_key' => $type,
+                'notification_type' => $type,
+                'dedupe_key' => $this->dedupeKey,
+                'to_email' => is_string($to) ? $to : 'unknown',
+                'subject' => $this->subject,
+                'status' => EmailLog::STATUS_FAILED,
+                'error' => $exception?->getMessage(),
+                'attempts' => 1,
+                'meta' => [
+                    'source' => $this->forceSend ? 'email_center_test' : 'queue',
+                ],
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to record mail failure', [
+                'mailable' => static::class,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
 }

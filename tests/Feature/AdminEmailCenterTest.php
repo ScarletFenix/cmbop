@@ -18,7 +18,10 @@ use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use App\Support\EmailCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 class AdminEmailCenterTest extends TestCase
@@ -336,5 +339,189 @@ class AdminEmailCenterTest extends TestCase
         $this->assertCount(1, $logs);
         $this->assertSame('password_reset', $logs->first()->template_key);
         $this->assertSame(EmailLog::STATUS_DELIVERED, $logs->first()->status);
+    }
+
+    public function test_catalog_keys_match_notification_config(): void
+    {
+        $this->assertEqualsCanonicalizing(
+            array_keys(config('email_notifications.types')),
+            array_keys(EmailCatalog::all())
+        );
+    }
+
+    public function test_every_notification_type_has_a_preview(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        foreach (array_keys(config('email_notifications.types')) as $key) {
+            $this->actingAs($admin)
+                ->get(route('admin.emails.preview', $key))
+                ->assertOk();
+        }
+    }
+
+    public function test_email_verification_preview_is_a_placeholder(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'email_verification'))
+            ->assertOk()
+            ->assertSee('/email/verify/preview-id/preview-hash', false);
+    }
+
+    public function test_settings_reject_empty_payload_and_skip_framework_types(): void
+    {
+        $admin = $this->userWithRole('admin');
+        EmailNotificationSetting::updateOrCreate(
+            ['type' => 'password_reset'],
+            ['enabled' => true]
+        );
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.settings'), [])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHasErrors('enabled');
+
+        $this->assertTrue(EmailNotificationSetting::query()->where('type', 'password_reset')->value('enabled'));
+
+        $enabled = [];
+        foreach (config('email_notifications.types') as $type => $meta) {
+            if (! empty($meta['framework'])) {
+                continue;
+            }
+            $enabled[$type] = $type === 'welcome' ? '0' : '1';
+        }
+
+        $this->actingAs($admin)
+            ->post(route('admin.emails.settings'), ['enabled' => $enabled])
+            ->assertSessionHas('success');
+
+        EmailNotificationSetting::flushCache();
+        $this->assertFalse(EmailNotificationSetting::isEnabled('welcome'));
+        $this->assertTrue(EmailNotificationSetting::isEnabled('password_reset'));
+        $this->assertTrue(EmailNotificationSetting::isEnabled('email_verification'));
+    }
+
+    public function test_retry_only_retries_mail_failed_jobs_and_leaves_logs(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $mailUuid = (string) Str::uuid();
+        $otherUuid = (string) Str::uuid();
+
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => $admin->email,
+            'subject' => 'Welcome',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            [
+                'uuid' => $mailUuid,
+                'connection' => 'database',
+                'queue' => 'emails',
+                'payload' => json_encode([
+                    'displayName' => 'App\\Mail\\WelcomeEmail',
+                    'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
+                    'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                ]),
+                'exception' => 'SMTP failed',
+                'failed_at' => now(),
+            ],
+            [
+                'uuid' => $otherUuid,
+                'connection' => 'database',
+                'queue' => 'default',
+                'payload' => json_encode([
+                    'displayName' => 'App\\Jobs\\EnrichSiteJob',
+                    'data' => ['commandName' => 'App\\Jobs\\EnrichSiteJob'],
+                ]),
+                'exception' => 'timeout',
+                'failed_at' => now(),
+            ],
+        ]);
+
+        Artisan::shouldReceive('call')
+            ->once()
+            ->with('queue:retry', ['id' => [$mailUuid]])
+            ->andReturn(0);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(EmailLog::STATUS_FAILED, EmailLog::query()->first()->status);
+        $this->assertTrue(DB::table('failed_jobs')->where('uuid', $otherUuid)->exists());
+    }
+
+    public function test_kpis_do_not_double_count_queue_jobs(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => $admin->email,
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now(),
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => $admin->email,
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subDay(),
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => $admin->email,
+            'status' => EmailLog::STATUS_PENDING,
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => $admin->email,
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'bounce',
+        ]);
+
+        DB::table('jobs')->insert([
+            'queue' => 'emails',
+            'payload' => json_encode(['displayName' => 'App\\Mail\\WelcomeEmail']),
+            'attempts' => 0,
+            'available_at' => time(),
+            'created_at' => time(),
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Delivered Today', $html);
+        preg_match_all('/<div class="value[^"]*">\s*([0-9,]+)\s*<\/div>/', $html, $matches);
+        $values = array_map(fn ($v) => (int) str_replace(',', '', $v), $matches[1] ?? []);
+        $this->assertSame([1, 1, 1, 1], $values);
+    }
+
+    public function test_mailable_failed_hook_writes_email_log(): void
+    {
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->failed(new \RuntimeException('SMTP down'));
+
+        $this->assertDatabaseHas('email_logs', [
+            'template_key' => 'welcome',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+        ]);
     }
 }

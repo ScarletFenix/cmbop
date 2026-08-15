@@ -54,7 +54,7 @@
         <div class="col-6 col-lg-3">
             <div class="card ec-kpi">
                 <div class="card-body">
-                    <div class="label">✅ Delivered Emails</div>
+                    <div class="label">✅ Delivered Today</div>
                     <div class="value text-success">{{ number_format($stats['delivered']) }}</div>
                 </div>
             </div>
@@ -136,6 +136,7 @@
                     <div class="row g-2 mb-3 small">
                         <div class="col-6"><div class="border rounded-3 p-2">Queue: <strong>{{ $queue['connection'] }}</strong></div></div>
                         <div class="col-6"><div class="border rounded-3 p-2">Pending jobs: <strong>{{ $queue['pending_jobs'] }}</strong></div></div>
+                        <div class="col-6"><div class="border rounded-3 p-2">Mail pending: <strong>{{ $queue['mail_pending_jobs'] }}</strong></div></div>
                         <div class="col-6"><div class="border rounded-3 p-2">Failed jobs: <strong>{{ $queue['failed_jobs'] }}</strong></div></div>
                         <div class="col-6"><div class="border rounded-3 p-2">Mail failed jobs: <strong>{{ $queue['mail_failed_jobs'] }}</strong></div></div>
                     </div>
@@ -203,7 +204,7 @@
                                 <div class="ec-importance"><strong>Important:</strong> {{ $tpl['importance'] }}</div>
                             @endif
                             <div class="d-flex gap-2 mt-3">
-                                @if($tpl['status'] !== 'framework' || $tpl['key'] === 'password_reset')
+                                @if($tpl['status'] !== 'framework' || in_array($tpl['key'], ['password_reset', 'email_verification'], true))
                                     <a class="btn btn-sm btn-outline-secondary" target="_blank" href="{{ route('admin.emails.preview', $tpl['key']) }}">
                                         <i class="fa fa-eye me-1"></i> Preview
                                     </a>
@@ -244,9 +245,14 @@
                                     <td><span class="badge bg-light text-dark">{{ $setting['audience'] }}</span></td>
                                     <td class="small text-muted">{{ $setting['preference'] ?: '—' }}</td>
                                     <td class="text-end">
-                                        <div class="form-check form-switch d-inline-flex justify-content-end">
-                                            <input class="form-check-input" type="checkbox" name="enabled[{{ $setting['type'] }}]" value="1" @checked($setting['enabled'])>
-                                        </div>
+                                        @if(!empty($setting['framework']))
+                                            <span class="small text-muted">Laravel auth — not toggleable</span>
+                                        @else
+                                            <div class="form-check form-switch d-inline-flex justify-content-end">
+                                                <input type="hidden" name="enabled[{{ $setting['type'] }}]" value="0">
+                                                <input class="form-check-input" type="checkbox" name="enabled[{{ $setting['type'] }}]" value="1" @checked($setting['enabled'])>
+                                            </div>
+                                        @endif
                                     </td>
                                 </tr>
                             @endforeach

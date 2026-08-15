@@ -8,6 +8,7 @@ use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Support\EmailCatalog;
 use App\Support\UserFacingError;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Artisan;
@@ -21,11 +22,21 @@ class EmailCenterController extends Controller
 {
     public function index(Request $request)
     {
+        $deliveredToday = EmailLog::query()
+            ->where('status', EmailLog::STATUS_DELIVERED)
+            ->where(function ($q) {
+                $q->whereDate('sent_at', today())
+                    ->orWhere(function ($inner) {
+                        $inner->whereNull('sent_at')->whereDate('created_at', today());
+                    });
+            })
+            ->count();
+
         $stats = [
-            'sent_today' => EmailLog::today()->count(),
-            'pending' => EmailLog::pending()->count() + $this->queuedMailJobsCount(),
-            'failed' => EmailLog::failed()->count() + $this->failedMailJobsCount(),
-            'delivered' => EmailLog::delivered()->count(),
+            'sent_today' => $deliveredToday,
+            'pending' => EmailLog::pending()->count(),
+            'failed' => EmailLog::failed()->count(),
+            'delivered' => $deliveredToday,
         ];
 
         $recentLogs = EmailLog::query()
@@ -33,17 +44,19 @@ class EmailCenterController extends Controller
             ->limit(25)
             ->get();
 
-        $templates = collect(EmailCatalog::all())->map(function (array $meta, string $key) {
+        $templateStats = EmailLog::query()
+            ->selectRaw('template_key, COUNT(*) as sent_count, MAX(sent_at) as last_sent_at')
+            ->where('status', EmailLog::STATUS_DELIVERED)
+            ->whereNotNull('template_key')
+            ->groupBy('template_key')
+            ->get()
+            ->keyBy('template_key');
+
+        $templates = collect(EmailCatalog::all())->map(function (array $meta, string $key) use ($templateStats) {
             $meta['key'] = $key;
-            $meta['last_sent_at'] = EmailLog::query()
-                ->where('template_key', $key)
-                ->where('status', EmailLog::STATUS_DELIVERED)
-                ->latest('sent_at')
-                ->value('sent_at');
-            $meta['sent_count'] = EmailLog::query()
-                ->where('template_key', $key)
-                ->where('status', EmailLog::STATUS_DELIVERED)
-                ->count();
+            $row = $templateStats->get($key);
+            $meta['last_sent_at'] = $row?->last_sent_at;
+            $meta['sent_count'] = (int) ($row?->sent_count ?? 0);
 
             return $meta;
         })->values();
@@ -71,13 +84,17 @@ class EmailCenterController extends Controller
 
         $failedLogs = EmailLog::failed()->latest('id')->limit(20)->get();
 
-        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) {
+        $settingRows = EmailNotificationSetting::query()->pluck('enabled', 'type');
+        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows) {
+            $default = (bool) ($meta['default_enabled'] ?? true);
+
             return [
                 'type' => $type,
                 'name' => $meta['name'] ?? $type,
                 'audience' => $meta['audience'] ?? 'user',
-                'enabled' => EmailNotificationSetting::isEnabled($type),
+                'enabled' => $settingRows->has($type) ? (bool) $settingRows->get($type) : $default,
                 'preference' => $meta['preference'] ?? null,
+                'framework' => (bool) ($meta['framework'] ?? false),
             ];
         })->values();
 
@@ -97,13 +114,23 @@ class EmailCenterController extends Controller
 
     public function updateSettings(Request $request)
     {
-        $enabled = $request->input('enabled', []);
-        $types = array_keys(config('email_notifications.types', []));
+        $types = config('email_notifications.types', []);
+        $editable = collect($types)
+            ->reject(fn (array $meta) => ! empty($meta['framework']))
+            ->keys()
+            ->all();
 
-        foreach ($types as $type) {
+        $rules = ['enabled' => ['required', 'array']];
+        foreach ($editable as $type) {
+            $rules['enabled.'.$type] = ['required', Rule::in(['0', '1'])];
+        }
+
+        $data = $request->validate($rules);
+
+        foreach ($editable as $type) {
             EmailNotificationSetting::updateOrCreate(
                 ['type' => $type],
-                ['enabled' => ! empty($enabled[$type])]
+                ['enabled' => (string) $data['enabled'][$type] === '1']
             );
         }
 
@@ -117,10 +144,8 @@ class EmailCenterController extends Controller
         $template = EmailCatalog::get($key);
         abort_unless($template, 404);
 
-        if ($key === 'password_reset') {
-            return response($this->renderMarkdown('emails.password-reset-preview', [
-                'resetUrl' => url('/password/reset/preview-token'),
-            ]));
+        if ($html = $this->frameworkPreviewHtml($key)) {
+            return response($html);
         }
 
         $mailable = EmailCatalog::makeMailable($key);
@@ -142,16 +167,15 @@ class EmailCenterController extends Controller
         abort_unless($template, 404);
 
         try {
-            if ($key === 'password_reset') {
-                $html = $this->renderMarkdown('emails.password-reset-preview', [
-                    'resetUrl' => url('/password/reset/preview-token'),
-                ]);
-                Mail::html($html, function ($message) use ($adminEmail) {
-                    $message->to($adminEmail)
-                        ->subject('Password Reset (Test Preview)');
+            if ($html = $this->frameworkPreviewHtml($key)) {
+                $subject = $key === 'email_verification'
+                    ? 'Verify your email (Test Preview)'
+                    : 'Password Reset (Test Preview)';
+                Mail::html($html, function ($message) use ($adminEmail, $key, $subject) {
+                    $message->to($adminEmail)->subject($subject);
                     if (method_exists($message, 'getSymfonyMessage')) {
                         $message->getSymfonyMessage()->getHeaders()
-                            ->addTextHeader('X-Platform-Notification-Type', 'password_reset');
+                            ->addTextHeader('X-Platform-Notification-Type', $key);
                     }
                 });
             } else {
@@ -188,28 +212,19 @@ class EmailCenterController extends Controller
 
     public function retryFailed(Request $request)
     {
-        $retried = 0;
+        $uuids = $this->mailFailedJobUuids();
 
-        if (Schema::hasTable('failed_jobs') && DB::table('failed_jobs')->count() > 0) {
-            try {
-                Artisan::call('queue:retry', ['id' => 'all']);
-                $retried++;
-            } catch (\Throwable $e) {
-                return back()->with('error', UserFacingError::message($e, 'Could not retry queue jobs. Please try again.'));
-            }
+        if ($uuids === []) {
+            return back()->with('success', 'No failed mail jobs to retry.');
         }
 
-        // Mark email_logs failed rows as pending for operational visibility
-        $updated = EmailLog::failed()->update([
-            'status' => EmailLog::STATUS_PENDING,
-            'error' => null,
-        ]);
+        try {
+            Artisan::call('queue:retry', ['id' => $uuids]);
+        } catch (\Throwable $e) {
+            return back()->with('error', UserFacingError::message($e, 'Could not retry mail jobs. Please try again.'));
+        }
 
-        return back()->with(
-            'success',
-            'Retry requested. Failed email logs re-queued for attention: '.$updated
-            .($retried ? ' · Laravel failed_jobs retry:all dispatched.' : '')
-        );
+        return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
     }
 
     protected function queuedMailJobsCount(): int
@@ -218,12 +233,7 @@ class EmailCenterController extends Controller
             return 0;
         }
 
-        return (int) DB::table('jobs')
-            ->where(function ($q) {
-                $q->where('payload', 'like', '%Mail%')
-                    ->orWhere('payload', 'like', '%Mailable%');
-            })
-            ->count();
+        return (int) DB::table('jobs')->where($this->mailJobPayloadConstraint())->count();
     }
 
     protected function failedMailJobsCount(): int
@@ -232,12 +242,50 @@ class EmailCenterController extends Controller
             return 0;
         }
 
-        return (int) DB::table('failed_jobs')
-            ->where(function ($q) {
-                $q->where('payload', 'like', '%Mail%')
-                    ->orWhere('payload', 'like', '%Mailable%');
-            })
-            ->count();
+        return (int) DB::table('failed_jobs')->where($this->mailJobPayloadConstraint())->count();
+    }
+
+    /**
+     * @return list<string>
+     */
+    protected function mailFailedJobUuids(): array
+    {
+        if (! Schema::hasTable('failed_jobs')) {
+            return [];
+        }
+
+        return DB::table('failed_jobs')
+            ->where($this->mailJobPayloadConstraint())
+            ->pluck('uuid')
+            ->filter()
+            ->map(fn ($uuid) => (string) $uuid)
+            ->values()
+            ->all();
+    }
+
+    /**
+     * @return \Closure(Builder): void
+     */
+    protected function mailJobPayloadConstraint(): \Closure
+    {
+        return function ($q) {
+            $q->where('payload', 'like', '%SendQueuedMailable%')
+                ->orWhere('payload', 'like', '%App\\\\Mail\\\\%')
+                ->orWhere('payload', 'like', '%Illuminate\\\\Mail\\\\%');
+        };
+    }
+
+    protected function frameworkPreviewHtml(string $key): ?string
+    {
+        return match ($key) {
+            'password_reset' => $this->renderMarkdown('emails.password-reset-preview', [
+                'resetUrl' => url('/password/reset/preview-token'),
+            ]),
+            'email_verification' => $this->renderMarkdown('emails.email-verification-preview', [
+                'verifyUrl' => EmailCatalog::previewVerificationUrl(),
+            ]),
+            default => null,
+        };
     }
 
     protected function renderMarkdown(string $view, array $data = []): string
