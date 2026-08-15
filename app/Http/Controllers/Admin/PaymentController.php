@@ -142,7 +142,21 @@ class PaymentController extends Controller
             $order = Order::with('user')->where('id', $id)->lockForUpdate()->firstOrFail();
 
             $oldStatus = $order->payment_status;
-            $order->payment_status = $request->payment_status;
+            $newStatus = (string) $request->payment_status;
+
+            if ($newStatus === 'paid' && $oldStatus !== 'paid') {
+                if (in_array((string) $order->status, ['cancelled', 'completed'], true)
+                    || $oldStatus === 'refunded') {
+                    DB::rollBack();
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.',
+                    ], 422);
+                }
+            }
+
+            $order->payment_status = $newStatus;
 
             if ($request->payment_status === 'paid' && ! $order->paid_at) {
                 $order->paid_at = now();

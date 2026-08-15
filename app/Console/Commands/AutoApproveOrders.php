@@ -201,7 +201,7 @@ class AutoApproveOrders extends Command
                 }
 
                 $lockedItem = OrderItem::where('id', $orderItem->id)->lockForUpdate()->first();
-                if (! $lockedItem || $lockedItem->auto_approve_triggered) {
+                if (! $lockedItem || $lockedItem->auto_approve_triggered || $lockedItem->isPayoutComplete()) {
                     DB::rollBack();
 
                     continue;

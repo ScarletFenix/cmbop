@@ -63,6 +63,12 @@ class ReviewHandoffService
                 $lockedItem = OrderItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
                 $order = Order::query()->whereKey($lockedItem->order_id)->lockForUpdate()->firstOrFail();
 
+                if ($lockedItem->isPayoutComplete()) {
+                    throw ValidationException::withMessages([
+                        'order' => 'This placement has already been paid. The live URL cannot be replaced from here.',
+                    ]);
+                }
+
                 if ($lockedItem->isContentRevisionRequested()) {
                     throw ValidationException::withMessages([
                         'order' => 'Wait for the advertiser to send the revised article before handing this back for review.',

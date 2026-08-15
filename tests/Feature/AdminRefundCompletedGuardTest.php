@@ -188,4 +188,114 @@ class AdminRefundCompletedGuardTest extends TestCase
         $this->assertSame('cancelled', $order->fresh()->status);
         $this->assertEqualsWithDelta(125.0, (float) $advertiserWallet->fresh()->balance, 0.01);
     }
+
+    public function test_admin_cannot_mark_a_cancelled_order_paid(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Cancelled Mark Paid Site',
+            'site_url' => 'https://cancelled-mark-paid.example',
+            'domain' => 'cancelled-mark-paid.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'Technology',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Cancelled mark-paid guard. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'CANCELLED-MARK-PAID-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'cancelled',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertSame('cancelled', $order->fresh()->status);
+    }
+
+    public function test_admin_cannot_reopen_a_refunded_payment(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Refunded Reopen Site',
+            'site_url' => 'https://refunded-reopen.example',
+            'domain' => 'refunded-reopen.example',
+            'da' => 40,
+            'dr' => 40,
+            'traffic' => 1000,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'Technology',
+            'price' => 80,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Refunded reopen guard. ', 3),
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REFUNDED-REOPEN-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'refunded',
+            'status' => 'processing',
+            'paid_at' => now()->subDay(),
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('refunded', $order->fresh()->payment_status);
+    }
 }

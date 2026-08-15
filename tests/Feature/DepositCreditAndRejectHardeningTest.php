@@ -113,6 +113,33 @@ class DepositCreditAndRejectHardeningTest extends TestCase
         ]);
     }
 
+    public function test_checkout_session_credit_refuses_unpaid_status(): void
+    {
+        $advertiser = $this->advertiser();
+        $wallet = $this->walletFor($advertiser);
+
+        $this->expectException(\RuntimeException::class);
+        $this->expectExceptionMessage('wallet_deposit session not paid');
+
+        try {
+            app(WalletStripeDepositService::class)->creditFromCheckoutSession((object) [
+                'id' => 'cs_unpaid_'.uniqid(),
+                'payment_status' => 'unpaid',
+                'amount_total' => 5000,
+                'payment_intent' => 'pi_unpaid_'.uniqid(),
+                'metadata' => (object) [
+                    'type' => 'wallet_deposit',
+                    'user_id' => (string) $advertiser->id,
+                    'amount' => '50.00',
+                    'reference_code' => 'DEP-UNPAID-50',
+                ],
+            ]);
+        } finally {
+            $this->assertSame(0.0, (float) $wallet->fresh()->balance);
+            $this->assertSame(0, DepositRequest::count());
+        }
+    }
+
     public function test_payment_intent_object_credit_refuses_order_payment_metadata(): void
     {
         $advertiser = $this->advertiser();

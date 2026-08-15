@@ -336,4 +336,26 @@ class PublisherOrderLifecycleTest extends TestCase
 
         $this->assertNull($item->fresh()->live_url);
     }
+
+    public function test_publisher_cannot_replace_live_url_after_payout(): void
+    {
+        $item = $this->makeOrder();
+        $item->order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://lifecycle.example/original',
+            'live_url_submitted_at' => now()->subDay(),
+            'auto_approve_triggered' => true,
+            'completed_at' => now()->subHour(),
+            'publisher_status' => 'completed',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.complete', $item->id), [
+                'live_url' => 'https://lifecycle.example/replaced-after-payout',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('https://lifecycle.example/original', $item->fresh()->live_url);
+    }
 }

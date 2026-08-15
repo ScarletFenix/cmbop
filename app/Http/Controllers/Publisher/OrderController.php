@@ -799,6 +799,19 @@ class OrderController extends Controller
             $orderItem = OrderItem::query()->whereKey($orderItem->id)->lockForUpdate()->firstOrFail();
             $order = Order::query()->whereKey($orderItem->order_id)->lockForUpdate()->firstOrFail();
 
+            if ($orderItem->isPayoutComplete()) {
+                DB::rollBack();
+                if ($suppressedOrderId) {
+                    $suppressor->forget($suppressedOrderId);
+                    $suppressedOrderId = null;
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This placement has already been paid. The live URL cannot be replaced from here.',
+                ], 422);
+            }
+
             // Re-check after the slow health probe — a revision may have opened mid-flight.
             if ($orderItem->isContentRevisionRequested()) {
                 DB::rollBack();
