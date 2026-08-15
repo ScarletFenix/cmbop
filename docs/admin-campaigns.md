@@ -41,10 +41,10 @@ UI). Recipients are marketplace advertisers and publishers only — never admins
    of leaving it stuck `queued`. Do **not** use `ShouldBeUnique` on the send
    job — a stale unique lock silently drops the only dispatch. The `queued` →
    `sending` claim plus per-row `pending` → `queued` is the mutex. Send
-   hydrates `id`+`email` only (`collectRecipientRows`) so a large audience
-   cannot OOM the compose request. `user_ids` are integers capped at
-   `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
-   422 the whole send).
+  hydrates `id`+`email` only (`collectRecipientRows`, same canonical keys as
+  `collect()` / `count()`) so a large audience cannot OOM the compose request.
+  `user_ids` are integers capped at `PICKER_LIMIT * 2` (no `exists:users,id` —
+  a deleted picker row must not 422 the whole send).
 
 Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
@@ -65,8 +65,11 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   customer). `advertisers_paid_orders` is the inverse.
 - Extra inventory / campaign keys: `both`, `advertisers_deposited_no_orders`
   (credited deposit, no order row), `publishers_no_active_sites` (no
-  `active=1` site). Tab slugs (`no_orders`, `paid_orders`, …) normalize
-  through `AudienceInventoryService::normalizeAudienceKey()`.
+  catalog-visible site: active + verified + not archived + not leftover from
+  a cancelled bulk). Publisher archive keeps `active=1`, so `active=1` alone
+  is not “live”. Tab slugs (`no_orders`, `paid_orders`, …) normalize
+  through `AudienceInventoryService::normalizeAudienceKey()` in inventory
+  and in campaign send / recipient-count.
 - Inventory search / filters apply to the table and CSV only. **Email this
   audience** still sends the full segment (verified by default).
 - Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,

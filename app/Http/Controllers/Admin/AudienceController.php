@@ -112,12 +112,15 @@ class AudienceController extends Controller
         if ($to !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) !== 1) {
             $to = '';
         }
+        if ($from !== '' && $to !== '' && $from > $to) {
+            [$from, $to] = [$to, $from];
+        }
 
         return [
             'verified' => $verified,
             'registered_from' => $from,
             'registered_to' => $to,
-            'country' => search_text($request->get('country')),
+            'country' => mb_substr(search_text($request->get('country')), 0, 64),
             'marketing' => $marketing,
             'exclude_dual_role' => $request->boolean('exclude_dual_role'),
             'sort' => $sort,

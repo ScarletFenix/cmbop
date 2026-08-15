@@ -77,4 +77,18 @@ class AudienceInventoryKeysTest extends TestCase
         $this->assertSame('Advertisers', AudienceInventoryService::exportLabel('advertisers'));
         $this->assertSame('Advertisers + Publishers', AudienceInventoryService::exportLabel('both'));
     }
+
+    public function test_query_for_audience_key_accepts_inventory_tab_slugs(): void
+    {
+        $inventory = new AudienceInventoryService;
+
+        $this->assertSame(
+            $inventory->queryForAudienceKey('no_orders')->toSql(),
+            $inventory->queryForAudienceKey('advertisers_no_orders')->toSql()
+        );
+        $this->assertSame(
+            $inventory->queryForAudienceKey('no_active_sites')->toSql(),
+            $inventory->queryForAudienceKey('publishers_no_active_sites')->toSql()
+        );
+    }
 }
