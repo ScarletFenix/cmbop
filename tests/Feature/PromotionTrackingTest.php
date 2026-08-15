@@ -203,6 +203,17 @@ class PromotionTrackingTest extends TestCase
         $this->assertSame(0, (int) $banner->fresh()->clicks);
     }
 
+    public function test_image_src_rejects_encoded_dotdot_path(): void
+    {
+        $banner = $this->liveBanner();
+        $banner->update([
+            'image_path' => 'banners/%2e%2e/%2e%2e/etc/passwd',
+            'image_url' => 'https://example.com/safe.png',
+        ]);
+
+        $this->assertSame('https://example.com/safe.png', $banner->fresh()->imageSrc());
+    }
+
     public function test_preview_page_is_staff_only(): void
     {
         $role = Role::firstOrCreate(['name' => 'admin']);

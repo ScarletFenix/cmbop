@@ -56,6 +56,58 @@ class HomepagePromotionTablesTest extends TestCase
             ->assertDontSee('Expired homepage notice', false);
     }
 
+    public function test_homepage_does_not_echo_tainted_style_or_type(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Safe title',
+            'message' => 'Safe body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+        $announcement->forceFill([
+            'type' => 'general"><img src=x onerror=alert(1)>',
+            'style' => 'info onmouseover=alert(1)',
+        ])->save();
+
+        $html = $this->get('/')->assertOk()->getContent();
+        $this->assertStringNotContainsString('onerror=alert(1)', $html);
+        $this->assertStringNotContainsString('onmouseover=alert(1)', $html);
+        $this->assertStringContainsString('site-announcement--info', $html);
+        $this->assertStringContainsString('site-announcement-type--general', $html);
+    }
+
+    public function test_homepage_and_click_ok_when_deleted_at_column_missing(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Notice before soft-deletes',
+            'message' => 'Still visible',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'cta_label' => 'Go',
+            'cta_url' => '/advertiser/catalog',
+            'is_active' => true,
+        ]);
+
+        Schema::table('site_announcements', function ($table) {
+            $table->dropSoftDeletes();
+        });
+        $this->assertFalse(Schema::hasColumn('site_announcements', 'deleted_at'));
+
+        $this->get('/')
+            ->assertOk()
+            ->assertSee('Notice before soft-deletes', false);
+
+        $this->get(route('announcements.click', $announcement))
+            ->assertRedirect();
+        $this->assertStringContainsString(
+            '/advertiser/catalog',
+            (string) $this->get(route('announcements.click', $announcement))->headers->get('Location')
+        );
+    }
+
     public function test_homepage_caps_live_announcements_at_two(): void
     {
         foreach (['First cap notice', 'Second cap notice', 'Third cap notice'] as $i => $title) {
