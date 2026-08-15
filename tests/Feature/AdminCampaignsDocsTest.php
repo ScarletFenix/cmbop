@@ -55,6 +55,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('drop that job UUID from the retry list', $body);
         $this->assertStringContainsString('must not swallow another campaign\'s failed job', $body);
         $this->assertStringContainsString('must not treat another campaign\'s generic-key delivery as this send', $body);
+        $this->assertStringContainsString('without an extractable payload dedupe key', $body);
+        $this->assertStringContainsString('stale stamp must not suppress a Welcome job', $body);
         $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must not beat a delivered log', $body);

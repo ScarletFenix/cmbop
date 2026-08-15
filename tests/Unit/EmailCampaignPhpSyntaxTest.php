@@ -115,6 +115,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function containsCampaignMail\b/', $payload));
         $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsEmailCampaignModel\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function campaignDedupeKeys\b/', $payload));
         $this->assertSame(1, preg_match_all('/function modelIdentifierIds\b/', $payload));
         $this->assertTrue((bool) preg_match(
             '/public static function matchesEmailLog\(string \$payload, EmailLog \$log, bool \$requireToken = false\): bool\s*\{(.*?)\n    public static function dedupeKey/s',
@@ -239,6 +240,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
         $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
+        $this->assertSame(1, preg_match_all('/function leftoverOwnsFailedJob\b/', $center));
+        $this->assertSame(1, preg_match_all('/function shouldSkipRetryForClosedLeftover\b/', $center));
         $this->assertTrue((bool) preg_match(
             '/protected function requeueFailedCampaignRecipient\(EmailLog \$log\): void\s*\{(.*)\n    protected function failedJobUuidForLog/s',
             $center,
@@ -251,6 +254,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $owns
         ));
         $this->assertStringContainsString('campaignUserIds', $owns[1]);
+        $this->assertStringContainsString('campaignDedupeKeys', $owns[1]);
 
         $payloadTest = (string) file_get_contents($files[5]);
         $this->assertSame(1, preg_match_all(
