@@ -17,6 +17,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Models/EmailCampaign.php',
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Support/MailJobPayload.php',
+            $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
     }
 
@@ -71,6 +73,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Models/EmailCampaign.php',
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Services/AudienceInventoryService.php',
+            $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
 
         foreach ($files as $path) {
@@ -84,5 +88,15 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
+
+        $center = (string) file_get_contents($files[3]);
+        $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
+        $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
+
+        $payloadTest = (string) file_get_contents($files[4]);
+        $this->assertSame(1, preg_match_all(
+            '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
+            $payloadTest
+        ));
     }
 }
