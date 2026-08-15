@@ -402,6 +402,32 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Current owner line is live. Historical live URLs on cancelled leftovers
+     * must not keep a reused or released article in Completed.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithCurrentLivePlacement($query)
+    {
+        return $query->withOpenOwnerOrder()
+            ->whereHas('orderItems', function ($item) use ($query) {
+                $this->constrainCurrentOwnerLiveItem($item, $query->getModel()->getTable());
+            });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutCurrentLivePlacement($query)
+    {
+        return $query->whereDoesntHave('orderItems', function ($item) use ($query) {
+            $this->constrainCurrentOwnerLiveItem($item, $query->getModel()->getTable());
+        });
+    }
+
+    /**
      * Rejected / error articles, plus approved articles that still need image
      * rights, a complete checkout link, or release from a leftover order.
      *
@@ -878,19 +904,38 @@ class ContentSubmission extends Model
      */
     public function placementItem(): ?OrderItem
     {
-        if ($this->relationLoaded('orderItem') && $this->orderItem) {
-            return $this->orderItem;
-        }
-
-        if ($this->relationLoaded('orderItems')) {
-            return $this->orderItems->sortBy('id')->first();
-        }
-
         if ($this->order_item_id) {
+            if ($this->relationLoaded('orderItem') && $this->orderItem) {
+                return $this->orderItem;
+            }
+            if ($this->relationLoaded('orderItems')) {
+                $owned = $this->orderItems->firstWhere('id', (int) $this->order_item_id);
+                if ($owned) {
+                    return $owned;
+                }
+            }
+
             return $this->orderItem()->with('site')->first();
         }
 
-        return $this->orderItems()->with('site')->orderBy('id')->first();
+        $items = $this->relationLoaded('orderItems')
+            ? $this->orderItems
+            : $this->orderItems()->with(['site', 'order'])->orderBy('id')->get();
+
+        if ($this->order_id) {
+            $onOwner = $items->firstWhere('order_id', (int) $this->order_id);
+            if ($onOwner) {
+                return $onOwner;
+            }
+        }
+
+        return $items->first(function (OrderItem $item) {
+            $order = $item->relationLoaded('order')
+                ? $item->order
+                : $item->order()->first();
+
+            return $order instanceof Order && $order->status !== 'cancelled';
+        });
     }
 
     public function liveUrl(): ?string
@@ -982,6 +1027,10 @@ class ContentSubmission extends Model
 
     public function isPublished(): bool
     {
+        if (! $this->isInUse()) {
+            return false;
+        }
+
         $item = $this->placementItem();
         if (! $item) {
             return false;
