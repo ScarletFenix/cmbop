@@ -1055,6 +1055,62 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 
+    public function test_casino_only_in_docx_image_descr_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $this->writeDocxWithImageDescr(
+            Storage::disk('local')->path($submission->path),
+            (string) $submission->extracted_text,
+            'Best online casino bonus'
+        );
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_casino_only_in_image_srcset_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $body = (string) $submission->extracted_text;
+        $submission->update([
+            'preview_html' => '<p>'.$body.'</p><img src="/storage/hero.jpg" srcset="/storage/best-online-casino-bonus.jpg 1x" alt="hero">',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_leet_casino_in_preview_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $hidden = 'Play at the best online casin0 tonight and claim your bonus.';
+        $submission->update([
+            'extracted_text' => $hidden,
+            'preview_html' => '<p>'.$hidden.'</p>',
+        ]);
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     public function test_feature_image_draft_save_after_override_revokes_approval(): void
     {
         $admin = $this->admin();
@@ -1266,6 +1322,35 @@ class AdminModerationOverrideTest extends TestCase
         $zip->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
             .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
             .'<w:p><w:r><w:t>'.htmlspecialchars($body, ENT_XML1).'</w:t></w:r></w:p>'
+            .'</w:body></w:document>');
+        $zip->close();
+    }
+
+    private function writeDocxWithImageDescr(string $absolutePath, string $body, string $descr): void
+    {
+        $dir = dirname($absolutePath);
+        if (! is_dir($dir)) {
+            mkdir($dir, 0777, true);
+        }
+
+        $zip = new ZipArchive;
+        $zip->open($absolutePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
+            .'<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
+            .'<Default Extension="xml" ContentType="application/xml"/>'
+            .'<Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>'
+            .'</Types>');
+        $zip->addFromString('_rels/.rels', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/>'
+            .'</Relationships>');
+        $zip->addFromString('word/document.xml', '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"><w:body>'
+            .'<w:p><w:r><w:t>'.htmlspecialchars($body, ENT_XML1).'</w:t></w:r></w:p>'
+            .'<w:p><w:r><w:drawing><wp:inline><wp:docPr id="1" name="Picture 1" descr="'
+            .htmlspecialchars($descr, ENT_XML1).'"/></wp:inline></w:drawing></w:r></w:p>'
             .'</w:body></w:document>');
         $zip->close();
     }

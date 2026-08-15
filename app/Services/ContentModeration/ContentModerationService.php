@@ -883,11 +883,17 @@ class ContentModerationService
         }
 
         $texts = [];
-        if (preg_match_all('/\b(?:href|src)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+        if (preg_match_all('/\b(?:href|src|srcset|data-src|data-original|data-href|data-lazy-src|poster)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
             foreach ($matches[2] as $value) {
                 $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-                if ($value !== '') {
-                    $texts[] = $value;
+                if ($value === '') {
+                    continue;
+                }
+                foreach (preg_split('/\s*,\s*/', $value) ?: [] as $part) {
+                    $url = trim((string) preg_replace('/\s+\d+(?:\.\d+)?[wx]$/i', '', trim($part)));
+                    if ($url !== '') {
+                        $texts[] = $url;
+                    }
                 }
             }
         }

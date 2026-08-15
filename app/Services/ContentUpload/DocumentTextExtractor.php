@@ -23,8 +23,8 @@ class DocumentTextExtractor
      */
     /**
      * Policy-only read of the stored package. Includes headers, footers,
-     * notes, comments, document properties, custom XML, and every external
-     * hyperlink. Does not store images or build preview HTML.
+     * notes, comments, document properties, custom XML, image descr/tooltips,
+     * and every external hyperlink. Does not store images or build preview HTML.
      *
      * @return array{ok:bool, text:string, links:list<string>}
      */
@@ -114,12 +114,24 @@ class DocumentTextExtractor
 
     protected function xmlToPolicyText(string $xml): string
     {
+        $attrs = [];
+        if (preg_match_all('/\b(?:descr|title|alt|tooltip)\s*=\s*(["\'])(.*?)\1/iu', $xml, $matches)) {
+            foreach ($matches[2] as $value) {
+                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($value !== '') {
+                    $attrs[] = $value;
+                }
+            }
+        }
+
         $withBreaks = preg_replace('/<\/w:p>/', "\n\n", $xml) ?? $xml;
         $text = html_entity_decode(strip_tags($withBreaks), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace("/[ \t]+/", ' ', $text) ?? $text;
         $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+        $text = trim($text);
+        $attrText = trim(implode("\n", array_unique($attrs)));
 
-        return trim($text);
+        return trim($text.($attrText !== '' ? "\n".$attrText : ''));
     }
 
     public function extract(string $absolutePath, string $extension, ?callable $storeImage = null): array

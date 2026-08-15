@@ -435,6 +435,23 @@ class ContentModerationEngine
     }
 
     /**
+     * Digit / symbol substitutions used to hide keywords ("casin0", "sl0ts").
+     */
+    public function leetFold(string $haystack): string
+    {
+        return strtr($haystack, [
+            '0' => 'o',
+            '1' => 'i',
+            '3' => 'e',
+            '4' => 'a',
+            '5' => 's',
+            '7' => 't',
+            '@' => 'a',
+            '$' => 's',
+        ]);
+    }
+
+    /**
      * @param  array<string, mixed>  $cat
      * @return list<string>
      */
@@ -461,9 +478,13 @@ class ContentModerationEngine
 
     protected function countTerm(string $haystack, string $term, ?string $tightHaystack = null): int
     {
-        $count = $this->countTermIn($haystack, $term);
-        if ($tightHaystack !== null && $tightHaystack !== $haystack) {
-            $count = max($count, $this->countTermIn($tightHaystack, $term));
+        $count = 0;
+        foreach (array_filter([$haystack, $tightHaystack]) as $candidate) {
+            $count = max($count, $this->countTermIn($candidate, $term));
+            $leet = $this->leetFold($candidate);
+            if ($leet !== $candidate) {
+                $count = max($count, $this->countTermIn($leet, $term));
+            }
         }
 
         return $count;
@@ -481,13 +502,18 @@ class ContentModerationEngine
 
     protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool
     {
-        if (str_contains($haystack, $phrase)) {
+        $leetPhrase = $this->leetFold($phrase);
+        if (str_contains($haystack, $phrase) || str_contains($this->leetFold($haystack), $leetPhrase)) {
             return true;
         }
 
         $tightPhrase = preg_replace('/[\s\-\._]+/u', '', $phrase) ?? $phrase;
+        if ($tightPhrase === '') {
+            return false;
+        }
 
-        return $tightPhrase !== '' && str_contains($tightHaystack, $tightPhrase);
+        return str_contains($tightHaystack, $tightPhrase)
+            || str_contains($this->leetFold($tightHaystack), $this->leetFold($tightPhrase));
     }
 
     /**

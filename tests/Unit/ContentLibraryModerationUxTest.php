@@ -199,6 +199,23 @@ class ContentLibraryModerationUxTest extends TestCase
         }
     }
 
+    public function test_engine_rejects_leet_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'Play at the best online casin0 tonight and claim your bonus.',
+            links: [],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
     public function test_engine_rejects_zero_width_and_split_casino(): void
     {
         $engine = new ContentModerationEngine;
