@@ -5,10 +5,12 @@ namespace App\Services\Admin;
 use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\SiteFeaturePurchase;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Models\Withdrawal;
+use App\Services\OrderPaymentService;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -218,11 +220,10 @@ class FinanceOverviewService
             foreach ($wallets as $wallet) {
                 $balance = (float) $wallet->balance;
                 $bonus = $hasBonus ? (float) ($wallet->bonus_balance ?? 0) : 0.0;
-                $lockedBonus = min($bonus, $balance);
                 $adv['balance'] += $balance;
                 $adv['bonus'] += $bonus;
                 $adv['reserved'] += (float) $wallet->reserved_balance;
-                $adv['cash'] += max(0, round($balance - $lockedBonus, 2));
+                $adv['cash'] += $wallet->withdrawableBalance();
             }
             $adv['balance'] = round($adv['balance'], 2);
             $adv['bonus'] = round($adv['bonus'], 2);
@@ -238,8 +239,7 @@ class FinanceOverviewService
             foreach ($wallets as $wallet) {
                 $balance = (float) $wallet->balance;
                 $bonus = $hasBonus ? (float) $wallet->bonus_balance : 0.0;
-                $lockedBonus = min($bonus, $balance);
-                $withdrawable = max(0, round($balance - $lockedBonus, 2));
+                $withdrawable = $wallet->withdrawableBalance();
                 $pub['balance'] += $balance;
                 $pub['bonus'] += $bonus;
                 $pub['reserved'] += (float) $wallet->reserved_balance;
@@ -339,10 +339,13 @@ class FinanceOverviewService
             ->all();
 
         $gmv = (float) (clone $paidOrders)->sum('total_amount');
-        $stripeOrders = (float) (clone $paidOrders)->where('payment_method', 'card')->sum('total_amount');
+        // Live checkout writes `card`; older / promotion rows used `stripe`.
+        $stripeOrders = (float) (clone $paidOrders)
+            ->whereIn('payment_method', $this->cardOrderMethods())
+            ->sum('total_amount');
         $walletOrders = (float) (clone $paidOrders)->where('payment_method', 'wallet')->sum('total_amount');
         $manualOrders = (float) (clone $paidOrders)
-            ->whereIn('payment_method', ['wise', 'bank', 'crypto'])
+            ->whereIn('payment_method', $this->manualOrderMethods())
             ->sum('total_amount');
 
         $depositsTotal = (float) (clone $depositsCompleted)->sum('amount');
@@ -389,6 +392,11 @@ class FinanceOverviewService
                 'count' => (clone $bonuses)->count(),
                 'amount' => (float) (clone $bonuses)->sum('amount'),
             ],
+            'unfulfilled_card_credits' => $this->unfulfilledCardCredits($start, $end),
+            // Bank still has this cash after a wallet refund (no Stripe refund).
+            'stripe_card_collected' => $this->sumExternalOrdersCollected($start, $end, $this->cardOrderMethods()),
+            'manual_collected' => $this->sumExternalOrdersCollected($start, $end, $this->manualOrderMethods()),
+            'site_feature_stripe' => $this->siteFeatureStripeCash($start, $end),
         ];
     }
 
@@ -440,12 +448,13 @@ class FinanceOverviewService
     {
         $feeItems = OrderItem::query()
             ->whereHas('order', function ($q) use ($start, $end) {
-                $q->where('status', 'completed')->where('payment_status', 'paid');
+                $this->constrainRecognizedCompleted($q);
                 $this->applyCompletedWindow($q, $start, $end);
             });
 
         $orderFees = (float) (clone $feeItems)->sum(OrderItem::platformFeeSqlExpression());
-        $completedPaid = Order::where('status', 'completed')->where('payment_status', 'paid');
+        $completedPaid = Order::query();
+        $this->constrainRecognizedCompleted($completedPaid);
         $this->applyCompletedWindow($completedPaid, $start, $end);
         $gmvCompleted = (float) $completedPaid->sum('total_amount');
 
@@ -458,6 +467,9 @@ class FinanceOverviewService
         $refundOrderSum = (float) (clone $refundOrders)->sum('total_amount');
         $refundedFeeItems = OrderItem::query()
             ->whereHas('order', function ($q) use ($start, $end) {
+                // Only reverse fees that were recognized on a completed sale.
+                // In-progress cancel/refunds never earned a platform fee.
+                $this->constrainRecognizedCompleted($q);
                 $q->where('payment_status', 'refunded');
                 $this->applyRefundWindow($q, $start, $end);
             });
@@ -494,8 +506,10 @@ class FinanceOverviewService
         $cashIn = round(
             ($in['deposits_completed']['stripe'] ?? 0)
             + ($in['deposits_completed']['manual'] ?? 0)
-            + ($in['orders_paid']['stripe_card'] ?? 0)
-            + ($in['orders_paid']['manual'] ?? 0),
+            + ($in['stripe_card_collected'] ?? $in['orders_paid']['stripe_card'] ?? 0)
+            + ($in['manual_collected'] ?? $in['orders_paid']['manual'] ?? 0)
+            + ($in['unfulfilled_card_credits'] ?? 0)
+            + ($in['site_feature_stripe'] ?? 0),
             2
         );
 
@@ -513,7 +527,7 @@ class FinanceOverviewService
             'cash_in_bank' => $cashIn,
             'internal_only' => $internal,
             'cash_out_payouts' => round($cashOut, 2),
-            'note' => 'Cash in = Stripe/card + approved bank/Wise/crypto deposits & manual order payments. Internal = wallet checkouts + welcome bonuses (not bank deposits).',
+            'note' => 'Cash in = Stripe/card + approved bank/Wise/crypto deposits & manual order payments + leftover card credits + featured-site Stripe. Wallet refunds do not remove collected card/manual cash (no Stripe refund). Internal = wallet checkouts + welcome bonuses.',
         ];
     }
 
@@ -605,6 +619,10 @@ class FinanceOverviewService
             ['section' => 'money_in', 'metric' => 'orders_wallet', 'value' => $data['money_in']['orders_paid']['wallet']],
             ['section' => 'money_in', 'metric' => 'orders_manual', 'value' => $data['money_in']['orders_paid']['manual']],
             ['section' => 'money_in', 'metric' => 'bonuses_issued', 'value' => $data['money_in']['bonuses_issued']['amount']],
+            ['section' => 'money_in', 'metric' => 'unfulfilled_card_credits', 'value' => $data['money_in']['unfulfilled_card_credits']],
+            ['section' => 'money_in', 'metric' => 'stripe_card_collected', 'value' => $data['money_in']['stripe_card_collected']],
+            ['section' => 'money_in', 'metric' => 'manual_collected', 'value' => $data['money_in']['manual_collected']],
+            ['section' => 'money_in', 'metric' => 'site_feature_stripe', 'value' => $data['money_in']['site_feature_stripe']],
             ['section' => 'money_out', 'metric' => 'earnings_credited', 'value' => $data['money_out']['earnings_credited']['amount']],
             ['section' => 'money_out', 'metric' => 'withdrawals_paid_net', 'value' => $data['money_out']['withdrawals_paid']['net']],
             ['section' => 'money_out', 'metric' => 'withdrawals_open_net', 'value' => $data['money_out']['withdrawals_open']['net']],
@@ -624,6 +642,85 @@ class FinanceOverviewService
             ['section' => 'ops', 'metric' => 'unpaid_orders', 'value' => $data['ops']['unpaid_orders']['amount']],
             ['section' => 'ops', 'metric' => 'publisher_debt', 'value' => $data['ops']['publisher_debt']['amount']],
         ];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function cardOrderMethods(): array
+    {
+        return ['card', 'stripe'];
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function manualOrderMethods(): array
+    {
+        return ['wise', 'bank', 'bank_transfer', 'crypto'];
+    }
+
+    /**
+     * Completed sales that recognized a platform fee — still paid, or later
+     * wallet-refunded. In-progress cancels never completed and are excluded.
+     */
+    private function constrainRecognizedCompleted($query): void
+    {
+        $query->whereIn('payment_status', ['paid', 'refunded'])
+            ->where(function ($q) {
+                $q->where('status', 'completed');
+                if ($this->ordersHaveColumn('completed_at')) {
+                    $q->orWhereNotNull('completed_at');
+                }
+            });
+    }
+
+    /**
+     * Card / manual cash that hit the bank. Wallet refunds keep payment_status
+     * refunded but do not return the Stripe/bank capture, so those rows stay.
+     *
+     * @param  list<string>  $methods
+     */
+    private function sumExternalOrdersCollected(?Carbon $start, Carbon $end, array $methods): float
+    {
+        $query = Order::query()
+            ->whereIn('payment_method', $methods)
+            ->whereIn('payment_status', ['paid', 'refunded']);
+        $this->applyPaidWindow($query, $start, $end);
+
+        return round((float) $query->sum('total_amount'), 2);
+    }
+
+    /**
+     * Publisher featured-site Stripe charges (including leftover stripe_credit
+     * when the listing could not be featured after capture).
+     */
+    private function siteFeatureStripeCash(?Carbon $start, Carbon $end): float
+    {
+        if (! Schema::hasTable('site_feature_purchases')) {
+            return 0.0;
+        }
+
+        $query = SiteFeaturePurchase::query()
+            ->whereIn('payment_method', ['stripe', 'stripe_credit']);
+        $this->applyCreatedWindow($query, $start, $end);
+
+        return round((float) $query->sum('amount'), 2);
+    }
+
+    /**
+     * Stripe captured cash credited to the advertiser wallet when paid lines
+     * left the catalog (no paid order row, so it is not in orders GMV).
+     */
+    private function unfulfilledCardCredits(?Carbon $start, Carbon $end): float
+    {
+        $prefix = OrderPaymentService::unfulfilledCardCreditReference('');
+        $query = WalletTransaction::query()
+            ->where('direction', 'credit')
+            ->where('reference', 'like', $prefix.'%');
+        $this->applyCreatedWindow($query, $start, $end);
+
+        return round((float) $query->sum('amount'), 2);
     }
 
     private function hasBonusColumns(): bool

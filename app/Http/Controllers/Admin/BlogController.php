@@ -146,8 +146,8 @@ class BlogController extends Controller
                 $tags = array_values($tags);
             }
             $en = $translations['en'];
-            $enSlug = $this->uniqueTranslationSlug($en['slug'] ?: Str::slug($en['title']));
-            $legacySlug = $this->uniqueBlogSlug($enSlug);
+            $enSlug = $this->uniquePublicSlug($en['slug'] ?: Str::slug($en['title']));
+            $legacySlug = $enSlug;
             $legacyExcerpt = filled($en['excerpt'])
                 ? Str::limit(trim((string) $en['excerpt']), 300)
                 : Str::limit(strip_tags((string) $en['content']), 160);
@@ -171,7 +171,7 @@ class BlogController extends Controller
                 foreach ($translations as $locale => $data) {
                     $slug = $locale === 'en'
                         ? $enSlug
-                        : $this->uniqueTranslationSlug($data['slug'] ?: Str::slug($data['title']));
+                        : $this->uniquePublicSlug($data['slug'] ?: Str::slug($data['title']));
 
                     BlogTranslation::create(array_merge(
                         $this->translationAttributes($data, $slug),
@@ -292,11 +292,12 @@ class BlogController extends Controller
             ];
 
             $existingEn = $blog->translations()->where('locale', 'en')->first();
-            $enSlug = $this->uniqueTranslationSlug(
+            $enSlug = $this->uniquePublicSlug(
                 $en['slug'] ?: Str::slug($en['title']),
+                $blog->id,
                 $existingEn?->id
             );
-            $data['slug'] = $this->uniqueBlogSlug($enSlug, $blog->id);
+            $data['slug'] = $enSlug;
 
             if ($request->hasFile('featured_image')) {
                 $newFeaturedImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
@@ -324,8 +325,9 @@ class BlogController extends Controller
                     $existing = $blog->translations()->where('locale', $locale)->first();
                     $slug = $locale === 'en'
                         ? $enSlug
-                        : $this->uniqueTranslationSlug(
+                        : $this->uniquePublicSlug(
                             $translationData['slug'] ?: Str::slug($translationData['title']),
+                            null,
                             $existing?->id
                         );
 
@@ -440,6 +442,7 @@ class BlogController extends Controller
             }
 
             $blog->updated_by = auth()->id();
+            $blog->manually_edited_at = now();
             $blog->save();
 
             return redirect()->route('admin.blogs.index')
@@ -631,8 +634,9 @@ class BlogController extends Controller
         foreach ($blog->translations as $translation) {
             $html .= ' '.$translation->content;
         }
+        $html = BlogHtmlSanitizer::rewritePublicBlogUrls($html);
 
-        if (preg_match_all('#(?:/(?:storage|media)/)?(blogs/(?:content|featured)/[^"\'\s>]+)#', $html, $matches)) {
+        if (preg_match_all('#(?:https?://[^"\'\s>]+)?(?:/(?:storage|media)/)?(blogs/(?:content|featured)/[^"\'?\s>]+)#i', $html, $matches)) {
             $paths = array_merge($paths, $matches[1]);
         }
 
@@ -758,18 +762,21 @@ class BlogController extends Controller
         ];
     }
 
-    private function uniqueTranslationSlug(string $slug, ?int $ignoreTranslationId = null): string
-    {
+    /**
+     * Public /blog/{slug} resolves translations first, then blogs.slug.
+     * Both tables must share one namespace or a new translation can steal
+     * a legacy post's URL.
+     */
+    private function uniquePublicSlug(
+        string $slug,
+        ?int $ignoreBlogId = null,
+        ?int $ignoreTranslationId = null
+    ): string {
         $base = Str::slug($slug) ?: Str::random(8);
         $candidate = $base;
         $counter = 1;
 
-        while (
-            BlogTranslation::query()
-                ->when($ignoreTranslationId, fn ($query) => $query->where('id', '!=', $ignoreTranslationId))
-                ->where('slug', $candidate)
-                ->exists()
-        ) {
+        while ($this->publicSlugTaken($candidate, $ignoreBlogId, $ignoreTranslationId)) {
             $candidate = $base.'-'.$counter;
             $counter++;
         }
@@ -777,22 +784,23 @@ class BlogController extends Controller
         return $candidate;
     }
 
-    private function uniqueBlogSlug(string $slug, ?int $ignoreBlogId = null): string
-    {
-        $base = Str::slug($slug) ?: Str::random(8);
-        $candidate = $base;
-        $counter = 1;
+    private function publicSlugTaken(
+        string $candidate,
+        ?int $ignoreBlogId = null,
+        ?int $ignoreTranslationId = null
+    ): bool {
+        $blogTaken = Blog::query()
+            ->when($ignoreBlogId, fn ($query) => $query->where('id', '!=', $ignoreBlogId))
+            ->where('slug', $candidate)
+            ->exists();
 
-        while (
-            Blog::query()
-                ->when($ignoreBlogId, fn ($query) => $query->where('id', '!=', $ignoreBlogId))
-                ->where('slug', $candidate)
-                ->exists()
-        ) {
-            $candidate = $base.'-'.$counter;
-            $counter++;
+        if ($blogTaken) {
+            return true;
         }
 
-        return $candidate;
+        return BlogTranslation::query()
+            ->when($ignoreTranslationId, fn ($query) => $query->where('id', '!=', $ignoreTranslationId))
+            ->where('slug', $candidate)
+            ->exists();
     }
 }

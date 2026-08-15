@@ -135,9 +135,7 @@ class ContentLibraryController extends Controller
                         $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
                     });
             } elseif ($availability === 'in_progress') {
-                $query->withOpenOwnerOrder()
-                    ->hasCheckoutReadyLinks()
-                    ->withoutCurrentLivePlacement();
+                $query->inProgressInLibrary();
             } elseif ($availability === 'expired') {
                 $query->whereNull('order_id')
                     ->whereNotNull('expires_at')
@@ -218,9 +216,7 @@ class ContentLibraryController extends Controller
                 })
                 ->count(),
             'in_progress' => (int) (clone $countScope)
-                ->withOpenOwnerOrder()
-                ->hasCheckoutReadyLinks()
-                ->withoutCurrentLivePlacement()
+                ->inProgressInLibrary()
                 ->count(),
             'completed' => (int) (clone $countScope)
                 ->withCurrentLivePlacement()

@@ -956,6 +956,61 @@ class ContentLibraryImprovementsTest extends TestCase
         );
     }
 
+    public function test_owned_leftover_missing_image_rights_is_needs_fix_not_in_progress(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'rights-leftover');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = $this->failedCardOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+            'preview_html' => '<p>Owned leftover with a picture.</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_source' => null,
+        ]);
+
+        $fresh = $submission->fresh();
+        $this->assertTrue($fresh->isInUse());
+        $this->assertTrue($fresh->canEditArticle());
+        $this->assertFalse($fresh->isReadyToFulfill((int) $leftover->id));
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'edit' => $submission->id,
+                'upload' => 1,
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('value="'.$submission->id.'"', false)
+            ->assertSee('This article contains images. Confirm you own them', false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertDontSee('data-submission-id="'.$submission->id.'"', false);
+    }
+
     public function test_wallet_checkout_rewrites_stale_cancelled_owner_order_id(): void
     {
         config(['content_moderation.enabled' => false]);
