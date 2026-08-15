@@ -34,12 +34,22 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   hrefs are dropped. CTA URLs must be `http` or `https`.
 - Campaign `collect()` / `count()` default **`includeUnverified = false`**.
   Audience Inventory census (`paginate` / `export` / `stats()`) still includes
-  unverified unless asked otherwise.
+  unverified unless asked otherwise. Inventory cards show **all** plus
+  **emailable (verified)** so the compose count matches the subtitle.
 - `selected` accepts advertiser/publisher IDs only. Admin IDs are dropped.
 - Custom picker is capped at 200 users per role (`AudienceInventoryService::PICKER_LIMIT`).
 - `advertisers_no_orders` is an alias of `advertisers_never_checked_out` (no
-  order row). `advertisers_no_paid_orders` is anyone without a **paid** order
-  (abandoned checkout stays in).
+  order row). `advertisers_no_paid_orders` is anyone without a **paid or
+  refunded** order (abandoned checkout stays in; a later refund is still a
+  customer). `advertisers_paid_orders` is the inverse.
+- Extra inventory / campaign keys: `both`, `advertisers_deposited_no_orders`
+  (credited deposit, no order row), `publishers_no_active_sites` (no
+  `active=1` site). Tab slugs (`no_orders`, `paid_orders`, …) normalize
+  through `AudienceInventoryService::normalizeAudienceKey()`.
+- Inventory search / filters apply to the table and CSV only. **Email this
+  audience** still sends the full segment (verified by default).
+- Audience CSV is streamed (`chunkById`), UTF-8 BOM, formula-safe cells,
+  capped at 10_000 rows, throttled `12/min`, and logged as `audience.exported`.
 
 Do **not** change `queryForRole()` default (still includes unverified). Digests
 and add-site / deposit reminders keep their own queries.
