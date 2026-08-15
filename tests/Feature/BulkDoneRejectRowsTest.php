@@ -167,6 +167,11 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString("old_text('rejection_note')", $blade);
         $this->assertStringContainsString('rejected.length === 0 || noteOk', $blade);
         $this->assertStringNotContainsString('route(\'admin.bulk-site-requests.done\'', $blade);
+        $this->assertStringContainsString("document.querySelectorAll('.bulk-draft-delete')", $blade);
+        $this->assertStringContainsString("input: 'textarea'", $blade);
+        $this->assertStringContainsString('Reason for the publisher', $blade);
+        $this->assertStringContainsString('JSON.stringify({ reason })', $blade);
+        $this->assertStringContainsString("'Content-Type': 'application/json'", $blade);
     }
 
     public function test_done_two_complete_and_reject_one_notifies_once_for_both_roles(): void
@@ -893,5 +898,114 @@ class BulkDoneRejectRowsTest extends TestCase
             'user_id' => $this->marketer->id,
             'role' => 'marketing',
         ]);
+    }
+
+    public function test_deleting_last_seeded_draft_returns_row_to_marketer_queue(): void
+    {
+        foreach ($this->staffActors() as [$prefix, $user]) {
+            Mail::fake();
+            [$bulk, $items] = $this->makeBulkWithItems(1, $prefix.'-redel');
+            $item = $items[0];
+
+            $this->actingAs($user)
+                ->from(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->post(route($prefix.'.bulk-site-requests.done', $bulk), [
+                    'items' => $this->completeRow($item),
+                ])
+                ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk));
+
+            $site = Site::query()->where('domain', $item->domain)->firstOrFail();
+            $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+            $this->assertNotNull($item->fresh()->site_id);
+
+            $this->actingAs($user)
+                ->deleteJson(route($prefix.'.sites.destroy', $site->id), [
+                    'reason' => 'Wrong domain was seeded from the bulk row.',
+                ])
+                ->assertOk()
+                ->assertJsonPath('success', true);
+
+            $this->assertDatabaseMissing('sites', ['id' => $site->id]);
+            $this->assertNull($item->fresh()->site_id);
+
+            $fresh = $bulk->fresh();
+            $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $fresh->status);
+            $this->assertNull($fresh->completed_at);
+            $this->assertSame('Waiting on marketer', $fresh->statusLabel());
+            $this->assertTrue($fresh->canAddDraftSites());
+            $this->assertTrue(
+                BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+            );
+            $this->assertTrue(
+                MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists()
+            );
+
+            $this->actingAs($user)
+                ->get(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertOk()
+                ->assertSee('Waiting on marketer', false);
+
+            $this->actingAs($this->publisher)
+                ->get(route('publisher.websites'))
+                ->assertOk()
+                ->assertSee('Waiting on marketer', false)
+                ->assertDontSee('awaiting publisher', false);
+        }
+    }
+
+    public function test_show_heals_awaiting_publisher_with_no_sites_and_pending_rows(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'heal-empty');
+        $bulk->forceFill([
+            'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
+            'completed_at' => now(),
+        ])->save();
+
+        $this->assertSame(0, $bulk->sites()->count());
+        $this->assertTrue($bulk->hasPendingItems());
+
+        $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->assertSee('Waiting on marketer', false);
+
+        $fresh = $bulk->fresh();
+        $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $fresh->status);
+        $this->assertNull($fresh->completed_at);
+        $this->assertDatabaseHas('bulk_site_request_items', ['id' => $items[0]->id]);
+    }
+
+    public function test_deleting_one_of_two_drafts_keeps_waiting_on_publisher(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(2, 'keep-one');
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]) + $this->completeRow($items[1]),
+            ])
+            ->assertRedirect();
+
+        $keep = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $drop = Site::query()->where('domain', $items[1]->domain)->firstOrFail();
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('marketing.sites.destroy', $drop->id), [
+                'reason' => 'Only this seeded domain was wrong.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseHas('sites', ['id' => $keep->id]);
+        $this->assertDatabaseMissing('sites', ['id' => $drop->id]);
+        $this->assertNotNull($items[0]->fresh()->site_id);
+        $this->assertNull($items[1]->fresh()->site_id);
+
+        $fresh = $bulk->fresh();
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $fresh->status);
+        $this->assertSame('Waiting on publisher', $fresh->statusLabel());
+        $this->assertTrue($fresh->canAddDraftSites());
     }
 }

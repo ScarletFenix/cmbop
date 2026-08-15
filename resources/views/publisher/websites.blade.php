@@ -701,7 +701,7 @@
     @if(!empty($openBulkRequest))
         <div class="alert alert-light border mb-3">
             <strong>Bulk request #{{ $openBulkRequest->id }}</strong>
-            — status: <span class="text-capitalize">{{ str_replace('_', ' ', $openBulkRequest->status) }}</span>.
+            — status: <span class="text-capitalize">{{ $openBulkRequest->statusLabel() }}</span>.
             You submitted <strong>URL + price</strong> only — track progress under
             <a href="{{ route('publisher.websites', ['status' => 'pending']) }}" class="fw-semibold">Pending</a>.
             Next: our marketer adds DA/DR/traffic/language/country/niches → you add descriptions &amp; listing details → we approve.

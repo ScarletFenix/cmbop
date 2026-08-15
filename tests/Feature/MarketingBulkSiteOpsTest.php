@@ -611,6 +611,27 @@ class MarketingBulkSiteOpsTest extends TestCase
             ->assertSee('oops-wrong.example');
     }
 
+    public function test_deleting_last_legacy_seed_keeps_batch_open_for_reseed(): void
+    {
+        $bulk = $this->makeBulkRequest();
+        $site = $this->seedDraft($bulk, 'legacy-only.example');
+        $bulk->update(['status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER]);
+
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('marketing.sites.destroy', $site->id), [
+                'reason' => 'Wrong domain submitted by the publisher.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $bulk->fresh();
+        $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $fresh->status);
+        $this->assertTrue($fresh->canAddDraftSites());
+        $this->assertTrue(
+            BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+        );
+    }
+
     public function test_marketer_can_delete_ready_for_review_pending_site(): void
     {
         $bulk = $this->makeBulkRequest();

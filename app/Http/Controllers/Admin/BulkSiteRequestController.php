@@ -60,9 +60,16 @@ class BulkSiteRequestController extends Controller
             'sites' => fn ($q) => $q->orderBy('id'),
         ])->findOrFail($id);
 
-        // Heal stuck "completed" batches that still have URL+price rows for Done.
-        if ($bulkRequest->status === BulkSiteRequest::STATUS_COMPLETED
-            && $bulkRequest->items->whereNull('site_id')->isNotEmpty()) {
+        // Heal stuck batches: completed-with-pending-rows, or drafts deleted so
+        // only URL+price rows remain (status still says waiting on publisher).
+        $hasPendingItems = $bulkRequest->items->whereNull('site_id')->isNotEmpty();
+        $needsHeal = $bulkRequest->status !== BulkSiteRequest::STATUS_CANCELLED
+            && $hasPendingItems
+            && (
+                $bulkRequest->status === BulkSiteRequest::STATUS_COMPLETED
+                || $bulkRequest->sites->isEmpty()
+            );
+        if ($needsHeal) {
             $bulkRequest->refreshProgressStatus();
             $bulkRequest->refresh();
             $bulkRequest->load([

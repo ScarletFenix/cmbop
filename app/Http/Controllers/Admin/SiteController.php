@@ -7,6 +7,7 @@ use App\Jobs\CaptureSiteScreenshotJob;
 use App\Jobs\EnrichSiteJob;
 use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\SiteStatusNotification;
+use App\Models\BulkSiteRequest;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
@@ -3154,6 +3155,8 @@ class SiteController extends Controller
                 $siteName
             );
 
+            $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId);
+
             return response()->json([
                 'success' => true,
                 'archived' => true,
@@ -3200,11 +3203,27 @@ class SiteController extends Controller
             $siteName
         );
 
+        $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId);
+
         return response()->json([
             'success' => true,
             'archived' => false,
             'message' => 'Site deleted successfully',
         ]);
+    }
+
+    private function syncLinkedBulkAfterSiteRemoved(?int $bulkRequestId): void
+    {
+        if (! $bulkRequestId) {
+            return;
+        }
+
+        $bulk = BulkSiteRequest::query()->find($bulkRequestId);
+        if (! $bulk) {
+            return;
+        }
+
+        $bulk->refreshProgressStatus();
     }
 
     private function notifyPublisherSiteRemoved(

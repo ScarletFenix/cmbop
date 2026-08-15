@@ -98,12 +98,38 @@ class BulkSiteRequest extends Model
         }
 
         $total = $this->sites()->count();
+        $pendingItems = $this->pendingItemsCount();
+
+        // Last/only draft deleted: the URL+price row is pending again (site_id nullOnDelete).
         if ($total === 0) {
+            if ($pendingItems > 0) {
+                $this->forceFill([
+                    'status' => self::STATUS_REQUESTED,
+                    'completed_at' => null,
+                ])->save();
+
+                return;
+            }
+
+            // Legacy sheet: count set, no item rows — keep the batch open so staff can re-seed.
+            if ($this->items()->doesntExist() && (int) $this->estimated_count > 0) {
+                $this->forceFill([
+                    'status' => self::STATUS_REQUESTED,
+                    'completed_at' => null,
+                ])->save();
+
+                return;
+            }
+
+            $this->forceFill([
+                'status' => self::STATUS_COMPLETED,
+                'completed_at' => $this->completed_at ?? now(),
+            ])->save();
+
             return;
         }
 
         $pendingPublisher = $this->pendingPublisherCount();
-        $pendingItems = $this->pendingItemsCount();
 
         // Publisher still filling/reviewing seeded drafts.
         if ($pendingPublisher > 0) {

@@ -1072,27 +1072,73 @@ document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {
     btn.addEventListener('click', async function () {
         const id = this.getAttribute('data-site-id');
         const name = this.getAttribute('data-site-name') || 'this site';
-        const ok = await window.slbConfirm({
+        const promptText = 'Delete draft "' + name + '"? This removes the wrong seed. Explain why — the publisher will see this reason.';
+
+        let reason = '';
+        if (window.Swal && typeof window.Swal.fire === 'function') {
+            const result = await window.Swal.fire({
                 title: 'Delete draft site?',
-                text: 'Delete draft "' + name + '"? This removes the wrong seed. History of the delete is kept.',
-                confirmText: 'Delete draft',
-                danger: true,
+                text: promptText,
+                icon: 'warning',
+                input: 'textarea',
+                inputLabel: 'Reason for the publisher',
+                inputPlaceholder: 'Reason (min. 10 characters)',
+                inputAttributes: { 'aria-label': 'Rejection reason', maxlength: '1000' },
+                showCancelButton: true,
+                confirmButtonText: 'Delete draft',
+                customClass: { confirmButton: 'slb-swal-danger' },
+                preConfirm: function (value) {
+                    const next = String(value || '').trim();
+                    if (next.length < 10) {
+                        window.Swal.showValidationMessage('Please enter a reason (at least 10 characters).');
+                        return false;
+                    }
+                    if (next.length > 1000) {
+                        window.Swal.showValidationMessage('Reason must be 1000 characters or fewer.');
+                        return false;
+                    }
+                    return next;
+                },
             });
-        if (!ok) {
-            return;
+            if (!result.isConfirmed) {
+                return;
+            }
+            reason = String(result.value || '').trim();
+        } else {
+            const typed = window.prompt(promptText + '\n\nReason (min. 10 characters):');
+            if (typed === null) {
+                return;
+            }
+            reason = String(typed || '').trim();
+            if (reason.length < 10 || reason.length > 1000) {
+                if (window.slbAlert) {
+                    await window.slbAlert({ icon: 'error', title: 'Please enter a reason (10–1000 characters).' });
+                } else {
+                    alert('Please enter a reason (10–1000 characters).');
+                }
+                return;
+            }
         }
+
         this.disabled = true;
         try {
             const res = await fetch(@json(staff_base_path() . '/sites') + '/' + id, {
                 method: 'DELETE',
                 headers: {
+                    'Content-Type': 'application/json',
                     'X-CSRF-TOKEN': @json(csrf_token()),
                     'Accept': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
                 },
+                credentials: 'same-origin',
+                body: JSON.stringify({ reason }),
             });
             const data = await res.json().catch(function () { return {}; });
             if (!res.ok || !data.success) {
-                if (window.slbAlert) { await window.slbAlert({ icon: 'error', title: data.message || 'Could not delete site.' }); } else { alert(data.message || 'Could not delete site.'); }
+                const reasonErr = data.errors && data.errors.reason
+                    ? (Array.isArray(data.errors.reason) ? data.errors.reason[0] : data.errors.reason)
+                    : null;
+                if (window.slbAlert) { await window.slbAlert({ icon: 'error', title: reasonErr || data.message || 'Could not delete site.' }); } else { alert(reasonErr || data.message || 'Could not delete site.'); }
                 this.disabled = false;
                 return;
             }
