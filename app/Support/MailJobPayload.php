@@ -37,6 +37,46 @@ class MailJobPayload
     }
 
     /**
+     * True when this payload is an AudienceCampaignMail for exactly $campaignId.
+     * `audience_campaign:12:user:` must not match campaign 123.
+     */
+    public static function containsCampaignMail(string $payload, int $campaignId): bool
+    {
+        if ($campaignId < 1) {
+            return false;
+        }
+
+        if (self::campaignMailUserIds($payload, $campaignId) !== []) {
+            return true;
+        }
+
+        return str_contains($payload, 'AudienceCampaignMail')
+            && self::containsCampaignId($payload, $campaignId);
+    }
+
+    /**
+     * User ids addressed by an in-flight campaign mailable.
+     *
+     * @return list<int>
+     */
+    public static function campaignMailUserIds(string $payload, int $campaignId): array
+    {
+        if ($campaignId < 1) {
+            return [];
+        }
+
+        if (! preg_match_all(
+            '/audience_campaign:'.$campaignId.':user:(\d+)/',
+            $payload,
+            $matches
+        )) {
+            return [];
+        }
+
+        return array_values(array_unique(array_map('intval', $matches[1])));
+    }
+
+    /**
      * Match campaign 12 without treating i:123; or "campaignId":123 as a hit.
      * Database-queue rows JSON-escape the serialized command.
      */

@@ -81,8 +81,14 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $payload = (string) file_get_contents($files[1]);
         $this->assertSame(1, preg_match_all('/function containsCampaignId\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsSendCampaignJob\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function containsCampaignMail\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
+
+        $model = (string) file_get_contents($files[0]);
+        $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
+        $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
     }
 }

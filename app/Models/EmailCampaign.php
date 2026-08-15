@@ -277,18 +277,24 @@ class EmailCampaign extends Model
                 if ($campaign->recipients()
                     ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
                     ->exists()) {
-                    // Mail is still in flight (or the job was lost). Do not
-                    // pretend the campaign sent. Touch so recover does not
-                    // keep selecting this row on every page view.
-                    $campaign->touch();
+                    // In-flight mailables stay queued. A timeout can claim
+                    // pending → queued and die before Mail::send() inserts
+                    // the job — reclaim those orphans so a new send job
+                    // can finish the audience instead of waiting 72h to skip.
+                    $released = self::reclaimOrphanedQueuedRecipients($campaign);
+                    if ($released === 0) {
+                        $campaign->touch();
+
+                        continue;
+                    }
+
+                    $campaign->clearFailStreak();
+                } else {
+                    $campaign->clearFailStreak();
+                    $campaign->finalizeIfIdle();
 
                     continue;
                 }
-
-                $campaign->clearFailStreak();
-                $campaign->finalizeIfIdle();
-
-                continue;
             }
 
             if ($campaign->status === self::STATUS_SENDING
@@ -329,6 +335,111 @@ class EmailCampaign extends Model
         }
 
         return $dispatched;
+    }
+
+    /**
+     * Reset queued rows that have no email log and no matching mailable
+     * in the jobs table. A missing/unreadable jobs table must not look
+     * empty — that would double-send mail that is already in flight.
+     */
+    protected static function reclaimOrphanedQueuedRecipients(self $campaign): int
+    {
+        $inFlight = self::inFlightCampaignMailUserIds((int) $campaign->id);
+        if ($inFlight === null) {
+            return 0;
+        }
+
+        $query = EmailCampaignRecipient::query()
+            ->where('email_campaign_id', $campaign->id)
+            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+            ->whereNull('email_log_id');
+
+        if ($inFlight !== []) {
+            $query->whereNotIn('user_id', $inFlight);
+        }
+
+        return $query->update([
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+            'skip_reason' => null,
+        ]);
+    }
+
+    /**
+     * User ids with an AudienceCampaignMail still sitting on a database
+     * queue. Null means the scan failed and callers must not reclaim.
+     *
+     * @return list<int>|null
+     */
+    protected static function inFlightCampaignMailUserIds(int $campaignId): ?array
+    {
+        if ($campaignId < 1) {
+            return [];
+        }
+
+        $ids = [];
+        $sawUnscoped = false;
+        $prefix = 'audience_campaign:'.$campaignId.':user:';
+
+        foreach (self::sendJobQueueConnections() as $connection) {
+            try {
+                $driver = (string) config("queue.connections.{$connection}.driver");
+                if ($connection === 'sync' || $driver === 'sync' || $driver === '') {
+                    continue;
+                }
+
+                if ($driver !== 'database') {
+                    // Redis/SQS cannot be inspected here. Leave queued
+                    // rows alone so a live mailable is not sent twice.
+                    return null;
+                }
+
+                $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
+
+                if (! Schema::hasColumn($table, 'payload')) {
+                    return null;
+                }
+
+                DB::table($table)
+                    ->where(function ($query) use ($prefix) {
+                        $query->where('payload', 'like', '%AudienceCampaignMail%')
+                            ->orWhere('payload', 'like', '%'.$prefix.'%');
+                    })
+                    ->orderBy('id')
+                    ->select(['id', 'payload'])
+                    ->chunkById(100, function ($rows) use ($campaignId, &$ids, &$sawUnscoped) {
+                        foreach ($rows as $row) {
+                            $payload = (string) $row->payload;
+                            if (! MailJobPayload::containsCampaignMail($payload, $campaignId)) {
+                                continue;
+                            }
+
+                            $extracted = MailJobPayload::campaignMailUserIds($payload, $campaignId);
+                            if ($extracted === []) {
+                                $sawUnscoped = true;
+
+                                return false;
+                            }
+
+                            foreach ($extracted as $userId) {
+                                $ids[$userId] = true;
+                            }
+                        }
+
+                        return true;
+                    });
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        if ($sawUnscoped) {
+            return null;
+        }
+
+        return array_map('intval', array_keys($ids));
     }
 
     /**
