@@ -396,7 +396,7 @@ class AudienceInventoryService
             default => User::query()->whereRaw('1 = 0'),
         };
 
-        return $this->excludeStaffAccounts($query);
+        return $this->constrainUsableEmail($this->excludeStaffAccounts($query));
     }
 
     /**
@@ -517,10 +517,8 @@ class AudienceInventoryService
 
         $query = User::query()
             ->whereIn('id', $ids)
-            ->whereNotNull('email')
-            ->where('email', '!=', '')
-            ->whereRaw('TRIM(email) != ?', [''])
             ->orderBy('name');
+        $this->constrainUsableEmail($query);
 
         if ($roleIds->isEmpty()) {
             return $query->whereRaw('1 = 0');
@@ -539,6 +537,37 @@ class AudienceInventoryService
         }
 
         return $query;
+    }
+
+    /**
+     * id + email only, no role eager-loads — used by campaign send so a large
+     * audience cannot OOM the HTTP request before the job is dispatched.
+     */
+    protected function recipientRowQuery(Builder $query, bool $includeUnverified, bool $alreadyScoped = false): Builder
+    {
+        if (! $alreadyScoped) {
+            $query = $this->applyRecipientScope($query, $includeUnverified);
+        }
+
+        return $query
+            ->setEagerLoads([])
+            ->reorder()
+            ->orderBy('users.id')
+            ->select(['users.id', 'users.email']);
+    }
+
+    /**
+     * MySQL TRIM() only strips 0x20, so a tab/newline-only address still
+     * counted as a recipient and then failed at Mail::to(). Require `@`
+     * so count / collect / send stay aligned.
+     */
+    protected function constrainUsableEmail(Builder $query): Builder
+    {
+        return $query
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->whereRaw('TRIM(email) != ?', [''])
+            ->where('email', 'like', '%@%');
     }
 
     /**

@@ -345,26 +345,28 @@ class EmailCampaign extends Model
             return false;
         }
 
-        try {
-            foreach (self::sendJobQueueConnections() as $connection) {
-                if ($connection === 'sync'
-                    || config("queue.connections.{$connection}.driver") !== 'database') {
-                    continue;
-                }
+        foreach (self::sendJobQueueConnections() as $connection) {
+            if ($connection === 'sync'
+                || config("queue.connections.{$connection}.driver") !== 'database') {
+                continue;
+            }
 
+            try {
                 $table = (string) config("queue.connections.{$connection}.table", 'jobs');
                 if (! Schema::hasTable($table)) {
                     continue;
                 }
 
-                $payloads = DB::table($table)
+                $found = DB::table($table)
                     ->where('payload', 'like', '%SendEmailCampaignJob%')
-                    ->pluck('payload');
+                    ->pluck('payload')
+                    ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
+                        (string) $payload,
+                        $campaignId
+                    ));
 
-                foreach ($payloads as $payload) {
-                    if (MailJobPayload::containsSendCampaignJob((string) $payload, $campaignId)) {
-                        return true;
-                    }
+                if ($found) {
+                    return true;
                 }
             } catch (\Throwable) {
                 // A broken first connection must not hide a job on the other.

@@ -128,7 +128,8 @@ class SendEmailCampaignJob implements ShouldQueue
     protected function deliverOne(EmailCampaign $campaign, EmailCampaignRecipient $row): void
     {
         $user = $row->user;
-        if (! $user || trim((string) $user->email) === '') {
+        $email = trim((string) ($user?->email ?? ''));
+        if ($user === null || $email === '' || ! str_contains($email, '@')) {
             $this->claimPending($row, EmailCampaignRecipient::STATUS_FAILED, EmailCampaignRecipient::SKIP_ERROR);
 
             return;

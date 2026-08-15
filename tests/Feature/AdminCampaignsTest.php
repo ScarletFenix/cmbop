@@ -1587,6 +1587,58 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
     }
 
+    public function test_stall_recovery_scans_default_queue_when_mail_jobs_table_is_missing(): void
+    {
+        Queue::fake();
+        config([
+            'email_notifications.queue_connection' => 'mail-db',
+            'queue.default' => 'database',
+            'queue.connections.mail-db.driver' => 'database',
+            'queue.connections.mail-db.table' => 'jobs_missing_mail_table',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Other connection job',
+            'subject' => 'Other connection job',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $command = 'O:32:"App\\Jobs\\SendEmailCampaignJob":1:{s:10:"campaignId";i:'.$campaign->id.';}';
+        DB::table('jobs')->insert([
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => SendEmailCampaignJob::class,
+                'data' => [
+                    'commandName' => SendEmailCampaignJob::class,
+                    'command' => $command,
+                ],
+            ], JSON_THROW_ON_ERROR),
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => now()->timestamp,
+            'created_at' => now()->timestamp,
+        ]);
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        Queue::assertNothingPushed();
+    }
+
     public function test_stall_recovery_sees_mail_queue_job_when_app_queue_is_sync(): void
     {
         Queue::fake();
