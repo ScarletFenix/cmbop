@@ -361,7 +361,11 @@ class ContentUploadService
      */
     public function presentEvaluationResult(ContentSubmission $submission, array $result): array
     {
-        if (($result['approved'] ?? false)
+        $moderationStatus = (string) ($result['moderation_status'] ?? $submission->moderation_status);
+        $policyApproved = (bool) ($result['approved'] ?? false)
+            || $moderationStatus === ContentSubmission::STATUS_APPROVED;
+
+        if ($policyApproved
             && $submission->hasImages()
             && ! $submission->imageRightsCoverContent()) {
             $result['approved'] = false;
@@ -374,7 +378,7 @@ class ContentUploadService
 
         $result['notify_status'] = ! empty($result['approved'])
             ? 'approved'
-            : (string) ($result['moderation_status'] ?? 'needs_fix');
+            : $moderationStatus;
 
         return $result;
     }

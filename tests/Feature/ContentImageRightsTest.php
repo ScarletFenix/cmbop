@@ -377,14 +377,16 @@ class ContentImageRightsTest extends TestCase
         $this->assertFalse($first['approved']);
         $this->assertSame('needs_image_rights', $first['notify_status'] ?? null);
         $this->assertStringContainsString('Confirm you own them', (string) $first['message']);
-        Mail::assertSent(ContentEvaluationResult::class, 1);
-        Mail::assertSent(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
+        $this->assertNotNull($submission->fresh()->approval_notified_at);
+        $this->assertSame('needs_image_rights', $submission->fresh()->evaluation_report['notified_status'] ?? null);
+        Mail::assertQueued(ContentEvaluationResult::class, 1);
+        Mail::assertQueued(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
             return ($mail->result['notify_status'] ?? null) === 'needs_image_rights'
                 && ($mail->result['approved'] ?? true) === false;
         });
 
         $uploads->reEvaluateSubmission($submission->fresh());
-        Mail::assertSent(ContentEvaluationResult::class, 1);
+        Mail::assertQueued(ContentEvaluationResult::class, 1);
 
         $submission->fresh()->update([
             'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
@@ -394,8 +396,8 @@ class ContentImageRightsTest extends TestCase
         $second = $uploads->reEvaluateSubmission($submission->fresh());
         $this->assertTrue($second['approved']);
         $this->assertSame('approved', $second['notify_status'] ?? null);
-        Mail::assertSent(ContentEvaluationResult::class, 2);
-        Mail::assertSent(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
+        Mail::assertQueued(ContentEvaluationResult::class, 2);
+        Mail::assertQueued(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
             return ($mail->result['notify_status'] ?? null) === 'approved'
                 && ($mail->result['approved'] ?? false) === true;
         });
