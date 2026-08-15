@@ -98,6 +98,7 @@ or marketing, even if that staff account also has a marketplace role.
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
    leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
+   An unused database table without `payload` must **not** block pending-log expire — a healthy empty mail queue must still close lost Welcome rows.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`

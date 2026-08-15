@@ -119,6 +119,17 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertSame(1, preg_match_all('/function queuedMailablePayloads\b/', $model));
         $this->assertSame(1, preg_match_all('/function mailConnectionIsInline\b/', $model));
         $this->assertTrue((bool) preg_match(
+            '/protected static function queuedMailablePayloads\(\): \?array\s*\{(.*)\n\}\n/s',
+            $model,
+            $queuedMail
+        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $queuedMail[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $queuedMail[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $queuedMail[1]
+        );
+        $this->assertTrue((bool) preg_match(
             '/protected static function recoverStalledLocked\(int \$staleMinutes\): int\s*\{(.*?)\n    protected static function reclaimOrphanedQueuedRecipients/s',
             $model,
             $recover

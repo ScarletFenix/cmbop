@@ -1285,6 +1285,8 @@ class EmailCampaign extends Model
         }
 
         $payloads = [];
+        $mailScannedOk = false;
+        $mailNeedsScan = $mail !== '' && $mail !== 'sync' && $mailDriver === 'database';
 
         foreach (self::sendJobQueueConnections() as $connection) {
             try {
@@ -1298,8 +1300,12 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // Same trap as reclaim: a second database table without
+                // payload (or a lock-timeout on the unused default) must
+                // not look like “mail still in flight”. That parked every
+                // lost Welcome/order pending log so retry could never run.
                 if (! Schema::hasColumn($table, 'payload')) {
-                    return null;
+                    continue;
                 }
 
                 DB::table($table)
@@ -1313,9 +1319,18 @@ class EmailCampaign extends Model
                             }
                         }
                     });
+
+                if ($connection === $mail) {
+                    $mailScannedOk = true;
+                }
             } catch (\Throwable) {
-                return null;
+                // Unused default lock-timeout must not discard a successful
+                // mail-queue scan.
             }
+        }
+
+        if ($mailNeedsScan && ! $mailScannedOk) {
+            return null;
         }
 
         return $payloads;

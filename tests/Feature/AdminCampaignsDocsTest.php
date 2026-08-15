@@ -57,6 +57,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
         $this->assertStringContainsString('delivered log still wins when a', $body);
         $this->assertStringContainsString('younger than the stall window', $body);
+        $this->assertStringContainsString('must **not** block pending-log expire', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 
