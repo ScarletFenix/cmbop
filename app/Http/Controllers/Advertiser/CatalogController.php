@@ -3837,13 +3837,6 @@ class CatalogController extends Controller
                 ], 422);
             }
 
-            if (! app(StripeCustomerService::class)->configured()) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Card payments are not configured. Set STRIPE_SECRET and STRIPE_KEY, or choose another payment method.',
-                ], 503);
-            }
-
             $amountDue = round((float) $order->total_amount, 2);
             if ($amountDue <= 0) {
                 return response()->json([
@@ -3863,6 +3856,7 @@ class CatalogController extends Controller
 
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
+            $payments = app(OrderPaymentService::class);
 
             if ($package->contains(fn (Order $row) => ! $row->hasCatalogVisibleFulfillment())) {
                 return response()->json([
@@ -3883,12 +3877,51 @@ class CatalogController extends Controller
             // Pay again charges the full package on the card. Release any leftover
             // checkout bonus for this reference first so promo is not left reserved
             // while the advertiser pays the original total again.
-            app(OrderPaymentService::class)->refundBonusReservedForReference(
+            $payments->refundBonusReservedForReference(
                 (int) auth()->id(),
                 $referenceCode,
                 null,
                 $package
             );
+
+            $appliedCredit = $payments->unfulfilledCardCreditToApply(
+                (int) auth()->id(),
+                $referenceCode,
+                $packageTotal
+            );
+            $chargeAmount = round(max(0, $packageTotal - $appliedCredit), 2);
+
+            if ($chargeAmount <= 0.009 && $appliedCredit > 0.009) {
+                $settled = $payments->settleFailedCardLeftoversFromAppliedCredit(
+                    $referenceCode,
+                    (int) auth()->id(),
+                    $appliedCredit
+                );
+                if ($settled->isEmpty()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'The leftover card credit could not be applied. Try again or contact support.',
+                    ], 422);
+                }
+
+                $payments->forgetPendingCheckout($referenceCode);
+
+                return response()->json([
+                    'success' => true,
+                    'settled' => true,
+                    'message' => 'This leftover was paid using the card credit already in your wallet.',
+                    'reference_code' => $referenceCode,
+                    'amount_due' => 0,
+                    'unfulfilled_credit_applied' => $appliedCredit,
+                ]);
+            }
+
+            if (! app(StripeCustomerService::class)->configured()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Card payments are not configured. Set STRIPE_SECRET and STRIPE_KEY, or choose another payment method.',
+                ], 503);
+            }
 
             Stripe::setApiKey(config('services.stripe.secret'));
 
@@ -3901,7 +3934,7 @@ class CatalogController extends Controller
                             'name' => 'Order retry - '.$package->count().' item(s)',
                             'description' => 'Order reference: '.$referenceCode,
                         ],
-                        'unit_amount' => StripePaymentService::toCents($packageTotal),
+                        'unit_amount' => StripePaymentService::toCents($chargeAmount),
                     ],
                     'quantity' => 1,
                 ]],
@@ -3913,19 +3946,21 @@ class CatalogController extends Controller
                     'reference_code' => $referenceCode,
                     'user_id' => (string) auth()->id(),
                     'order_count' => (string) $package->count(),
-                    'expected_amount' => (string) $packageTotal,
+                    'expected_amount' => (string) $chargeAmount,
                     'order_total' => (string) $packageTotal,
                     'bonus_applied' => '0',
                     'is_retry' => '1',
+                    'unfulfilled_credit_applied' => (string) $appliedCredit,
                 ],
                 'payment_intent_data' => [
                     'metadata' => [
                         'type' => 'order_payment',
                         'reference_code' => $referenceCode,
                         'user_id' => (string) auth()->id(),
-                        'expected_amount' => (string) $packageTotal,
+                        'expected_amount' => (string) $chargeAmount,
                         'order_total' => (string) $packageTotal,
                         'bonus_applied' => '0',
+                        'unfulfilled_credit_applied' => (string) $appliedCredit,
                     ],
                 ],
             ];
@@ -3940,10 +3975,13 @@ class CatalogController extends Controller
                     'status' => 'pending',
                 ]);
 
-            // Pay again settles leftover rows at the full card total. Drop the
-            // package and fail snapshot — keeping bonus_applied made later
-            // reject/clawback treat the full-card pay as leftover promo.
-            app(OrderPaymentService::class)->forgetPendingCheckout($referenceCode);
+            // Pay again settles leftover rows, not the abandoned Stripe-first
+            // package. Drop it so success-URL finalize cannot treat the new
+            // session as a stale package mismatch and skip mark-paid.
+            $payments->forgetPendingCheckoutKeepLeftoverHold(
+                $referenceCode,
+                (int) auth()->id()
+            );
 
             session()->put('pending_card_reference', $referenceCode);
 
@@ -3953,7 +3991,8 @@ class CatalogController extends Controller
                 'checkout_url' => $checkoutSession->url,
                 'session_id' => $checkoutSession->id,
                 'reference_code' => $referenceCode,
-                'amount_due' => $packageTotal,
+                'amount_due' => $chargeAmount,
+                'unfulfilled_credit_applied' => $appliedCredit,
             ]);
         } catch (\Exception $e) {
             Log::error('Order payment retry failed: '.$e->getMessage(), [
