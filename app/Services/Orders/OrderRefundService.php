@@ -119,11 +119,20 @@ class OrderRefundService
 
         $bonusRestored = 0.0;
         $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
-        if ($maxBonusShare !== null) {
+        // Wallet holds already contain promo. A 0 peek means "no intent
+        // recorded", not "restore none of the reserved promo". Card leftover
+        // still uses 0 so a refund cannot steal another checkout's bucket.
+        $applyBonusCap = $maxBonusShare !== null
+            && ! ($order->payment_method === 'wallet' && $maxBonusShare <= 0);
+        if ($applyBonusCap) {
             $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
         }
 
         if ($order->payment_method === 'wallet') {
+            if (round((float) $wallet->reserved_balance, 2) <= 0) {
+                return false;
+            }
+
             $bonusReservedBefore = (float) $wallet->bonus_reserved;
             $wallet->refundReserved($amount, $bonusShare);
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));

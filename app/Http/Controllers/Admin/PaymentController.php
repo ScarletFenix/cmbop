@@ -446,16 +446,11 @@ class PaymentController extends Controller
             return 0.0;
         }
 
-        $thisOrderBonus = app(CheckoutIntentService::class)->peekBonus(
-            (int) $order->user_id,
-            (string) $order->reference_code
-        );
-
         app(OrderRefundService::class)->refundToAdvertiser(
             $order,
             $amount,
             'Admin marked payment failed',
-            $thisOrderBonus
+            $this->bonusShareCapForRefund($order)
         );
         $wallet->refresh();
         $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
@@ -479,19 +474,34 @@ class PaymentController extends Controller
             return 0.0;
         }
 
-        $thisOrderBonus = app(CheckoutIntentService::class)->peekBonus(
-            (int) $order->user_id,
-            (string) $order->reference_code
-        );
-
         app(OrderRefundService::class)->refundToAdvertiser(
             $order,
             $amount,
             'Admin refund',
-            $thisOrderBonus
+            $this->bonusShareCapForRefund($order)
         );
 
         return $amount;
+    }
+
+    /**
+     * Wallet holds already contain promo — a missing intent must not cap the
+     * share at 0 (that restores the hold as cash and then burns bonus_reserved).
+     * Card leftover still passes peek including 0 so we cannot steal another
+     * in-flight checkout's reserved bonus.
+     */
+    private function bonusShareCapForRefund(Order $order): ?float
+    {
+        $peek = app(CheckoutIntentService::class)->peekBonus(
+            (int) $order->user_id,
+            (string) $order->reference_code
+        );
+
+        if ($order->payment_method === 'wallet') {
+            return $peek > 0 ? $peek : null;
+        }
+
+        return $peek;
     }
 
     /**

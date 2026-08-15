@@ -441,6 +441,10 @@ $(document).ready(function() {
     $('#savePaymentUpdate').on('click', function() {
         var orderId = $('#update_order_id').val();
         var newStatus = $('#update_payment_status').val();
+        if (!newStatus) {
+            Swal.fire('Error', 'Choose a payment status first.', 'error');
+            return;
+        }
         var notes = $('#update_notes').val();
         var paymentReference = $('#update_payment_reference').val();
         var sendNotification = $('#send_notification').is(':checked');

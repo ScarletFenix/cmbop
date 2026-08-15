@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\Billing\BillingDocumentService;
 use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
 use Database\Seeders\RolesTableSeeder;
@@ -521,6 +522,45 @@ class AdminOrderPaymentsOpsTest extends TestCase
         );
     }
 
+    public function test_wallet_refund_without_intent_restores_promo_in_the_hold(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 115,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'wallet-refund'), [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 115,
+            'subtotal' => 115,
+            'reference_code' => 'PAY-WALLET-NO-PEEK',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'refunded',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertSame('refunded', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(115.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(95.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
     public function test_refund_without_this_order_bonus_does_not_steal_another_leftover(): void
     {
         $admin = $this->makeUser('admin');
@@ -603,6 +643,65 @@ class AdminOrderPaymentsOpsTest extends TestCase
             app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'PAY-BONUS-OTHER'),
             0.01
         );
+    }
+
+    public function test_unpaid_cancelled_fail_issues_failure_doc_not_refund_receipt(): void
+    {
+        $admin = $this->makeUser('admin');
+        $order = $this->makeOrder($advertiser = $this->makeUser('advertiser'), $this->makeSite($this->makeUser('publisher'), 'unpaid-cancel'), [
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'cancelled',
+        ]);
+
+        $this->mock(BillingDocumentService::class, function ($mock) {
+            $mock->shouldReceive('handlePaymentFailed')->once();
+            $mock->shouldReceive('handlePaymentRefunded')->never();
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $this->assertSame($advertiser->id, $order->user_id);
+    }
+
+    public function test_paid_fail_issues_refund_receipt_not_failure_doc(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'paid-fail-doc'), [
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $this->mock(BillingDocumentService::class, function ($mock) {
+            $mock->shouldReceive('handlePaymentRefunded')->once();
+            $mock->shouldReceive('handlePaymentFailed')->never();
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
     }
 
     public function test_refund_still_succeeds_when_post_commit_notification_throws(): void
@@ -699,6 +798,7 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString('Use a dispute clawback', $html);
         $this->assertStringContainsString('willMoveMoney', $html);
         $this->assertStringContainsString('does not credit the wallet again', $html);
+        $this->assertStringContainsString('Choose a payment status first.', $html);
         $blade = file_get_contents(resource_path('views/admin/payments.blade.php'));
         $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $blade);
     }

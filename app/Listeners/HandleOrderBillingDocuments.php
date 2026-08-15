@@ -59,9 +59,10 @@ class HandleOrderBillingDocuments
         }
 
         $orderId = $order->id;
+        $from = (string) $order->getOriginal('payment_status');
         $to = (string) $order->payment_status;
 
-        $this->afterCommit(function () use ($orderId, $to) {
+        $this->afterCommit(function () use ($orderId, $from, $to) {
             try {
                 $order = Order::with(['user', 'items'])->find($orderId);
                 if (! $order) {
@@ -70,10 +71,10 @@ class HandleOrderBillingDocuments
 
                 match ($to) {
                     'paid' => $this->billing->handlePaymentPaid($order),
-                    // Paid→failed on an in-flight order credits the wallet, so
-                    // issue a refund receipt — a failure report leaves the tax
-                    // invoice marked paid while the advertiser already has cash.
-                    'failed' => $order->status === 'cancelled'
+                    // Only paid→failed credits the wallet. An unpaid row that
+                    // is already cancelled must still get a failure report —
+                    // status===cancelled alone is not proof money moved.
+                    'failed' => $from === 'paid' && $order->status === 'cancelled'
                         ? $this->billing->handlePaymentRefunded($order, 'Admin marked payment failed')
                         : $this->billing->handlePaymentFailed($order),
                     'refunded' => $this->billing->handlePaymentRefunded($order),
