@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Models\Concerns\HasPromotionSchedule;
 use App\Models\Concerns\SoftDeletesWhenReady;
+use App\Support\PromotionUrl;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -97,5 +98,21 @@ class SiteAnnouncement extends Model
     public function recordClick(): void
     {
         $this->increment('clicks');
+    }
+
+    public function offerEndsLabel(): ?string
+    {
+        if (! in_array($this->typeKey(), ['limited_offer', 'discount', 'black_friday', 'offer'], true)) {
+            return null;
+        }
+
+        $ends = $this->safeEndsAt();
+
+        return $ends ? $ends->format('M j') : null;
+    }
+
+    public function clickHref(): ?string
+    {
+        return PromotionUrl::href($this->cta_url);
     }
 }
