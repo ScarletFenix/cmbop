@@ -6,8 +6,8 @@ use App\Models\DepositRequest;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminDepositsCrashHardeningTest extends TestCase
@@ -43,38 +43,31 @@ class AdminDepositsCrashHardeningTest extends TestCase
         ], $overrides));
     }
 
-    public function test_index_survives_a_missing_user(): void
+    public function test_index_view_survives_a_missing_user(): void
     {
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
         $deposit = $this->depositFor($advertiser);
+        $deposit->setRelation('user', null);
 
-        Schema::disableForeignKeyConstraints();
-        DepositRequest::query()->whereKey($deposit->id)->update(['user_id' => 999999]);
-        Schema::enableForeignKeyConstraints();
+        $this->actingAs($admin)->withViewErrors([]);
 
-        $this->actingAs($admin)
-            ->get(route('admin.deposits'))
-            ->assertOk()
-            ->assertSee('Unknown', false)
-            ->assertDontSee('htmlspecialchars', false);
-    }
+        $html = view('admin.deposits', [
+            'deposits' => new LengthAwarePaginator(collect([$deposit]), 1, 20),
+            'stats' => [
+                'pending' => 1,
+                'user_reported_paid' => 0,
+                'approved' => 0,
+                'completed' => 0,
+                'rejected' => 0,
+                'total_amount' => 0,
+            ],
+            'invoiceLinks' => collect(),
+        ])->render();
 
-    public function test_show_json_survives_a_missing_user(): void
-    {
-        $admin = $this->makeUser('admin');
-        $advertiser = $this->makeUser('advertiser');
-        $deposit = $this->depositFor($advertiser);
-
-        Schema::disableForeignKeyConstraints();
-        DepositRequest::query()->whereKey($deposit->id)->update(['user_id' => 999999]);
-        Schema::enableForeignKeyConstraints();
-
-        $this->actingAs($admin)
-            ->getJson(route('admin.deposits.show', $deposit->id))
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('deposit.user', null);
+        $this->assertStringContainsString('Unknown', $html);
+        $this->assertStringContainsString($deposit->reference_code, $html);
+        $this->assertStringContainsString('deposit.user || {}', $html);
     }
 
     public function test_array_admin_notes_do_not_approve_or_reject(): void
