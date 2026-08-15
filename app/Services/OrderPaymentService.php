@@ -698,6 +698,23 @@ class OrderPaymentService
     }
 
     /**
+     * Drop the settled package but keep leftover promo so approve/reject can
+     * cap this ref. Deleting the hold made cardLeftoverBonusCap return 0
+     * whenever another checkout was open — approve skipped consume and
+     * reject minted the promo as withdrawable cash.
+     */
+    private function forgetSettledCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
+    {
+        $held = $userId > 0
+            ? app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode)
+            : 0.0;
+        $this->forgetPendingCheckout($referenceCode);
+        if ($userId > 0 && $held > 0.009) {
+            app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $held);
+        }
+    }
+
+    /**
      * @return array<string, mixed>|null
      */
     public function getPendingCheckout(string $referenceCode): ?array
@@ -1007,7 +1024,10 @@ class OrderPaymentService
             if ($existing->isNotEmpty()) {
                 $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
                 if ($marked->isNotEmpty()) {
-                    $this->forgetPendingCheckout($referenceCode);
+                    $this->forgetSettledCheckoutKeepLeftoverHold(
+                        $referenceCode,
+                        (int) ($marked->first()->user_id ?? $package['user_id'] ?? 0)
+                    );
 
                     return $marked;
                 }
@@ -1068,7 +1088,7 @@ class OrderPaymentService
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
         }
 
-        $this->forgetPendingCheckout($referenceCode);
+        $this->forgetSettledCheckoutKeepLeftoverHold($referenceCode, $userId);
 
         Log::info('Materialized Stripe-first card orders after payment', [
             'reference_code' => $referenceCode,
