@@ -221,4 +221,31 @@ class CatalogNewBadgeAlignTest extends TestCase
         $this->assertStringNotContainsString('data-site-name="Garbage Created Site"', $html);
         $this->assertTrue($live->fresh()->isRecentlyCreated());
     }
+
+    public function test_newest_sort_does_not_promote_unparseable_created_at(): void
+    {
+        $fresh = $this->makeSite(['site_name' => 'Really Newest Site']);
+        $leftover = $this->makeSite([
+            'site_name' => 'Garbage Newest Site',
+            'site_url' => 'https://garbage-newest.example',
+            'domain' => 'garbage-newest.example',
+        ]);
+        DB::table('sites')->where('id', $leftover->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+        DB::table('sites')->where('id', $fresh->id)->update([
+            'created_at' => now()->subMinute()->toDateTimeString(),
+        ]);
+
+        $html = (string) $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog', ['sort' => 'newest']))
+            ->assertOk()
+            ->getContent();
+
+        $freshPos = strpos($html, 'data-site-name="Really Newest Site"');
+        $leftoverPos = strpos($html, 'data-site-name="Garbage Newest Site"');
+        $this->assertNotFalse($freshPos);
+        $this->assertNotFalse($leftoverPos);
+        $this->assertLessThan($leftoverPos, $freshPos);
+    }
 }

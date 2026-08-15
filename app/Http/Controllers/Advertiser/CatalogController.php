@@ -662,7 +662,10 @@ class CatalogController extends Controller
             'traffic_desc' => $query->orderByDesc('traffic')->orderByDesc('id'),
             'price_asc' => $query->orderByRaw($advPriceSql.' ASC')->orderByDesc('id'),
             'price_desc' => $query->orderByRaw($advPriceSql.' DESC')->orderByDesc('id'),
-            'newest' => $query->latest('created_at')->orderByDesc('id'),
+            'newest' => $query
+                ->orderByRaw('(created_at IS NOT NULL AND created_at <= ?) DESC', [Site::PLAUSIBLE_SQL_DATETIME_CEIL])
+                ->latest('created_at')
+                ->orderByDesc('id'),
             'rating_desc' => Site::hasSitesColumn('rating_avg')
                 ? $query->orderByDesc('rating_avg')->orderByDesc('rating_count')->orderByDesc('id')
                 : $query->orderByDesc('dr')->orderByDesc('id'),

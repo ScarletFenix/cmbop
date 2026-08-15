@@ -248,6 +248,7 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
             ->assertOk()
             ->assertSee('welcome credit', false)
             ->assertSee(scalar_text($this->admin->email), false)
+            ->assertSee('0 claims this week', false)
             ->assertDontSee('Something went wrong');
     }
 

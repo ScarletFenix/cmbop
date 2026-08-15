@@ -45,10 +45,14 @@ trait HasPromotionSchedule
             'paused' => $query->where('is_active', false),
             'scheduled' => $query->where('is_active', true)
                 ->whereNotNull('starts_at')
-                ->where('starts_at', '>', $now),
+                ->where('starts_at', '>', $now)
+                ->where('starts_at', '>=', self::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                ->where('starts_at', '<=', self::PLAUSIBLE_SQL_DATETIME_CEIL),
             'expired' => $query->where('is_active', true)
                 ->whereNotNull('ends_at')
-                ->where('ends_at', '<', $now),
+                ->where('ends_at', '<', $now)
+                ->where('ends_at', '>=', self::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                ->where('ends_at', '<=', self::PLAUSIBLE_SQL_DATETIME_CEIL),
             default => $query,
         };
     }

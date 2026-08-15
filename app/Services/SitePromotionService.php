@@ -431,6 +431,8 @@ class SitePromotionService
             ->with('publisher')
             ->whereNotNull('custom_discount_ends_at')
             ->where('custom_discount_ends_at', '<=', now())
+            ->where('custom_discount_ends_at', '>=', Site::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('custom_discount_ends_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNull('custom_discount_notified_at')
             ->whereNotNull('custom_discount_percent')
             ->limit($limit)
