@@ -51,16 +51,54 @@ class SiteEnrichmentController extends Controller
             'screenshot_provider' => (string) config('site_enrichment.screenshots.provider'),
         ];
 
+        $staleSites = new LengthAwarePaginator([], 0, 40);
+        $staleSites->withPath($request->url())->appends($request->query());
         $staleCount = 0;
+        $placeholderSiteIds = [];
+        $batchLimit = max(1, (int) config('site_enrichment.batch_limit', 40));
+
         try {
-            $staleCount = $this->staleEnrichmentSiteCount();
+            $staleQuery = Site::query()
+                ->where('active', 1)
+                ->staleForEnrichment();
+
+            if (Site::hasSitesColumn('metrics_fetched_at')) {
+                $staleQuery->orderByRaw('metrics_fetched_at IS NULL DESC')
+                    ->orderBy('metrics_fetched_at');
+            } else {
+                $staleQuery->orderBy('id');
+            }
+
+            if (Schema::hasTable('site_enrichment_runs')) {
+                $staleQuery->with('latestEnrichmentRun');
+                $placeholderSiteIds = array_fill_keys(
+                    SiteEnrichmentRun::placeholderScreenshotSiteIds(),
+                    true
+                );
+            }
+
+            $staleSites = $staleQuery
+                ->paginate(40, ['*'], 'stale_page')
+                ->withQueryString();
+            $staleCount = $staleSites->total();
         } catch (\Throwable $e) {
-            Log::warning('Admin enrichment stale count failed', [
+            Log::warning('Admin enrichment stale list failed', [
                 'error' => $e->getMessage(),
             ]);
+            $staleSites = new LengthAwarePaginator([], 0, 40);
+            $staleSites->withPath($request->url())->appends($request->query());
         }
 
-        return view('admin.site-enrichment', compact('attention', 'config', 'staleCount', 'status', 'type'));
+        return view('admin.site-enrichment', compact(
+            'attention',
+            'config',
+            'staleCount',
+            'staleSites',
+            'placeholderSiteIds',
+            'batchLimit',
+            'status',
+            'type'
+        ));
     }
 
     public function refreshMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
@@ -212,6 +250,46 @@ class SiteEnrichmentController extends Controller
         ]);
     }
 
+    public function queueStale(Request $request)
+    {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
+
+        $configured = max(1, (int) config('site_enrichment.batch_limit', 40));
+        $limit = min($configured, max(1, (int) $request->input('limit', $configured)));
+
+        try {
+            $ids = Site::query()
+                ->where('active', 1)
+                ->staleForEnrichment()
+                ->orderBy('id')
+                ->limit($limit)
+                ->pluck('id');
+
+            foreach ($ids as $siteId) {
+                EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Queued '.$ids->count().' stale site(s)',
+                'count' => $ids->count(),
+                'site_ids' => $ids->values()->all(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Admin enrichment queueStale failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue stale sites. Please try again after migrations are applied.',
+                'count' => 0,
+            ], 422);
+        }
+    }
+
     public function rerunFailed(Request $request)
     {
         if ($denied = $this->denyIfEnrichmentDisabled()) {
@@ -273,35 +351,6 @@ class SiteEnrichmentController extends Controller
         }
 
         return $columns;
-    }
-
-    private function staleEnrichmentSiteCount(): int
-    {
-        $hasMetricsAt = Site::hasSitesColumn('metrics_fetched_at');
-        $hasScreenshot = Site::hasSitesColumn('screenshot_path');
-
-        if (! $hasMetricsAt && ! $hasScreenshot) {
-            return 0;
-        }
-
-        $before = now()->subDays((int) config('site_enrichment.max_age_days', 90));
-
-        return Site::query()
-            ->where('active', 1)
-            ->where(function ($q) use ($hasMetricsAt, $hasScreenshot, $before) {
-                if ($hasMetricsAt) {
-                    $q->whereNull('metrics_fetched_at')
-                        ->orWhere('metrics_fetched_at', '<', $before);
-                }
-                if ($hasScreenshot) {
-                    if ($hasMetricsAt) {
-                        $q->orWhereNull('screenshot_path');
-                    } else {
-                        $q->whereNull('screenshot_path');
-                    }
-                }
-            })
-            ->count();
     }
 
     private function denyIfEnrichmentDisabled()

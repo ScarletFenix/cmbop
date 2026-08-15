@@ -5,6 +5,7 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Schema;
 
 class SiteEnrichmentRun extends Model
 {
@@ -47,6 +48,45 @@ class SiteEnrichmentRun extends Model
             ->selectRaw('MAX(id)')
             ->whereNotNull('site_id')
             ->groupBy('site_id');
+    }
+
+    /**
+     * Latest screenshot run id per site.
+     */
+    public static function latestScreenshotIdPerSiteQuery(): Builder
+    {
+        return static::query()
+            ->selectRaw('MAX(id)')
+            ->where('type', 'screenshot')
+            ->whereNotNull('site_id')
+            ->groupBy('site_id');
+    }
+
+    /**
+     * Sites whose latest screenshot run stored a placeholder (not a real preview).
+     *
+     * @return list<int>
+     */
+    public static function placeholderScreenshotSiteIds(): array
+    {
+        if (! Schema::hasTable((new static)->getTable())) {
+            return [];
+        }
+
+        try {
+            return static::query()
+                ->whereIn('id', static::latestScreenshotIdPerSiteQuery())
+                ->where('status', 'partial')
+                ->get(['site_id', 'payload'])
+                ->filter(fn (self $run) => (bool) data_get($run->payload, 'used_placeholder'))
+                ->pluck('site_id')
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->values()
+                ->all();
+        } catch (\Throwable) {
+            return [];
+        }
     }
 
     /**
