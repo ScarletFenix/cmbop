@@ -184,7 +184,13 @@ class BulkSiteRequest extends Model
         return $query->whereNotIn('status', [self::STATUS_COMPLETED, self::STATUS_CANCELLED])
             ->where(function ($inner) {
                 $inner->whereHas('items', fn ($items) => $items->whereNull('site_id'))
-                    ->orWhereHas('sites');
+                    ->orWhereHas('sites')
+                    // Legacy sheet workflow: count set, no item rows yet.
+                    ->orWhere(function ($legacy) {
+                        $legacy->where('estimated_count', '>', 0)
+                            ->whereDoesntHave('items')
+                            ->whereDoesntHave('sites');
+                    });
             });
     }
 
