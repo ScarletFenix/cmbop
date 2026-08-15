@@ -62,6 +62,8 @@ class OrderPaymentService
             $meta = $this->sessionMetadataArray($session);
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
             if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $session)) {
+                $amountMismatch = true;
+
                 return collect();
             }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($session, $orders, $meta, $referenceCode)) {
@@ -152,6 +154,8 @@ class OrderPaymentService
 
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
             if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $intent)) {
+                $amountMismatch = true;
+
                 return collect();
             }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($intent, $orders, $meta, $referenceCode)) {

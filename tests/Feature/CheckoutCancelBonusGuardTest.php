@@ -538,6 +538,7 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertTrue($payments->markOrdersPaidFromStripeSession('REF-SESSION-THEN-PI', $session)->isEmpty());
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-SESSION-THEN-PI'), 0.01);
 
+        $wallet->refresh();
         $wallet->refundReserved(20, 20);
         app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-SESSION-PI');
 
@@ -590,6 +591,7 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertTrue($payments->markOrdersPaidFromPaymentIntent('REF-PI-THEN-SESSION', $intent)->isEmpty());
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-PI-THEN-SESSION'), 0.01);
 
+        $wallet->refresh();
         $wallet->refundReserved(20, 20);
         app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-OTHER-PI-SESSION');
 
