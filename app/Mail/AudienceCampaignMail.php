@@ -26,6 +26,8 @@ class AudienceCampaignMail extends PlatformMailable
         $this->notificationType = 'audience_campaign';
         $this->recipientUser = $recipient;
         $this->skipUserPreference = ! $campaign->respect_preferences;
+        // Staff skip runs before parent::send() sets a default key.
+        $this->dedupeKey = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $recipient->id);
     }
 
     public function unsubscribeUrl(): string
@@ -64,6 +66,10 @@ class AudienceCampaignMail extends PlatformMailable
     {
         if (AudienceInventoryService::userHasStaffRole($this->recipient)) {
             $this->suppressReason = 'staff';
+            // Staff skip runs before parent::send(), so abandonOpenLog
+            // never ran — a retried pending Email Center row stayed
+            // pending forever (retry only accepts failed).
+            $this->abandonOpenLog($this->suppressErrorMessage());
             $this->markRecipientSkipped(EmailCampaignRecipient::SKIP_STAFF);
 
             return null;

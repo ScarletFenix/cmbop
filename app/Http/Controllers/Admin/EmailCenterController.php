@@ -291,10 +291,14 @@ class EmailCenterController extends Controller
         }
 
         $payloads = $this->failedJobPayloadsByUuid($uuids);
-        $closed = $this->closeFailedLogsAlreadyDelivered();
+        [$closed, $closedLeftovers] = $this->closeFailedLogsAlreadyDelivered();
         $uuids = array_values(array_filter(
             $uuids,
-            fn (string $uuid) => ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
+            fn (string $uuid) => ! $this->shouldSkipRetryForClosedLeftover(
+                $uuid,
+                (string) ($payloads[$uuid] ?? ''),
+                $closedLeftovers
+            ) && ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
         ));
 
         if ($uuids === []) {
@@ -480,6 +484,7 @@ class EmailCenterController extends Controller
 
             if ($this->closeFailedLogAlreadyDelivered($log)) {
                 $marked[$log->id] = true;
+                $claimedUuids[$stored] = true;
 
                 continue;
             }
@@ -524,10 +529,13 @@ class EmailCenterController extends Controller
     /**
      * Leftover failed rows after a real delivery. Retrying the queue job
      * would send a second campaign / welcome once the 10-minute window lapses.
+     *
+     * @return array{0: int, 1: list<EmailLog>}
      */
-    protected function closeFailedLogsAlreadyDelivered(): int
+    protected function closeFailedLogsAlreadyDelivered(): array
     {
         $closed = 0;
+        $leftovers = [];
 
         foreach (EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
@@ -537,10 +545,54 @@ class EmailCenterController extends Controller
             ->get() as $log) {
             if ($this->closeFailedLogAlreadyDelivered($log)) {
                 $closed++;
+                $leftovers[] = $log;
             }
         }
 
-        return $closed;
+        return [$closed, $leftovers];
+    }
+
+    /**
+     * Drop a leftover campaign job even when the payload has no extractable
+     * dedupeKey. A stale failed_job_uuid stamp on that leftover must not
+     * also suppress a Welcome (or other-campaign) job that actually owns
+     * the UUID.
+     *
+     * @param  list<EmailLog>  $leftovers
+     */
+    protected function shouldSkipRetryForClosedLeftover(string $uuid, string $payload, array $leftovers): bool
+    {
+        foreach ($leftovers as $leftover) {
+            $stored = (string) data_get($leftover->meta, 'failed_job_uuid');
+            if ($stored === $uuid) {
+                return $this->leftoverOwnsFailedJob($leftover, $payload);
+            }
+
+            if ($stored === '' && $this->leftoverOwnsFailedJob($leftover, $payload)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function leftoverOwnsFailedJob(EmailLog $leftover, string $payload): bool
+    {
+        if ($payload === '') {
+            return true;
+        }
+
+        $dedupe = MailJobPayload::dedupeKey($payload);
+        $leftoverDedupe = (string) $leftover->dedupe_key;
+        if (is_string($dedupe) && $dedupe !== '') {
+            return $dedupe === $leftoverDedupe;
+        }
+
+        $class = (string) ($leftover->mailable ?: '');
+
+        return $class !== ''
+            && MailJobPayload::containsMailable($payload, $class)
+            && MailJobPayload::containsToken($payload, (string) $leftover->to_email);
     }
 
     protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool
