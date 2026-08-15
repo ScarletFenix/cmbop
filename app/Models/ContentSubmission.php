@@ -207,14 +207,15 @@ class ContentSubmission extends Model
     public function canBeOrdered(): bool
     {
         // Uniqueness/quality are advisory only (same as ArticleEvaluationService):
-        // approved + file + market + not in use is enough to place an order.
+        // approved + file + market + rights + not in use is enough to place an order.
         return $this->moderation_status === self::STATUS_APPROVED
             && $this->path
             && $this->order_id === null
             && ! $this->isArchived()
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
-            && filled($this->language);
+            && filled($this->language)
+            && $this->imageRightsCoverContent();
     }
 
     /**
@@ -261,6 +262,15 @@ class ContentSubmission extends Model
             ->whereNotNull('language')->where('language', '!=', '')
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->where(function ($q) {
+                $q->where(function ($noImages) {
+                    $noImages->whereNull('preview_html')
+                        ->orWhere('preview_html', 'not like', '%<img%');
+                })->orWhereIn('image_rights', [
+                    self::IMAGE_RIGHTS_OWN,
+                    self::IMAGE_RIGHTS_LICENSED,
+                ]);
             });
 
         return $query;
@@ -526,6 +536,22 @@ class ContentSubmission extends Model
         $summary = trim(scalar_text($report['summary'] ?? ''));
 
         return $summary !== '' ? $summary : 'Fix issues and resubmit.';
+    }
+
+    /**
+     * Shown in Edit article when the user reopens a rejected or undeclared article.
+     */
+    public function editorNotice(): string
+    {
+        if ($this->needsCorrection()) {
+            return $this->evaluationSummary();
+        }
+
+        if ($this->hasImages() && ! $this->imageRightsCoverContent()) {
+            return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
+        }
+
+        return '';
     }
 
     /**

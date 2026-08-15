@@ -217,6 +217,7 @@
                 </div>
 
                 <div id="articleEditorFeedback" class="article-editor-feedback small" aria-live="polite"></div>
+                <p id="articleEditorImageCount" class="article-editor-image-count small text-muted mb-2" hidden></p>
 
                 {{-- Shown when the article gains images the current declaration does not cover. --}}
                 <div id="articleEditorImageRights" class="article-editor-rights border rounded-3 d-none">

@@ -226,9 +226,10 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             $this->markTestSkipped('GD WebP not available');
         }
 
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
         Storage::fake('public');
         Storage::fake('local');
-        $advertiser = $this->advertiser();
 
         $png = $this->largePngBytes();
         $this->assertGreaterThan(ArticlePreviewImage::SKIP_UNDER_BYTES, strlen($png));
@@ -238,6 +239,8 @@ class ContentLibraryPreviewExpiryTest extends TestCase
         $response = $this->actingAs($advertiser)
             ->postJson(route('advertiser.content-submissions.editor-image'), [
                 'image' => new UploadedFile($path, 'figure.png', 'image/png', null, true),
+                'content_submission_id' => $submission->id,
+                'current_image_count' => 0,
             ])
             ->assertOk()
             ->assertJsonPath('success', true);

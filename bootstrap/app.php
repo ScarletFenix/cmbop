@@ -54,9 +54,11 @@ return Application::configure(basePath: dirname(__DIR__))
             $uploads = app(ContentUploadService::class);
             $path = $request->path();
             if (str_contains($path, 'content-submissions/editor-image')) {
+                [, $clientBytes] = $uploads->uploadByteHints($request);
+
                 return response()->json([
                     'success' => false,
-                    'message' => $uploads->phpImageRejectedMessage(),
+                    'message' => $uploads->phpImageRejectedMessage($clientBytes),
                 ], 422);
             }
             if (! str_contains($path, 'content-library/upload')

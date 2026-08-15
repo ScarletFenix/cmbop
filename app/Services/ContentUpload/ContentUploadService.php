@@ -22,6 +22,12 @@ class ContentUploadService
     /** Hard article .docx cap (10 MB). Admin cannot raise this. */
     public const MAX_KILOBYTES = 10240;
 
+    /** Per-image cap for the article editor. Not counted against the .docx cap. */
+    public const IMAGE_MAX_KILOBYTES = 5120;
+
+    /** Max img tags per article (Word extract + editor inserts). */
+    public const IMAGE_MAX_PER_ARTICLE = 10;
+
     /**
      * Slice size the browser should send. Hostinger LiteSpeed often still
      * drops a 5 MB body at the default 2M pipe even when .user.ini says 64M.
@@ -397,6 +403,14 @@ class ContentUploadService
             return ['ok' => false, 'approved' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'];
         }
 
+        if (str_contains(strtolower($html), 'data:image')) {
+            return [
+                'ok' => false,
+                'approved' => false,
+                'message' => self::embeddedImageSaveMessage(),
+            ];
+        }
+
         $sanitizer = new ArticleHtmlSanitizer;
         $clean = ArticlePreviewHtml::normalize($sanitizer->sanitize($html));
         if ($clean === '') {
@@ -406,6 +420,14 @@ class ContentUploadService
         $text = $sanitizer->htmlToPlainText($clean);
         if ($sanitizer->countWords($text) < 1 && ! str_contains($clean, '<img')) {
             return ['ok' => false, 'approved' => false, 'message' => 'Article content cannot be empty.'];
+        }
+
+        if ($sanitizer->countImages($clean) > self::IMAGE_MAX_PER_ARTICLE) {
+            return [
+                'ok' => false,
+                'approved' => false,
+                'message' => self::tooManyImagesMessage(),
+            ];
         }
 
         $links = $sanitizer->extractLinksFromHtml($clean);
@@ -604,9 +626,46 @@ class ContentUploadService
         return 'The article could not be uploaded. Please try again.';
     }
 
-    public function phpImageRejectedMessage(): string
+    public function phpImageRejectedMessage(?int $clientFileBytes = null): string
     {
-        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
+        if ($clientFileBytes !== null && $clientFileBytes > self::IMAGE_MAX_KILOBYTES * 1024) {
+            return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
+        }
+
+        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP and try again.';
+    }
+
+    public static function tooManyImagesMessage(): string
+    {
+        return 'This article can have up to '.self::IMAGE_MAX_PER_ARTICLE.' images. Remove one before adding another.';
+    }
+
+    public static function embeddedImageSaveMessage(): string
+    {
+        return 'Embedded images cannot be saved. Insert each picture with the image button (JPG, PNG, GIF, or WebP under 5 MB).';
+    }
+
+    public static function imageRightsRequiredMessage(): string
+    {
+        return 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.';
+    }
+
+    /**
+     * Reasons not to persist article HTML (embedded data images or over the cap).
+     */
+    public static function articleHtmlBlockedMessage(string $html): ?string
+    {
+        if (str_contains(strtolower($html), 'data:image')) {
+            return self::embeddedImageSaveMessage();
+        }
+
+        $sanitizer = new ArticleHtmlSanitizer;
+        $clean = ArticlePreviewHtml::normalize($sanitizer->sanitize($html));
+        if ($sanitizer->countImages($clean) > self::IMAGE_MAX_PER_ARTICLE) {
+            return self::tooManyImagesMessage();
+        }
+
+        return null;
     }
 
     /**
@@ -657,20 +716,20 @@ class ContentUploadService
     public function rejectedImageUploadMessage(?UploadedFile $file, ?int $contentLengthBytes = null, ?int $clientFileBytes = null): ?string
     {
         if ($file instanceof UploadedFile && ! $file->isValid()) {
-            return $this->phpImageRejectedMessage();
+            return $this->phpImageRejectedMessage($clientFileBytes);
         }
 
         if ($file instanceof UploadedFile) {
             return null;
         }
 
-        if ($clientFileBytes !== null && $clientFileBytes > 5120 * 1024) {
-            return $this->phpImageRejectedMessage();
+        if ($clientFileBytes !== null && $clientFileBytes > self::IMAGE_MAX_KILOBYTES * 1024) {
+            return $this->phpImageRejectedMessage($clientFileBytes);
         }
 
         $hint = max($contentLengthBytes ?? 0, $clientFileBytes ?? 0);
         if ($this->contentLengthLooksLikeStrippedUpload($hint > 0 ? $hint : null)) {
-            return $this->phpImageRejectedMessage();
+            return $this->phpImageRejectedMessage($clientFileBytes ?? $contentLengthBytes);
         }
 
         return null;
