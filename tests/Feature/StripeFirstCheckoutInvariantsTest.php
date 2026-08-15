@@ -480,4 +480,55 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(40.0, (float) $wallet->balance, 0.01);
     }
+
+    public function test_qty_two_same_site_materializes_both_paid_card_orders(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'qty-two-card.example', 40);
+        $articleA = $this->createApprovedSubmission($advertiser);
+        $articleB = $this->createApprovedSubmission($advertiser);
+
+        $firstLine = $this->lineFor($site, 40);
+        $firstLine['content_submission_id'] = $articleA->id;
+        $secondLine = $this->lineFor($site, 40);
+        $secondLine['content_submission_id'] = $articleB->id;
+
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('QTY-CARD-2', $this->package($advertiser, [
+            $firstLine,
+            $secondLine,
+        ], 80));
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            'QTY-CARD-2',
+            $this->paidSession('QTY-CARD-2', 80, 'cs_qty_card_2')
+        );
+        $again = $payments->finalizeStripeFirstCheckout(
+            'QTY-CARD-2',
+            $this->paidSession('QTY-CARD-2', 80, 'cs_qty_card_2')
+        );
+
+        $this->assertCount(2, $created);
+        $this->assertSame(2, Order::where('reference_code', 'QTY-CARD-2')->count());
+        $this->assertSame(2, OrderItem::whereIn(
+            'order_id',
+            Order::where('reference_code', 'QTY-CARD-2')->pluck('id')
+        )->count());
+        $this->assertEqualsWithDelta(
+            80.0,
+            (float) Order::where('reference_code', 'QTY-CARD-2')->sum('total_amount'),
+            0.01
+        );
+        $this->assertSame(1, OrderItem::where('content_submission_id', $articleA->id)->count());
+        $this->assertSame(1, OrderItem::where('content_submission_id', $articleB->id)->count());
+        $this->assertTrue($created->every(fn (Order $order) => $order->payment_status === 'paid'));
+        $this->assertTrue($again->every(fn (Order $order) => $order->payment_status === 'paid'));
+
+        $articleA->refresh();
+        $articleB->refresh();
+        $this->assertContains((int) $articleA->order_id, $created->pluck('id')->all());
+        $this->assertContains((int) $articleB->order_id, $created->pluck('id')->all());
+        $this->assertNotSame((int) $articleA->order_id, (int) $articleB->order_id);
+    }
 }
