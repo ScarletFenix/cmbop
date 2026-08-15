@@ -105,12 +105,18 @@
     @if($userQuery !== '')
         <div class="card border-0 shadow-sm mb-3">
             <div class="card-body py-3">
-                @if($userQueryTooShort)
+                @if($userQueryTooShort ?? false)
                     <p class="text-muted mb-0 small">Type at least 2 characters to find a user dossier.</p>
                 @elseif($userMatches->isEmpty())
                     <p class="text-muted mb-0 small">No users match “{{ $userQuery }}”.</p>
                 @else
-                    <div class="small text-muted mb-2">{{ $userMatches->count() }} users match “{{ $userQuery }}”</div>
+                    <div class="small text-muted mb-2">
+                        @if($hasMoreMatches ?? false)
+                            More than {{ $userMatches->count() }} users match “{{ $userQuery }}”
+                        @else
+                            {{ $userMatches->count() }} users match “{{ $userQuery }}”
+                        @endif
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm mb-0 align-middle">
                             <tbody>

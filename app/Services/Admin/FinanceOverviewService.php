@@ -346,16 +346,23 @@ class FinanceOverviewService
             ->sum('total_amount');
 
         $depositsTotal = (float) (clone $depositsCompleted)->sum('amount');
-        $stripeDeposits = (float) (clone $depositsCompleted)
-            ->where(function ($q) {
-                $q->where('payment_method', 'card')
-                    ->orWhere('payment_method', 'stripe')
-                    ->orWhereNotNull('stripe_session_id');
-            })
-            ->sum('amount');
-        // Avoid double-counting stripe: prefer method card/stripe; if using stripe_session_id only, still ok
+        $manualMethods = ['wise', 'bank', 'crypto'];
         $manualDeposits = (float) (clone $depositsCompleted)
-            ->whereIn('payment_method', ['wise', 'bank', 'crypto'])
+            ->whereIn('payment_method', $manualMethods)
+            ->sum('amount');
+        // Session id alone must not pull a bank/Wise/crypto row into Stripe —
+        // cash_in_bank sums stripe + manual and would double-count the deposit.
+        $stripeDeposits = (float) (clone $depositsCompleted)
+            ->where(function ($q) use ($manualMethods) {
+                $q->whereIn('payment_method', ['card', 'stripe'])
+                    ->orWhere(function ($q) use ($manualMethods) {
+                        $q->whereNotNull('stripe_session_id')
+                            ->where(function ($q) use ($manualMethods) {
+                                $q->whereNull('payment_method')
+                                    ->orWhereNotIn('payment_method', $manualMethods);
+                            });
+                    });
+            })
             ->sum('amount');
 
         $bonuses = WalletTransaction::where('type', WalletTransaction::TYPE_BONUS_CREDIT);

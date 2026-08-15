@@ -19,6 +19,8 @@ class FinanceController extends Controller
 {
     public const LEDGER_EXPORT_LIMIT = 10000;
 
+    public const DOSSIER_SEARCH_LIMIT = 8;
+
     public function __construct(
         private FinanceOverviewService $finance,
     ) {}
@@ -31,6 +33,7 @@ class FinanceController extends Controller
         $userQuery = search_text($request->input('q'));
         $needle = $this->dossierSearchNeedle($userQuery);
         $userMatches = collect();
+        $hasMoreMatches = false;
 
         if ($userQuery !== '') {
             $redirect = $this->redirectToDossierIfUnique($userQuery);
@@ -38,13 +41,15 @@ class FinanceController extends Controller
                 return $redirect;
             }
 
-            // Length is measured after stripping LIKE wildcards so "%@" / "_x"
-            // cannot bypass the 2-character floor and match every email.
-            if (strlen($needle) >= 2) {
-                $userMatches = $this->searchUsers($needle);
-                if ($userMatches->count() === 1) {
-                    return redirect()->route('admin.finance.user', $userMatches->first());
+            // Character length after stripping LIKE wildcards so "%@" / "é"
+            // cannot bypass the 2-character floor (strlen is bytes).
+            if (mb_strlen($needle) >= 2) {
+                $fetched = $this->searchUsers($needle, self::DOSSIER_SEARCH_LIMIT + 1);
+                if ($fetched->count() === 1) {
+                    return redirect()->route('admin.finance.user', $fetched->first());
                 }
+                $hasMoreMatches = $fetched->count() > self::DOSSIER_SEARCH_LIMIT;
+                $userMatches = $fetched->take(self::DOSSIER_SEARCH_LIMIT);
             }
         }
 
@@ -63,7 +68,8 @@ class FinanceController extends Controller
             'dateFrom' => $input['date_from'] ?? null,
             'dateTo' => $input['date_to'] ?? null,
             'userQuery' => $userQuery,
-            'userQueryTooShort' => $userQuery !== '' && strlen($needle) < 2,
+            'userQueryTooShort' => $userQuery !== '' && mb_strlen($needle) < 2,
+            'hasMoreMatches' => $hasMoreMatches,
             'userMatches' => $userMatches,
         ]);
     }
@@ -320,7 +326,7 @@ class FinanceController extends Controller
     /**
      * @return Collection<int, User>
      */
-    private function searchUsers(string $needle)
+    private function searchUsers(string $needle, int $limit)
     {
         return User::query()
             ->where(function ($query) use ($needle) {
@@ -328,7 +334,7 @@ class FinanceController extends Controller
                     ->orWhere('email', 'like', '%'.$needle.'%');
             })
             ->orderBy('name')
-            ->limit(8)
+            ->limit($limit)
             ->get(['id', 'name', 'email']);
     }
 

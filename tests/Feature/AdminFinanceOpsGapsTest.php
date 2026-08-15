@@ -118,6 +118,46 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->assertDontSee($two->email);
     }
 
+    public function test_user_search_uses_character_length_not_bytes(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $advertiser->update(['name' => 'éxample person', 'email' => 'accent-dossier@example.test']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'é']))
+            ->assertOk()
+            ->assertSee('Type at least 2 characters to find a user dossier.')
+            ->assertDontSee($advertiser->email);
+    }
+
+    public function test_user_search_does_not_claim_eight_when_more_match(): void
+    {
+        $admin = $this->makeUser('admin');
+        $hidden = null;
+        foreach (range(1, 9) as $i) {
+            $user = $this->makeUser('advertiser');
+            $user->update([
+                'name' => sprintf('Gamma Match %02d', $i),
+                'email' => sprintf('gamma-match-%02d@example.test', $i),
+            ]);
+            if ($i === 9) {
+                $hidden = $user;
+            }
+        }
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'Gamma Match']))
+            ->assertOk()
+            ->assertSee('More than 8 users match')
+            ->assertDontSee('9 users match')
+            ->getContent();
+
+        $this->assertStringContainsString('gamma-match-01@example.test', $html);
+        $this->assertStringContainsString('gamma-match-08@example.test', $html);
+        $this->assertStringNotContainsString($hidden->email, $html);
+    }
+
     public function test_dossier_rows_deep_link_to_admin_money_pages(): void
     {
         $admin = $this->makeUser('admin');

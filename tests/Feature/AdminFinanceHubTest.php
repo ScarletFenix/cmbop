@@ -156,6 +156,31 @@ class AdminFinanceHubTest extends TestCase
         $this->assertGreaterThan(0, $overview['cash_split']['cash_in_bank']);
     }
 
+    public function test_manual_deposit_with_stripe_session_is_not_double_counted(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        DepositRequest::create([
+            'user_id' => $advertiser->id,
+            'reference_code' => 'DEP-BANK-SESSION',
+            'amount' => 50,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+            'approved_at' => now(),
+            'stripe_session_id' => 'cs_test_leftover_session',
+        ]);
+
+        $overview = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod('all')
+        );
+
+        $this->assertEquals(50.0, $overview['money_in']['deposits_completed']['amount']);
+        $this->assertEquals(50.0, $overview['money_in']['deposits_completed']['manual']);
+        $this->assertEquals(0.0, $overview['money_in']['deposits_completed']['stripe']);
+        $this->assertEquals(50.0, $overview['cash_split']['cash_in_bank']);
+    }
+
     public function test_withdrawable_sums_per_wallet_not_aggregate_bonus(): void
     {
         $admin = $this->makeUser('admin');
