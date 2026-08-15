@@ -778,6 +778,51 @@ class AdminEmailCenterTest extends TestCase
         }
     }
 
+    public function test_is_duplicate_uses_sent_at_when_created_at_is_outside_the_window(): void
+    {
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->dedupeKey = 'welcome|customer@example.com|WelcomeEmail';
+
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => $mail->dedupeKey,
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subMinutes(2),
+            'attempts' => 1,
+        ]);
+        $log->forceFill(['created_at' => now()->subMinutes(20)])->save();
+
+        $isDuplicate = new \ReflectionMethod($mail, 'isDuplicate');
+        $this->assertTrue($isDuplicate->invoke($mail, $mail->dedupeKey));
+    }
+
+    public function test_is_duplicate_still_allows_welcome_after_an_old_sent_at(): void
+    {
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->dedupeKey = 'welcome|customer@example.com|WelcomeEmail';
+
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => $mail->dedupeKey,
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subDays(3),
+            'attempts' => 1,
+        ]);
+
+        $isDuplicate = new \ReflectionMethod($mail, 'isDuplicate');
+        $this->assertFalse($isDuplicate->invoke($mail, $mail->dedupeKey));
+    }
+
     public function test_successful_send_updates_failed_log_with_same_dedupe_key(): void
     {
         $admin = $this->userWithRole('admin');

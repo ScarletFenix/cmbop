@@ -373,9 +373,20 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             // window is for transactional keys that reuse the same shape
             // (welcome, order status). A leftover failed job after a real
             // campaign delivery must not blast the audience again next day.
+            // Use sent_at: MessageSent updates the pending row, so
+            // created_at is when the job was claimed. A Welcome that sat
+            // in the queue longer than the window then delivered still
+            // has an old created_at — a retry blasted a second mail.
             if (! str_starts_with($key, 'audience_campaign:')
                 && $this->notificationType !== 'audience_campaign') {
-                $query->where('created_at', '>=', now()->subMinutes($minutes));
+                $cutoff = now()->subMinutes($minutes);
+                $query->where(function ($window) use ($cutoff) {
+                    $window->where('sent_at', '>=', $cutoff)
+                        ->orWhere(function ($fallback) use ($cutoff) {
+                            $fallback->whereNull('sent_at')
+                                ->where('created_at', '>=', $cutoff);
+                        });
+                });
             }
 
             return $query->exists();
