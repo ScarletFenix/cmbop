@@ -100,7 +100,16 @@ class ModerationStatus extends Command
 
         $this->newLine();
 
-        // Non-zero on the way out so a deploy check or cron can notice.
-        return $enabled && $off === [] ? Command::SUCCESS : Command::FAILURE;
+        // Fail only when the scanner is off, or when a category that ships
+        // enabled in config was turned off (admin disable). Categories that
+        // are off by default (crypto_promo) stay listed as "Not scanned"
+        // without failing a healthy deploy check.
+        $configCategories = (array) config('content_moderation.categories', []);
+        $unexpectedOff = array_values(array_filter(
+            $off,
+            static fn (string $key): bool => (bool) ($configCategories[$key]['enabled'] ?? false)
+        ));
+
+        return $enabled && $unexpectedOff === [] ? Command::SUCCESS : Command::FAILURE;
     }
 }

@@ -829,6 +829,40 @@ class ContentSubmission extends Model
             ->each(fn (self $submission) => $submission->releaseFromOrder());
     }
 
+    /**
+     * Free the library article on one placement (dispute clawback),
+     * without unlocking sibling lines on the same order.
+     */
+    public static function releaseAllForOrderItem(int $orderItemId): void
+    {
+        if ($orderItemId <= 0) {
+            return;
+        }
+
+        static::query()
+            ->where('order_item_id', $orderItemId)
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return;
+        }
+
+        $linkedId = OrderItem::query()
+            ->whereKey($orderItemId)
+            ->value('content_submission_id');
+
+        if (! $linkedId) {
+            return;
+        }
+
+        static::query()
+            ->whereKey((int) $linkedId)
+            ->whereNotNull('order_id')
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+    }
+
     public function hasLink(): bool
     {
         $anchor = trim((string) $this->anchor_text);

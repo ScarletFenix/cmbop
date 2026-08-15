@@ -80,6 +80,27 @@ class ContentLibraryPhases710Test extends TestCase
             ->assertJsonPath('id', $submission->id);
     }
 
+    public function test_admin_can_download_library_article_from_staff_route(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $submission))
+            ->assertOk()
+            ->assertSee(route('admin.content-library.download', $submission), false)
+            ->assertDontSee(route('advertiser.content-submissions.download', $submission), false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.download', $submission))
+            ->assertOk();
+
+        $this->actingAs($admin)
+            ->get(route('advertiser.content-submissions.download', $submission))
+            ->assertForbidden();
+    }
+
     public function test_admin_content_library_array_q_does_not_500(): void
     {
         $admin = $this->admin();

@@ -13,13 +13,16 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\EmailCatalog;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class OrderDisputeClawbackTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -241,6 +244,76 @@ class OrderDisputeClawbackTest extends TestCase
         // Full clawback with no debt — withdrawal still allowed.
         $this->assertFalse($pubWallet->hasDebt());
         $this->assertTrue($pubWallet->canWithdraw(0.01) === false); // balance 0
+    }
+
+    public function test_uphold_releases_only_the_disputed_library_article(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $order = $this->makeCompletedOrder($advertiser, $site);
+        $this->publisherWallet($publisher, 100);
+        $this->advertiserWallet($advertiser, 0);
+
+        $disputed = $order->items->first();
+        $sibling = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/sibling-article',
+            'price' => 80,
+            'publisher_price' => 70,
+            'platform_fee_amount' => 10,
+            'additional_price' => 0,
+            'live_url' => 'https://clawback-blog.example/sibling-post',
+        ]);
+
+        $disputedArticle = $this->createApprovedSubmission($advertiser);
+        $siblingArticle = $this->createApprovedSubmission($advertiser);
+        $disputedArticle->forceFill([
+            'order_id' => $order->id,
+            'order_item_id' => $disputed->id,
+        ])->save();
+        $siblingArticle->forceFill([
+            'order_id' => $order->id,
+            'order_item_id' => $sibling->id,
+        ])->save();
+        $disputed->update(['content_submission_id' => $disputedArticle->id]);
+        $sibling->update(['content_submission_id' => $siblingArticle->id]);
+
+        $this->assertFalse($disputedArticle->fresh()->canBeOrdered());
+        $this->assertFalse($siblingArticle->fresh()->canBeOrdered());
+
+        $dispute = OrderItemDispute::create([
+            'order_id' => $order->id,
+            'order_item_id' => $disputed->id,
+            'opened_by' => $advertiser->id,
+            'status' => OrderItemDispute::STATUS_OPEN,
+            'reason' => 'The disputed placement was deleted after completion.',
+        ]);
+
+        $this->actingAs($admin)->postJson(
+            route('admin.orders.disputes.uphold', $dispute->id),
+            ['admin_notes' => 'Confirmed removal. Release only this library article.']
+        )->assertOk();
+
+        $this->assertTrue($disputedArticle->fresh()->canBeOrdered());
+        $this->assertFalse($siblingArticle->fresh()->canBeOrdered());
+        $this->assertNull($disputedArticle->fresh()->order_id);
+        $this->assertSame($order->id, $siblingArticle->fresh()->order_id);
+    }
+
+    public function test_email_catalog_can_preview_dispute_mailables(): void
+    {
+        $clawback = EmailCatalog::makeMailable('dispute_clawback_publisher');
+        $refund = EmailCatalog::makeMailable('dispute_refund_advertiser');
+
+        $this->assertNotNull($clawback);
+        $this->assertNotNull($refund);
+        $this->assertStringContainsString('clawback', strtolower($clawback->render()));
+        $this->assertStringContainsString('refund credited', strtolower($refund->render()));
     }
 
     public function test_uphold_with_partial_balance_creates_debt_and_blocks_withdrawal(): void
