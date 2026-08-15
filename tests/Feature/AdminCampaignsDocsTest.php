@@ -23,8 +23,10 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('includeUnverified', $body);
         $this->assertStringContainsString('advertisers_no_paid_orders', $body);
         $this->assertStringContainsString('collectRecipientRows', $body);
+        $this->assertStringContainsString('queryForAudienceKey', $body);
         $this->assertStringContainsString('Do **not** use `ShouldBeUnique`', $body);
         $this->assertStringContainsString('mail:drain-queue', $body);
+        $this->assertStringContainsString('Fail streak is stored in cache', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
