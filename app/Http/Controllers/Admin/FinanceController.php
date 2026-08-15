@@ -310,10 +310,15 @@ class FinanceController extends Controller
      */
     private function searchUsers(string $userQuery)
     {
+        $needle = str_replace(['\\', '%', '_'], ['', '', ''], $userQuery);
+        if ($needle === '') {
+            return collect();
+        }
+
         return User::query()
-            ->where(function ($query) use ($userQuery) {
-                $query->where('name', 'like', '%'.$userQuery.'%')
-                    ->orWhere('email', 'like', '%'.$userQuery.'%');
+            ->where(function ($query) use ($needle) {
+                $query->where('name', 'like', '%'.$needle.'%')
+                    ->orWhere('email', 'like', '%'.$needle.'%');
             })
             ->orderBy('name')
             ->limit(8)

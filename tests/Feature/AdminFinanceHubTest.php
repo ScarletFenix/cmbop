@@ -463,6 +463,11 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString('.admin-finance-toolbar .slb-search-status:empty', $css);
         $this->assertStringContainsString('.admin-finance-toolbar__action .btn', $css);
         $this->assertStringNotContainsString('.admin-finance-toolbar .btn,', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar:has(.slb-search-status:not(:empty))', $css);
+        $this->assertMatchesRegularExpression(
+            '/\.admin-finance-toolbar:has\(\.slb-search-status:not\(:empty\)\)\s*\{[^}]*padding-bottom:\s*2\.5em/s',
+            $css
+        );
     }
 
     public function test_overview_dossier_search_keeps_selected_period(): void

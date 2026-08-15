@@ -92,6 +92,22 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->assertSee(route('admin.finance.user', $two), false);
     }
 
+    public function test_user_search_does_not_treat_like_wildcards_as_match_all(): void
+    {
+        $admin = $this->makeUser('admin');
+        $one = $this->makeUser('advertiser');
+        $two = $this->makeUser('publisher');
+        $one->update(['name' => 'Alice Example', 'email' => 'alice-wild@example.test']);
+        $two->update(['name' => 'Bob Example', 'email' => 'bob-wild@example.test']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => '%%']))
+            ->assertOk()
+            ->assertSee('No users match')
+            ->assertDontSee($one->email)
+            ->assertDontSee($two->email);
+    }
+
     public function test_dossier_rows_deep_link_to_admin_money_pages(): void
     {
         $admin = $this->makeUser('admin');

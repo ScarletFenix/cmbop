@@ -359,6 +359,13 @@
   min-width: 0;
 }
 
+/* When the 2-char hint is visible it hangs below the field. Grow the
+   toolbar — not the search column — so Open / ledger / export stay aligned
+   and the hint cannot cover the period presets. */
+.admin-finance-toolbar:has(.slb-search-status:not(:empty)) {
+  padding-bottom: 2.5em;
+}
+
 .admin-finance-toolbar__search {
   position: relative;
   min-width: 220px;
@@ -385,6 +392,7 @@
   min-height: 0;
   margin: 0;
   max-width: 100%;
+  pointer-events: none;
 }
 
 .admin-finance-toolbar .slb-search-status:empty {
