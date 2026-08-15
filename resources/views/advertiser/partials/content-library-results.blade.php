@@ -249,7 +249,7 @@
                                         $hitTerms = $submission->evaluationMatchedTerms();
                                         $blockedUrls = $submission->evaluationBlockedUrls();
                                     @endphp
-                                    {{ $submission->evaluationSummary() }}
+                                    {{ $submission->libraryFixSummary() }}
                                     @if(($reasonGroups['blocking'] ?? []) !== [])
                                         <span class="library-reason-label">Blocking</span>
                                         <ul class="library-reason-list library-reason-list--blocking">
@@ -382,10 +382,18 @@
                                 @elseif($availability === 'evaluating')
                                     <span class="small text-muted">Processing</span>
                                 @elseif($availability === 'needs_fix')
-                                    <a class="btn btn-sm btn-outline-primary"
-                                       href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1], false) }}">
-                                        Resubmit
-                                    </a>
+                                    @if($submission->canEditArticle() && $submission->hasImages() && ! $submission->imageRightsCoverContent() && ! $submission->needsCorrection())
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-primary js-open-editor"
+                                                data-submission-id="{{ $submission->id }}">
+                                            Edit article
+                                        </button>
+                                    @else
+                                        <a class="btn btn-sm btn-outline-primary"
+                                           href="{{ route('advertiser.content-library', ['edit' => $submission->id, 'upload' => 1], false) }}">
+                                            Resubmit
+                                        </a>
+                                    @endif
                                 @elseif($availability === 'in_progress')
                                     <a class="btn btn-sm btn-outline-secondary" href="{{ route('advertiser.orders', absolute: false) }}">View order</a>
                                 @endif

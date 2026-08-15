@@ -1066,11 +1066,30 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertSee('Ready To Order')
             ->assertDontSee('Needs Image Rights');
 
-        $this->actingAs($advertiser)
+        $needsFix = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['status' => 'all', 'availability' => 'needs_fix']))
             ->assertOk()
             ->assertSee('Needs Image Rights')
-            ->assertDontSee('Ready To Order');
+            ->assertDontSee('Ready To Order')
+            ->assertSee('This article contains images. Confirm you own them')
+            ->assertDontSee('You can now select websites and place an order')
+            ->assertSee('Edit article')
+            ->assertDontSee('>Resubmit<')
+            ->getContent();
+
+        $this->assertStringContainsString('js-open-editor', $needsFix);
+        $this->assertStringContainsString('data-submission-id="'.$needsRights->id.'"', $needsFix);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'edit' => $needsRights->id,
+                'upload' => 1,
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('name="replace_id"', false)
+            ->assertSee('value="'.$needsRights->id.'"', false);
     }
 
     public function test_preview_link_save_rejects_eleven_images_and_keeps_approval(): void
@@ -1399,6 +1418,8 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
+        $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
+        $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.can_order)', $js);
         $this->assertStringContainsString('libraryResultFlash', $js);
         $this->assertStringContainsString('function applyLibraryResultFocus', $js);
         $this->assertStringNotContainsString('window.location.reload()', $js);

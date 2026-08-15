@@ -548,6 +548,19 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Library Needs corrections copy. Do not show the approval/order sentence
+     * when the only blocker is undeclared image rights.
+     */
+    public function libraryFixSummary(): string
+    {
+        if ($this->hasImages() && ! $this->imageRightsCoverContent() && ! $this->needsCorrection()) {
+            return $this->editorNotice();
+        }
+
+        return $this->evaluationSummary();
+    }
+
+    /**
      * Shown in Edit article when the user reopens a rejected or undeclared article.
      */
     public function editorNotice(): string

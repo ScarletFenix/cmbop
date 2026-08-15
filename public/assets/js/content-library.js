@@ -604,6 +604,9 @@ function libraryChipParams(submission) {
 }
 
 function libraryResultMessage(submission, fallback, ok) {
+    if (submission && submission.needs_image_rights) {
+        return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
+    }
     if (fallback) return fallback;
     if (!ok) {
         return 'Article needs corrections — it is listed here so you can fix and resubmit.';
@@ -1266,6 +1269,10 @@ function dismissLibraryUploadByUser() {
     cancelLibraryUploadHandoffState();
     forceDismissUploadModal();
     if (saved && saved.id) {
+        if (saved.needs_image_rights || saved.availability === 'needs_fix' || saved.can_order === false) {
+            goToLibraryResult(saved, '', !!saved.can_order);
+            return;
+        }
         showLibraryFlash('Article uploaded. It is in your library.', true);
     }
 }

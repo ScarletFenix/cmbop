@@ -583,14 +583,7 @@ class ContentLibraryController extends Controller
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->whereNull('archived_at')
-            ->where(function ($exp) {
-                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
-            ->whereIn('moderation_status', [
-                ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
-                ContentSubmission::STATUS_REJECTED,
-                ContentSubmission::STATUS_ERROR,
-            ])
+            ->needsLibraryFix()
             ->first();
     }
 

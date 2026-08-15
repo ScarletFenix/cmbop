@@ -320,6 +320,8 @@ class ContentUploadService
 
             $approved = (bool) ($result['approved'] ?? false);
             $status = (string) ($result['moderation_status'] ?? $submission->moderation_status);
+            $result = $this->notificationResultForSubmission($submission, $result);
+            $approved = (bool) ($result['approved'] ?? false);
 
             // Allow a later approval email after an earlier rejection/needs-fix notice.
             $alreadyNotifiedSameOutcome = $submission->approval_notified_at
@@ -351,6 +353,26 @@ class ContentUploadService
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Policy can approve while image rights are still missing. Do not tell
+     * the advertiser they can order until the article is actually orderable.
+     *
+     * @param  array<string, mixed>  $result
+     * @return array<string, mixed>
+     */
+    protected function notificationResultForSubmission(ContentSubmission $submission, array $result): array
+    {
+        if (($result['approved'] ?? false)
+            && $submission->hasImages()
+            && ! $submission->imageRightsCoverContent()) {
+            $result['approved'] = false;
+            $result['title'] = 'Confirm image rights';
+            $result['message'] = $submission->editorNotice();
+        }
+
+        return $result;
     }
 
     /**

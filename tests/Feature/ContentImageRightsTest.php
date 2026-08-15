@@ -259,6 +259,15 @@ class ContentImageRightsTest extends TestCase
         $this->assertTrue(
             ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
         );
+        $submission->update([
+            'evaluation_report' => [
+                'summary' => 'Your article was approved for publication. You can now select websites and place an order.',
+            ],
+        ]);
+        $this->assertSame(
+            'This article contains images. Confirm you own them, or add the source URL or copyright details.',
+            $submission->fresh()->libraryFixSummary()
+        );
     }
 
     public function test_preview_shows_the_language_mismatch_when_reopening_the_editor(): void

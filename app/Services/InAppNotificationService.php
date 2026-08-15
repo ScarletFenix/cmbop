@@ -725,7 +725,10 @@ class InAppNotificationService
                 'related' => $submission,
                 'audience' => InAppNotification::AUDIENCE_ADVERTISER,
                 'action_label' => 'Open Content Library',
-                'action_url' => route('advertiser.content-library', [], false),
+                'action_url' => route('advertiser.content-library', $approved ? [] : [
+                    'status' => 'all',
+                    'availability' => 'needs_fix',
+                ], false),
                 'meta' => [
                     'submission_id' => $submission->id ?? null,
                     'moderation_status' => $result['moderation_status'] ?? null,
