@@ -1159,6 +1159,64 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($submission->fresh()->load('orderItems.order')->isReadyToFulfill((int) $leftover->id));
     }
 
+    public function test_item_only_leftover_is_not_counted_as_unused_near_expiry(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'near-expiry-leftover');
+        $unused = $this->createApprovedSubmission($advertiser);
+        $unused->update([
+            'title' => 'Unused Expiring Piece',
+            'expires_at' => now()->addDays(3),
+        ]);
+        $leftoverArticle = $this->createApprovedSubmission($advertiser);
+        $leftoverArticle->update([
+            'title' => 'Leftover Expiring Piece',
+            'expires_at' => now()->addDays(3),
+        ]);
+        $leftover = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $leftoverArticle->id,
+            'content_path' => $leftoverArticle->path,
+            'content_original_name' => $leftoverArticle->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $fresh = $leftoverArticle->fresh()->load(['order', 'orderItems.order']);
+        $this->assertFalse($fresh->isNearExpiry(7));
+        $this->assertTrue($unused->fresh()->isNearExpiry(7));
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($leftoverArticle->id)->nearExpiryInLibrary(7)->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($unused->id)->nearExpiryInLibrary(7)->exists()
+        );
+        $this->assertSame(ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE, $fresh->editorNotice());
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringContainsString('1 unused article', $html);
+        $this->assertStringNotContainsString('2 unused article', $html);
+    }
+
+    public function test_library_js_prefers_server_editor_notice_over_link_guess(): void
+    {
+        $js = (string) file_get_contents(public_path('assets/js/content-library.js'));
+        $this->assertStringContainsString('if (submission && submission.editor_notice)', $js);
+        $noticePos = strpos($js, 'if (submission && submission.editor_notice)');
+        $linkGuessPos = strpos($js, 'Add anchor text and a valid HTTPS target URL');
+        $this->assertNotFalse($noticePos);
+        $this->assertNotFalse($linkGuessPos);
+        $this->assertLessThan($linkGuessPos, $noticePos);
+    }
+
     public function test_owned_leftover_missing_image_rights_is_needs_fix_not_in_progress(): void
     {
         $advertiser = $this->advertiser();

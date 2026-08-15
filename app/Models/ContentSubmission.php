@@ -531,6 +531,7 @@ class ContentSubmission extends Model
     {
         return $query->where('moderation_status', self::STATUS_APPROVED)
             ->withoutOpenOwnerOrder()
+            ->withoutOpenOrderItemLink()
             ->whereNotNull('expires_at')
             ->where('expires_at', '>', now())
             ->where('expires_at', '<=', now()->addDays(max(1, $withinDays)));
@@ -1081,7 +1082,7 @@ class ContentSubmission extends Model
      */
     public function isNearExpiry(int $withinDays = 7): bool
     {
-        if ($this->expires_at === null || $this->isExpired() || $this->isArchived() || $this->isInUse()) {
+        if ($this->expires_at === null || $this->isExpired() || $this->isArchived() || $this->isLinkedToOpenOrderItem()) {
             return false;
         }
 
