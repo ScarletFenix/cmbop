@@ -182,4 +182,22 @@ class CheckoutIntentPersistTest extends TestCase
         $this->assertEqualsWithDelta(20.0, $intents->peekBonus($advertiser->id, 'REF-HELD'), 0.01);
         $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, 'REF-HELD'), 0.01);
     }
+
+    public function test_peek_bonus_ignores_package_snapshot_after_take(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $intents = app(CheckoutIntentService::class);
+        $intents->storePackage('REF-SCRUB-PKG', [
+            'user_id' => $advertiser->id,
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'lines' => [],
+        ]);
+
+        $this->assertEqualsWithDelta(20.0, $intents->takeBonus($advertiser->id, 'REF-SCRUB-PKG'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'REF-SCRUB-PKG'), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->peekBonus($advertiser->id, 'REF-SCRUB-PKG'), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) ($intents->getPackage('REF-SCRUB-PKG')['bonus_applied'] ?? 0), 0.01);
+    }
 }

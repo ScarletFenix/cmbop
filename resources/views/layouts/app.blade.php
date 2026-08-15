@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="{{ str_replace('_', '-', app()->getLocale()) }}">
+<html lang="{{ \App\Support\PublicI18n::htmlLang() }}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -25,7 +25,27 @@
             ? null
             : array_values(array_filter(array_map('trim', explode(',', $hreflangLocalesRaw))));
         $hreflangPath = trim($__env->yieldContent('hreflang_path')) ?: null;
-        $hreflangTags = \App\Support\PublicI18n::hreflangTags(request(), $hreflangXDefault, $hreflangLocales, $hreflangPath);
+        $hreflangPathMapRaw = html_entity_decode(
+            trim($__env->yieldContent('hreflang_path_map')),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        $hreflangPathByLocale = [];
+        if ($hreflangPathMapRaw !== '') {
+            foreach (explode(',', $hreflangPathMapRaw) as $pair) {
+                [$mapLocale, $mapPath] = array_pad(explode('=', $pair, 2), 2, '');
+                if ($mapLocale !== '' && $mapPath !== '') {
+                    $hreflangPathByLocale[$mapLocale] = $mapPath;
+                }
+            }
+        }
+        $hreflangTags = \App\Support\PublicI18n::hreflangTags(
+            request(),
+            $hreflangXDefault,
+            $hreflangLocales,
+            $hreflangPath,
+            $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
+        );
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>
@@ -45,7 +65,7 @@
     <link rel="dns-prefetch" href="https://cdnjs.cloudflare.com">
     <link rel="dns-prefetch" href="https://fonts.googleapis.com">
     <link rel="dns-prefetch" href="https://fonts.gstatic.com">
-    <meta property="og:locale" content="{{ app()->getLocale() === 'en' ? 'en_US' : app()->getLocale().'_'.strtoupper(app()->getLocale()) }}">
+    <meta property="og:locale" content="{{ \App\Support\PublicI18n::ogLocale() }}">
     <meta property="og:type" content="{{ $pageType }}">
     <meta property="og:site_name" content="SEOLinkBuildings">
     <meta property="og:title" content="{{ $pageTitle }}">

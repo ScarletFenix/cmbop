@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\CheckoutIntent;
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -771,6 +772,61 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
             80.0,
             app(OrderPaymentService::class)->unfulfilledCardCreditAmount($ref),
             0.01
+        );
+    }
+
+    public function test_hidden_catalog_cancel_releases_the_library_article(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'legacy-hidden-lib.example', 80);
+        $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $ref = 'LEGACY-HIDDEN-LIB-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items()->first()->id,
+        ]);
+
+        $site->update(['verified' => false, 'active' => false]);
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_legacy_hidden_lib')
+        );
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $released = $submission->fresh();
+        $this->assertNull($released->order_id);
+        $this->assertFalse($released->isInUse());
+        $this->assertFalse($released->isClaimedByAnotherOrder());
+        $this->assertTrue($released->isReadyForCheckout());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
         );
     }
 

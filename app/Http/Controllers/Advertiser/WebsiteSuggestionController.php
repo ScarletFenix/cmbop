@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\WebsiteSuggestion;
 use App\Services\ActivityLogger;
 use App\Services\CommunityInboxNotifier;
+use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 
@@ -16,15 +17,16 @@ class WebsiteSuggestionController extends Controller
     {
         $data = $request->validate([
             'website_name' => 'required|string|max:190',
-            'website_url' => 'required|url|max:255',
+            'website_url' => 'required|string|max:255',
             'country' => 'nullable|string|max:8',
             'language' => 'nullable|string|max:8',
             'notes' => 'nullable|string|max:2000',
             'search_query' => 'nullable|string|max:190',
         ]);
 
-        $domain = $this->extractDomain($data['website_url']);
-        if (! $domain) {
+        $url = CommunityInbox::safeHttpUrl($data['website_url']);
+        $domain = $url ? $this->extractDomain($url) : null;
+        if (! $url || ! $domain) {
             return response()->json([
                 'success' => false,
                 'message' => 'Please enter a valid website URL.',
@@ -59,7 +61,7 @@ class WebsiteSuggestionController extends Controller
         $suggestion = WebsiteSuggestion::create([
             'user_id' => auth()->id(),
             'website_name' => $data['website_name'],
-            'website_url' => $data['website_url'],
+            'website_url' => $url,
             'domain' => $domain,
             'country' => $data['country'] ?? null,
             'language' => $data['language'] ?? null,
@@ -68,13 +70,19 @@ class WebsiteSuggestionController extends Controller
             'status' => 'pending',
         ]);
 
-        ActivityLogger::log(
-            'website.suggested',
-            auth()->user()->name.' suggested website '.$suggestion->website_name,
-            $suggestion,
-            ['domain' => $domain],
-            $suggestion->website_name
-        );
+        try {
+            ActivityLogger::log(
+                'website.suggested',
+                (auth()->user()?->name ?? 'Advertiser').' suggested website '.$suggestion->website_name,
+                $suggestion,
+                ['domain' => $domain],
+                $suggestion->website_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log website suggestion: '.$e->getMessage(), [
+                'suggestion_id' => $suggestion->id,
+            ]);
+        }
 
         try {
             app(CommunityInboxNotifier::class)->notifyAdminsNewWebsite($suggestion);

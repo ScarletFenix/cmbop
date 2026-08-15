@@ -58,7 +58,11 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertOk()
             ->assertSee('Deutscher Titel', false)
             ->assertSee('Deutscher Inhalt', false)
-            ->assertSee('hreflang="de"', false);
+            ->assertSee('hreflang="de"', false)
+            ->assertSee('hreflang="en-GB"', false)
+            ->assertSee('hreflang="en-GB" href="'.url('/blog/english-title').'"', false)
+            ->assertSee('hreflang="de" href="'.url('/de/blog/deutscher-titel').'"', false)
+            ->assertDontSee('hreflang="en-GB" href="'.url('/blog/deutscher-titel').'"', false);
     }
 
     public function test_missing_locale_translation_falls_back_to_english_notice(): void
@@ -457,11 +461,13 @@ class BlogTranslationFeatureTest extends TestCase
         $this->get('/sitemap-en.xml')
             ->assertOk()
             ->assertSee('/blog/localized-post', false)
-            ->assertDontSee('/blog/lokalisierter-beitrag', false);
+            ->assertSee('/de/blog/lokalisierter-beitrag', false)
+            ->assertDontSee('/de/blog/localized-post', false);
 
         $this->get('/sitemap-de.xml')
             ->assertOk()
             ->assertSee('/de/blog/lokalisierter-beitrag', false)
+            ->assertSee('/blog/localized-post', false)
             ->assertDontSee('/de/blog/localized-post', false);
     }
 }

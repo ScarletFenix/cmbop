@@ -11,7 +11,7 @@ class PublicCopyIntegrityTest extends TestCase
      */
     private function locales(): array
     {
-        return ['en', 'de', 'fr', 'nl'];
+        return \App\Support\PublicI18n::supported();
     }
 
     private function langPath(string $locale): string
@@ -41,7 +41,7 @@ class PublicCopyIntegrityTest extends TestCase
         $reference = array_keys(require $this->langPath('en'));
         sort($reference);
 
-        foreach (['de', 'fr', 'nl'] as $locale) {
+        foreach (array_values(array_filter($this->locales(), fn ($locale) => $locale !== 'en')) as $locale) {
             $keys = array_keys(require $this->langPath($locale));
             sort($keys);
 

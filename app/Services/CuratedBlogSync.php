@@ -4,7 +4,23 @@ namespace App\Services;
 
 use App\Models\Blog;
 use App\Support\BlogInlineImages;
-use App\Support\CuratedBlogCatalog;
+use App\Support\ChoisirEditeurFrBlogPost;
+use App\Support\ChoosePublisherSiteBlogPost;
+use App\Support\DofollowNofollowAnchorsEnBlogPost;
+use App\Support\DofollowNofollowAnkertexteBlogPost;
+use App\Support\GastbeitraegeEuropaBlogPost;
+use App\Support\GastpostsKopenNlBlogPost;
+use App\Support\GuestPostBriefBlogPost;
+use App\Support\GuestPostsEuropeEnBlogPost;
+use App\Support\GuestPostsUkUsBlogPost;
+use App\Support\LiveLinkChecklistBlogPost;
+use App\Support\LiveLinkRemovedBlogPost;
+use App\Support\MarketplaceVsOutreachBlogPost;
+use App\Support\PublisherGuideDeBlogPost;
+use App\Support\PublicI18n;
+use App\Support\PublisherPlatformGuideBlogPost;
+use App\Support\UitgeversKiezenNlBlogPost;
+use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\Cache;
@@ -125,7 +141,7 @@ class CuratedBlogSync
 
         DB::table('blogs')->orderBy('id')->chunkById(100, function ($blogs) use (&$used): void {
             foreach ($blogs as $blog) {
-                $locale = in_array($blog->primary_locale ?? null, ['en', 'de', 'fr', 'nl'], true)
+                $locale = PublicI18n::isSupported($blog->primary_locale ?? null)
                     ? $blog->primary_locale
                     : 'en';
 

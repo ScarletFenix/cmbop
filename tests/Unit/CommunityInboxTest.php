@@ -87,6 +87,17 @@ class CommunityInboxTest extends TestCase
         ]));
     }
 
+    public function test_plain_line_and_valid_email_reject_header_junk(): void
+    {
+        $this->assertSame('Evil Bcc: x@example.com', CommunityInbox::plainLine("Evil\r\nBcc: x@example.com"));
+        $this->assertSame('the website', CommunityInbox::plainLine(" \r\n ", 'the website'));
+        $this->assertSame('', CommunityInbox::plainLine(['injected']));
+        $this->assertSame('ada@example.com', CommunityInbox::validEmail('  ada@example.com  '));
+        $this->assertNull(CommunityInbox::validEmail('not-an-email'));
+        $this->assertNull(CommunityInbox::validEmail(['ada@example.com']));
+        $this->assertNull(CommunityInbox::validEmail(''));
+    }
+
     public function test_safe_http_url_rejects_non_http_schemes(): void
     {
         $this->assertSame('https://app.example/checkout', CommunityInbox::safeHttpUrl('https://app.example/checkout'));
@@ -96,6 +107,10 @@ class CommunityInboxTest extends TestCase
         $this->assertNull(CommunityInbox::safeHttpUrl(['https://x.example']));
         $this->assertNull(CommunityInbox::safeHttpUrl("https://app.example/x\r\nLocation: https://evil.example"));
         $this->assertNull(CommunityInbox::safeHttpUrl('https://app.example/has space'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('https://'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('https://user:pass@fresh-tech.example/secret'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('ftp://fresh-tech.example'));
+        $this->assertNull(CommunityInbox::storedPageUrl('https://user:secret@app.example/checkout'));
         $this->assertNull(CommunityInbox::storedPageUrl('https://app.example/'.str_repeat('a', 300)));
         $this->assertSame('https://app.example/checkout', CommunityInbox::storedPageUrl('https://app.example/checkout'));
     }
@@ -110,7 +125,7 @@ class CommunityInboxTest extends TestCase
     public function test_create_listing_query_prefills_safe_http_and_iso_codes(): void
     {
         $suggestion = new WebsiteSuggestion([
-            'website_name' => 'Fresh Tech Blog',
+            'website_name' => "Fresh\r\nTech Blog",
             'website_url' => 'https://fresh-tech.example',
             'country' => 'US',
             'language' => 'en',
@@ -140,6 +155,16 @@ class CommunityInboxTest extends TestCase
             'suggestion_id' => 4,
             'site_name' => 'Bad Site',
         ], CommunityInbox::createListingQuery($suggestion));
+
+        $withUserinfo = new WebsiteSuggestion([
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://user:pass@fresh-tech.example/secret',
+        ]);
+        $withUserinfo->id = 5;
+        $this->assertSame([
+            'suggestion_id' => 5,
+            'site_name' => 'Fresh Tech Blog',
+        ], CommunityInbox::createListingQuery($withUserinfo));
     }
 
     public function test_suggestion_lookup_domain_uses_url_host_when_domain_is_empty(): void

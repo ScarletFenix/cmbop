@@ -42,13 +42,19 @@ class FeedbackController extends Controller
             'status' => 'pending',
         ]);
 
-        ActivityLogger::log(
-            'feedback.problem',
-            ($user?->name ?: ($report->name ?: 'Guest')).' reported a problem: '.$report->subject,
-            $report,
-            ['report_id' => $report->id, 'email' => $report->email],
-            $report->subject
-        );
+        try {
+            ActivityLogger::log(
+                'feedback.problem',
+                ($user?->name ?: ($report->name ?: 'Guest')).' reported a problem: '.$report->subject,
+                $report,
+                ['report_id' => $report->id, 'email' => $report->email],
+                $report->subject
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log problem report: '.$e->getMessage(), [
+                'report_id' => $report->id,
+            ]);
+        }
 
         try {
             app(CommunityInboxNotifier::class)->notifyAdminsNewProblem($report);
@@ -91,13 +97,19 @@ class FeedbackController extends Controller
             'status' => 'pending',
         ]);
 
-        ActivityLogger::log(
-            'feedback.suggestion',
-            ($user?->name ?: ($suggestion->name ?: 'Guest')).' sent a suggestion',
-            $suggestion,
-            ['suggestion_id' => $suggestion->id, 'email' => $suggestion->email],
-            'Suggestion'
-        );
+        try {
+            ActivityLogger::log(
+                'feedback.suggestion',
+                ($user?->name ?: ($suggestion->name ?: 'Guest')).' sent a suggestion',
+                $suggestion,
+                ['suggestion_id' => $suggestion->id, 'email' => $suggestion->email],
+                'Suggestion'
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log suggestion: '.$e->getMessage(), [
+                'suggestion_id' => $suggestion->id,
+            ]);
+        }
 
         try {
             app(CommunityInboxNotifier::class)->notifyAdminsNewSuggestion($suggestion);

@@ -34,7 +34,10 @@
     '@type' => 'WebSite',
     'name' => 'SEOLinkBuildings',
     'url' => url('/'),
-    'inLanguage' => ['en', 'de', 'fr', 'nl'],
+    'inLanguage' => array_map(
+        fn (string $locale) => \App\Support\PublicI18n::htmlLang($locale),
+        \App\Support\PublicI18n::supported()
+    ),
     'publisher' => [
         '@type' => 'Organization',
         'name' => 'SEOLinkBuildings',

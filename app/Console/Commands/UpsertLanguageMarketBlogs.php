@@ -15,6 +15,7 @@ use App\Support\GastpostsKopenNlBlogPost;
 use App\Support\GuestPostsEuropeEnBlogPost;
 use App\Support\GuestPostsUkUsBlogPost;
 use App\Support\PublisherGuideDeBlogPost;
+use App\Support\PublicI18n;
 use App\Support\UitgeversKiezenNlBlogPost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -111,7 +112,7 @@ class UpsertLanguageMarketBlogs extends Command
             return;
         }
 
-        $locale = in_array($blog->primary_locale, ['en', 'de', 'fr', 'nl'], true)
+        $locale = PublicI18n::isSupported($blog->primary_locale)
             ? $blog->primary_locale
             : 'en';
 

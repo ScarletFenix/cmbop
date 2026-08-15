@@ -124,6 +124,18 @@ class BlogController extends Controller
     public function store(StoreBlogRequest $request)
     {
         try {
+            $this->hydrateLegacyTranslationInput($request);
+            $request->validate([
+                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'tags' => 'nullable|string',
+                'status' => 'required|in:draft,published',
+                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
+            ] + $this->translationValidationRules());
+
+            if (! auth()->check()) {
+                throw new \Exception('You must be logged in to create a blog post.');
+            }
+
             $featuredImage = null;
             if ($request->hasFile('featured_image')) {
                 $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
@@ -250,6 +262,14 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::findOrFail($id);
+
+            $request->validate([
+                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
+                'remove_featured_image' => 'nullable|boolean',
+                'tags' => 'nullable|string',
+                'status' => 'required|in:draft,published',
+                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
+            ] + $this->translationValidationRules());
 
             $tags = null;
             if ($request->tags) {
@@ -542,10 +562,7 @@ class BlogController extends Controller
 
     private function deleteStoredBlogImages(Blog $blog): void
     {
-        $paths = [];
-        if (filled($blog->featured_image)) {
-            $paths[] = (string) $blog->featured_image;
-        }
+        $rules = [];
 
         $html = (string) $blog->content;
         foreach ($blog->translations as $translation) {
@@ -556,33 +573,7 @@ class BlogController extends Controller
             $paths = array_merge($paths, $matches[1]);
         }
 
-        foreach (array_unique($paths) as $path) {
-            $resolved = $this->blogStoragePathFromUrl($path);
-            if ($resolved === null) {
-                continue;
-            }
-
-            $usedElsewhere = Blog::query()
-                ->where('id', '!=', $blog->id)
-                ->where(function ($query) use ($resolved) {
-                    $query->where('featured_image', $resolved)
-                        ->orWhere('content', 'like', '%'.$resolved.'%');
-                })
-                ->exists()
-                || BlogTranslation::query()
-                    ->where('blog_id', '!=', $blog->id)
-                    ->where('content', 'like', '%'.$resolved.'%')
-                    ->exists();
-
-            if ($usedElsewhere) {
-                continue;
-            }
-
-            if (Storage::disk('public')->exists($resolved)) {
-                Storage::disk('public')->delete($resolved);
-                Log::info('Blog image deleted with post', ['path' => $resolved]);
-            }
-        }
+        return $rules;
     }
 
     /**
@@ -621,14 +612,10 @@ class BlogController extends Controller
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
-            $metaTitle = isset($item['meta_title']) ? trim((string) $item['meta_title']) : null;
-            $metaDescription = isset($item['meta_description']) ? trim((string) $item['meta_description']) : null;
-            $isPublished = ! array_key_exists('is_published', $item)
-                || filter_var($item['is_published'], FILTER_VALIDATE_BOOLEAN);
-            $rawContent = trim((string) ($item['content'] ?? ''));
-            $content = BlogHtmlSanitizer::isEmptyHtml($rawContent)
-                ? ''
-                : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
+            $content = trim((string) ($item['content'] ?? ''));
+            if (BlogHtmlSanitizer::isBlank($content)) {
+                $content = '';
+            }
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {

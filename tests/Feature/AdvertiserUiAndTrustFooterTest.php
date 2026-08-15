@@ -76,7 +76,7 @@ class AdvertiserUiAndTrustFooterTest extends TestCase
 
     public function test_trustpilot_strings_exist_in_every_locale(): void
     {
-        foreach (['en', 'de', 'fr', 'nl'] as $locale) {
+        foreach (\App\Support\PublicI18n::supported() as $locale) {
             $messages = require resource_path('lang/'.$locale.'/messages.php');
             foreach (['trustpilot_read_reviews', 'trustpilot_aria'] as $key) {
                 $this->assertArrayHasKey($key, $messages, $locale.' is missing '.$key);

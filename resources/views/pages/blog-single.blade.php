@@ -15,9 +15,17 @@
 @section('title', $blogPageTitle.' — SEOLinkBuildings')
 @section('description', $blogDescription)
 @section('canonical', $blogCanonical)
+@php
+    $hreflangPathByLocale = [];
+    foreach ($availableLocales ?? [] as $hreflangLocale) {
+        $mapped = $blog->translationFor($hreflangLocale, null);
+        $hreflangPathByLocale[$hreflangLocale] = 'blog/'.($mapped?->slug ?: $blog->slug);
+    }
+@endphp
 @section('hreflang_x_default', in_array('en', ($availableLocales ?? []), true) ? 'en' : (($activeTranslation?->locale) ?: 'en'))
 @section('hreflang_locales', implode(',', $availableLocales ?? ['en']))
 @section('hreflang_path', $hreflangPath ?? ('blog/'.$resolvedSlug))
+@section('hreflang_path_map', collect($hreflangPathByLocale)->map(fn ($path, $locale) => $locale.'='.$path)->implode(','))
 @section('og_type', 'article')
 @section('og_image', $blog->featuredImageAbsoluteUrl() ?: asset('assets/brand/web/og-share-1200x630.png'))
 
@@ -28,7 +36,7 @@
     '@type' => 'BlogPosting',
     'headline' => $resolvedTitle,
     'description' => $blogDescription,
-    'inLanguage' => $activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale()),
+    'inLanguage' => \App\Support\PublicI18n::htmlLang($activeTranslation?->locale ?: ($blog->primary_locale ?: app()->getLocale())),
     'datePublished' => optional($blog->published_at)?->toIso8601String(),
     'dateModified' => optional($blog->updated_at)?->toIso8601String(),
     'author' => [
@@ -123,7 +131,7 @@
             </div>
             @if(($fallbackUsed ?? false) === true)
                 <div class="alert alert-info mt-3 mb-0">
-                    This article is currently shown in {{ strtoupper($activeTranslation?->locale ?? 'EN') }} because a {{ strtoupper($requestedLocale ?? public_locale()) }} translation is not yet available.
+                    This article is currently shown in {{ \App\Support\PublicI18n::shortLabel($activeTranslation?->locale ?? 'en') }} because a {{ \App\Support\PublicI18n::shortLabel($requestedLocale ?? public_locale()) }} translation is not yet available.
                 </div>
             @endif
             

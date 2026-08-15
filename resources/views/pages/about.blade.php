@@ -52,7 +52,7 @@
     'name' => __('messages.meta_about_title'),
     'url' => localized_url('about'),
     'description' => __('messages.meta_about_description'),
-    'inLanguage' => str_replace('_', '-', app()->getLocale()),
+    'inLanguage' => \App\Support\PublicI18n::htmlLang(),
     'mainEntity' => [
         '@type' => 'Organization',
         'name' => 'SEOLinkBuildings',
