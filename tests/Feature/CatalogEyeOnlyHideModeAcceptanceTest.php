@@ -152,7 +152,7 @@ class CatalogEyeOnlyHideModeAcceptanceTest extends TestCase
         $this->assertStringNotContainsString('cleared-open.example', $hidden);
 
         $this->actingAs($admin)
-            ->post(route('admin.catalog-activity.clear-copy-hide', $advertiser->id))
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
             ->assertRedirect();
 
         $advertiser->refresh();

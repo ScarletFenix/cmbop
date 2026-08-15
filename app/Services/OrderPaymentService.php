@@ -949,12 +949,27 @@ class OrderPaymentService
      */
     public function forgetPendingCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
     {
+        $intents = app(CheckoutIntentService::class);
         $held = $userId > 0
-            ? app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode)
+            ? $intents->heldBonus($userId, $referenceCode)
             : 0.0;
+        $package = $this->getPendingCheckout($referenceCode);
+        $snapshotBonus = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
+
         $this->forgetPendingCheckout($referenceCode);
         if ($userId > 0 && $held > 0.009) {
-            app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $held);
+            $intents->rememberBonus($userId, $referenceCode, $held);
+
+            return;
+        }
+
+        // Fail/cancel already released the live hold. Keep a snapshot-only
+        // package so admin mark-paid can re-reserve THIS leftover's promo
+        // instead of minting it as cash on a later reject.
+        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package)) {
+            $intents->storeLeftoverBonusSnapshot($referenceCode, $userId, $package, $snapshotBonus);
         }
     }
 
@@ -995,6 +1010,14 @@ class OrderPaymentService
             ->count();
 
         $package = $this->getPendingCheckout($referenceCode);
+        $packageLines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
+        $hasMaterializableLines = collect($packageLines)->contains(fn ($line) => is_array($line));
+        if ($package !== null && ! $hasMaterializableLines && $existingCount > 0) {
+            // Snapshot-only leftover after fail/cancel. A late Pay-again
+            // session must mark those rows paid — comparing its amount to
+            // the old amount_due would wallet-credit and leave them failed.
+            return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+        }
         if ($package === null) {
             if ($existingCount > 0) {
                 $newlyPaid = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
