@@ -134,13 +134,27 @@ class BulkSiteGuidedWorkflowTest extends TestCase
 
     public function test_websites_page_shows_url_price_bulk_columns(): void
     {
-        $this->actingAs($this->publisher)
+        $html = $this->actingAs($this->publisher)
             ->get(route('publisher.websites'))
             ->assertOk()
             ->assertSee('Website URL', false)
             ->assertSee('Price (€)', false)
             ->assertSee('How bulk onboarding works', false)
-            ->assertSee('Our marketer', false);
+            ->assertSee('Our marketer', false)
+            ->assertSee('modal-xl', false)
+            ->assertSee('bulk-url-price-row__summary', false)
+            ->assertSee('data-bulk-url-price-chip', false)
+            ->assertSee('name="sites[0][url]"', false)
+            ->assertSee('name="sites[0][price]"', false)
+            ->assertSee('id="bulkRequestModal"', false)
+            ->assertSee('id="bulkRequestForm"', false)
+            ->assertSee('id="bulkUrlPriceError"', false)
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/id="bulkRequestForm"[^>]*novalidate/', $html);
+        $this->assertMatchesRegularExpression('/<details class="bulk-url-price-row"\s+open/', $html);
+        $css = file_get_contents(public_path('assets/css/publisher-websites.css'));
+        $this->assertStringContainsString('#bulkRequestModal .bulk-url-price-row__fields', $css);
     }
 
     public function test_admin_can_seed_draft_sites_hidden_from_catalog(): void

@@ -138,210 +138,274 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
-            <div class="card border-0 shadow-sm mb-3 border-primary-subtle">
-                <div class="card-body">
-                    <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
-                    <p class="small text-muted mb-3">
-                        <strong>{{ $pendingItems->count() }}</strong> website(s) still pending
-                        (publisher + marketer share a {{ \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }}-site batch limit).
-                        Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — one row, several, or all at once.
-                        Finished rows become drafts and notify the publisher; the rest stay here until you fill them.
-                    </p>
+    <div class="card border-0 shadow-sm mb-3 border-primary-subtle bulk-done-panel">
+        <div class="card-body">
+            <h6 class="fw-semibold mb-1">Done — add sites &amp; notify publisher</h6>
+            <p class="small text-muted mb-3">
+                <strong>{{ $pendingItems->count() }}</strong> website(s) still pending
+                (publisher + marketer share a {{ \App\Models\BulkSiteRequest::MAX_SITES_PER_REQUEST }}-site batch limit).
+                Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — one row, several, or all at once.
+                Finished rows become drafts and notify the publisher; the rest stay here until you fill them.
+                Marketing Activate needs DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, and traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}. Done below this is allowed.
+            </p>
 
-                    @if($errors->any())
-                        <div class="alert alert-danger py-2 small">
-                            <strong>Finish the boxes first.</strong>
-                            {{ $errors->first() }}
-                        </div>
-                    @endif
-
-                    @if($pendingItems->isEmpty())
-                        <div class="form-text">All submitted rows are already added.</div>
-                    @else
-                        <form method="POST"
-                              action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
-                              id="bulkDoneForm"
-                              enctype="multipart/form-data"
-                              novalidate>
-                            @csrf
-                            <div class="bulk-done-table-wrap admin-contained-scroll mb-3">
-                                <table class="table table-sm align-middle mb-0 bulk-done-grid">
-                                    <thead>
-                                        <tr>
-                                            <th>Website</th>
-                                            <th>Price</th>
-                                            <th>Country <span class="text-danger">*</span></th>
-                                            <th>Language <span class="text-danger">*</span></th>
-                                            <th>DA <span class="text-danger">*</span></th>
-                                            <th>DR <span class="text-danger">*</span></th>
-                                            <th>Traffic <span class="text-danger">*</span></th>
-                                            <th>Niches <span class="text-danger">*</span></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($pendingItems as $item)
-                                            @php
-                                                $old = old('items.'.$item->id, []);
-                                                $oldCategories = $old['categories'] ?? '';
-                                                if (is_array($oldCategories)) {
-                                                    $oldCategories = implode('|', $oldCategories);
-                                                }
-                                                $uid = 'done'.$item->id;
-                                                $oldCountry = strtolower((string) ($old['country'] ?? ''));
-                                                $oldLanguage = strtolower((string) ($old['language'] ?? ''));
-                                            @endphp
-                                            <tr data-bulk-done-row>
-                                                <td>
-                                                    <div class="fw-semibold small text-break">{{ $item->domain }}</div>
-                                                    <a class="small text-muted text-break" href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
-                                                        {{ $item->site_url }}
-                                                    </a>
-                                                </td>
-                                                <td class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</td>
-                                                <td>
-                                                    <select name="items[{{ $item->id }}][country]"
-                                                            class="form-select form-select-sm @error('items.'.$item->id.'.country') is-invalid @enderror"
-                                                            required
-                                                            data-bulk-required
-                                                            data-bulk-country>
-                                                        <option value="">Select…</option>
-                                                        @foreach($countries as $country)
-                                                            <option value="{{ strtolower($country->code) }}"
-                                                                @selected($oldCountry === strtolower($country->code))>
-                                                                {{ $country->name }}
-                                                            </option>
-                                                        @endforeach
-                                                    </select>
-                                                    @error('items.'.$item->id.'.country')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                                <td>
-                                                    <select name="items[{{ $item->id }}][language]"
-                                                            class="form-select form-select-sm @error('items.'.$item->id.'.language') is-invalid @enderror"
-                                                            required
-                                                            data-bulk-required
-                                                            data-bulk-language
-                                                            @disabled($oldCountry === '')>
-                                                        <option value="">{{ $oldCountry === '' ? 'Select country first' : 'Select…' }}</option>
-                                                        @if($oldCountry !== '')
-                                                            @foreach(($countryLanguageMap[$oldCountry] ?? []) as $lang)
-                                                                <option value="{{ $lang['code'] }}"
-                                                                    @selected($oldLanguage === strtolower((string) $lang['code']))>
-                                                                    {{ $lang['name'] }}
-                                                                </option>
-                                                            @endforeach
-                                                        @endif
-                                                    </select>
-                                                    @error('items.'.$item->id.'.language')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                                <td>
-                                                    <input type="number"
-                                                           name="items[{{ $item->id }}][da]"
-                                                           class="form-control form-control-sm @error('items.'.$item->id.'.da') is-invalid @enderror"
-                                                           placeholder="0–100"
-                                                           min="0" max="100" step="1"
-                                                           value="{{ $old['da'] ?? '' }}"
-                                                           required
-                                                           data-bulk-required
-                                                           data-score-clamp="100">
-                                                    @error('items.'.$item->id.'.da')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                                <td>
-                                                    <input type="number"
-                                                           name="items[{{ $item->id }}][dr]"
-                                                           class="form-control form-control-sm @error('items.'.$item->id.'.dr') is-invalid @enderror"
-                                                           placeholder="0–100"
-                                                           min="0" max="100" step="1"
-                                                           value="{{ $old['dr'] ?? '' }}"
-                                                           required
-                                                           data-bulk-required
-                                                           data-score-clamp="100">
-                                                    @error('items.'.$item->id.'.dr')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                                <td>
-                                                    {{-- Traffic is monthly visitors (can be millions/billions). Never clamp like DA/DR. --}}
-                                                    <input type="number"
-                                                           name="items[{{ $item->id }}][traffic]"
-                                                           class="form-control form-control-sm @error('items.'.$item->id.'.traffic') is-invalid @enderror"
-                                                           placeholder="e.g. 1500000"
-                                                           min="0"
-                                                           max="4294967295"
-                                                           step="1"
-                                                           inputmode="numeric"
-                                                           value="{{ $old['traffic'] ?? '' }}"
-                                                           required
-                                                           data-bulk-required
-                                                           data-traffic-input>
-                                                    @error('items.'.$item->id.'.traffic')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                                <td class="bulk-done-niches-cell">
-                                                    <input type="hidden"
-                                                           name="items[{{ $item->id }}][categories]"
-                                                           id="selectedCategories-{{ $uid }}"
-                                                           value="{{ $oldCategories }}"
-                                                           data-bulk-required
-                                                           class="@error('items.'.$item->id.'.categories') is-invalid @enderror">
-                                                    <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}" data-multi-select="category">
-                                                        <div class="multi-select-input multi-select-input--sm"
-                                                             id="categoryInput-{{ $uid }}"
-                                                             role="button"
-                                                             tabindex="0"
-                                                             aria-haspopup="listbox"
-                                                             aria-expanded="false"
-                                                             aria-label="Select niches for {{ $item->domain }}">
-                                                            <span class="multi-select-placeholder">Select niches…</span>
-                                                        </div>
-                                                        <div class="multi-select-dropdown" id="categoryDropdown-{{ $uid }}" role="listbox" aria-multiselectable="true">
-                                                            <div class="multi-select-search">
-                                                                <input type="text" placeholder="Type to search niches…" id="categorySearch-{{ $uid }}" autocomplete="off" aria-label="Search niches">
-                                                            </div>
-                                                            <div class="multi-select-options" id="categoryOptions-{{ $uid }}">
-                                                                @foreach($categories as $categoryName)
-                                                                    <div class="multi-select-option"
-                                                                         role="option"
-                                                                         data-value="{{ $categoryName }}"
-                                                                         data-label="{{ $categoryName }}">{{ $categoryName }}</div>
-                                                                @endforeach
-                                                            </div>
-                                                            <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
-                                                        </div>
-                                                    </div>
-                                                    @error('items.'.$item->id.'.categories')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
-
-                            <div id="bulkDoneHint" class="alert alert-warning py-2 small mb-3" role="status">
-                                Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.
-                            </div>
-
-                            <button type="submit"
-                                    id="bulkDoneSubmit"
-                                    class="btn btn-primary"
-                                    data-open="{{ $bulkRequest->canAddDraftSites() ? '1' : '0' }}"
-                                    disabled>
-                                Done — add filled sites &amp; notify publisher
-                            </button>
-                        </form>
-                    @endif
+            @if($errors->any())
+                <div class="alert alert-danger py-2 small">
+                    <strong>Finish the boxes first.</strong>
+                    {{ $errors->first() }}
                 </div>
-            </div>
+            @endif
 
+            @if($pendingItems->isEmpty())
+                <div class="form-text">All submitted rows are already added.</div>
+            @else
+                <form method="POST"
+                      action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
+                      id="bulkDoneForm"
+                      enctype="multipart/form-data"
+                      novalidate
+                      data-min-da="{{ \App\Models\Site::GOOD_MIN_DA }}"
+                      data-min-dr="{{ \App\Models\Site::GOOD_MIN_DR }}"
+                      data-min-traffic="{{ \App\Models\Site::GOOD_MIN_TRAFFIC }}">
+                    @csrf
+                    <div class="bulk-done-table-wrap bulk-done-list mb-3">
+                        @php $openedFirstEmpty = false; @endphp
+                        @foreach($pendingItems as $item)
+                            @php
+                                $old = old('items.'.$item->id, []);
+                                $oldCategories = $old['categories'] ?? '';
+                                if (is_array($oldCategories)) {
+                                    $oldCategories = implode('|', $oldCategories);
+                                }
+                                $uid = 'done'.$item->id;
+                                $oldCountry = strtolower((string) ($old['country'] ?? ''));
+                                $oldLanguage = strtolower((string) ($old['language'] ?? ''));
+                                $filledCount = 0;
+                                foreach (['country', 'language', 'da', 'dr', 'traffic'] as $doneField) {
+                                    if (trim((string) ($old[$doneField] ?? '')) !== '') {
+                                        $filledCount++;
+                                    }
+                                }
+                                if (trim((string) $oldCategories) !== '') {
+                                    $filledCount++;
+                                }
+                                $itemErrorPrefix = 'items.'.$item->id.'.';
+                                $rowHasErrors = collect($errors->keys())->contains(
+                                    fn ($key) => $key === 'items.'.$item->id || str_starts_with((string) $key, $itemErrorPrefix)
+                                );
+                                $openAsFirstEmpty = $filledCount === 0 && ! $rowHasErrors && ! $openedFirstEmpty;
+                                $rowOpen = $rowHasErrors || $filledCount > 0 || $openAsFirstEmpty;
+                                if ($openAsFirstEmpty) {
+                                    $openedFirstEmpty = true;
+                                }
+                                $chipLabel = $filledCount === 0
+                                    ? 'Empty'
+                                    : ($filledCount === 6 ? 'Ready' : $filledCount.'/6 filled');
+                                $chipClass = $filledCount === 0
+                                    ? 'is-empty'
+                                    : ($filledCount === 6 ? 'is-ready' : 'is-partial');
+                                $oldDa = trim((string) ($old['da'] ?? ''));
+                                $oldDr = trim((string) ($old['dr'] ?? ''));
+                                $oldTraffic = trim((string) ($old['traffic'] ?? ''));
+                                $metricsFilled = $oldDa !== '' && $oldDr !== '' && $oldTraffic !== '';
+                                $belowQuality = $metricsFilled
+                                    && ((int) $oldDa < \App\Models\Site::GOOD_MIN_DA
+                                        || (int) $oldDr < \App\Models\Site::GOOD_MIN_DR
+                                        || (int) $oldTraffic < \App\Models\Site::GOOD_MIN_TRAFFIC);
+                            @endphp
+                            <details class="bulk-done-row" data-bulk-done-row @if($rowOpen) open @endif>
+                                <summary class="bulk-done-row__summary">
+                                    <span class="bulk-done-row__identity">
+                                        <span class="fw-semibold text-break">{{ $item->domain }}</span>
+                                        <a class="small text-muted text-break" href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
+                                            {{ $item->site_url }}
+                                        </a>
+                                    </span>
+                                    <span class="bulk-done-row__meta">
+                                        <span class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</span>
+                                        <span class="bulk-done-row__chip {{ $chipClass }}" data-bulk-done-chip>{{ $chipLabel }}</span>
+                                        <span class="bulk-done-row__chip is-below-bar{{ $belowQuality ? '' : ' d-none' }}" data-bulk-quality-chip>Below bar</span>
+                                    </span>
+                                </summary>
+                                <div class="bulk-done-row__body">
+                                    <div class="bulk-done-row__fields">
+                                        <div class="bulk-done-field">
+                                            <label class="form-label" for="bulk-done-country-{{ $item->id }}">Country <span class="text-danger">*</span></label>
+                                            <select id="bulk-done-country-{{ $item->id }}"
+                                                    name="items[{{ $item->id }}][country]"
+                                                    class="form-select @error('items.'.$item->id.'.country') is-invalid @enderror"
+                                                    required
+                                                    data-bulk-required
+                                                    data-bulk-country>
+                                                <option value="">Select…</option>
+                                                @foreach($countries as $country)
+                                                    <option value="{{ strtolower($country->code) }}"
+                                                        @selected($oldCountry === strtolower($country->code))>
+                                                        {{ $country->name }}
+                                                    </option>
+                                                @endforeach
+                                            </select>
+                                            @error('items.'.$item->id.'.country')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                        <div class="bulk-done-field">
+                                            <label class="form-label" for="bulk-done-language-{{ $item->id }}">Language <span class="text-danger">*</span></label>
+                                            <select id="bulk-done-language-{{ $item->id }}"
+                                                    name="items[{{ $item->id }}][language]"
+                                                    class="form-select @error('items.'.$item->id.'.language') is-invalid @enderror"
+                                                    required
+                                                    data-bulk-required
+                                                    data-bulk-language
+                                                    @disabled($oldCountry === '')>
+                                                <option value="">{{ $oldCountry === '' ? 'Select country first' : 'Select…' }}</option>
+                                                @if($oldCountry !== '')
+                                                    @foreach(($countryLanguageMap[$oldCountry] ?? []) as $lang)
+                                                        <option value="{{ $lang['code'] }}"
+                                                            @selected($oldLanguage === strtolower((string) $lang['code']))>
+                                                            {{ $lang['name'] }}
+                                                        </option>
+                                                    @endforeach
+                                                @endif
+                                            </select>
+                                            @error('items.'.$item->id.'.language')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                        <div class="bulk-done-field">
+                                            <label class="form-label" for="bulk-done-da-{{ $item->id }}">DA <span class="text-danger">*</span></label>
+                                            <input type="number"
+                                                   id="bulk-done-da-{{ $item->id }}"
+                                                   name="items[{{ $item->id }}][da]"
+                                                   class="form-control @error('items.'.$item->id.'.da') is-invalid @enderror"
+                                                   placeholder="0–100"
+                                                   min="0" max="100" step="1"
+                                                   inputmode="numeric"
+                                                   value="{{ $old['da'] ?? '' }}"
+                                                   required
+                                                   data-bulk-required
+                                                   data-score-clamp="100">
+                                            @error('items.'.$item->id.'.da')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                        <div class="bulk-done-field">
+                                            <label class="form-label" for="bulk-done-dr-{{ $item->id }}">DR <span class="text-danger">*</span></label>
+                                            <input type="number"
+                                                   id="bulk-done-dr-{{ $item->id }}"
+                                                   name="items[{{ $item->id }}][dr]"
+                                                   class="form-control @error('items.'.$item->id.'.dr') is-invalid @enderror"
+                                                   placeholder="0–100"
+                                                   min="0" max="100" step="1"
+                                                   inputmode="numeric"
+                                                   value="{{ $old['dr'] ?? '' }}"
+                                                   required
+                                                   data-bulk-required
+                                                   data-score-clamp="100">
+                                            @error('items.'.$item->id.'.dr')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                        <div class="bulk-done-field bulk-done-field--traffic">
+                                            <label class="form-label" for="bulk-done-traffic-{{ $item->id }}">Traffic <span class="text-danger">*</span></label>
+                                            {{-- Traffic is monthly visitors (can be millions/billions). Never clamp like DA/DR. --}}
+                                            <input type="number"
+                                                   id="bulk-done-traffic-{{ $item->id }}"
+                                                   name="items[{{ $item->id }}][traffic]"
+                                                   class="form-control @error('items.'.$item->id.'.traffic') is-invalid @enderror"
+                                                   placeholder="e.g. 1500000"
+                                                   min="0"
+                                                   max="4294967295"
+                                                   step="1"
+                                                   inputmode="numeric"
+                                                   value="{{ $old['traffic'] ?? '' }}"
+                                                   required
+                                                   data-bulk-required
+                                                   data-traffic-input>
+                                            @error('items.'.$item->id.'.traffic')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                        <div class="bulk-done-field bulk-done-field--niches bulk-done-niches-cell">
+                                            <label class="form-label" for="categoryInput-{{ $uid }}">Niches <span class="text-danger">*</span></label>
+                                            <input type="hidden"
+                                                   name="items[{{ $item->id }}][categories]"
+                                                   id="selectedCategories-{{ $uid }}"
+                                                   value="{{ $oldCategories }}"
+                                                   data-bulk-required
+                                                   class="@error('items.'.$item->id.'.categories') is-invalid @enderror">
+                                            <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}" data-multi-select="category">
+                                                <div class="multi-select-input"
+                                                     id="categoryInput-{{ $uid }}"
+                                                     role="button"
+                                                     tabindex="0"
+                                                     aria-haspopup="listbox"
+                                                     aria-expanded="false"
+                                                     aria-label="Select niches for {{ $item->domain }}">
+                                                    <span class="multi-select-placeholder">Select niches…</span>
+                                                </div>
+                                                <div class="multi-select-dropdown" id="categoryDropdown-{{ $uid }}" role="listbox" aria-multiselectable="true">
+                                                    <div class="multi-select-search">
+                                                        <input type="text" placeholder="Type to search niches…" id="categorySearch-{{ $uid }}" autocomplete="off" aria-label="Search niches">
+                                                    </div>
+                                                    <div class="multi-select-options" id="categoryOptions-{{ $uid }}">
+                                                        @foreach($categories as $categoryName)
+                                                            <div class="multi-select-option"
+                                                                 role="option"
+                                                                 data-value="{{ $categoryName }}"
+                                                                 data-label="{{ $categoryName }}">{{ $categoryName }}</div>
+                                                        @endforeach
+                                                    </div>
+                                                    <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
+                                                </div>
+                                            </div>
+                                            @error('items.'.$item->id.'.categories')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                    <div class="alert alert-warning border-0 py-2 px-3 small mb-0{{ $belowQuality ? '' : ' d-none' }}"
+                                         data-bulk-quality-warn
+                                         role="status">
+                                        These metrics are below the marketing Activate bar. You can still Done this row — the draft stays inactive until the publisher finishes details and staff Activate after the bar is met.
+                                    </div>
+                                    <div class="bulk-done-row__actions">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-clear-row>
+                                            Clear row
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                data-bulk-copy-above
+                                                @disabled($loop->first)>
+                                            Copy from row above
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        @endforeach
+                    </div>
+
+                    <div id="bulkDoneHint" class="alert alert-warning py-2 small mb-3" role="status">
+                        Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.
+                    </div>
+
+                    <button type="submit"
+                            id="bulkDoneSubmit"
+                            class="btn btn-primary"
+                            data-open="{{ $bulkRequest->canAddDraftSites() ? '1' : '0' }}"
+                            disabled>
+                        Done — add filled sites &amp; notify publisher
+                    </button>
+                </form>
+            @endif
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-8">
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Advanced: seed with per-row metrics</h6>
@@ -445,6 +509,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const form = document.getElementById('bulkDoneForm');
     if (!form) return;
 
+    form.querySelectorAll('.bulk-done-row__summary a').forEach(function (link) {
+        link.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+    });
+
     const submitBtn = document.getElementById('bulkDoneSubmit');
     const hint = document.getElementById('bulkDoneHint');
     const fields = () => Array.from(form.querySelectorAll('[data-bulk-required]'));
@@ -454,6 +524,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const draftKey = @json('bulkDoneDraft:'.$bulkRequest->id.':'.auth()->id());
     const draftTtlMs = 24 * 60 * 60 * 1000;
     const countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+    const qualityMinDa = parseInt(form.getAttribute('data-min-da') || '30', 10);
+    const qualityMinDr = parseInt(form.getAttribute('data-min-dr') || '30', 10);
+    const qualityMinTraffic = parseInt(form.getAttribute('data-min-traffic') || '10000', 10);
 
     function refreshBulkDoneLanguages(row, preferredLanguage) {
         const countryEl = row.querySelector('[data-bulk-country]');
@@ -612,6 +685,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
                 // Keep hidden field in sync even if multi-select init failed.
                 categoriesInput.value = String(data.categories || '');
             }
+            if (row && rowStarted(row)) {
+                row.open = true;
+            }
         });
     }
 
@@ -687,7 +763,99 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         } catch (e) {}
     }
 
+    function expandBulkDoneRow(field) {
+        const row = field && field.closest('[data-bulk-done-row]');
+        if (row) {
+            row.open = true;
+        }
+    }
+
+    function refreshBulkDoneQuality(row) {
+        const da = parseInt((row.querySelector('input[name*="[da]"]') || {}).value, 10);
+        const dr = parseInt((row.querySelector('input[name*="[dr]"]') || {}).value, 10);
+        const traffic = parseInt((row.querySelector('input[name*="[traffic]"]') || {}).value, 10);
+        const filled = Number.isFinite(da) && Number.isFinite(dr) && Number.isFinite(traffic);
+        const below = filled && (da < qualityMinDa || dr < qualityMinDr || traffic < qualityMinTraffic);
+        const warn = row.querySelector('[data-bulk-quality-warn]');
+        const chip = row.querySelector('[data-bulk-quality-chip]');
+        if (warn) warn.classList.toggle('d-none', !below);
+        if (chip) chip.classList.toggle('d-none', !below);
+    }
+
+    function updateBulkDoneChip(row) {
+        const required = rowFields(row);
+        const filled = required.filter(fieldFilled).length;
+        const chip = row.querySelector('[data-bulk-done-chip]');
+        if (chip) {
+            chip.classList.remove('is-empty', 'is-partial', 'is-ready');
+            if (filled === 0) {
+                chip.classList.add('is-empty');
+                chip.textContent = 'Empty';
+            } else if (filled >= required.length) {
+                chip.classList.add('is-ready');
+                chip.textContent = 'Ready';
+            } else {
+                chip.classList.add('is-partial');
+                chip.textContent = filled + '/' + required.length + ' filled';
+            }
+        }
+        refreshBulkDoneQuality(row);
+    }
+
+    function clearBulkDoneRow(row) {
+        rowFields(row).forEach(function (field) {
+            field.value = '';
+        });
+        refreshBulkDoneLanguages(row, '');
+        const id = rowItemId(row);
+        if (id && multiSelects[id]) {
+            multiSelects[id].setSelectedItems([], []);
+        }
+        row.querySelectorAll('.is-invalid').forEach(function (el) {
+            el.classList.remove('is-invalid');
+        });
+        scheduleDraftSave();
+        syncDoneState();
+    }
+
+    function copyBulkDoneRowFromAbove(row) {
+        row.open = true;
+        let prev = row.previousElementSibling;
+        while (prev && !prev.hasAttribute('data-bulk-done-row')) {
+            prev = prev.previousElementSibling;
+        }
+        if (!prev) return;
+
+        const srcCountry = prev.querySelector('[data-bulk-country]');
+        const destCountry = row.querySelector('[data-bulk-country]');
+        if (srcCountry && destCountry) {
+            destCountry.value = srcCountry.value;
+        }
+        const srcLang = prev.querySelector('[data-bulk-language]');
+        refreshBulkDoneLanguages(row, (srcLang && srcLang.value) || '');
+        const destLang = row.querySelector('[data-bulk-language]');
+        if (srcLang && destLang && srcLang.value) {
+            destLang.value = srcLang.value;
+        }
+
+        const srcCats = prev.querySelector('input[name*="[categories]"]');
+        const nicheValues = String((srcCats && srcCats.value) || '')
+            .split('|')
+            .map(function (v) { return v.trim(); })
+            .filter(Boolean);
+        const destId = rowItemId(row);
+        if (destId && multiSelects[destId]) {
+            multiSelects[destId].setSelectedItems(nicheValues, nicheValues);
+        } else {
+            const destCats = row.querySelector('input[name*="[categories]"]');
+            if (destCats) destCats.value = nicheValues.join('|');
+        }
+        scheduleDraftSave();
+        syncDoneState();
+    }
+
     function syncDoneState() {
+        doneRows().forEach(updateBulkDoneChip);
         const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
         const complete = completeRows();
         const partial = partialRows();
@@ -759,6 +927,19 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         el.removeAttribute('data-score-clamp');
     });
 
+    form.querySelectorAll('[data-bulk-clear-row]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row) clearBulkDoneRow(row);
+        });
+    });
+    form.querySelectorAll('[data-bulk-copy-above]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row) copyBulkDoneRowFromAbove(row);
+        });
+    });
+
     form.addEventListener('input', function (e) {
         clampScoreInput(e.target);
         syncDoneState();
@@ -791,6 +972,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             if (partial.length > 0) {
                 const firstPartial = rowFields(partial[0]).find((el) => !fieldFilled(el));
                 if (firstPartial) {
+                    expandBulkDoneRow(firstPartial);
                     firstPartial.focus();
                     firstPartial.classList.add('is-invalid');
                 }
@@ -802,6 +984,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             } else {
                 const firstEmpty = fields().find((el) => !fieldFilled(el));
                 if (firstEmpty) {
+                    expandBulkDoneRow(firstEmpty);
                     firstEmpty.focus();
                     firstEmpty.classList.add('is-invalid');
                 }
@@ -843,7 +1026,29 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         });
     });
 
+    function focusFirstInvalidDoneField() {
+        const invalids = Array.from(form.querySelectorAll('.is-invalid'));
+        if (!invalids.length) return;
+        const focusable = invalids.find(function (el) {
+            return el.type !== 'hidden' && typeof el.focus === 'function';
+        });
+        const target = focusable || invalids[0];
+        expandBulkDoneRow(target);
+        if (target.type === 'hidden') {
+            const row = target.closest('[data-bulk-done-row]');
+            const ms = row && row.querySelector('.multi-select-input');
+            if (ms && typeof ms.focus === 'function') {
+                ms.focus();
+                return;
+            }
+        }
+        if (typeof target.focus === 'function') {
+            target.focus();
+        }
+    }
+
     syncDoneState();
+    focusFirstInvalidDoneField();
 })();
 
 document.querySelectorAll('.bulk-draft-delete').forEach(function (btn) {

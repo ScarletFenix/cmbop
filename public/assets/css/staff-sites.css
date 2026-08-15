@@ -356,66 +356,157 @@
   vertical-align: middle;
 }
 
-/* ——— Bulk request "Done" grid ——— */
+/* ——— Bulk request "Done" expandable panel ——— */
 
-.bulk-done-table-wrap {
+.bulk-done-panel {
   width: 100%;
-  max-width: 100%;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior-x: contain;
 }
 
-.bulk-done-grid {
-  width: 100%;
-  min-width: 960px;
-  table-layout: fixed;
-}
-
-.bulk-done-grid th,
-.bulk-done-grid td {
-  vertical-align: middle;
-}
-
-.bulk-done-grid th:nth-child(1),
-.bulk-done-grid td:nth-child(1) {
-  width: 18%;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-  vertical-align: top;
-}
-
-.bulk-done-grid th:nth-child(2),
-.bulk-done-grid td:nth-child(2) { width: 7%; white-space: nowrap; }
-
-.bulk-done-grid th:nth-child(3),
-.bulk-done-grid td:nth-child(3),
-.bulk-done-grid th:nth-child(4),
-.bulk-done-grid td:nth-child(4) { width: 12%; }
-
-.bulk-done-grid th:nth-child(5),
-.bulk-done-grid td:nth-child(5),
-.bulk-done-grid th:nth-child(6),
-.bulk-done-grid td:nth-child(6) { width: 7%; }
-
-.bulk-done-grid th:nth-child(7),
-.bulk-done-grid td:nth-child(7) { width: 12%; }
-
-.bulk-done-grid th:nth-child(8),
-.bulk-done-grid td.bulk-done-niches-cell {
-  width: 27%;
-  vertical-align: top;
-  overflow-wrap: normal;
-  word-break: normal;
-}
-
-.bulk-done-grid .bulk-done-niches-cell .multi-select-wrapper,
-.bulk-done-grid .bulk-done-niches-cell .multi-select-input {
+.bulk-done-table-wrap,
+.bulk-done-list {
   width: 100%;
   max-width: 100%;
 }
 
-.bulk-done-grid .form-select,
-.bulk-done-grid .form-control {
+.bulk-done-row {
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  border-radius: 0.5rem;
+  background: #fff;
+  margin-bottom: 0.75rem;
+}
+
+.bulk-done-row:last-child {
+  margin-bottom: 0;
+}
+
+.bulk-done-row__summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.25rem;
+  padding: 0.85rem 1rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.bulk-done-row__summary::-webkit-details-marker {
+  display: none;
+}
+
+.bulk-done-row__identity {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  gap: 0.15rem;
+}
+
+.bulk-done-row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.bulk-done-row__chip {
+  display: inline-block;
+  padding: 0.15rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid var(--bs-border-color, #dee2e6);
+  background: #f8fafc;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.bulk-done-row__chip.is-empty {
+  color: #475569;
+}
+
+.bulk-done-row__chip.is-partial {
+  border-color: #b45309;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.bulk-done-row__chip.is-ready {
+  border-color: #15803d;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.bulk-done-row__chip.is-below-bar {
+  border-color: #b45309;
+  background: #fff7ed;
+  color: #9a3412;
+}
+
+.bulk-done-row__body {
+  padding: 0 1rem 1rem;
+  border-top: 1px solid var(--bs-border-color, #e9ecef);
+}
+
+.bulk-done-row__fields {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem 1rem;
+  padding-top: 1rem;
+}
+
+@media (min-width: 768px) {
+  .bulk-done-row__fields {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .bulk-done-field--traffic {
+    grid-column: 1 / -1;
+    max-width: 18rem;
+  }
+
+  .bulk-done-field--niches {
+    grid-column: 1 / -1;
+    max-width: none;
+  }
+}
+
+@media (min-width: 1200px) {
+  .bulk-done-row__fields {
+    grid-template-columns: 1fr 1fr 8rem 8rem minmax(12rem, 16rem);
+  }
+
+  .bulk-done-field--traffic {
+    grid-column: auto;
+    max-width: none;
+  }
+}
+
+.bulk-done-field .form-label {
+  margin-bottom: 0.3rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+.bulk-done-field--niches .multi-select-wrapper,
+.bulk-done-field--niches .multi-select-input,
+.bulk-done-niches-cell .multi-select-wrapper,
+.bulk-done-niches-cell .multi-select-input {
+  width: 100%;
   max-width: 100%;
+}
+
+.bulk-done-row__body input[type="number"] {
+  appearance: textfield;
+  -moz-appearance: textfield;
+}
+
+.bulk-done-row__body input[type="number"]::-webkit-outer-spin-button,
+.bulk-done-row__body input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.bulk-done-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 1rem;
 }
