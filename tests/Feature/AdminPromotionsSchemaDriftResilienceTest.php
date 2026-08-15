@@ -176,4 +176,55 @@ class AdminPromotionsSchemaDriftResilienceTest extends TestCase
         $this->assertFalse($announcement->fresh()->isCurrentlyLive());
         $this->assertSame('paused', $announcement->fresh()->scheduleState());
     }
+
+    public function test_admin_can_reschedule_and_duplicate_when_ends_at_is_unparseable(): void
+    {
+        $announcement = SiteAnnouncement::create([
+            'title' => 'Leftover schedule',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+            'ends_at' => now()->addDay(),
+        ]);
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->put(route('admin.promotions.announcements.update', $announcement), [
+                'title' => 'Leftover schedule fixed',
+                'message' => 'Body',
+                'type' => 'general',
+                'style' => 'info',
+                'audience' => 'all',
+                'is_active' => 1,
+                'priority' => 10,
+                'starts_at' => now()->subHour()->format('Y-m-d\TH:i'),
+                'ends_at' => now()->addDays(5)->format('Y-m-d\TH:i'),
+            ])
+            ->assertRedirect(route('admin.promotions.announcements.index'))
+            ->assertSessionHas('success');
+
+        $fresh = $announcement->fresh();
+        $this->assertSame('Leftover schedule fixed', $fresh->title);
+        $this->assertNotNull($fresh->safeEndsAt());
+        $this->assertTrue($fresh->isCurrentlyLive());
+
+        DB::table('site_announcements')->where('id', $announcement->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.promotions.announcements.duplicate', $announcement))
+            ->assertRedirect();
+
+        $copy = SiteAnnouncement::query()->where('id', '!=', $announcement->id)->first();
+        $this->assertNotNull($copy);
+        $this->assertStringContainsString('(copy)', $copy->title);
+        $this->assertFalse($copy->is_active);
+        $this->assertNull($copy->safeEndsAt());
+    }
 }

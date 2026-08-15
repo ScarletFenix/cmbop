@@ -28,6 +28,10 @@ use Illuminate\Support\Str;
  * Threshold is “~5 pages” of distinct domains inside a short window
  * (defaults: 100 copies / 120 seconds). After a warning, hide, lift, or
  * strike reset the watermark advances so a second full wave is required.
+ *
+ * A table-cell copy often includes a trailing newline, and a multi-select
+ * dump includes several hosts. Those still count (capped) — rejecting the
+ * whole clipboard was a harvest bypass.
  */
 class CatalogCopyStrikeGuard
 {
@@ -38,6 +42,8 @@ class CatalogCopyStrikeGuard
     public const STATUS_WARNING = 'warning';
 
     public const STATUS_HIDE_MODE = 'hide_mode';
+
+    public const MAX_HOSTS_PER_COPY = 40;
 
     public function __construct(private InAppNotificationService $notifications) {}
 
@@ -58,27 +64,34 @@ class CatalogCopyStrikeGuard
             return $this->payload($user, self::STATUS_IGNORED, 0, null);
         }
 
-        $host = $this->normalizeHost($text);
+        $hosts = $this->extractHosts($text);
 
         if ($siteId !== null) {
             $site = Site::query()->catalogVisible()->find($siteId);
             if (! $site) {
                 $siteId = null;
-            } elseif ($host === '') {
+            } elseif ($hosts === []) {
                 // Row id known but selection was messy — fall back to listing URL.
-                $host = $this->normalizeHost((string) $site->site_url);
+                $fallback = $this->normalizeHost((string) $site->site_url);
+                if ($fallback !== '') {
+                    $hosts = [$fallback];
+                }
             }
         }
 
-        if ($host === '') {
+        if ($hosts === []) {
             return $this->payload($user, self::STATUS_IGNORED, 0, 'Not a domain or URL.');
         }
+
+        // A multi-host dump must not attribute every domain to the row the
+        // selection started on.
+        $siteId = count($hosts) === 1 ? $siteId : null;
 
         $cfg = $this->config();
         $windowSeconds = $cfg['window_seconds'];
         $threshold = $cfg['threshold'];
 
-        $result = DB::transaction(function () use ($user, $siteId, $host, $windowSeconds, $threshold, $cfg) {
+        $result = DB::transaction(function () use ($user, $siteId, $hosts, $windowSeconds, $threshold, $cfg) {
             /** @var User $locked */
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
@@ -93,7 +106,9 @@ class CatalogCopyStrikeGuard
                 );
             }
 
-            $this->insertIfNew($locked, $siteId, $host, $windowSeconds);
+            foreach ($hosts as $host) {
+                $this->insertIfNew($locked, $siteId, $host, $windowSeconds);
+            }
             $distinct = $this->distinctCount($locked, $windowSeconds);
 
             if ($distinct < $threshold) {
@@ -177,7 +192,37 @@ class CatalogCopyStrikeGuard
      */
     public function looksLikeDomainOrUrl(string $text): bool
     {
-        return $this->normalizeHost($text) !== '';
+        return $this->extractHosts($text) !== [];
+    }
+
+    /**
+     * Distinct listing hosts found in clipboard text (one cell, or a dump).
+     *
+     * @return list<string>
+     */
+    public function extractHosts(string $text): array
+    {
+        $raw = trim($text);
+        if ($raw === '') {
+            return [];
+        }
+
+        $tokens = preg_split('/\s+/u', $raw) ?: [];
+        $hosts = [];
+
+        foreach ($tokens as $token) {
+            $token = trim($token, " \t\n\r\0\x0B\"'<>()[],");
+            $host = $this->normalizeHost($token);
+            if ($host === '') {
+                continue;
+            }
+            $hosts[$host] = $host;
+            if (count($hosts) >= self::MAX_HOSTS_PER_COPY) {
+                break;
+            }
+        }
+
+        return array_values($hosts);
     }
 
     public function normalizeHost(string $text): string
@@ -187,7 +232,8 @@ class CatalogCopyStrikeGuard
             return '';
         }
 
-        // Reject multi-line dumps / whole-row copies that are clearly not one host.
+        // Single-token API. extractHosts() splits dumps first so a trailing
+        // newline or a multi-URL selection still counts.
         if (preg_match('/\R/u', $raw) === 1) {
             return '';
         }
@@ -272,11 +318,12 @@ class CatalogCopyStrikeGuard
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
             ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
-            ->when(
-                $siteId !== null,
-                fn ($q) => $q->where('site_id', $siteId),
-                fn ($q) => $q->where('normalized_host', $host)->whereNull('site_id')
-            )
+            ->where(function ($q) use ($siteId, $host) {
+                $q->where('normalized_host', $host);
+                if ($siteId !== null) {
+                    $q->orWhere('site_id', $siteId);
+                }
+            })
             ->exists();
 
         if ($exists) {

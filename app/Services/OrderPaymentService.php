@@ -61,6 +61,9 @@ class OrderPaymentService
 
             $meta = $this->sessionMetadataArray($session);
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
+            if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $session)) {
+                return collect();
+            }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($session, $orders, $meta, $referenceCode)) {
                 $amountMismatch = true;
 
@@ -148,6 +151,9 @@ class OrderPaymentService
             }
 
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
+            if ($hasMarkable && $this->sessionAlreadyCreditedAsUnfulfilled($referenceCode, $intent)) {
+                return collect();
+            }
             if ($hasMarkable && ! $this->allowStripeCaptureForOrders($intent, $orders, $meta, $referenceCode)) {
                 $amountMismatch = true;
 
@@ -427,31 +433,44 @@ class OrderPaymentService
     /**
      * Drop this advertiser's unpaid or failed leftovers for these articles so a
      * new checkout can claim them. Pay again on the same leftover still works
-     * until they start that checkout. Already-failed card leftovers are
-     * cancelled here because pending-only fail updates skip them. Sibling
-     * leftovers that share the Stripe reference stay open for Pay again.
+     * until they start that checkout of a content-ready article. Unready rows
+     * (broken links, missing rights, expired) are skipped so Pay again survives.
+     * Already-failed card leftovers are cancelled here because pending-only
+     * fail updates skip them. Sibling leftovers that share the Stripe
+     * reference stay open for Pay again.
      *
      * Stripe-first cancel keeps a package with no order rows. A later checkout
      * of one of those articles must drop that package so a late webhook credits
      * the wallet instead of fulfilling the abandoned sibling line.
      *
+     * Checkout must call this only at the payment commit point (Stripe session
+     * persisted, saved-card charge started, or wallet attach about to write).
+     * $keepReferenceCode leaves the in-flight Stripe-first package in place so
+     * forget does not drop the checkout we just stored. $forgetPackages is
+     * false when the caller is still inside a DB transaction and will forget
+     * after commit — otherwise a rolled-back leftover would lose its package.
+     *
      * @param  array<int, int|string>  $submissionIds
      */
-    public function replaceUnpaidLeftoversForSubmissions(int $userId, array $submissionIds): void
-    {
+    public function replaceUnpaidLeftoversForSubmissions(
+        int $userId,
+        array $submissionIds,
+        ?string $keepReferenceCode = null,
+        bool $forgetPackages = true
+    ): void {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
             return;
         }
 
-        // Do not cancel Pay again just to discover the article cannot start a
-        // new catalog order (expired, rejected, missing file/links).
+        // Order / assign / checkout used to cancel leftovers first, then
+        // reject unready articles. That dropped Pay again on a leftover the
+        // advertiser could still settle after fixing links or rights.
         $submissionIds = ContentSubmission::query()
-            ->where('user_id', $userId)
             ->whereIn('id', $submissionIds)
-            ->with(['order', 'orderItems.order'])
+            ->where('user_id', $userId)
             ->get()
-            ->filter(fn (ContentSubmission $submission) => $submission->isAvailableForPicker())
+            ->filter(fn (ContentSubmission $submission) => $submission->isContentReadyForOrder())
             ->pluck('id')
             ->map(fn ($id) => (int) $id)
             ->values()
@@ -541,7 +560,9 @@ class OrderPaymentService
             }
         }
 
-        $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds);
+        if ($forgetPackages) {
+            $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds, $keepReferenceCode);
+        }
     }
 
     /**
@@ -551,8 +572,11 @@ class OrderPaymentService
      *
      * @param  array<int, int>  $submissionIds
      */
-    public function forgetPendingCheckoutsForSubmissions(int $userId, array $submissionIds): void
-    {
+    public function forgetPendingCheckoutsForSubmissions(
+        int $userId,
+        array $submissionIds,
+        ?string $keepReferenceCode = null
+    ): void {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
             return;
@@ -590,7 +614,11 @@ class OrderPaymentService
             }
         }
 
+        $keepReferenceCode = search_text((string) $keepReferenceCode);
         foreach (array_unique(array_filter($refs)) as $referenceCode) {
+            if ($keepReferenceCode !== '' && (string) $referenceCode === $keepReferenceCode) {
+                continue;
+            }
             $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
         }
     }
@@ -941,6 +969,24 @@ class OrderPaymentService
     }
 
     /**
+     * This Stripe capture was already returned as wallet cash (bonus gone,
+     * listing gone, or amount mismatch). A later webhook/success URL must
+     * not also mark the leftover paid once the promo is free again.
+     */
+    private function sessionAlreadyCreditedAsUnfulfilled(string $referenceCode, object $session): bool
+    {
+        $sessionId = (string) ($session->id ?? '');
+        if ($sessionId === '' || ! Schema::hasTable((new WalletTransaction)->getTable())) {
+            return false;
+        }
+
+        return WalletTransaction::query()
+            ->where('direction', 'credit')
+            ->where('reference', self::unfulfilledCardCreditReference($referenceCode, $sessionId))
+            ->exists();
+    }
+
+    /**
      * Card cash already returned via cancelAndRefund (e.g. a taken Content Library line).
      */
     public function refundedCardOrderAmount(string $referenceCode): float
@@ -1013,8 +1059,16 @@ class OrderPaymentService
 
         // Fail/cancel already released the live hold. Keep a snapshot-only
         // package so admin mark-paid can re-reserve THIS leftover's promo
-        // instead of minting it as cash on a later reject.
-        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package)) {
+        // instead of minting it as cash on a later reject. Do not snapshot
+        // after a paid leftover — Pay again / full-card settle must not
+        // leave bonus_applied for clawback to treat as promo.
+        $alreadyPaid = $userId > 0 && Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('user_id', $userId)
+            ->where('payment_status', 'paid')
+            ->where('status', '!=', 'cancelled')
+            ->exists();
+        if ($userId > 0 && $snapshotBonus > 0.009 && is_array($package) && ! $alreadyPaid) {
             $intents->storeLeftoverBonusSnapshot($referenceCode, $userId, $package, $snapshotBonus);
         }
     }

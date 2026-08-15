@@ -2519,6 +2519,16 @@ const CatalogLive = (function () {
             });
     }
 
+    function syncHideModeFromCard(card) {
+        if (!window.CatalogConfig || !card) return;
+        const raw = card.getAttribute('data-catalog-hide-mode');
+        if (raw === null) return;
+        CatalogConfig.inCatalogHideMode = raw === '1';
+        if (!CatalogConfig.inCatalogHideMode) {
+            CatalogConfig.catalogHideUntil = null;
+        }
+    }
+
     function syncConfigFlags(params) {
         if (!window.CatalogConfig) return;
         CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
@@ -2742,6 +2752,7 @@ const CatalogLive = (function () {
 
     function afterSwap(card, params, options) {
         syncConfigFlags(params);
+        syncHideModeFromCard(card);
         syncResultsCount(card);
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
@@ -4320,6 +4331,12 @@ document.addEventListener('DOMContentLoaded', function() {
         const url = button.dataset.url;
         try {
             await navigator.clipboard.writeText(url);
+            // Same strike path as selecting the rooted URL — this button
+            // copies the listing domain and used to bypass copy-track.
+            if (window.CatalogCopyTrack && typeof window.CatalogCopyTrack.report === 'function') {
+                const siteId = parseInt(button.getAttribute('data-site-id') || '', 10);
+                window.CatalogCopyTrack.report(url, Number.isFinite(siteId) && siteId > 0 ? siteId : null);
+            }
             catalogToast('URL copied to clipboard!', 'success');
             const originalText = button.innerHTML;
             button.innerHTML = '<i class="fa-regular fa-check"></i> Copied!';
@@ -4653,13 +4670,13 @@ document.addEventListener('click', async function (e) {
 /**
  * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
  * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
- * Disabled while hide mode is already on (eye + mask; no need to track).
+ * Always bind: CatalogConfig.inCatalogHideMode goes stale after an admin lift
+ * or hide expiry while this tab stays open (live search then paints real URLs).
+ * The server ignores copies while hide mode is actually on.
  * Entering hide_mode mid-session reloads so Blade paints masks + eyes.
  */
 (function trackCatalogDomainCopies() {
     if (!copyTrackEndpoint) return;
-    // Hide mode already masks identity (eye only) — no copy strikes needed.
-    if (CatalogConfig && CatalogConfig.inCatalogHideMode) return;
 
     const DOMAINISH = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#].*)?$/i;
     const recentKeys = new Set();
@@ -4667,10 +4684,20 @@ document.addEventListener('click', async function (e) {
     let hideToastShown = false;
     let trackingStopped = false;
 
-    function looksDomainish(text) {
-        const t = String(text || '').trim();
-        if (!t || t.length > 500 || /\r|\n/.test(t)) return false;
-        return DOMAINISH.test(t);
+    function extractDomainish(text) {
+        const tokens = String(text || '').split(/\s+/);
+        const hits = [];
+        const seen = {};
+        for (let i = 0; i < tokens.length; i++) {
+            const t = String(tokens[i] || '').replace(/^[\s"'<[(\{]+|[\s"'>\]\),\.;!?]+$/g, '');
+            if (!t || t.length > 500 || !DOMAINISH.test(t)) continue;
+            const key = t.toLowerCase();
+            if (seen[key]) continue;
+            seen[key] = true;
+            hits.push(t);
+            if (hits.length >= 40) break;
+        }
+        return hits;
     }
 
     function rowSiteId(node) {
@@ -4679,7 +4706,7 @@ document.addEventListener('click', async function (e) {
         if (node.closest('.bulk-deal-card, [data-bulk-deal-card], [data-bulk-rail]')) {
             return null;
         }
-        const row = node.closest('.site-row, .catalog-mobile-card, [data-id]');
+        const row = node.closest('.site-row, .catalog-mobile-card, .catalog-site-details, [data-id]');
         if (!row) return null;
         if (row.closest('.bulk-deal-card, [data-bulk-rail]')) return null;
         const id = parseInt(row.getAttribute('data-id') || '', 10);
@@ -4689,8 +4716,9 @@ document.addEventListener('click', async function (e) {
     function selectionInsideCatalog() {
         const sel = window.getSelection && window.getSelection();
         if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-        const text = String(sel.toString() || '').trim();
-        if (!looksDomainish(text)) return null;
+        const raw = String(sel.toString() || '');
+        const hits = extractDomainish(raw);
+        if (hits.length === 0) return null;
         const anchor = sel.anchorNode && (sel.anchorNode.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode);
         const focus = sel.focusNode && (sel.focusNode.nodeType === 3 ? sel.focusNode.parentElement : sel.focusNode);
         const node = anchor || focus;
@@ -4701,16 +4729,30 @@ document.addEventListener('click', async function (e) {
             return null;
         }
 
-        // Prefer explicit URL cells; also accept any selection inside a site row.
+        // Prefer explicit URL cells; also accept any selection inside a site
+        // row, mobile card, or Details expand (sibling <tr>, not .site-row).
         const urlCell = node.closest('.catalog-site-url');
-        const row = node.closest('.site-row, .catalog-mobile-card');
+        const row = node.closest('.site-row, .catalog-mobile-card, .catalog-site-details');
         if (!urlCell && !row) return null;
 
-        return { text, siteId: rowSiteId(urlCell || row) };
+        return {
+            text: hits.length === 1 ? hits[0] : hits.join('\n'),
+            siteId: hits.length === 1 ? rowSiteId(urlCell || row) : null,
+        };
+    }
+
+    function syncHideModeFromPayload(data) {
+        if (!CatalogConfig || !data || typeof data.in_hide_mode !== 'boolean') return;
+        CatalogConfig.inCatalogHideMode = data.in_hide_mode;
+        if (!data.in_hide_mode) {
+            CatalogConfig.catalogHideUntil = null;
+        } else if (data.hide_until) {
+            CatalogConfig.catalogHideUntil = data.hide_until;
+        }
     }
 
     async function reportCopy(text, siteId) {
-        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+        if (trackingStopped) return;
 
         const key = String(siteId || '') + '|' + String(text).toLowerCase();
         if (recentKeys.has(key)) return;
@@ -4734,6 +4776,7 @@ document.addEventListener('click', async function (e) {
             });
             const data = await res.json().catch(function () { return {}; });
             if (!data || !data.success) return;
+            syncHideModeFromPayload(data);
 
             if (data.status === 'warning' && !warningShown) {
                 warningShown = true;
@@ -4762,11 +4805,16 @@ document.addEventListener('click', async function (e) {
     }
 
     function onCatalogCopy() {
-        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+        if (trackingStopped) return;
         const hit = selectionInsideCatalog();
         if (!hit) return;
         reportCopy(hit.text, hit.siteId);
     }
 
     document.addEventListener('copy', onCatalogCopy);
+    document.addEventListener('cut', onCatalogCopy);
+
+    window.CatalogCopyTrack = {
+        report: reportCopy,
+    };
 })();

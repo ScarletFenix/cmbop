@@ -17,6 +17,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Models/EmailCampaign.php',
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Support/MailJobPayload.php',
+            $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
     }
 
@@ -74,6 +76,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Models/EmailCampaign.php',
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Services/AudienceInventoryService.php',
+            $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
 
         foreach ($files as $path) {

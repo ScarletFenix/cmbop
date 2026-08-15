@@ -2,9 +2,11 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
+use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\SiteDescriptionSanitizer;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
@@ -16,6 +18,8 @@ use Illuminate\Support\Facades\Schema;
 
 class Site extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected static function booted(): void
     {
         $bustInventory = static fn () => CatalogCountryInventory::forget();
@@ -594,17 +598,24 @@ class Site extends Model
 
     public function isFeatured(): bool
     {
-        if (! static::hasSitesColumn('featured_until')) {
-            return false;
-        }
+        $until = $this->safeFeaturedUntil();
 
-        try {
-            $until = $this->featured_until;
+        return $until !== null && $until->isFuture();
+    }
 
-            return $until instanceof \DateTimeInterface && $until->isFuture();
-        } catch (\Throwable) {
-            return false;
-        }
+    public function safeFeaturedUntil(): ?\DateTimeInterface
+    {
+        return $this->safeDateAttribute('featured_until');
+    }
+
+    public function safeCustomDiscountEndsAt(): ?\DateTimeInterface
+    {
+        return $this->safeDateAttribute('custom_discount_ends_at');
+    }
+
+    public function safeCustomDiscountStartsAt(): ?\DateTimeInterface
+    {
+        return $this->safeDateAttribute('custom_discount_starts_at');
     }
 
     /**
@@ -629,28 +640,22 @@ class Site extends Model
 
     public function hasActiveCustomDiscount(): bool
     {
-        if (! static::hasSitesColumn('custom_discount_percent')) {
+        if (! static::hasSitesColumn('custom_discount_percent') || ! $this->custom_discount_percent) {
             return false;
         }
 
-        try {
-            if (! $this->custom_discount_percent) {
-                return false;
-            }
-
-            $ends = $this->custom_discount_ends_at;
-            if (! $ends instanceof \DateTimeInterface) {
-                return false;
-            }
-
-            $starts = $this->custom_discount_starts_at;
-            $startsOk = $starts === null
-                || ($starts instanceof \DateTimeInterface && $starts->lte(now()));
-
-            return $startsOk && $ends->isFuture();
-        } catch (\Throwable) {
+        $ends = $this->safeCustomDiscountEndsAt();
+        if ($ends === null) {
             return false;
         }
+
+        $starts = $this->safeCustomDiscountStartsAt();
+        $rawStarts = $this->getAttributes()['custom_discount_starts_at'] ?? null;
+        if ($rawStarts !== null && $rawStarts !== '' && $starts === null) {
+            return false;
+        }
+
+        return ($starts === null || $starts->lte(now())) && $ends->isFuture();
     }
 
     public function activeCustomDiscountPercent(): ?float
@@ -1915,6 +1920,55 @@ class Site extends Model
     }
 
     /**
+     * Catalog Details HTML: sanitised description with listing-host anchors
+     * rewritten through /advertiser/go/{id}?path= so “Copy link address”
+     * cannot lift the publisher URL.
+     */
+    public function catalogDescriptionHtml(): string
+    {
+        $html = $this->safeDescriptionHtml();
+        if ($html === '' || ! str_contains($html, '<a ')) {
+            return $html;
+        }
+
+        $visibility = app(SiteUrlVisibility::class);
+        $allowed = array_values(array_unique(array_filter([
+            strtolower($visibility->host($this->site_url)),
+            strtolower($visibility->host((string) $this->example_url)),
+        ])));
+        if ($allowed === []) {
+            return $html;
+        }
+
+        $visit = route('advertiser.catalog.visit', $this->id);
+
+        return preg_replace_callback(
+            '/<a\s+href="([^"]*)"/i',
+            function (array $m) use ($visibility, $allowed, $visit) {
+                $href = html_entity_decode($m[1], ENT_QUOTES | ENT_HTML5, 'UTF-8');
+                $host = strtolower($visibility->host($href));
+                if ($host === '' || ! in_array($host, $allowed, true)) {
+                    return $m[0];
+                }
+
+                $path = (string) (parse_url($href, PHP_URL_PATH) ?: '/');
+                if (! str_starts_with($path, '/') || str_starts_with($path, '//')) {
+                    return '<a href="'.e($visit).'"';
+                }
+
+                $query = parse_url($href, PHP_URL_QUERY);
+                $rel = $path.($query ? '?'.$query : '');
+                if (strlen($rel) > 500 || str_contains($rel, '\\') || str_contains($rel, '://')) {
+                    return '<a href="'.e($visit).'"';
+                }
+
+                return '<a href="'.e($visit.'?path='.rawurlencode($rel)).'"';
+            },
+            $html
+        ) ?? $html;
+    }
+
+    /**
      * Publisher-entered article price (EUR), ignoring any in-memory advertiser markup.
      */
     public function publisherBasePrice(): float
@@ -2174,6 +2228,21 @@ class Site extends Model
             return Schema::hasColumn((new static)->getTable(), $column);
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    private function safeDateAttribute(string $attribute): ?\DateTimeInterface
+    {
+        try {
+            if (! static::hasSitesColumn($attribute)) {
+                return null;
+            }
+
+            $value = $this->{$attribute};
+
+            return $value instanceof \DateTimeInterface ? $value : null;
+        } catch (\Throwable) {
+            return null;
         }
     }
 
