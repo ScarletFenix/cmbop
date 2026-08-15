@@ -19,6 +19,8 @@ class FinanceController extends Controller
 {
     public const LEDGER_EXPORT_LIMIT = 10000;
 
+    public const DOSSIER_SEARCH_LIMIT = 8;
+
     public function __construct(
         private FinanceOverviewService $finance,
     ) {}
@@ -31,6 +33,7 @@ class FinanceController extends Controller
         $userQuery = search_text($request->input('q'));
         $needle = $this->dossierSearchNeedle($userQuery);
         $userMatches = collect();
+        $hasMoreMatches = false;
 
         if ($userQuery !== '') {
             $redirect = $this->redirectToDossierIfUnique($userQuery);
@@ -38,13 +41,17 @@ class FinanceController extends Controller
                 return $redirect;
             }
 
-            // Length is measured after stripping LIKE wildcards so "%@" / "_x"
-            // cannot bypass the 2-character floor and match every email.
-            if (strlen($needle) >= 2) {
-                $userMatches = $this->searchUsers($needle);
-                if ($userMatches->count() === 1) {
-                    return redirect()->route('admin.finance.user', $userMatches->first());
+            // Character length after stripping LIKE wildcards so "%@" / "é"
+            // cannot bypass the 2-character floor (strlen is bytes).
+            // The LIKE itself uses the raw query with escaped wildcards so
+            // "foo_bar" still matches an underscore email.
+            if (mb_strlen($needle) >= 2) {
+                $fetched = $this->searchUsers($userQuery, self::DOSSIER_SEARCH_LIMIT + 1);
+                if ($fetched->count() === 1) {
+                    return redirect()->route('admin.finance.user', $fetched->first());
                 }
+                $hasMoreMatches = $fetched->count() > self::DOSSIER_SEARCH_LIMIT;
+                $userMatches = $fetched->take(self::DOSSIER_SEARCH_LIMIT);
             }
         }
 
@@ -63,7 +70,8 @@ class FinanceController extends Controller
             'dateFrom' => $input['date_from'] ?? null,
             'dateTo' => $input['date_to'] ?? null,
             'userQuery' => $userQuery,
-            'userQueryTooShort' => $userQuery !== '' && strlen($needle) < 2,
+            'userQueryTooShort' => $userQuery !== '' && mb_strlen($needle) < 2,
+            'hasMoreMatches' => $hasMoreMatches,
             'userMatches' => $userMatches,
         ]);
     }
@@ -261,15 +269,22 @@ class FinanceController extends Controller
         }
 
         $search = search_text($request->input('search'));
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('reference', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('id', $search)
-                    ->orWhereHas('user', function ($sub) use ($search) {
-                        $sub->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
+        $meaningful = $this->dossierSearchNeedle($search);
+        if ($search !== '' && $meaningful === '') {
+            // "%%" / "_" only — do not treat as no filter (that dumps the ledger).
+            $query->whereRaw('0 = 1');
+        } elseif ($meaningful !== '') {
+            $like = like_contains($search);
+            $query->where(function ($q) use ($like, $search) {
+                $q->whereRaw('reference LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('description LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereHas('user', function ($sub) use ($like) {
+                        $sub->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                            ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
                     });
+                if ($this->isExactDigitId($search)) {
+                    $q->orWhere('id', (int) $search);
+                }
             });
         }
 
@@ -300,13 +315,21 @@ class FinanceController extends Controller
 
     private function redirectToDossierIfUnique(string $userQuery): ?RedirectResponse
     {
-        if (! ctype_digit($userQuery)) {
+        if (! $this->isExactDigitId($userQuery)) {
             return null;
         }
 
         $user = User::query()->whereKey((int) $userQuery)->first();
 
         return $user ? redirect()->route('admin.finance.user', $user) : null;
+    }
+
+    /**
+     * True for "8", not "08" or an overflowing digit string.
+     */
+    private function isExactDigitId(string $value): bool
+    {
+        return ctype_digit($value) && (string) ((int) $value) === $value;
     }
 
     /**
@@ -320,15 +343,17 @@ class FinanceController extends Controller
     /**
      * @return Collection<int, User>
      */
-    private function searchUsers(string $needle)
+    private function searchUsers(string $needle, int $limit)
     {
+        $like = like_contains($needle);
+
         return User::query()
-            ->where(function ($query) use ($needle) {
-                $query->where('name', 'like', '%'.$needle.'%')
-                    ->orWhere('email', 'like', '%'.$needle.'%');
+            ->where(function ($query) use ($like) {
+                $query->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
+                    ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
             })
             ->orderBy('name')
-            ->limit(8)
+            ->limit($limit)
             ->get(['id', 'name', 'email']);
     }
 

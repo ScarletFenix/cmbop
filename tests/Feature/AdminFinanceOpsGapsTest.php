@@ -118,6 +118,73 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->assertDontSee($two->email);
     }
 
+    public function test_user_search_uses_character_length_not_bytes(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $advertiser->update(['name' => 'éxample person', 'email' => 'accent-dossier@example.test']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'é']))
+            ->assertOk()
+            ->assertSee('Type at least 2 characters to find a user dossier.')
+            ->assertDontSee($advertiser->email);
+    }
+
+    public function test_user_search_does_not_claim_eight_when_more_match(): void
+    {
+        $admin = $this->makeUser('admin');
+        $hidden = null;
+        foreach (range(1, 9) as $i) {
+            $user = $this->makeUser('advertiser');
+            $user->update([
+                'name' => sprintf('Gamma Match %02d', $i),
+                'email' => sprintf('gamma-match-%02d@example.test', $i),
+            ]);
+            if ($i === 9) {
+                $hidden = $user;
+            }
+        }
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'Gamma Match']))
+            ->assertOk()
+            ->assertSee('More than 8 users match')
+            ->assertDontSee('9 users match')
+            ->getContent();
+
+        $this->assertStringContainsString('gamma-match-01@example.test', $html);
+        $this->assertStringContainsString('gamma-match-08@example.test', $html);
+        $this->assertStringNotContainsString($hidden->email, $html);
+    }
+
+    public function test_user_search_treats_underscore_as_literal(): void
+    {
+        $admin = $this->makeUser('admin');
+        $exact = $this->makeUser('advertiser');
+        $wildcard = $this->makeUser('publisher');
+        $exact->update(['name' => 'foo_bar dossier', 'email' => 'foo-bar-underscore@example.test']);
+        $wildcard->update(['name' => 'fooXbar dossier', 'email' => 'fooxbar-wild@example.test']);
+
+        // Unescaped LIKE "%foo_bar%" would also match fooXbar and stay on the list.
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'foo_bar']))
+            ->assertRedirect(route('admin.finance.user', $exact));
+    }
+
+    public function test_user_search_does_not_treat_leading_zero_id_as_user_key(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $advertiser->update(['name' => 'Zero Pad Person', 'email' => 'zero-pad@example.test']);
+        $padded = '0'.(string) $advertiser->id;
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => $padded]))
+            ->assertOk()
+            ->assertSee('No users match');
+    }
+
     public function test_dossier_rows_deep_link_to_admin_money_pages(): void
     {
         $admin = $this->makeUser('admin');
@@ -231,6 +298,80 @@ class AdminFinanceOpsGapsTest extends TestCase
         $this->assertStringContainsString('LEDGER-KEEP', $csv);
         $this->assertStringNotContainsString('LEDGER-SKIP', $csv);
         $this->assertStringNotContainsString($other->email, $csv);
+    }
+
+    public function test_ledger_search_treats_underscore_as_literal(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        app(WalletLedgerService::class)->recordTransferIn($wallet, 10, null, 'ORD_1', 'underscore ref');
+        app(WalletLedgerService::class)->recordTransferIn($wallet, 11, null, 'ORDX1', 'wildcard ref');
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => 'ORD_1']))
+            ->assertOk()
+            ->assertSee('underscore ref')
+            ->assertDontSee('wildcard ref');
+    }
+
+    public function test_ledger_wildcard_only_search_does_not_dump_all_rows(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        app(WalletLedgerService::class)->recordTransferIn($wallet, 10, null, 'LEDGER-WILD-1', 'wildcard dump keep');
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => '%%']))
+            ->assertOk()
+            ->assertDontSee('wildcard dump keep');
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.finance.ledger.export', ['search' => '%%']))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringNotContainsString('wildcard dump keep', $csv);
+        $this->assertStringNotContainsString('LEDGER-WILD-1', $csv);
+    }
+
+    public function test_ledger_search_does_not_treat_leading_zero_as_row_id(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $row = app(WalletLedgerService::class)->recordTransferIn($wallet, 10, null, 'LEDGER-PAD', 'padded id row');
+        $padded = '0'.(string) $row->id;
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => $padded]))
+            ->assertOk()
+            ->assertDontSee('padded id row');
     }
 
     public function test_ledger_ignores_array_search_and_invalid_dates(): void
