@@ -483,6 +483,129 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-LEFTOVER-BONUS-SPENT'), 0.01);
     }
 
+    public function test_admin_mark_paid_refuses_after_unfulfilled_card_credit(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-ADMIN-AFTER-CREDIT', 'pending');
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-ADMIN-AFTER-CREDIT', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-ADMIN-AFTER-CREDIT',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'stripe_session_id' => 'cs_admin_after_credit',
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-ADMIN-AFTER-CREDIT', 20);
+
+        $payments->markOrdersFailedFromReference('REF-ADMIN-AFTER-CREDIT', 'expired');
+        $payments->storePendingCheckout('REF-ADMIN-AFTER-CREDIT', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-ADMIN-AFTER-CREDIT',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'stripe_session_id' => 'cs_admin_after_credit',
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [],
+        ]);
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-ADMIN-AFTER-CREDIT');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-AFTER-CREDIT', 20);
+
+        $session = (object) [
+            'id' => 'cs_admin_after_credit',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_admin_after_credit',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-ADMIN-AFTER-CREDIT',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+                'user_id' => (string) $advertiser->id,
+            ],
+        ];
+
+        $this->assertTrue($payments->finalizeStripeFirstCheckout('REF-ADMIN-AFTER-CREDIT', $session)->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount('REF-ADMIN-AFTER-CREDIT'), 0.01);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $item->order_id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-AFTER-CREDIT'),
+            0.01
+        );
+    }
+
+    public function test_admin_mark_paid_refuses_after_late_stripe_unfulfilled_credit(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-ADMIN-LATE-CREDIT', 'pending');
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-ADMIN-LATE-CREDIT', 20);
+
+        app(OrderPaymentService::class)->markOrdersFailedFromReference('REF-ADMIN-LATE-CREDIT', 'expired');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-LATE-CREDIT', 20);
+
+        $session = (object) [
+            'id' => 'cs_admin_late_credit',
+            'object' => 'checkout.session',
+            'amount_total' => 6000,
+            'payment_intent' => 'pi_admin_late_credit',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-ADMIN-LATE-CREDIT',
+                'expected_amount' => '60',
+                'bonus_applied' => '20',
+            ],
+        ];
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession('REF-ADMIN-LATE-CREDIT', $session);
+        $this->assertTrue($paid->isEmpty());
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(
+            60.0,
+            app(OrderPaymentService::class)->unfulfilledCardCreditAmount('REF-ADMIN-LATE-CREDIT'),
+            0.01
+        );
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $item->order_id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
     public function test_second_cancel_does_not_steal_another_checkouts_reserved_bonus(): void
     {
         $advertiser = $this->userWithRole('advertiser');
