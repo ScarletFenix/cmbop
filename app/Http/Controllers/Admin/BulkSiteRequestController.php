@@ -730,6 +730,9 @@ class BulkSiteRequestController extends Controller
         }
 
         $didWork = $created > 0 || $deletedCount > 0;
+        if ($didWork) {
+            $bulkRequest->refreshProgressStatus();
+        }
 
         return back()
             ->with($didWork ? 'success' : 'error', $message)

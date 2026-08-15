@@ -17,6 +17,7 @@ use App\Models\Language;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Support\MarketingOpsQueues;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
 use Database\Seeders\LanguagesTableSeeder;
@@ -256,6 +257,10 @@ class BulkDoneRejectRowsTest extends TestCase
             $this->assertSame(0, $bulk->fresh()->items()->count());
             $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
             $this->assertNotSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
+            $this->assertFalse(
+                MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists(),
+                'Reject-all with no leftover URL+price rows must leave the Waiting on you queue.'
+            );
 
             Mail::assertQueued(BulkSiteItemsRejected::class, 1);
             Mail::assertNotQueued(BulkSitesSeededNotification::class);
@@ -267,6 +272,50 @@ class BulkDoneRejectRowsTest extends TestCase
                 ->where('title', '2 sites were not added from your bulk request')
                 ->count());
         }
+    }
+
+    public function test_reject_remaining_seeded_rows_completes_and_leaves_waiting_queue(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'seeded-left');
+        $linked = Site::create([
+            'publisher_id' => $this->publisher->id,
+            'bulk_site_request_id' => $bulk->id,
+            'site_name' => 'Already finished draft',
+            'site_url' => 'https://seeded-left-done.example',
+            'domain' => 'seeded-left-done.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 1000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Finished seeded draft for leftover reject. ', 2),
+            'verified' => false,
+            'active' => false,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+        $bulk->forceFill([
+            'status' => BulkSiteRequest::STATUS_SEEDED,
+            'seeded_at' => now(),
+        ])->save();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'rejected_item_ids' => [$items[0]->id],
+                'rejection_note' => 'The leftover URL will not be listed.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $items[0]->id]);
+        $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $bulk->fresh()->status);
+        $this->assertTrue($linked->fresh()->exists);
+        $this->assertFalse(MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists());
     }
 
     public function test_reject_without_note_does_not_delete(): void

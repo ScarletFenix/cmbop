@@ -148,6 +148,7 @@ class MarketingDashboardQueuesTest extends TestCase
             'estimated_count' => 3,
             'handled_by' => $this->marketer->id,
         ]);
+        $this->addPendingItem($requested, 'requested-waiting.example');
         $awaitingPublisher = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
             'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
@@ -367,6 +368,7 @@ class MarketingDashboardQueuesTest extends TestCase
                 'status' => BulkSiteRequest::STATUS_REQUESTED,
                 'estimated_count' => $i,
             ]);
+            $this->addPendingItem($req, 'oldest-first-'.$i.'.example');
             $req->forceFill([
                 'created_at' => now()->subDays(7 - $i),
                 'updated_at' => now()->subDays(7 - $i),
@@ -396,11 +398,12 @@ class MarketingDashboardQueuesTest extends TestCase
             'domain' => 'count-ready.example',
             'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
         ]);
-        BulkSiteRequest::create([
+        $waiting = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
             'status' => BulkSiteRequest::STATUS_REQUESTED,
             'estimated_count' => 2,
         ]);
+        $this->addPendingItem($waiting, 'count-waiting.example');
 
         $this->actingAs($this->marketer)
             ->getJson(route('marketing.dashboard.queue-counts'))
@@ -445,6 +448,16 @@ class MarketingDashboardQueuesTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
+    private function addPendingItem(BulkSiteRequest $bulk, string $domain): BulkSiteRequestItem
+    {
+        return BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://'.$domain,
+            'domain' => $domain,
+            'price' => 40,
+        ]);
+    }
+
     private function makeSite(array $overrides = []): Site
     {
         return Site::create(array_merge([
