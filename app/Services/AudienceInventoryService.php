@@ -44,7 +44,8 @@ class AudienceInventoryService
      */
     public static function customerPaymentStatuses(): array
     {
-        return ['paid', 'refunded'];
+        // `completed` is a legacy/alias paid flag (see AdvertiserOrderStatus).
+        return ['paid', 'completed', 'refunded'];
     }
 
     /**
@@ -223,32 +224,32 @@ class AudienceInventoryService
 
     public function advertiserCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS, null, $includeUnverified);
     }
 
     public function publisherCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_PUBLISHERS, null, $includeUnverified);
     }
 
     public function advertisersNoOrdersCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryAdvertisersNoOrders(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS_NO_ORDERS, null, $includeUnverified);
     }
 
     public function advertisersNoPaidOrdersCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS, null, $includeUnverified);
     }
 
     public function publishersNoSitesCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryPublishersNoSites(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_PUBLISHERS_NO_SITES, null, $includeUnverified);
     }
 
     public function advertisersNeverDepositedCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryAdvertisersNeverDeposited(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED, null, $includeUnverified);
     }
 
     public function queryForRole(string $roleName): Builder
@@ -281,7 +282,7 @@ class AudienceInventoryService
     }
 
     /**
-     * Advertisers who have never been a customer (no paid or refunded order).
+     * Advertisers who have never been a customer (no paid, completed, or refunded order).
      */
     public function queryAdvertisersNoPaidOrders(): Builder
     {
@@ -319,7 +320,7 @@ class AudienceInventoryService
      * Advertisers who have actually bought something.
      *
      * An abandoned unpaid checkout is not a customer. A later refund still
-     * means they checked out and paid, so paid + refunded both count.
+     * means they checked out and paid, so paid + completed + refunded all count.
      */
     public function queryAdvertisersWithPaidOrders(): Builder
     {
@@ -347,7 +348,7 @@ class AudienceInventoryService
      * Advertisers who funded a wallet but never became a customer.
      *
      * An abandoned unpaid checkout still belongs here — they have credit and
-     * did not finish paying. A paid or refunded order does not.
+     * did not finish paying. A paid, completed, or refunded order does not.
      */
     public function queryAdvertisersDepositedNoOrders(): Builder
     {
@@ -381,7 +382,7 @@ class AudienceInventoryService
     {
         $audienceKey = self::canonicalAudienceKey($audienceKey) ?? $audienceKey;
 
-        return match ($audienceKey) {
+        $query = match ($audienceKey) {
             self::AUDIENCE_ADVERTISERS => $this->queryForRole('advertiser'),
             self::AUDIENCE_PUBLISHERS => $this->queryForRole('publisher'),
             self::AUDIENCE_BOTH => $this->queryMarketplaceUsers(),
@@ -394,6 +395,8 @@ class AudienceInventoryService
             self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->queryAdvertisersDepositedNoOrders(),
             default => User::query()->whereRaw('1 = 0'),
         };
+
+        return $this->excludeStaffAccounts($query);
     }
 
     /**
@@ -460,7 +463,7 @@ class AudienceInventoryService
 
     public function bothUniqueCount(bool $includeUnverified = true): int
     {
-        return $this->applyRecipientScope($this->queryMarketplaceUsers(), $includeUnverified)->count();
+        return $this->count(self::AUDIENCE_BOTH, null, $includeUnverified);
     }
 
     /**
@@ -484,7 +487,10 @@ class AudienceInventoryService
 
     protected function pickerQuery(string $roleName): Builder
     {
-        return $this->queryForRole($roleName)
+        $query = $this->queryForRole($roleName);
+        $this->excludeStaffAccounts($query);
+
+        return $query
             ->setEagerLoads([])
             ->reorder()
             ->orderByRaw('case when email_verified_at is null then 1 else 0 end')
@@ -508,6 +514,7 @@ class AudienceInventoryService
             ->whereIn('id', $ids)
             ->whereNotNull('email')
             ->where('email', '!=', '')
+            ->whereRaw('TRIM(email) != ?', [''])
             ->orderBy('name');
 
         if ($roleIds->isEmpty()) {
@@ -515,6 +522,7 @@ class AudienceInventoryService
         }
 
         $query->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds));
+        $this->excludeStaffAccounts($query);
 
         return $this->applyRecipientScope($query, $includeUnverified);
     }
@@ -556,8 +564,22 @@ class AudienceInventoryService
         return User::query()
             ->whereNotNull('email')
             ->where('email', '!=', '')
+            ->whereRaw('TRIM(email) != ?', [''])
             ->with(['roles', 'activeRoleRelation'])
             ->orderBy('name');
+    }
+
+    /**
+     * Inventory + campaigns never email staff, including dual-role
+     * admin/marketing accounts that still have advertiser or publisher.
+     * Reminder queries keep queryForRole() as-is so deposit / add-site /
+     * digest commands are unchanged.
+     */
+    protected function excludeStaffAccounts(Builder $query): Builder
+    {
+        return $query->whereDoesntHave('roles', function (Builder $q) {
+            $q->whereIn('roles.name', ['admin', 'marketing']);
+        });
     }
 
     protected function applySearch(Builder $query, ?string $search): Builder
