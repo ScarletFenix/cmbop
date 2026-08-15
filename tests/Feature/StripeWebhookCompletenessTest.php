@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BulkSiteRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -437,6 +438,73 @@ class StripeWebhookCompletenessTest extends TestCase
         $this->assertDatabaseHas('site_feature_purchases', [
             'site_id' => $site->id,
             'user_id' => $payer->id,
+            'stripe_session_id' => $sessionId,
+            'payment_method' => 'stripe_credit',
+        ]);
+    }
+
+    public function test_site_feature_cancelled_bulk_credits_wallet_and_acks(): void
+    {
+        config([
+            'site_promotions.feature.price' => 25,
+            'site_promotions.feature.days' => 7,
+        ]);
+
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site->forceFill(['bulk_site_request_id' => $bulk->id])->save();
+
+        $roleId = Wallet::publisherRoleId();
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $roleId,
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $sessionId = 'cs_feature_leftover_'.uniqid();
+        $event = [
+            'id' => 'evt_feature_leftover_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => $sessionId,
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'payment_intent' => 'pi_feature_leftover',
+                    'amount_total' => 2500,
+                    'metadata' => [
+                        'type' => 'site_feature',
+                        'site_id' => (string) $site->id,
+                        'user_id' => (string) $publisher->id,
+                        'price' => '25',
+                        'days' => '7',
+                    ],
+                ],
+            ],
+        ];
+
+        $this->signedWebhook($event)->assertOk();
+        $this->assertNull($site->fresh()->featured_until);
+        $this->assertEquals(25.0, (float) $wallet->fresh()->balance);
+
+        $event['id'] = 'evt_feature_leftover_again_'.uniqid();
+        $this->signedWebhook($event)->assertOk();
+
+        $this->assertEquals(25.0, (float) $wallet->fresh()->balance);
+        $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', $sessionId)->count());
+        $this->assertDatabaseHas('site_feature_purchases', [
+            'site_id' => $site->id,
+            'user_id' => $publisher->id,
             'stripe_session_id' => $sessionId,
             'payment_method' => 'stripe_credit',
         ]);

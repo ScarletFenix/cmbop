@@ -2485,11 +2485,13 @@ class CatalogController extends Controller
                         ->where('reference_code', $referenceCode)
                         ->where('payment_method', 'card')
                         ->where('user_id', $userId)
+                        ->where('payment_status', 'paid')
+                        ->where('status', '!=', 'cancelled')
                         ->get();
                 }
 
                 if ($created->isEmpty()) {
-                    $credited = $paymentService->unfulfilledCardCreditAmount($referenceCode);
+                    $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
                     if ($credited > 0) {
                         return response()->json([
                             'success' => true,
@@ -2971,7 +2973,7 @@ class CatalogController extends Controller
                 ->get();
 
             if ($orders->isEmpty()) {
-                $credited = $paymentService->unfulfilledCardCreditAmount($referenceCode);
+                $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
                 if ($credited > 0) {
                     return redirect()->route('advertiser.checkout')
                         ->with(
@@ -2992,11 +2994,28 @@ class CatalogController extends Controller
                     ->with('error', 'Order not found. Please contact support with your payment reference.');
             }
 
+            $paidOrders = $orders->filter(fn (Order $order) => $order->payment_status === 'paid');
+            if ($paidOrders->isEmpty()) {
+                $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
+                if ($credited > 0) {
+                    return redirect()->route('advertiser.checkout')
+                        ->with(
+                            'success',
+                            'Payment received. The listing(s) were no longer available, so €'
+                            .number_format($credited, 2)
+                            .' was credited to your advertiser wallet.'
+                        );
+                }
+
+                return redirect()->route('advertiser.checkout')
+                    ->with('error', 'Payment was received but the listing(s) are no longer available. Contact support with your payment reference.');
+            }
+
             if ($newlyPaid->isNotEmpty()) {
                 $paymentService->notifyPublishersOfPaidOrders($newlyPaid);
             }
 
-            $this->removePaidOrdersFromCart($orders);
+            $this->removePaidOrdersFromCart($paidOrders);
             session()->forget([
                 'pending_card_payment',
                 'pending_cart',
@@ -3009,10 +3028,10 @@ class CatalogController extends Controller
                 'checkout_deferred_cart',
             ]);
 
-            $orderNumbers = $orders->pluck('order_number')->implode(', ');
-            $paidCount = $orders->count();
+            $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
+            $paidCount = $paidOrders->count();
             $remaining = count(session('cart', []));
-            $scheduledOrders = $orders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
+            $scheduledOrders = $paidOrders->filter(fn (Order $order) => ($order->publication_mode ?? '') === 'scheduled');
             $successMsg = $paidCount.' order(s) paid successfully! Order numbers: '.$orderNumbers;
             if ($scheduledOrders->isNotEmpty()) {
                 $first = $scheduledOrders->first();

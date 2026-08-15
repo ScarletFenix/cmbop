@@ -91,6 +91,7 @@ class OrderPaymentService
             (float) ($sessionMeta['order_total'] ?? 0)
         );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
+        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $sessionMeta);
 
         return $newlyPaid;
     }
@@ -157,6 +158,7 @@ class OrderPaymentService
             (float) ($meta['order_total'] ?? 0)
         );
         $this->evaluateSpendBudgetAfterPaidOrders($newlyPaid);
+        $this->creditHiddenCardOrdersAfterMarkPaid($referenceCode, $meta);
 
         return $newlyPaid;
     }
@@ -384,6 +386,49 @@ class OrderPaymentService
         });
     }
 
+    /**
+     * After a paid Stripe session, credit card cash for pending rows whose
+     * listings left the catalog and cancel those rows so webhooks settle.
+     *
+     * @param  array<string, mixed>  $meta
+     */
+    private function creditHiddenCardOrdersAfterMarkPaid(string $referenceCode, array $meta): void
+    {
+        $orders = Order::with('items.site')
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->get();
+
+        $hiddenPending = $orders->filter(function (Order $order) {
+            if (! in_array($order->payment_status, ['pending', 'failed'], true)) {
+                return false;
+            }
+            if (in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+                return false;
+            }
+
+            return ! $order->hasCatalogVisibleFulfillment();
+        });
+
+        if ($hiddenPending->isEmpty()) {
+            return;
+        }
+
+        $userId = (int) ($hiddenPending->first()->user_id ?? 0);
+        $paidTotal = round((float) $orders
+            ->filter(fn (Order $order) => $order->payment_status === 'paid')
+            ->sum(fn (Order $order) => (float) $order->total_amount), 2);
+        $expected = $this->expectedStripeEurosForOrders($orders, $meta);
+        $unfulfilled = round(max(0, $expected - $paidTotal), 2);
+        if ($userId > 0 && $unfulfilled > 0.009) {
+            $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
+        }
+
+        foreach ($hiddenPending as $order) {
+            $order->update(['status' => 'cancelled']);
+        }
+    }
+
     public function unfulfilledCardCreditAmount(string $referenceCode): float
     {
         if (! Schema::hasTable((new WalletTransaction)->getTable())) {
@@ -396,6 +441,31 @@ class OrderPaymentService
             ->first();
 
         return $row ? round((float) $row->amount, 2) : 0.0;
+    }
+
+    /**
+     * Card cash already returned via cancelAndRefund (e.g. a taken Content Library line).
+     */
+    public function refundedCardOrderAmount(string $referenceCode): float
+    {
+        return round((float) Order::query()
+            ->where('reference_code', $referenceCode)
+            ->where('payment_method', 'card')
+            ->where('payment_status', 'refunded')
+            ->sum('total_amount'), 2);
+    }
+
+    /**
+     * Wallet cash already given back when a paid card checkout could not be fulfilled.
+     * Unfulfilled-card credits and cancelAndRefund rows do not overlap.
+     */
+    public function walletCreditForUnfulfillableCardCheckout(string $referenceCode): float
+    {
+        return round(
+            $this->unfulfilledCardCreditAmount($referenceCode)
+            + $this->refundedCardOrderAmount($referenceCode),
+            2
+        );
     }
 
     /**
@@ -493,7 +563,8 @@ class OrderPaymentService
         $schema = app(CheckoutSchemaService::class);
         $schema->ensureCheckoutTables();
 
-        $created = DB::transaction(function () use ($package, $referenceCode, $session, $schema) {
+        $refundedInFinalize = 0.0;
+        $created = DB::transaction(function () use ($package, $referenceCode, $session, $schema, &$refundedInFinalize) {
             $already = Order::query()
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -609,6 +680,10 @@ class OrderPaymentService
                         $order,
                         'Content Library article was already purchased on another checkout'
                     );
+                    $refundedInFinalize = round(
+                        $refundedInFinalize + (float) $order->total_amount,
+                        2
+                    );
                     Log::warning('Refunded duplicate Content Library Stripe checkout', [
                         'reference_code' => $referenceCode,
                         'order_id' => $order->id,
@@ -657,7 +732,8 @@ class OrderPaymentService
                     $referenceCode,
                     round((float) ($package['bonus_applied'] ?? 0), 2)
                 );
-                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $expected);
+                $unfulfilled = round(max(0, $expected - $refundedInFinalize), 2);
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
             }
             $this->forgetPendingCheckout($referenceCode);
             Log::warning('Stripe-first checkout paid but no catalog-visible lines to materialize', [
@@ -671,7 +747,7 @@ class OrderPaymentService
 
         $userId = (int) ($package['user_id'] ?? 0);
         $fulfilled = round((float) $created->sum(fn (Order $order) => (float) $order->total_amount), 2);
-        $unfulfilled = round(max(0, $expected - $fulfilled), 2);
+        $unfulfilled = round(max(0, $expected - $fulfilled - $refundedInFinalize), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
         }

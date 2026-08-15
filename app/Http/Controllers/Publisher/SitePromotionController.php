@@ -179,6 +179,11 @@ class SitePromotionController extends Controller
             // so the publisher is not charged without receiving the feature.
             $result = $this->promotions->featureFromStripePayment($site, auth()->user(), $sessionId);
 
+            if ($result['credited'] ?? false) {
+                return redirect()->route('publisher.websites')
+                    ->with('success', $result['message'] ?? 'Payment credited to your publisher wallet.');
+            }
+
             if ($result['success'] ?? false) {
                 ActivityLogger::log(
                     'site.featured_stripe',
