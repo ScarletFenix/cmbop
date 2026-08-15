@@ -219,6 +219,10 @@ class AdminCatalogCopyStrikeTest extends TestCase
         $this->assertFalse($advertiser->inCatalogHideMode());
         $this->assertSame(User::CATALOG_COPY_POST_HIDE, $advertiser->catalogCopyStatus());
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $advertiser->id)->count());
+        $this->assertSame(
+            (int) CatalogCopyEvent::where('user_id', $advertiser->id)->max('id'),
+            (int) $advertiser->catalog_copy_after_id
+        );
         $this->assertSame(1, ActivityLog::where('action', 'catalog_hide_lifted')->count());
     }
 
@@ -249,6 +253,10 @@ class AdminCatalogCopyStrikeTest extends TestCase
         $this->assertNull($advertiser->catalog_copy_warned_at);
         $this->assertTrue($advertiser->inCatalogHideMode());
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $advertiser->id)->count());
+        $this->assertSame(
+            (int) CatalogCopyEvent::where('user_id', $advertiser->id)->max('id'),
+            (int) $advertiser->catalog_copy_after_id
+        );
         $this->assertSame(1, ActivityLog::where('action', 'catalog_strikes_reset')->count());
     }
 
@@ -279,6 +287,10 @@ class AdminCatalogCopyStrikeTest extends TestCase
         $this->assertNull($advertiser->catalog_copy_warned_at);
         $this->assertNull($advertiser->catalog_hide_until);
         $this->assertSame(1, CatalogCopyEvent::where('user_id', $advertiser->id)->count());
+        $this->assertSame(
+            (int) CatalogCopyEvent::where('user_id', $advertiser->id)->max('id'),
+            (int) $advertiser->catalog_copy_after_id
+        );
     }
 
     public function test_non_admin_cannot_lift_hide_or_reset_strikes(): void

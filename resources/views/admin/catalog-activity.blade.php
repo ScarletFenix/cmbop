@@ -62,7 +62,7 @@
             </div>
             <div class="card-body p-0">
                 @if($copyStrikeCapped ?? false)
-                    <div class="small text-muted px-3 pt-2">Showing 100. Narrow with search or the day filter.</div>
+                    <div class="small text-muted px-3 pt-2">Showing 100. Narrow with search.</div>
                 @endif
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">

@@ -181,6 +181,7 @@ class CatalogActivityController extends Controller
         $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
 
         $model->catalog_hide_until = null;
+        CatalogCopyStrikeGuard::watermarkEvents($model);
         $model->save();
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
@@ -216,9 +217,7 @@ class CatalogActivityController extends Controller
 
         $model->catalog_copy_strike_count = 0;
         $model->catalog_copy_warned_at = null;
-        if (Schema::hasColumn('users', 'catalog_copy_after_id')) {
-            $model->catalog_copy_after_id = null;
-        }
+        CatalogCopyStrikeGuard::watermarkEvents($model);
         $model->save();
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
@@ -261,9 +260,7 @@ class CatalogActivityController extends Controller
         $model->catalog_hide_until = null;
         $model->catalog_copy_strike_count = 0;
         $model->catalog_copy_warned_at = null;
-        if (Schema::hasColumn('users', 'catalog_copy_after_id')) {
-            $model->catalog_copy_after_id = null;
-        }
+        CatalogCopyStrikeGuard::watermarkEvents($model);
         $model->save();
 
         ActivityLogger::tryLog(
