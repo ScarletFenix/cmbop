@@ -909,7 +909,10 @@ class Site extends Model
             $query->notFromCancelledBulk();
         }
         if (static::hasSitesColumn('archived_at')) {
-            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
+            $query->orderByRaw(
+                'case when archived_at is null or archived_at > ? or archived_at < ? then 0 else 1 end',
+                [static::PLAUSIBLE_SQL_DATETIME_CEIL, static::PLAUSIBLE_SQL_DATETIME_FLOOR]
+            );
         }
         $query->orderBy('id');
         if ($lock) {
@@ -1341,7 +1344,16 @@ class Site extends Model
             return $query;
         }
 
-        return $query->whereNull('archived_at');
+        // Leftover Hostinger strings are not a staff archive. whereNull misses
+        // them, so live listings vanished from catalogVisible() / the hub.
+        $floor = static::PLAUSIBLE_SQL_DATETIME_FLOOR;
+        $ceil = static::PLAUSIBLE_SQL_DATETIME_CEIL;
+
+        return $query->where(function (Builder $q) use ($floor, $ceil) {
+            $q->whereNull('archived_at')
+                ->orWhere('archived_at', '>', $ceil)
+                ->orWhere('archived_at', '<', $floor);
+        });
     }
 
     public function scopeArchived(Builder $query): Builder
@@ -1350,7 +1362,9 @@ class Site extends Model
             return $query->whereRaw('1 = 0');
         }
 
-        return $query->whereNotNull('archived_at');
+        return $query->whereNotNull('archived_at')
+            ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
     }
 
     public function isArchived(): bool
@@ -1359,7 +1373,13 @@ class Site extends Model
             return false;
         }
 
-        return $this->archived_at !== null;
+        try {
+            $at = $this->archived_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at instanceof \DateTimeInterface;
     }
 
     /**
