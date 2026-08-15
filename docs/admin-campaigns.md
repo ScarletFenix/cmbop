@@ -91,7 +91,11 @@ or marketing, even if that staff account also has a marketplace role.
    wraps **each** queue connection in its own try/catch so a broken first
    connection cannot hide a job on the other (and must stay valid PHP —
    no extra unclosed `try`, and `recipientRowQuery` / `containsCampaignId`
-   must not be declared twice).
+   must not be declared twice). A scan that throws (lock wait, missing
+   `payload` column) must **not** look like “no job” or recover floods
+   another send. Live send uses the current `@` address, then the stored
+   recipient email from compose, then fails — a profile wipe after queue
+   must not drop someone we already counted.
    Email Center retry of a failed campaign mailable clears `email_log_id`
    so a lost retry can still expire as stale.
    `user_ids` are integers capped at
@@ -104,7 +108,8 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
 
 - Body is sanitized with `CampaignHtml` (allowlist `p, br, strong, b, em, i, u,
   ul, ol, li, a, h1–h3, blockquote`). Event handlers and `javascript:` / `data:`
-  hrefs are dropped. CTA URLs must be `http` or `https`.
+  hrefs are dropped. CTA URLs must be `http` or `https`. `&nbsp;`-only bodies
+  are blank and rejected before hydrate.
 - Campaign `collect()` / `count()` default **`includeUnverified = false`**.
   Audience Inventory census (`paginate` / `export` / `stats()`) still includes
   unverified unless asked otherwise. Inventory cards show **all** plus

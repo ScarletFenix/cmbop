@@ -61,7 +61,9 @@ class CampaignHtml
 
     public static function isBlank(string $html): bool
     {
-        $text = trim(html_entity_decode(strip_tags(self::sanitize($html)), ENT_QUOTES, 'UTF-8'));
+        $text = html_entity_decode(strip_tags(self::sanitize($html)), ENT_QUOTES, 'UTF-8');
+        $text = str_replace("\u{00A0}", '', $text);
+        $text = preg_replace('/\s+/u', '', $text) ?? '';
 
         return $text === '';
     }

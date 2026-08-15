@@ -58,6 +58,14 @@ class CampaignHtmlTest extends TestCase
         $this->assertStringContainsString('Hi', $clean);
     }
 
+    public function test_nbsp_only_body_is_blank(): void
+    {
+        $this->assertTrue(CampaignHtml::isBlank('   '));
+        $this->assertTrue(CampaignHtml::isBlank('<p>&nbsp;</p>'));
+        $this->assertTrue(CampaignHtml::isBlank('<p>'.html_entity_decode('&nbsp;').'</p>'));
+        $this->assertFalse(CampaignHtml::isBlank('<p>Hello</p>'));
+    }
+
     public function test_data_and_javascript_urls_are_rejected(): void
     {
         $this->assertFalse(CampaignHtml::isSafeHttpUrl('javascript:alert(1)'));
