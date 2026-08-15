@@ -272,7 +272,7 @@ class CatalogActivityController extends Controller
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
-            'catalog_hide_cleared',
+            'catalog_activity.copy_hide_cleared',
             $model->email.' hide mode lifted and strikes reset. Copy history is kept.',
             $model,
             [
@@ -303,7 +303,7 @@ class CatalogActivityController extends Controller
             $model->save();
 
             $this->logActivity(
-                'catalog_pace_exempted',
+                'catalog_activity.exempt_toggled',
                 $model->email.' is back under the usual pace checks.',
                 $model,
                 ['exempt' => false]
@@ -321,7 +321,7 @@ class CatalogActivityController extends Controller
         $model->save();
 
         $this->logActivity(
-            'catalog_pace_exempted',
+            'catalog_activity.exempt_toggled',
             $model->email.' is trusted for '.$minutes.' minutes.',
             $model,
             [
