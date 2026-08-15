@@ -12,6 +12,7 @@ use App\Services\CommunityInboxNotifier;
 use App\Services\SiteClaimTransferService;
 use App\Support\CommunityInbox;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
@@ -265,14 +266,30 @@ class CommunityFeedbackController extends Controller
         $goingPending = $data['status'] === 'pending';
         $leavingPending = $model->status === 'pending' && ! $goingPending;
 
-        $model->forceFill([
+        $payload = [
             'status' => $data['status'],
             'admin_notes' => $data['admin_notes'] ?? $model->admin_notes,
             'reviewed_at' => $goingPending ? null : now(),
             'reviewed_by' => $goingPending
                 ? null
                 : ($leavingPending ? auth()->id() : ($model->reviewed_by ?: auth()->id())),
-        ])->save();
+            'updated_at' => now(),
+        ];
+
+        $query = $model->newQuery()->whereKey($model->id);
+        if ($leavingPending) {
+            $query->where('status', 'pending');
+        }
+
+        $affected = $query->update($payload);
+        if ($leavingPending && $affected !== 1) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This item was already reviewed.',
+            ], 422);
+        }
+
+        $model->refresh();
 
         ActivityLogger::log(
             $activityType,
@@ -282,7 +299,14 @@ class CommunityFeedbackController extends Controller
         );
 
         if ($leavingPending) {
-            $this->inboxNotifier->notifySubmitterReviewed($model->fresh(['user']), $tab);
+            try {
+                $this->inboxNotifier->notifySubmitterReviewed($model->fresh(['user']), $tab);
+            } catch (\Throwable $e) {
+                Log::warning('Failed to notify community submitter: '.$e->getMessage(), [
+                    'tab' => $tab,
+                    'id' => $model->id,
+                ]);
+            }
         }
 
         return response()->json([

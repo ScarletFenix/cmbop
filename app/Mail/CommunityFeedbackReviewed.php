@@ -25,6 +25,7 @@ class CommunityFeedbackReviewed extends PlatformMailable
         $subjectLabel = $this->kind === 'problem'
             ? (string) ($this->item->subject ?: 'your report')
             : 'your suggestion';
+        $subjectLabel = trim(preg_replace('/[\r\n]+/', ' ', $subjectLabel) ?? $subjectLabel);
 
         return $this->subject(
             ($resolved ? 'Update on ' : 'We reviewed ').$subjectLabel
@@ -36,7 +37,7 @@ class CommunityFeedbackReviewed extends PlatformMailable
                 'resolved' => $resolved,
                 'subjectLabel' => $subjectLabel,
                 'notes' => trim((string) ($this->item->admin_notes ?? '')),
-                'actionUrl' => url('/'),
+                'actionUrl' => $this->publicRoute('home'),
             ]);
     }
 }
