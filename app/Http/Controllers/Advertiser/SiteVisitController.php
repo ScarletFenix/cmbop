@@ -42,13 +42,25 @@ class SiteVisitController extends Controller
         // Pace + visit disclosure only matter while copy-strike hide mode masks
         // the row. Outside that, identity is already open — do not invent a
         // "reveal first" gate or burn pace on a normal open.
+        //
+        // Open site / ?sample=1 / ?path= must use the same SLOW + FROZEN
+        // rules as the eye. Skipping SLOW let a script walk /go/{id} and
+        // unlock hosts while the eye was being told to wait.
         if ($user && $visibility->inHideMode($user)) {
             try {
                 if (! $visibility->canSee($user, $model)) {
-                    if ($pace->assess($user)['state'] === RevealPaceGuard::FROZEN) {
-                        return redirect()
-                            ->route('advertiser.catalog')
-                            ->with('error', RevealPaceGuard::freezeUserMessage());
+                    if (! $visibility->hasEverSeen($user, $model)) {
+                        $verdict = $pace->assess($user);
+                        if ($verdict['state'] === RevealPaceGuard::FROZEN) {
+                            return redirect()
+                                ->route('advertiser.catalog')
+                                ->with('error', RevealPaceGuard::freezeUserMessage());
+                        }
+                        if ($verdict['state'] === RevealPaceGuard::SLOW) {
+                            return redirect()
+                                ->route('advertiser.catalog')
+                                ->with('error', RevealPaceGuard::slowUserMessage((int) ($verdict['retry_after'] ?? 3)));
+                        }
                     }
 
                     $visibility->reveal($user, $model, SiteUrlReveal::SOURCE_VISIT);

@@ -418,6 +418,59 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $blocked->id]);
     }
 
+    public function test_clicking_through_is_not_a_way_round_a_slow_down(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.slow_after' => 2,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            'catalog.url_reveal.pace.freeze_after' => 250,
+        ]);
+
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+
+        foreach (['slow-a.example', 'slow-b.example'] as $domain) {
+            $site = $this->site($publisher, $domain);
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.catalog.reveal-url', $site->id))
+                ->assertOk();
+        }
+
+        $blocked = $this->site($publisher, 'slow-should-not-open.example');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $blocked->id))
+            ->assertRedirect(route('advertiser.catalog'));
+
+        $this->assertDatabaseMissing('site_url_reveals', ['site_id' => $blocked->id]);
+    }
+
+    public function test_already_opened_visit_still_works_during_slow_down(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.slow_after' => 2,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            'catalog.url_reveal.pace.freeze_after' => 250,
+        ]);
+
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+        $opened = $this->site($publisher, 'slow-already-open.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $opened->id))
+            ->assertOk();
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.catalog.reveal-url', $this->site($publisher, 'slow-peer.example')->id))
+            ->assertOk();
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog.visit', $opened->id))
+            ->assertRedirect('https://slow-already-open.example');
+    }
+
     public function test_pace_does_not_block_visits_outside_hide_mode(): void
     {
         config([
