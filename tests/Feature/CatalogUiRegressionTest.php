@@ -121,6 +121,13 @@ class CatalogUiRegressionTest extends TestCase
         // Eye listeners are gated to hide mode, then capture-phase so reveal
         // runs before any leftover expand handlers.
         $this->assertStringContainsString('if (CatalogConfig && CatalogConfig.inCatalogHideMode) {', $js);
+        // Copy tracking must stay bound when the page loaded in hide mode so
+        // an admin lift / expiry + live search still records the next wave.
+        $this->assertDoesNotMatchRegularExpression(
+            '/if \(!copyTrackEndpoint\) return;\s*(?:\/\/[^\n]*\n\s*)*if \(CatalogConfig && CatalogConfig\.inCatalogHideMode\) return;/',
+            $js
+        );
+        $this->assertStringContainsString('syncHideModeFromPayload', $js);
         $this->assertMatchesRegularExpression(
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js

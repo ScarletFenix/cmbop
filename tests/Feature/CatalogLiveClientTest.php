@@ -71,6 +71,8 @@ class CatalogLiveClientTest extends TestCase
         $this->assertStringContainsString('CatalogConfig.routes.results', $js);
         $this->assertStringContainsString('CatalogConfig.liveSearch === false', $js);
         $this->assertStringContainsString('applyResultsHtml', $js);
+        $this->assertStringContainsString('syncHideModeFromCard', $js);
+        $this->assertStringContainsString('data-catalog-hide-mode', $js);
         $this->assertStringContainsString('popstate', $js);
         // Row actions must be delegated so swapped markup stays clickable.
         $this->assertStringContainsString("e.target.closest('.buy-now')", $js);

@@ -177,13 +177,15 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        $model = User::findOrFail($user);
-        $hideUntilWas = $model->catalog_hide_until;
-        $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+        [$model, $hideUntilWas, $strikesWere] = $this->mutateLockedUser($user, function (User $model) {
+            $hideUntilWas = $model->catalog_hide_until;
+            $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $model->catalog_hide_until = null;
+            CatalogCopyStrikeGuard::watermarkEvents($model);
+            $model->save();
 
-        $model->catalog_hide_until = null;
-        CatalogCopyStrikeGuard::watermarkEvents($model);
-        $model->save();
+            return [$model, $hideUntilWas, $strikesWere];
+        });
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -211,15 +213,17 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        $model = User::findOrFail($user);
-        $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
-        $warnedAtWas = $model->catalog_copy_warned_at;
-        $inHide = $model->inCatalogHideMode();
+        [$model, $strikesWere, $warnedAtWas, $inHide] = $this->mutateLockedUser($user, function (User $model) {
+            $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $warnedAtWas = $model->catalog_copy_warned_at;
+            $inHide = $model->inCatalogHideMode();
+            $model->catalog_copy_strike_count = 0;
+            $model->catalog_copy_warned_at = null;
+            CatalogCopyStrikeGuard::watermarkEvents($model);
+            $model->save();
 
-        $model->catalog_copy_strike_count = 0;
-        $model->catalog_copy_warned_at = null;
-        CatalogCopyStrikeGuard::watermarkEvents($model);
-        $model->save();
+            return [$model, $strikesWere, $warnedAtWas, $inHide];
+        });
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -254,15 +258,17 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        $model = User::findOrFail($user);
-        $hideUntilWas = $model->catalog_hide_until;
-        $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+        [$model, $hideUntilWas, $strikesWere] = $this->mutateLockedUser($user, function (User $model) {
+            $hideUntilWas = $model->catalog_hide_until;
+            $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $model->catalog_hide_until = null;
+            $model->catalog_copy_strike_count = 0;
+            $model->catalog_copy_warned_at = null;
+            CatalogCopyStrikeGuard::watermarkEvents($model);
+            $model->save();
 
-        $model->catalog_hide_until = null;
-        $model->catalog_copy_strike_count = 0;
-        $model->catalog_copy_warned_at = null;
-        CatalogCopyStrikeGuard::watermarkEvents($model);
-        $model->save();
+            return [$model, $hideUntilWas, $strikesWere];
+        });
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -571,6 +577,21 @@ class CatalogActivityController extends Controller
         }
 
         return $totals;
+    }
+
+    /**
+     * @template T
+     *
+     * @param  callable(User): T  $callback
+     * @return T
+     */
+    private function mutateLockedUser(int $userId, callable $callback): mixed
+    {
+        return DB::transaction(function () use ($userId, $callback) {
+            $model = User::query()->whereKey($userId)->lockForUpdate()->firstOrFail();
+
+            return $callback($model);
+        });
     }
 
     private function parseDbTimestamp(mixed $value): ?Carbon

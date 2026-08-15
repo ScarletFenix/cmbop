@@ -55,6 +55,7 @@
 @endphp
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
                  tabindex="-1"
+                 data-catalog-hide-mode="{{ $inCatalogHideMode ? '1' : '0' }}"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
                  data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}"

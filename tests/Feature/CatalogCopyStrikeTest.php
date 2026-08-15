@@ -342,4 +342,23 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(0, CatalogCopyEvent::where('user_id', $user->id)->count());
         $this->assertTrue($user->fresh()->inCatalogHideMode());
     }
+
+    public function test_copy_tracking_resumes_after_hide_expires(): void
+    {
+        $user = $this->advertiser([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->subMinute(),
+        ]);
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        $result = $guard->record(
+            $user,
+            $this->site('after-expiry.example')->id,
+            'https://after-expiry.example'
+        );
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_RECORDED, $result['status']);
+        $this->assertFalse($result['in_hide_mode']);
+        $this->assertSame(1, CatalogCopyEvent::where('user_id', $user->id)->count());
+    }
 }

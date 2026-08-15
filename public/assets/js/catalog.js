@@ -2519,6 +2519,16 @@ const CatalogLive = (function () {
             });
     }
 
+    function syncHideModeFromCard(card) {
+        if (!window.CatalogConfig || !card) return;
+        const raw = card.getAttribute('data-catalog-hide-mode');
+        if (raw === null) return;
+        CatalogConfig.inCatalogHideMode = raw === '1';
+        if (!CatalogConfig.inCatalogHideMode) {
+            CatalogConfig.catalogHideUntil = null;
+        }
+    }
+
     function syncConfigFlags(params) {
         if (!window.CatalogConfig) return;
         CatalogConfig.favoritesFilter = params.get('favorites_filter') === '1';
@@ -2742,6 +2752,7 @@ const CatalogLive = (function () {
 
     function afterSwap(card, params, options) {
         syncConfigFlags(params);
+        syncHideModeFromCard(card);
         syncResultsCount(card);
         syncFilterChips(params);
         syncMoreFiltersBadge(params);
@@ -4653,13 +4664,13 @@ document.addEventListener('click', async function (e) {
 /**
  * Phase 2 — track clipboard copies of URL/domain identity on the catalog.
  * Distinct domains toward ~5 pages / short window → warn, then 24h hide mode.
- * Disabled while hide mode is already on (eye + mask; no need to track).
+ * Always bind: CatalogConfig.inCatalogHideMode goes stale after an admin lift
+ * or hide expiry while this tab stays open (live search then paints real URLs).
+ * The server ignores copies while hide mode is actually on.
  * Entering hide_mode mid-session reloads so Blade paints masks + eyes.
  */
 (function trackCatalogDomainCopies() {
     if (!copyTrackEndpoint) return;
-    // Hide mode already masks identity (eye only) — no copy strikes needed.
-    if (CatalogConfig && CatalogConfig.inCatalogHideMode) return;
 
     const DOMAINISH = /^(?:https?:\/\/)?(?:www\.)?[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+(?:[/:?#].*)?$/i;
     const recentKeys = new Set();
@@ -4709,8 +4720,18 @@ document.addEventListener('click', async function (e) {
         return { text, siteId: rowSiteId(urlCell || row) };
     }
 
+    function syncHideModeFromPayload(data) {
+        if (!CatalogConfig || !data || typeof data.in_hide_mode !== 'boolean') return;
+        CatalogConfig.inCatalogHideMode = data.in_hide_mode;
+        if (!data.in_hide_mode) {
+            CatalogConfig.catalogHideUntil = null;
+        } else if (data.hide_until) {
+            CatalogConfig.catalogHideUntil = data.hide_until;
+        }
+    }
+
     async function reportCopy(text, siteId) {
-        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+        if (trackingStopped) return;
 
         const key = String(siteId || '') + '|' + String(text).toLowerCase();
         if (recentKeys.has(key)) return;
@@ -4734,6 +4755,7 @@ document.addEventListener('click', async function (e) {
             });
             const data = await res.json().catch(function () { return {}; });
             if (!data || !data.success) return;
+            syncHideModeFromPayload(data);
 
             if (data.status === 'warning' && !warningShown) {
                 warningShown = true;
@@ -4762,7 +4784,7 @@ document.addEventListener('click', async function (e) {
     }
 
     function onCatalogCopy() {
-        if (trackingStopped || (CatalogConfig && CatalogConfig.inCatalogHideMode)) return;
+        if (trackingStopped) return;
         const hit = selectionInsideCatalog();
         if (!hit) return;
         reportCopy(hit.text, hit.siteId);
