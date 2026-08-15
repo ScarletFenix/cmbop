@@ -898,6 +898,73 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertSame($secondSubmission->id, (int) $second->fresh()->content_submission_id);
     }
 
+    public function test_cannot_attach_library_article_claimed_by_another_paid_order(): void
+    {
+        $claimed = $this->createApprovedSubmission($this->advertiser);
+        $replacement = $this->createApprovedSubmission($this->advertiser);
+
+        $other = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $other->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $claimed->id,
+            'content_link' => 'https://docs.example/claimed-lib',
+            'price' => 80,
+        ]);
+        $claimed->update(['order_id' => null, 'order_item_id' => null]);
+
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_submission_id' => $replacement->id,
+            'content_link' => 'https://docs.example/replacement-lib',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please attach a different library article.',
+        ]);
+        $replacement->update(['order_id' => $order->id, 'order_item_id' => $item->id]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_submission_id' => $claimed->id,
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422);
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        $this->assertSame($replacement->id, (int) $item->fresh()->content_submission_id);
+    }
+
     public function test_auto_approve_blocked_while_content_revision_open(): void
     {
         $item = $this->makeProcessingItem();

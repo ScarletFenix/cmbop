@@ -4803,7 +4803,13 @@ class CatalogController extends Controller
             return true;
         }
 
-        return $userId > 0 && (int) ($package['user_id'] ?? 0) === $userId;
+        if ($userId <= 0 || (int) ($package['user_id'] ?? 0) !== $userId) {
+            return false;
+        }
+
+        // An open Stripe session still owns this ref. Reusing it overwrites
+        // the package so a late first-session webhook would settle the new cart.
+        return search_text($package['stripe_session_id'] ?? '') === '';
     }
 
     private function refundCheckoutBonus(int $userId, string $referenceCode): void

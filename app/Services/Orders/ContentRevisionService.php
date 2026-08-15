@@ -268,7 +268,11 @@ class ContentRevisionService
                     ->where('content_submission_id', $submission->id)
                     ->exists();
 
-                if (! $sameAsCurrent && ($linkedElsewhere || $usedBySibling)) {
+                if (! $sameAsCurrent && (
+                    $linkedElsewhere
+                    || $usedBySibling
+                    || $submission->isClaimedByAnotherOrder((int) $lockedOrder->id)
+                )) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'That Content Library article is already used on another placement.',
                     ]);

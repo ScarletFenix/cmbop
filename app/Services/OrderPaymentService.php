@@ -611,6 +611,22 @@ class OrderPaymentService
             return collect();
         }
 
+        $packageSessionId = search_text($package['stripe_session_id'] ?? '');
+        $incomingId = (string) ($session->id ?? '');
+        $isPaymentIntent = ($session->object ?? null) === 'payment_intent'
+            || str_starts_with($incomingId, 'pi_');
+        if ($packageSessionId !== '' && $incomingId !== '' && ! $isPaymentIntent
+            && $packageSessionId !== $incomingId) {
+            Log::warning('Stripe session does not match current checkout package', [
+                'reference_code' => $referenceCode,
+                'package_session_id' => $packageSessionId,
+                'session_id' => $incomingId,
+            ]);
+            $this->creditCapturedCardWhenPackageMissing($referenceCode, $session);
+
+            return collect();
+        }
+
         $meta = $this->sessionMetadataArray($session);
         $packageUserId = (int) ($package['user_id'] ?? 0);
         $metaUserId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;

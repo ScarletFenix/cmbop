@@ -14,6 +14,7 @@ use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Billing\BillingDocumentService;
+use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
@@ -705,6 +706,22 @@ class PaymentController extends Controller
             'invoice_url' => $order->invoice_url ?? null,
             'invoice_documents' => $order->invoice_documents ?? [],
         ];
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function attachInvoiceDocuments($orders): void
+    {
+        $links = app(AdminInvoiceLinks::class);
+        $byOrder = $links->forOrders($orders);
+
+        foreach ($orders as $order) {
+            $documents = $byOrder->get((int) $order->id, []);
+            $order->setAttribute('invoice_documents', $documents);
+            $primary = $links->primary($documents);
+            $order->setAttribute('invoice_url', data_get($primary, 'url'));
+        }
     }
 
     /**
