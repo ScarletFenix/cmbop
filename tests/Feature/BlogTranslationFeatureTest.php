@@ -207,7 +207,8 @@ class BlogTranslationFeatureTest extends TestCase
 
         $this->assertStringContainsString('id="existingContent-en"', $html);
         $this->assertStringContainsString('Keep this body', $html);
-        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
+        $this->assertStringContainsString('\\u003Cp\\u003E', $html);
+        $this->assertStringNotContainsString('alert(1)', $html);
         $this->assertStringNotContainsString('</script><script>alert(1)</script>', $html);
     }
 
@@ -235,7 +236,9 @@ class BlogTranslationFeatureTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('id="existingContent-en"', $html);
-        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
+        $this->assertStringContainsString('\\u003Cp\\u003E', $html);
+        $this->assertStringContainsString('Safe', $html);
+        $this->assertStringNotContainsString('alert(1)', $html);
         $this->assertStringNotContainsString(
             'id="existingContent-en"><p>Safe</p></script><script>alert(1)</script>',
             $html

@@ -198,9 +198,12 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $html);
-        $this->assertStringContainsString('\\u003C/script\\u003E', $html);
-        $this->assertStringContainsString('BlogPosting', $html);
+        preg_match_all('#<script type="application/ld\+json">(.*?)</script>#s', $html, $blocks);
+        $jsonLd = implode("\n", $blocks[1] ?? []);
+
+        $this->assertStringContainsString('BlogPosting', $jsonLd);
+        $this->assertStringContainsString('\\u003C/script\\u003E', $jsonLd);
+        $this->assertStringNotContainsString('</script><script>alert(1)</script>', $jsonLd);
     }
 
     public function test_help_widget_has_accessible_labels(): void
