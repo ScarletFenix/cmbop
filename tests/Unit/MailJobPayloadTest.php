@@ -33,6 +33,8 @@ class MailJobPayloadTest extends TestCase
             '{"displayName":"App\\\\Jobs\\\\SendEmailCampaignJob","campaignId":123}',
             12
         ));
+        $this->assertTrue(MailJobPayload::containsCampaignId($json, 12));
+        $this->assertFalse(MailJobPayload::containsCampaignId($json, 123));
     }
 
     public function test_matches_email_log_require_token_rejects_unidentified_payload(): void

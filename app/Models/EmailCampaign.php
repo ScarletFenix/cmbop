@@ -352,7 +352,6 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-            try {
                 $table = (string) config("queue.connections.{$connection}.table", 'jobs');
                 if (! Schema::hasTable($table)) {
                     continue;

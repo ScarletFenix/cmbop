@@ -23,9 +23,9 @@ class MailJobPayload
     }
 
     /**
-     * Database-queue payloads JSON-escape the serialized command, so
-     * `campaignId";i:12;` does not appear as a literal. `i:12;` must not
-     * match campaign 123.
+     * True when this payload is a SendEmailCampaignJob for exactly $campaignId.
+     * Covers raw PHP serialization, JSON-escaped queue rows, and a decoded
+     * command string. `i:12;` / `"campaignId":12` must not match 123.
      */
     public static function containsSendCampaignJob(string $payload, int $campaignId): bool
     {
@@ -33,35 +33,7 @@ class MailJobPayload
             return false;
         }
 
-        $suffix = ';i:'.$campaignId.';';
-
-        return str_contains($payload, '"campaignId"'.$suffix)
-            || str_contains($payload, '\\"campaignId\\"'.$suffix);
-    }
-
-    /**
-     * Match campaignId in raw PHP serialization, JSON-escaped queue
-     * payloads, or a decoded command string. `i:12;` must not match 123.
-     */
-    public static function containsCampaignId(string $payload, int $campaignId): bool
-    {
-        if ($campaignId < 1) {
-            return false;
-        }
-
-        $id = (string) $campaignId;
-        if (preg_match('/s:10:\\\\?"campaignId\\\\?";i:'.$id.';/', $payload)) {
-            return true;
-        }
-
-        if (preg_match('/"campaignId":'.$id.'(?!\d)/', $payload)) {
-            return true;
-        }
-
-        $decoded = json_decode($payload, true);
-        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
-
-        return is_string($command) && (bool) preg_match('/s:10:"campaignId";i:'.$id.';/', $command);
+        return self::containsCampaignId($payload, $campaignId);
     }
 
     /**
