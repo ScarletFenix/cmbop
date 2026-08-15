@@ -13,7 +13,7 @@ class SiteRatingController extends Controller
     public function index(Request $request)
     {
         $query = SiteRating::query()
-            ->with(['site:id,site_name,domain,site_url,rating_avg,rating_count', 'user:id,name,email'])
+            ->with(['site:'.implode(',', $this->siteRelationSelectColumns()), 'user:id,name,email'])
             ->latest('id');
 
         if ($request->filled('status')) {
@@ -53,20 +53,14 @@ class SiteRatingController extends Controller
             'status' => 'required|in:approved,hidden,pending',
         ]);
 
-        $userId = $data['user_id'] ?? auth()->id();
-
-        $rating = SiteRating::updateOrCreate(
-            [
-                'site_id' => (int) $data['site_id'],
-                'user_id' => $userId,
-            ],
-            [
-                'rating' => (int) $data['rating'],
-                'comment' => $data['comment'] ?? null,
-                'status' => $data['status'],
-                'is_admin' => true,
-            ]
-        );
+        $rating = SiteRating::create([
+            'site_id' => (int) $data['site_id'],
+            'user_id' => $data['user_id'] ?? auth()->id(),
+            'rating' => (int) $data['rating'],
+            'comment' => $data['comment'] ?? null,
+            'status' => $data['status'],
+            'is_admin' => true,
+        ]);
 
         SiteRating::refreshSiteAggregate((int) $data['site_id']);
 
@@ -96,7 +90,6 @@ class SiteRatingController extends Controller
         ]);
 
         $rating->fill($data);
-        $rating->is_admin = true;
         $rating->save();
 
         SiteRating::refreshSiteAggregate($rating->site_id);
@@ -137,5 +130,20 @@ class SiteRatingController extends Controller
             'success' => true,
             'message' => 'Rating deleted',
         ]);
+    }
+
+    /**
+     * @return list<string>
+     */
+    private function siteRelationSelectColumns(): array
+    {
+        $columns = ['id', 'site_name', 'domain', 'site_url'];
+        foreach (['rating_avg', 'rating_count'] as $optional) {
+            if (Site::hasSitesColumn($optional)) {
+                $columns[] = $optional;
+            }
+        }
+
+        return $columns;
     }
 }

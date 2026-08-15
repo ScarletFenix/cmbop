@@ -181,7 +181,120 @@ class SiteRatingTest extends TestCase
             'status' => 'hidden',
         ])->assertOk();
 
+        $rating->refresh();
+        $this->assertFalse((bool) $rating->is_admin);
+        $this->assertSame($advertiser->id, (int) $rating->user_id);
+        $this->assertSame($item->id, (int) $rating->order_item_id);
+
         $site->refresh();
         $this->assertSame(0, (int) $site->rating_count);
+    }
+
+    public function test_admin_store_creates_a_new_row_and_does_not_overwrite_advertiser_ratings(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $site = $this->site($publisher);
+        $first = $this->completedOrderItem($advertiser, $site, 'completed');
+        $second = $this->completedOrderItem($advertiser, $site, 'completed');
+
+        $firstRating = SiteRating::create([
+            'site_id' => $site->id,
+            'user_id' => $advertiser->id,
+            'order_id' => $first->order_id,
+            'order_item_id' => $first->id,
+            'rating' => 5,
+            'status' => SiteRating::STATUS_APPROVED,
+        ]);
+        $secondRating = SiteRating::create([
+            'site_id' => $site->id,
+            'user_id' => $advertiser->id,
+            'order_id' => $second->order_id,
+            'order_item_id' => $second->id,
+            'rating' => 3,
+            'status' => SiteRating::STATUS_APPROVED,
+        ]);
+        SiteRating::refreshSiteAggregate($site->id);
+
+        $this->actingAs($admin)->postJson(route('admin.site-ratings.store'), [
+            'site_id' => $site->id,
+            'rating' => 1,
+            'comment' => 'Staff note',
+            'status' => 'approved',
+        ])->assertOk()->assertJsonPath('success', true);
+
+        $this->assertSame(3, SiteRating::query()->where('site_id', $site->id)->count());
+        $this->assertSame(5, (int) $firstRating->fresh()->rating);
+        $this->assertSame(3, (int) $secondRating->fresh()->rating);
+        $this->assertFalse((bool) $firstRating->fresh()->is_admin);
+        $this->assertTrue(
+            SiteRating::query()
+                ->where('site_id', $site->id)
+                ->where('is_admin', true)
+                ->where('rating', 1)
+                ->exists()
+        );
+
+        $site->refresh();
+        $this->assertSame(3, (int) $site->rating_count);
+        $this->assertEqualsWithDelta(3.0, (float) $site->rating_avg, 0.01);
+    }
+
+    public function test_ratings_index_and_hide_survive_missing_aggregate_columns(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $site = $this->site($publisher);
+        $item = $this->completedOrderItem($advertiser, $site, 'completed');
+        $rating = SiteRating::create([
+            'site_id' => $site->id,
+            'user_id' => $advertiser->id,
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+            'rating' => 4,
+            'status' => SiteRating::STATUS_APPROVED,
+        ]);
+
+        Schema::table('sites', function ($table) {
+            $table->dropColumn(['rating_avg', 'rating_count']);
+        });
+        $this->assertFalse(Site::hasSitesColumn('rating_avg'));
+        $this->assertFalse(Site::hasSitesColumn('rating_count'));
+
+        $this->actingAs($admin)
+            ->get(route('admin.site-ratings.index'))
+            ->assertOk()
+            ->assertSee('Publisher Ratings', false);
+
+        $this->actingAs($admin)
+            ->putJson(route('admin.site-ratings.update', $rating->id), [
+                'status' => 'hidden',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        SiteRating::refreshSiteAggregate($site->id);
+
+        Schema::table('sites', function ($table) {
+            $table->decimal('rating_avg', 3, 2)->default(0);
+            $table->unsignedInteger('rating_count')->default(0);
+        });
+    }
+
+    public function test_ratings_page_uses_named_rating_routes(): void
+    {
+        $admin = $this->admin();
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.site-ratings.index'))
+            ->assertOk()
+            ->assertSee('Add rating', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('admin.site-ratings.update', ['id' => '__ID__'], false), $html);
+        $this->assertStringContainsString(route('admin.site-ratings.destroy', ['id' => '__ID__'], false), $html);
+        $this->assertStringNotContainsString('`/admin/site-ratings/${btn.dataset.id}`', $html);
     }
 }

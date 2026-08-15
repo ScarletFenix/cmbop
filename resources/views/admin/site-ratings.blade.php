@@ -7,7 +7,7 @@
             <h4 class="mb-1 fw-bold">Publisher Ratings</h4>
             <p class="text-muted mb-0">Review, edit, hide, or delete advertiser ratings for catalog sites.</p>
         </div>
-        <button type="button" class="btn btn-sm btn-primary" id="addRatingBtn">Add / upsert rating</button>
+        <button type="button" class="btn btn-sm btn-primary" id="addRatingBtn">Add rating</button>
     </div>
 
     <form method="get" class="card border-0 shadow-sm mb-3">
@@ -117,6 +117,9 @@
 <script>
 const CSRF = '{{ csrf_token() }}';
 const SITE_OPTIONS = @json($sites->map(fn ($s) => ['id' => $s->id, 'label' => $s->site_name.' ('.$s->domain.')'])->values());
+const RATING_STORE = @json(route('admin.site-ratings.store'));
+const RATING_UPDATE = @json(route('admin.site-ratings.update', ['id' => '__ID__']));
+const RATING_DESTROY = @json(route('admin.site-ratings.destroy', ['id' => '__ID__']));
 
 // Site names and rating comments are publisher/advertiser text, and these
 // dialogs are built as HTML strings, so escape before interpolating.
@@ -130,12 +133,37 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+function ratingUrl(template, id) {
+    return String(template).replace('__ID__', encodeURIComponent(id));
+}
+
+async function postRatingJson(url, options) {
+    const res = await fetch(url, options);
+    let data = {};
+    const text = await res.text();
+    try {
+        data = text ? JSON.parse(text) : {};
+    } catch (e) {
+        data = {};
+    }
+    const fallback = res.status === 419
+        ? 'Session expired. Refresh and try again.'
+        : 'Could not save rating.';
+    if (!res.ok || !data.success) {
+        showAppToast(data.message || fallback, 'error');
+        return false;
+    }
+    showAppToast(data.message || 'Done', 'success');
+    location.reload();
+    return true;
+}
+
 document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
     const siteOptionsHtml = SITE_OPTIONS
         .map(s => `<option value="${escapeHtml(s.id)}">${escapeHtml(s.label)}</option>`)
         .join('');
     const { value: form } = await Swal.fire({
-        title: 'Add / upsert rating',
+        title: 'Add rating',
         html: `
             <select id="swal-site" class="swal2-input" style="width:90%">${siteOptionsHtml}</select>
             <input id="swal-rating" type="number" min="1" max="5" class="swal2-input" placeholder="Rating 1–5" value="5">
@@ -156,14 +184,11 @@ document.getElementById('addRatingBtn')?.addEventListener('click', async () => {
         }),
     });
     if (!form) return;
-    const res = await fetch(@json(route('admin.site-ratings.store')), {
+    await postRatingJson(RATING_STORE, {
         method: 'POST',
         headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json'},
         body: JSON.stringify(form),
     });
-    const data = await res.json();
-    showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
-    if (data.success) location.reload();
 });
 
 document.querySelectorAll('.edit-rating').forEach(btn => {
@@ -190,14 +215,11 @@ document.querySelectorAll('.edit-rating').forEach(btn => {
             }),
         });
         if (!form) return;
-        const res = await fetch(`/admin/site-ratings/${btn.dataset.id}`, {
+        await postRatingJson(ratingUrl(RATING_UPDATE, btn.dataset.id), {
             method: 'PUT',
             headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json', 'Content-Type': 'application/json'},
             body: JSON.stringify(form),
         });
-        const data = await res.json();
-        showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
-        if (data.success) location.reload();
     });
 });
 
@@ -210,13 +232,10 @@ document.querySelectorAll('.delete-rating').forEach(btn => {
             danger: true,
         });
         if (!confirmed) return;
-        const res = await fetch(`/admin/site-ratings/${btn.dataset.id}`, {
+        await postRatingJson(ratingUrl(RATING_DESTROY, btn.dataset.id), {
             method: 'DELETE',
             headers: {'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json'},
         });
-        const data = await res.json();
-        showAppToast(data.message || 'Done', data.success ? 'success' : 'error');
-        if (data.success) location.reload();
     });
 });
 </script>

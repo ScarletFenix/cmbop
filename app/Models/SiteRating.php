@@ -59,6 +59,12 @@ class SiteRating extends Model
 
     public static function refreshSiteAggregate(int $siteId): void
     {
+        if ($siteId < 1
+            || ! Site::hasSitesColumn('rating_avg')
+            || ! Site::hasSitesColumn('rating_count')) {
+            return;
+        }
+
         $agg = static::query()
             ->where('site_id', $siteId)
             ->approved()
