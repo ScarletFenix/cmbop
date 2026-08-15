@@ -18,6 +18,8 @@ use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
+use App\Support\BillingCustomerMailSuppressor;
+use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -131,11 +133,26 @@ class PaymentController extends Controller
      */
     public function updatePaymentStatus(Request $request, $id)
     {
+        $sendNotification = true;
+        $billingSuppressor = app(BillingCustomerMailSuppressor::class);
+
         try {
             $request->validate([
                 'payment_status' => 'required|in:pending,paid,failed,refunded',
                 'notes' => 'nullable|string',
+                'send_notification' => 'sometimes|boolean',
             ]);
+
+            // Omitted (API / existing clients) still notifies. The Order Payments
+            // checkbox posts true/false and must be honoured.
+            $sendNotification = $request->has('send_notification')
+                ? $request->boolean('send_notification')
+                : true;
+
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->suppress((int) $id, ['advertiser']);
+                $billingSuppressor->enable();
+            }
 
             DB::beginTransaction();
 
@@ -152,6 +169,9 @@ class PaymentController extends Controller
             if ($request->payment_status === 'refunded' && $oldStatus === 'paid') {
                 if ($order->status === 'completed') {
                     DB::rollBack();
+                    if (! $sendNotification) {
+                        app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+                    }
 
                     return response()->json([
                         'success' => false,
@@ -182,7 +202,9 @@ class PaymentController extends Controller
             // Send email notification to user when payment is marked as paid
             if ($request->payment_status === 'paid' && $oldStatus !== 'paid') {
                 $this->consumeReservedCheckoutBonus($order);
-                $this->sendPaymentConfirmationEmail($order);
+                if ($sendNotification) {
+                    $this->sendPaymentConfirmationEmail($order);
+                }
             }
 
             // Unpaid failure: release leftover checkout bonus. Paid refunds go
@@ -207,7 +229,7 @@ class PaymentController extends Controller
                 }
             }
 
-            if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
+            if ($sendNotification && $request->payment_status === 'failed' && $oldStatus !== 'failed') {
                 $notifications->notifyPaymentFailed([$fresh], $request->notes);
                 if ($refundAmount > 0) {
                     $notifications->notifyRefundCredited(
@@ -218,7 +240,7 @@ class PaymentController extends Controller
                 }
             }
 
-            if ($request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
+            if ($sendNotification && $request->payment_status === 'refunded' && $oldStatus !== 'refunded' && $refundAmount > 0) {
                 $notifications->notifyRefundCredited(
                     $fresh,
                     $refundAmount,
@@ -245,12 +267,19 @@ class PaymentController extends Controller
 
         } catch (\Exception $e) {
             DB::rollBack();
+            if (! $sendNotification) {
+                app(OrderLifecycleMailSuppressor::class)->forget((int) $id);
+            }
             Log::error('Error updating payment status: '.$e->getMessage());
 
             return response()->json([
                 'success' => false,
                 'message' => UserFacingError::message($e, 'Failed to update payment status. Please try again.'),
             ], 500);
+        } finally {
+            if (! $sendNotification) {
+                $billingSuppressor->disable();
+            }
         }
     }
 

@@ -13,6 +13,7 @@ use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\User;
 use App\Services\InAppNotificationService;
+use App\Support\BillingCustomerMailSuppressor;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -519,9 +520,14 @@ class BillingDocumentService
         return Invoice::create($payload);
     }
 
+    protected function customerEmailSuppressed(): bool
+    {
+        return app(BillingCustomerMailSuppressor::class)->suppressed();
+    }
+
     protected function emailPaymentSuccess(Invoice $invoice, ?Invoice $receipt = null): void
     {
-        if (! $invoice->user?->email) {
+        if ($this->customerEmailSuppressed() || ! $invoice->user?->email) {
             return;
         }
 
@@ -538,7 +544,7 @@ class BillingDocumentService
 
     protected function emailPaymentFailed(Invoice $doc): void
     {
-        if (! $doc->user?->email) {
+        if ($this->customerEmailSuppressed() || ! $doc->user?->email) {
             return;
         }
 
@@ -552,7 +558,7 @@ class BillingDocumentService
 
     protected function emailPaymentPending(Order $order): void
     {
-        if (! $order->user?->email) {
+        if ($this->customerEmailSuppressed() || ! $order->user?->email) {
             return;
         }
 
@@ -571,7 +577,7 @@ class BillingDocumentService
 
     protected function emailRefund(Invoice $refund): void
     {
-        if (! $refund->user?->email) {
+        if ($this->customerEmailSuppressed() || ! $refund->user?->email) {
             return;
         }
 
