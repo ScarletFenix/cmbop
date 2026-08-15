@@ -395,6 +395,9 @@ class CheckoutCancelBonusGuardTest extends TestCase
             'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
             'lines' => [],
         ]);
+        // fail() deletes the intent. Re-storing the late-pay snapshot must
+        // not recreate a live hold — package JSON is not reserved promo.
+        app(CheckoutIntentService::class)->forgetBonus($advertiser->id, 'REF-LEFTOVER-BONUS-SPENT');
 
         $wallet->refresh();
         $this->assertEqualsWithDelta(20.0, $wallet->reserveBonusOnly(20), 0.01);
