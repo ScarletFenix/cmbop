@@ -157,9 +157,14 @@
                     </p>
 
                     @if($errors->any())
+                        @php
+                            $hasItemErrors = collect($errors->keys())->contains(
+                                fn ($key) => $key === 'items' || str_starts_with((string) $key, 'items.')
+                            );
+                        @endphp
                         <div class="alert alert-danger py-2 small">
                             <strong>
-                                @if($errors->has('rejection_note') && ! $errors->has('items'))
+                                @if($errors->has('rejection_note') && ! $hasItemErrors)
                                     Add a publisher note.
                                 @else
                                     Finish the boxes first.

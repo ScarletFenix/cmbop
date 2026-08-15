@@ -368,6 +368,34 @@ class BulkDoneRejectRowsTest extends TestCase
         }
     }
 
+    public function test_partial_plus_missing_note_titles_box_errors_not_note_only(): void
+    {
+        [$country, $language] = $this->marketplaceCodes();
+        [$bulk, $items] = $this->makeBulkWithItems(2, 'title-mix');
+        [$partial, $drop] = $items;
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    $partial->id => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 20,
+                    ],
+                ],
+                'rejected_item_ids' => [$drop->id],
+            ]);
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Finish the boxes first.', $html);
+        $this->assertStringNotContainsString('Add a publisher note.', $html);
+    }
+
     public function test_cannot_reject_item_that_already_has_a_site(): void
     {
         foreach ($this->staffActors() as [$prefix, $user]) {
