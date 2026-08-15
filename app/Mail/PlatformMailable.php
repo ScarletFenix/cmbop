@@ -365,8 +365,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 ?? data_get($this->to, '0')
                 ?? 'unknown';
 
-            EmailLog::create([
-                'uuid' => (string) Str::uuid(),
+            $payload = [
                 'mailable' => static::class,
                 'template_key' => $type,
                 'notification_type' => $type,
@@ -375,11 +374,24 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 'subject' => $this->subject,
                 'status' => EmailLog::STATUS_FAILED,
                 'error' => $exception?->getMessage(),
-                'attempts' => 1,
                 'meta' => [
                     'source' => $this->forceSend ? 'email_center_test' : 'queue',
                 ],
-            ]);
+            ];
+
+            $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
+            if ($existing) {
+                $existing->fill($payload);
+                $existing->attempts = max(1, (int) $existing->attempts) + 1;
+                $existing->save();
+
+                return;
+            }
+
+            EmailLog::create(array_merge($payload, [
+                'uuid' => (string) Str::uuid(),
+                'attempts' => 1,
+            ]));
         } catch (\Throwable $e) {
             Log::warning('Failed to record mail failure', [
                 'mailable' => static::class,

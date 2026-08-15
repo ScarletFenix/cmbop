@@ -599,4 +599,157 @@ class AdminEmailCenterTest extends TestCase
             'error' => 'SMTP down',
         ]);
     }
+
+    public function test_successful_send_updates_failed_log_with_same_dedupe_key(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $mail = EmailCatalog::makeMailable('welcome');
+        $this->assertNotNull($mail);
+        $mail->forceSend = true;
+        $mail->skipUserPreference = true;
+        $mail->dedupeKey = 'welcome-dedupe-retry';
+        $mail->failed(new \RuntimeException('SMTP down'));
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $this->assertSame(EmailLog::STATUS_FAILED, EmailLog::query()->value('status'));
+
+        Mail::to($admin->email)->sendNow($mail);
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $log = EmailLog::query()->first();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $log->status);
+        $this->assertSame($admin->email, $log->to_email);
+        $this->assertNull($log->error);
+        $this->assertSame(2, $log->attempts);
+    }
+
+    public function test_retry_rebuilds_email_center_test_log(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'dedupe_key' => 'email_center_test:welcome:fixed',
+            'to_email' => $admin->email,
+            'subject' => 'Welcome (Test)',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'email_center_test'],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertSame($admin->email, $fresh->to_email);
+        $this->assertNull($fresh->error);
+    }
+
+    public function test_retry_production_log_without_job_does_not_rebuild(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame(0, EmailLog::query()->where('status', EmailLog::STATUS_DELIVERED)->count());
+    }
+
+    public function test_retry_production_log_requeues_matching_mail_job(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $mailUuid = (string) Str::uuid();
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $mailUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => WelcomeEmail::class,
+                'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+            ]),
+            'exception' => 'SMTP failed',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')
+            ->once()
+            ->with('queue:retry', ['id' => [$mailUuid]])
+            ->andReturn(0);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_PENDING, $fresh->status);
+        $this->assertSame(2, $fresh->attempts);
+        $this->assertNull($fresh->error);
+    }
+
+    public function test_email_center_index_stays_under_query_budget(): void
+    {
+        $admin = $this->userWithRole('admin');
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => $admin->email,
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now(),
+        ]);
+
+        DB::enableQueryLog();
+        $this->actingAs($admin)->get(route('admin.emails.index'))->assertOk();
+        $count = count(DB::getQueryLog());
+        DB::disableQueryLog();
+
+        $this->assertLessThan(30, $count, 'Email Center index ran '.$count.' queries');
+    }
+
+    public function test_retry_confirm_copy_does_not_claim_to_reset_logs(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->assertSee('Retry failed mail jobs', false)
+            ->assertDontSee('reset failed email logs', false);
+    }
 }

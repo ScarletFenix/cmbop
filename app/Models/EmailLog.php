@@ -55,4 +55,43 @@ class EmailLog extends Model
     {
         return $query->where('status', self::STATUS_FAILED);
     }
+
+    public static function findOpenByDedupe(?string $key): ?self
+    {
+        if (! filled($key)) {
+            return null;
+        }
+
+        return static::query()
+            ->where('dedupe_key', $key)
+            ->whereIn('status', [self::STATUS_PENDING, self::STATUS_FAILED])
+            ->latest('id')
+            ->first();
+    }
+
+    /**
+     * @return array{sent_today: int, pending: int, failed: int, delivered: int}
+     */
+    public static function dashboardKpis(): array
+    {
+        $today = now()->toDateString();
+        $row = static::query()
+            ->toBase()
+            ->selectRaw(
+                'SUM(CASE WHEN status = ? AND date(coalesce(sent_at, created_at)) = ? THEN 1 ELSE 0 END) as delivered_today,
+                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as pending_count,
+                 SUM(CASE WHEN status = ? THEN 1 ELSE 0 END) as failed_count',
+                [self::STATUS_DELIVERED, $today, self::STATUS_PENDING, self::STATUS_FAILED]
+            )
+            ->first();
+
+        $deliveredToday = (int) ($row->delivered_today ?? 0);
+
+        return [
+            'sent_today' => $deliveredToday,
+            'pending' => (int) ($row->pending_count ?? 0),
+            'failed' => (int) ($row->failed_count ?? 0),
+            'delivered' => $deliveredToday,
+        ];
+    }
 }

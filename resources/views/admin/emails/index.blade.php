@@ -142,13 +142,13 @@
                     </div>
 
                     <form method="post" action="{{ route('admin.emails.retry') }}" class="mb-3"
-                          data-slb-confirm="Retry failed queue jobs and reset failed email logs?"
-                          data-slb-confirm-title="Retry failed emails?"
+                          data-slb-confirm="Retry failed mail queue jobs only? Email logs stay failed until a send succeeds. Other failed jobs are left untouched."
+                          data-slb-confirm-title="Retry failed mail jobs?"
                           data-slb-confirm-text="Retry now"
                           data-slb-confirm-danger="1">
                         @csrf
                         <button class="btn btn-outline-danger btn-sm w-100" type="submit">
-                            <i class="fa fa-redo me-1"></i> Retry Failed Emails
+                            <i class="fa fa-redo me-1"></i> Retry failed mail jobs
                         </button>
                     </form>
 

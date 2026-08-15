@@ -22,22 +22,7 @@ class EmailCenterController extends Controller
 {
     public function index(Request $request)
     {
-        $deliveredToday = EmailLog::query()
-            ->where('status', EmailLog::STATUS_DELIVERED)
-            ->where(function ($q) {
-                $q->whereDate('sent_at', today())
-                    ->orWhere(function ($inner) {
-                        $inner->whereNull('sent_at')->whereDate('created_at', today());
-                    });
-            })
-            ->count();
-
-        $stats = [
-            'sent_today' => $deliveredToday,
-            'pending' => EmailLog::pending()->count(),
-            'failed' => EmailLog::failed()->count(),
-            'delivered' => $deliveredToday,
-        ];
+        $stats = EmailLog::dashboardKpis();
 
         $recentLogs = EmailLog::query()
             ->latest('id')
@@ -211,6 +196,14 @@ class EmailCenterController extends Controller
 
     public function retryFailed(Request $request)
     {
+        $data = $request->validate([
+            'log_id' => ['nullable', 'integer', 'exists:email_logs,id'],
+        ]);
+
+        if (! empty($data['log_id'])) {
+            return $this->retryFailedLog((int) $data['log_id']);
+        }
+
         $uuids = $this->mailFailedJobUuids();
 
         if ($uuids === []) {
@@ -224,6 +217,108 @@ class EmailCenterController extends Controller
         }
 
         return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
+    }
+
+    protected function retryFailedLog(int $logId)
+    {
+        $log = EmailLog::query()->findOrFail($logId);
+        if ($log->status !== EmailLog::STATUS_FAILED) {
+            return back()->with('error', 'That email log is not failed.');
+        }
+
+        $source = data_get($log->meta, 'source');
+        if ($source === 'email_center_test') {
+            return $this->retryTestLog($log);
+        }
+
+        $uuid = $this->failedJobUuidForLog($log);
+        if ($uuid) {
+            try {
+                Artisan::call('queue:retry', ['id' => [$uuid]]);
+            } catch (\Throwable $e) {
+                return back()->with('error', UserFacingError::message($e, 'Could not retry the mail job. Please try again.'));
+            }
+
+            $log->update([
+                'status' => EmailLog::STATUS_PENDING,
+                'error' => null,
+                'attempts' => max(1, (int) $log->attempts) + 1,
+            ]);
+
+            return back()->with('success', 'Re-queued the failed mail job for this log.');
+        }
+
+        return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
+    }
+
+    protected function retryTestLog(EmailLog $log)
+    {
+        $key = (string) $log->template_key;
+        $template = EmailCatalog::get($key);
+        if (! $template) {
+            return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
+        }
+
+        $adminEmail = (string) request()->user()->email;
+        $dedupe = $log->dedupe_key ?: 'email_center_test:'.$key.':retry:'.$log->id;
+        $log->update(['dedupe_key' => $dedupe]);
+
+        try {
+            if ($html = $this->frameworkPreviewHtml($key)) {
+                $subject = $key === 'email_verification'
+                    ? 'Verify your email (Test Preview)'
+                    : 'Password Reset (Test Preview)';
+                Mail::html($html, function ($message) use ($adminEmail, $key, $subject) {
+                    $message->to($adminEmail)->subject($subject);
+                    if (method_exists($message, 'getSymfonyMessage')) {
+                        $message->getSymfonyMessage()->getHeaders()
+                            ->addTextHeader('X-Platform-Notification-Type', $key);
+                    }
+                });
+                $log->update([
+                    'status' => EmailLog::STATUS_DELIVERED,
+                    'error' => null,
+                    'to_email' => $adminEmail,
+                    'subject' => $subject,
+                    'attempts' => max(1, (int) $log->attempts) + 1,
+                    'sent_at' => now(),
+                ]);
+            } else {
+                $mailable = EmailCatalog::makeMailable($key);
+                abort_unless($mailable, 404);
+                if ($mailable instanceof PlatformMailable) {
+                    $mailable->forceSend = true;
+                    $mailable->skipUserPreference = true;
+                    $mailable->dedupeKey = $dedupe;
+                }
+                Mail::to($adminEmail)->sendNow($mailable);
+            }
+
+            return back()->with('success', 'Retried the Email Center test send to '.$adminEmail.'.');
+        } catch (\Throwable $e) {
+            $log->update([
+                'status' => EmailLog::STATUS_FAILED,
+                'error' => $e->getMessage(),
+                'attempts' => max(1, (int) $log->attempts) + 1,
+            ]);
+
+            return back()->with('error', UserFacingError::message($e, 'Failed to retry the test email. Please try again.'));
+        }
+    }
+
+    protected function failedJobUuidForLog(EmailLog $log): ?string
+    {
+        if (! Schema::hasTable('failed_jobs') || blank($log->mailable)) {
+            return null;
+        }
+
+        foreach (DB::table('failed_jobs')->where($this->mailJobPayloadConstraint())->get(['uuid', 'payload']) as $job) {
+            if (str_contains((string) $job->payload, (string) $log->mailable)) {
+                return (string) $job->uuid;
+            }
+        }
+
+        return null;
     }
 
     protected function queuedMailJobsCount(): int
