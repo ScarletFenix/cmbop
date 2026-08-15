@@ -9,6 +9,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class WelcomeBonusService
@@ -68,39 +69,52 @@ class WelcomeBonusService
      */
     public function recordClaim(User $user, Request $request, float $amount, string $source): bool
     {
-        if ($amount <= 0 || ! WelcomeBonusSetting::isEnabledForGrant()) {
+        if ($amount <= 0) {
             return false;
         }
 
-        if (! Schema::hasTable((new WelcomeBonusClaim)->getTable())) {
-            return true;
-        }
-
-        $ip = $this->normalizedIp($request);
-
-        if ($ip !== null && $this->ipAlreadyClaimed($ip)) {
-            return false;
-        }
-
-        try {
-            WelcomeBonusClaim::query()->create([
-                'user_id' => $user->id,
-                'ip_address' => $ip,
-                'user_agent' => $request->userAgent(),
-                'source' => $source,
-                'amount' => $amount,
-            ]);
-
-            return true;
-        } catch (UniqueConstraintViolationException) {
-            return false;
-        } catch (QueryException $e) {
-            if ($this->isUniqueViolation($e)) {
+        $write = function () use ($user, $request, $amount, $source): bool {
+            if (! WelcomeBonusSetting::isEnabledForGrant()) {
                 return false;
             }
 
-            throw $e;
+            if (! Schema::hasTable((new WelcomeBonusClaim)->getTable())) {
+                return true;
+            }
+
+            $ip = $this->normalizedIp($request);
+
+            if ($ip !== null && $this->ipAlreadyClaimed($ip)) {
+                return false;
+            }
+
+            try {
+                WelcomeBonusClaim::query()->create([
+                    'user_id' => $user->id,
+                    'ip_address' => $ip,
+                    'user_agent' => $request->userAgent(),
+                    'source' => $source,
+                    'amount' => $amount,
+                ]);
+
+                return true;
+            } catch (UniqueConstraintViolationException) {
+                return false;
+            } catch (QueryException $e) {
+                if ($this->isUniqueViolation($e)) {
+                    return false;
+                }
+
+                throw $e;
+            }
+        };
+
+        // The settings-row lock only holds until this transaction ends.
+        if (DB::transactionLevel() > 0) {
+            return $write();
         }
+
+        return DB::transaction($write);
     }
 
     public function queueClaimCookie(): void
@@ -120,10 +134,33 @@ class WelcomeBonusService
         ));
     }
 
+    /**
+     * Place key for the once-per-IP lock.
+     *
+     * Do not use Request::ip() while the app trusts all proxies — that reads
+     * client-controlled X-Forwarded-For and lets anyone collect €20 per spoof.
+     * Behind Cloudflare, CF-Connecting-IP is the visitor; otherwise REMOTE_ADDR
+     * is the TCP peer.
+     */
     public function normalizedIp(Request $request): ?string
     {
-        $ip = trim((string) $request->ip());
+        $cfRay = trim((string) $request->headers->get('CF-RAY', ''));
+        $cfConnecting = $this->sanitizeIp($request->headers->get('CF-Connecting-IP'));
+        if ($cfRay !== '' && $cfConnecting !== null) {
+            return $cfConnecting;
+        }
+
+        return $this->sanitizeIp($request->server->get('REMOTE_ADDR'));
+    }
+
+    private function sanitizeIp(mixed $raw): ?string
+    {
+        $ip = trim((string) $raw);
         if ($ip === '' || strlen($ip) > 45) {
+            return null;
+        }
+
+        if (filter_var($ip, FILTER_VALIDATE_IP) === false) {
             return null;
         }
 

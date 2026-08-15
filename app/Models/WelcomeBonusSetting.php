@@ -100,7 +100,11 @@ class WelcomeBonusSetting extends Model
 
         DB::transaction(function () use ($enabled, $updatedBy) {
             $row = static::query()->where('key', 'config')->lockForUpdate()->first();
-            $current = is_array($row?->value) ? $row->value : [];
+            try {
+                $current = is_array($row?->value) ? $row->value : [];
+            } catch (\Throwable) {
+                $current = [];
+            }
 
             $current['enabled'] = $enabled;
             $current['updated_at'] = now()->toIso8601String();
@@ -147,24 +151,23 @@ class WelcomeBonusSetting extends Model
      */
     private static function readConfig(bool $lock): array
     {
-        if (! Schema::hasTable((new static)->getTable())) {
-            return ['state' => 'missing', 'value' => null];
-        }
-
         try {
+            if (! Schema::hasTable((new static)->getTable())) {
+                return ['state' => 'missing', 'value' => null];
+            }
+
             $query = static::query()->where('key', 'config');
             if ($lock) {
                 $query->lockForUpdate();
             }
             $row = $query->first();
+            if ($row === null) {
+                return ['state' => 'missing', 'value' => null];
+            }
+
+            return ['state' => 'present', 'value' => $row->value];
         } catch (\Throwable) {
             return ['state' => 'unreadable', 'value' => null];
         }
-
-        if ($row === null) {
-            return ['state' => 'missing', 'value' => null];
-        }
-
-        return ['state' => 'present', 'value' => $row->value];
     }
 }

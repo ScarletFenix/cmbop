@@ -87,6 +87,47 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertNull(WelcomeBonusClaim::query()->where('user_id', $user->id)->value('ip_address'));
     }
 
+    public function test_forwarded_for_header_cannot_spoof_the_claim_ip(): void
+    {
+        $request = $this->request('1.2.3.4', [], [
+            'HTTP_X_FORWARDED_FOR' => '9.9.9.9',
+        ]);
+
+        $this->assertSame('1.2.3.4', $this->service->normalizedIp($request));
+
+        $first = User::factory()->create();
+        $this->assertTrue($this->service->recordClaim($first, $request, 20.0, 'registration'));
+
+        $spoofed = $this->request('1.2.3.4', [], [
+            'HTTP_X_FORWARDED_FOR' => '8.8.8.8',
+        ]);
+        $this->assertSame(0.0, $this->service->amountFor($spoofed, 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $spoofed,
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+        $this->assertSame('1.2.3.4', WelcomeBonusClaim::query()->value('ip_address'));
+    }
+
+    public function test_cloudflare_connecting_ip_is_used_when_cf_ray_is_present(): void
+    {
+        $request = $this->request('104.16.0.1', [], [
+            'HTTP_CF_RAY' => 'abc123-DFW',
+            'HTTP_CF_CONNECTING_IP' => '203.0.113.10',
+            'HTTP_X_FORWARDED_FOR' => '198.51.100.20',
+        ]);
+
+        $this->assertSame('203.0.113.10', $this->service->normalizedIp($request));
+    }
+
+    public function test_invalid_ip_string_is_ignored(): void
+    {
+        $this->assertNull($this->service->normalizedIp($this->request('not-an-ip-address')));
+    }
+
     public function test_settings_default_enabled_until_toggled(): void
     {
         $this->assertTrue(WelcomeBonusSetting::isEnabled());
@@ -165,10 +206,10 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
-    private function request(string $ip, array $cookies = []): Request
+    private function request(string $ip, array $cookies = [], array $server = []): Request
     {
-        return Request::create('/register', 'POST', [], $cookies, [], [
+        return Request::create('/register', 'POST', [], $cookies, [], array_merge([
             'REMOTE_ADDR' => $ip,
-        ]);
+        ], $server));
     }
 }
