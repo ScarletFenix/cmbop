@@ -307,6 +307,26 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
     }
 
+    public function test_engine_rejects_casino_split_across_score_windows(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $text = str_repeat('x', ContentModerationEngine::SCORE_TEXT_CHARS - 4)
+            .' casino tonight and claim your bonus.';
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: $text,
+            links: [],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
     public function test_engine_rejects_adult_porn_domain(): void
     {
         $engine = new ContentModerationEngine;

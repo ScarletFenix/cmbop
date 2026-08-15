@@ -3808,17 +3808,34 @@ class CatalogController extends Controller
     {
         $user = User::query()->find($userId) ?? auth()->user();
         $moderation = app(ContentModerationService::class);
+        $scanned = 0;
         foreach ($checkoutContent['lines'] ?? [] as $line) {
             $submission = $line['submission'] ?? null;
             if (! $submission instanceof ContentSubmission) {
+                $id = (int) (is_array($line['orderItem'] ?? null)
+                    ? ($line['orderItem']['content_submission_id'] ?? 0)
+                    : 0);
+                if ($id > 0) {
+                    $submission = ContentSubmission::query()->whereKey($id)->first();
+                }
+            }
+            if (! $submission instanceof ContentSubmission) {
                 continue;
             }
+            $scanned++;
             if (! $moderation->submissionPassesLivePolicy($submission, $user instanceof User ? $user : null)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
                 ], 422);
             }
+        }
+
+        if ($scanned === 0 && ($checkoutContent['lines'] ?? []) !== []) {
+            return response()->json([
+                'success' => false,
+                'message' => 'A Content Library article no longer passes content policy. Edit it and try again.',
+            ], 422);
         }
 
         return null;
