@@ -116,4 +116,26 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertSame('', $this->sanitizer->sanitize(''));
         $this->assertSame('', $this->sanitizer->sanitize(null));
     }
+
+    public function test_empty_quill_html_is_detected(): void
+    {
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml(null));
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml(''));
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml('   '));
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml('<p><br></p>'));
+        $this->assertTrue(BlogHtmlSanitizer::isEmptyHtml('<p></p>'));
+        $this->assertFalse(BlogHtmlSanitizer::isEmptyHtml('<p>Hello</p>'));
+    }
+
+    public function test_encode_for_script_escapes_closing_script_tag(): void
+    {
+        $encoded = BlogHtmlSanitizer::encodeForScript('<p>Safe</p></script><script>alert(1)</script>');
+
+        $this->assertStringNotContainsString('</script>', $encoded);
+        $this->assertStringContainsString('\\u003C/script\\u003E', $encoded);
+        $this->assertSame(
+            '<p>Safe</p></script><script>alert(1)</script>',
+            json_decode($encoded)
+        );
+    }
 }

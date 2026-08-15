@@ -535,7 +535,8 @@ class BlogController extends Controller
             $title = trim((string) ($item['title'] ?? ''));
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
-            $content = trim((string) ($item['content'] ?? ''));
+            $rawContent = trim((string) ($item['content'] ?? ''));
+            $content = BlogHtmlSanitizer::isEmptyHtml($rawContent) ? '' : $rawContent;
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {
