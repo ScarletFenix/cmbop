@@ -514,6 +514,11 @@ class ContentSubmissionController extends Controller
             $data['feature_image_url'] = null;
         }
 
+        if (array_key_exists('feature_image_url', $data)
+            && (string) ($data['feature_image_url'] ?? '') !== (string) ($submission->feature_image_url ?? '')) {
+            $contentChanged = true;
+        }
+
         if (($data['publication_mode'] ?? null) === 'scheduled' || ! empty($data['scheduled_date'])) {
             $schedule = $this->scheduler->normalizeSchedule(
                 $data['publication_mode'] ?? 'scheduled',

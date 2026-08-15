@@ -161,6 +161,92 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertStringContainsString('bet365', implode(' ', $result['matched_terms']));
     }
 
+    public function test_engine_rejects_casino_only_in_url_path(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'This article shares helpful SEO strategies for growing organic traffic with useful content.',
+            links: ['https://example.com/best-online-casino-bonus'],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
+    public function test_engine_rejects_percent_encoded_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'Play at the best online cas%69no tonight.',
+            'Play at the best online cas%2569no tonight.',
+            'Play at the best online cas％６９no tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'This article shares helpful SEO strategies for growing organic traffic with useful content.',
+            links: ['https://example.com/best-online-cas%69no-bonus'],
+            categories: $categories,
+        );
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
+    public function test_engine_rejects_fullwidth_and_homoglyph_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'Play at the best online ｃａｓｉｎｏ tonight.',
+            'Play at the best online ca'."\u{0455}".'ino tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+    }
+
+    public function test_engine_rejects_leet_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'Play at the best online casin0 tonight and claim your bonus.',
+            links: [],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
     public function test_engine_rejects_zero_width_and_split_casino(): void
     {
         $engine = new ContentModerationEngine;
@@ -181,6 +267,44 @@ class ContentLibraryModerationUxTest extends TestCase
             $this->assertSame('gambling', $result['detected_category'], $text);
             $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
         }
+    }
+
+    public function test_engine_rejects_combining_mark_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $hidden = 'Play at the best online c'."\u{0338}".'a'."\u{0338}".'s'."\u{0338}".'i'."\u{0338}".'n'."\u{0338}".'o tonight.';
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: $hidden,
+            links: [],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
+    public function test_engine_rejects_casino_past_the_first_score_window(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $pad = str_repeat('Useful editorial copy about software teams. ', 5500);
+        $this->assertGreaterThan(ContentModerationEngine::SCORE_TEXT_CHARS, mb_strlen($pad));
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: $pad.'Play at the best online casino tonight and claim your bonus.',
+            links: [],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
     }
 
     public function test_engine_rejects_adult_porn_domain(): void
