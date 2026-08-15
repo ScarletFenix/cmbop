@@ -113,16 +113,6 @@ class ContentModerationEngine
                 }
             }
 
-            foreach ($extraKeywords as $extra) {
-                $extra = mb_strtolower(trim((string) $extra));
-                if ($extra !== '' && $this->countTerm($haystack, $extra) > 0) {
-                    $points += 78;
-                    $hits++;
-                    $matched[] = $extra;
-                    $hardHit = true;
-                }
-            }
-
             if ($hits >= 3) {
                 $points *= 1.08;
             } elseif ($hits >= 2) {
@@ -151,6 +141,29 @@ class ContentModerationEngine
                 $allMatched = array_merge($allMatched, $matched);
                 $allBlockedUrls = array_merge($allBlockedUrls, $blockedUrls);
             }
+        }
+
+        $customMatched = [];
+        $customHits = 0;
+        foreach ($extraKeywords as $extra) {
+            $extra = mb_strtolower(trim((string) $extra));
+            if ($extra !== '' && $this->countTerm($haystack, $extra) > 0) {
+                $customHits++;
+                $customMatched[] = $extra;
+            }
+        }
+        if ($customHits > 0) {
+            $customMatched = array_values(array_unique($customMatched));
+            $confidence = (int) min(99, max(78, 78 + ($customHits - 1) * 6));
+            $scores['custom'] = $confidence;
+            $signals['hits']['custom'] = [
+                'term_hits' => $customHits,
+                'confidence' => $confidence,
+                'matched_terms' => $customMatched,
+                'blocked_urls' => [],
+                'hard_hit' => true,
+            ];
+            $allMatched = array_merge($allMatched, $customMatched);
         }
 
         arsort($scores);

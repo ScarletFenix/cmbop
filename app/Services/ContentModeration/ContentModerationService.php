@@ -6,7 +6,9 @@ use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ContentModerationService
@@ -97,6 +99,7 @@ class ContentModerationService
             $token = Str::random(40);
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
+                'content_submission_id' => $this->submissionIdFromSource($url),
                 'document_url' => $url,
                 'status' => ContentModerationLog::STATUS_APPROVED,
                 'passed' => true,
@@ -121,6 +124,7 @@ class ContentModerationService
         if (! $fetched['ok']) {
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
+                'content_submission_id' => $this->submissionIdFromSource($url),
                 'document_url' => $url,
                 'document_id' => $fetched['document_id'],
                 'status' => ContentModerationLog::STATUS_ERROR,
@@ -150,6 +154,7 @@ class ContentModerationService
             title: (string) ($fetched['title'] ?? ''),
             documentId: $fetched['document_id'] ?? null,
             links: $fetched['links'] ?? [],
+            contentSubmissionId: $this->submissionIdFromSource($url),
         );
 
         if ($result['passed'] && $result['log']) {
@@ -183,13 +188,16 @@ class ContentModerationService
         string $title = '',
         ?string $documentId = null,
         array $links = [],
+        ?int $contentSubmissionId = null,
     ): array {
         $cfg = $this->effectiveConfig();
         $text = trim($text);
+        $contentSubmissionId = $contentSubmissionId ?: $this->submissionIdFromSource($sourceLabel);
 
         if ($text === '') {
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
+                'content_submission_id' => $contentSubmissionId,
                 'document_url' => $sourceLabel,
                 'document_id' => $documentId,
                 'status' => ContentModerationLog::STATUS_ERROR,
@@ -217,6 +225,7 @@ class ContentModerationService
             $token = Str::random(40);
             $log = ContentModerationLog::create([
                 'user_id' => $user?->id,
+                'content_submission_id' => $contentSubmissionId,
                 'document_url' => $sourceLabel,
                 'document_id' => $documentId,
                 'status' => ContentModerationLog::STATUS_APPROVED,
@@ -266,6 +275,7 @@ class ContentModerationService
         $token = Str::random(40);
         $log = ContentModerationLog::create([
             'user_id' => $user?->id,
+            'content_submission_id' => $contentSubmissionId,
             'document_url' => $sourceLabel,
             'document_id' => $documentId,
             'status' => $passed
@@ -342,13 +352,18 @@ class ContentModerationService
                 continue;
             }
 
+            if ($this->usableAdminOverride($submission)) {
+                continue;
+            }
+
             $result = $this->scanExtractedContent(
                 text: (string) $submission->extracted_text,
                 html: (string) ($submission->preview_html ?? ''),
                 sourceLabel: 'upload:'.$submission->id,
                 user: $user,
-                title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
+                title: $this->scanTitle($submission),
                 links: $this->linksFromSubmission($submission),
+                contentSubmissionId: (int) $submission->id,
             );
 
             $submission->update([
@@ -477,38 +492,57 @@ class ContentModerationService
     public function rejectionMessage(?ContentModerationLog $log = null): string
     {
         $category = $log?->detected_category;
+        $topic = $this->categoryTopic($category);
         $blockedUrls = $log ? $this->blockedUrlsFromLog($log) : [];
         $terms = $log ? $this->matchedTermsFromLog($log) : [];
 
         if ($blockedUrls !== []) {
             $shown = implode(', ', array_slice($blockedUrls, 0, 3));
-            $topic = $category === 'adult'
-                ? 'adult / 18+ / porn'
-                : 'casino / poker / gambling / betting';
 
             return "This article links to restricted {$topic} sites ({$shown}). "
                 .'Remove or replace those links (even if the anchor text looks harmless) and resubmit.';
         }
 
-        if ($category === 'adult' && $terms !== []) {
+        if ($terms !== []) {
             $list = implode(', ', array_slice($terms, 0, 8));
 
-            return 'This article contains adult / 18+ / porn content we do not allow: '
-                .$list
-                .'. Remove those topics and resubmit.';
-        }
-
-        if ($terms !== []) {
-            $shown = array_slice($terms, 0, 8);
-            $list = implode(', ', $shown);
-
-            return 'This article mentions casino / poker / gambling / betting terms we do not allow: '
+            return "This article contains {$topic} content we do not allow: "
                 .$list
                 .'. Remove those topics and resubmit.';
         }
 
         return (string) (config('content_upload.help.compliance_reject')
-            ?: 'This article contains restricted casino, betting, poker, or adult content. Please revise and resubmit.');
+            ?: "This article contains restricted {$topic} content. Please revise and resubmit.");
+    }
+
+    public function categoryLabel(?string $key): string
+    {
+        $key = trim((string) $key);
+        if ($key === ContentModerationLog::CATEGORY_CUSTOM) {
+            return 'Extra prohibited keywords';
+        }
+        if ($key === '') {
+            return 'restricted content';
+        }
+
+        $label = config('content_moderation.categories.'.$key.'.label');
+
+        return is_string($label) && $label !== '' ? $label : $key;
+    }
+
+    public function categoryTopic(?string $key): string
+    {
+        return match (trim((string) $key)) {
+            'adult' => 'adult / 18+ / porn',
+            'gambling' => 'casino / poker / gambling / betting',
+            'cbd' => 'CBD / cannabis',
+            'alcohol' => 'alcohol',
+            'tobacco' => 'tobacco / vaping',
+            'weapons' => 'weapons',
+            'crypto_promo' => 'cryptocurrency promotions',
+            ContentModerationLog::CATEGORY_CUSTOM => 'restricted keywords',
+            default => 'restricted content',
+        };
     }
 
     /**
@@ -544,9 +578,8 @@ class ContentModerationService
         $matchedTerms = $this->matchedTermsFromLog($log);
         $blockedUrls = $this->blockedUrlsFromLog($log);
         $category = $log->detected_category;
-        $policyLabel = $category === 'adult'
-            ? 'Restricted content (adult / 18+ / porn)'
-            : 'Restricted content (casino / gambling / betting)';
+        $topic = $this->categoryTopic($category);
+        $policyLabel = 'Restricted content ('.$topic.')';
 
         $publicChecks = [];
         foreach ($checks as $check) {
@@ -567,7 +600,7 @@ class ContentModerationService
             } elseif ($matchedTerms !== []) {
                 $detail = 'Remove these terms: '.implode(', ', array_slice($matchedTerms, 0, 10));
             } else {
-                $detail = 'Casino / betting / poker / adult content is not allowed';
+                $detail = ucfirst($topic).' content is not allowed';
             }
             $publicChecks[] = [
                 'label' => $policyLabel,
@@ -581,7 +614,7 @@ class ContentModerationService
             $publicChecks[] = [
                 'label' => 'Content policy',
                 'status' => 'pass',
-                'detail' => 'No restricted casino, betting, poker, or adult content detected',
+                'detail' => 'No restricted content detected',
             ];
         }
 
@@ -601,9 +634,18 @@ class ContentModerationService
     {
         return [
             'total' => ContentModerationLog::query()->count(),
-            'approved' => ContentModerationLog::query()->where('status', 'approved')->count(),
-            'rejected' => ContentModerationLog::query()->where('status', 'rejected')->count(),
-            'errors' => ContentModerationLog::query()->where('status', 'error')->count(),
+            'approved' => ContentModerationLog::query()
+                ->where('status', ContentModerationLog::STATUS_APPROVED)
+                ->notSkipped()
+                ->count(),
+            'rejected' => ContentModerationLog::query()
+                ->where('status', ContentModerationLog::STATUS_REJECTED)
+                ->count(),
+            'errors' => ContentModerationLog::query()
+                ->where('status', ContentModerationLog::STATUS_ERROR)
+                ->count(),
+            'skipped' => ContentModerationLog::query()->skipped()->count(),
+            'overridden' => ContentModerationLog::query()->where('admin_override', true)->count(),
             'today' => ContentModerationLog::query()->whereDate('created_at', today())->count(),
         ];
     }
@@ -680,5 +722,253 @@ class ContentModerationService
             plainText: (string) ($submission->extracted_text ?? ''),
             extraLinks: $submission->detectedLinks(),
         );
+    }
+
+    public function submissionIdFromSource(string $sourceLabel): ?int
+    {
+        if (preg_match('/^upload:(\d+)$/', trim($sourceLabel), $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
+    }
+
+    public function submissionForLog(ContentModerationLog $log): ?ContentSubmission
+    {
+        if ($log->content_submission_id) {
+            return ContentSubmission::query()->find($log->content_submission_id);
+        }
+
+        $fromUrl = $this->submissionIdFromSource((string) $log->document_url);
+        if ($fromUrl) {
+            return ContentSubmission::query()->find($fromUrl);
+        }
+
+        return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
+    }
+
+    public function scanTitle(ContentSubmission $submission): string
+    {
+        $title = trim((string) $submission->title);
+        if ($title !== '') {
+            return $title;
+        }
+
+        $fromFile = pathinfo((string) $submission->original_filename, PATHINFO_FILENAME);
+
+        return $fromFile !== '' ? $fromFile : 'Article';
+    }
+
+    public function contentFingerprint(ContentSubmission $submission): string
+    {
+        $links = $this->linksFromSubmission($submission);
+        sort($links);
+
+        return hash('sha256', implode("\n", [
+            $this->scanTitle($submission),
+            (string) $submission->extracted_text,
+            (string) $submission->preview_html,
+            (string) $submission->target_url,
+            implode("\n", $links),
+        ]));
+    }
+
+    public function usableAdminOverride(ContentSubmission $submission): bool
+    {
+        if ($submission->moderation_status !== ContentSubmission::STATUS_APPROVED) {
+            return false;
+        }
+
+        $log = $submission->moderationLog;
+        if (! $log || ! $log->admin_override || ! $log->passed) {
+            return false;
+        }
+
+        $stored = $log->signals['override_fingerprint'] ?? null;
+        if (! is_string($stored) || $stored === '') {
+            return false;
+        }
+
+        return hash_equals($stored, $this->contentFingerprint($submission));
+    }
+
+    /**
+     * @return array{ok:bool, submission:?ContentSubmission, message:string}
+     */
+    public function applyAdminOverride(ContentModerationLog $log, User $admin, string $notes): array
+    {
+        if ($log->wasSkipped()) {
+            return ['ok' => false, 'submission' => null, 'message' => 'Skipped scans cannot be overridden.'];
+        }
+
+        $overridable = in_array($log->status, [
+            ContentModerationLog::STATUS_REJECTED,
+            ContentModerationLog::STATUS_ERROR,
+        ], true) || $log->admin_override;
+        if (! $overridable) {
+            return ['ok' => false, 'submission' => $this->submissionForLog($log), 'message' => 'Only rejected or error scans can be overridden.'];
+        }
+
+        $submission = $this->submissionForLog($log);
+        if (! $submission && $this->submissionIdFromSource((string) $log->document_url)) {
+            return ['ok' => false, 'submission' => null, 'message' => 'The linked article no longer exists.'];
+        }
+
+        return DB::transaction(function () use ($log, $admin, $notes, $submission) {
+            if ($submission) {
+                $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
+            }
+
+            $signals = is_array($log->signals) ? $log->signals : [];
+            if ($submission) {
+                $signals['override_fingerprint'] = $this->contentFingerprint($submission);
+            }
+
+            $log->update([
+                'passed' => true,
+                'status' => ContentModerationLog::STATUS_APPROVED,
+                'admin_override' => true,
+                'overridden_by' => $admin->id,
+                'overridden_at' => now(),
+                'admin_notes' => $notes,
+                'signals' => $signals,
+            ]);
+
+            if ($submission) {
+                $submission->update(array_merge(
+                    $this->evaluationApprovedByOverride($submission, $notes),
+                    [
+                        'moderation_status' => ContentSubmission::STATUS_APPROVED,
+                        'evaluation_status' => 'approved',
+                        'moderation_log_id' => $log->id,
+                        'scan_token' => $log->scan_token,
+                    ]
+                ));
+            }
+
+            try {
+                ActivityLogger::log(
+                    'moderation.overridden',
+                    ($admin->name ?: $admin->email).' overrode moderation log #'.$log->id,
+                    $submission,
+                    [
+                        'log_id' => $log->id,
+                        'submission_id' => $submission?->id,
+                        'notes' => $notes,
+                    ],
+                    $submission?->title ?: $submission?->original_filename
+                );
+            } catch (\Throwable) {
+            }
+
+            $message = $submission
+                ? 'Article #'.$submission->id.' approved by override. Checkout will accept it until the advertiser edits the content.'
+                : 'Scan overridden as approved. No linked article was found to update.';
+
+            return ['ok' => true, 'submission' => $submission?->fresh(), 'message' => $message];
+        });
+    }
+
+    /**
+     * @return array{ok:bool, submission:?ContentSubmission, message:string}
+     */
+    public function revertAdminOverride(ContentModerationLog $log, User $admin): array
+    {
+        if (! $log->admin_override) {
+            return ['ok' => false, 'submission' => null, 'message' => 'This log is not an admin override.'];
+        }
+
+        $submission = $this->submissionForLog($log);
+        if ($submission && (int) $submission->moderation_log_id !== (int) $log->id) {
+            return [
+                'ok' => false,
+                'submission' => $submission,
+                'message' => 'This override is no longer the current decision. Open the latest scan.',
+            ];
+        }
+
+        return DB::transaction(function () use ($log, $admin, $submission) {
+            $signals = is_array($log->signals) ? $log->signals : [];
+            $signals['reverted'] = true;
+            $signals['reverted_by'] = $admin->id;
+            unset($signals['override_fingerprint']);
+
+            $log->update([
+                'passed' => false,
+                'status' => ContentModerationLog::STATUS_REJECTED,
+                'admin_override' => false,
+                'signals' => $signals,
+                'admin_notes' => trim((string) $log->admin_notes."\nReverted by ".$admin->email),
+            ]);
+
+            if ($submission && (filled($submission->extracted_text) || filled($submission->preview_html))) {
+                $result = $this->scanExtractedContent(
+                    text: (string) $submission->extracted_text,
+                    html: (string) ($submission->preview_html ?? ''),
+                    sourceLabel: 'upload:'.$submission->id,
+                    user: $submission->user,
+                    title: $this->scanTitle($submission),
+                    links: $this->linksFromSubmission($submission),
+                    contentSubmissionId: (int) $submission->id,
+                );
+                $submission->update([
+                    'moderation_status' => $result['passed']
+                        ? ContentSubmission::STATUS_APPROVED
+                        : ($result['status'] === 'error'
+                            ? ContentSubmission::STATUS_ERROR
+                            : ContentSubmission::STATUS_REJECTED),
+                    'moderation_log_id' => $result['log']?->id,
+                    'scan_token' => $result['scan_token'],
+                ]);
+            } elseif ($submission) {
+                $submission->update([
+                    'moderation_status' => ContentSubmission::STATUS_REJECTED,
+                ]);
+            }
+
+            try {
+                ActivityLogger::log(
+                    'moderation.override_reverted',
+                    ($admin->name ?: $admin->email).' reverted moderation override #'.$log->id,
+                    $submission,
+                    [
+                        'log_id' => $log->id,
+                        'submission_id' => $submission?->id,
+                    ],
+                    $submission?->title ?: $submission?->original_filename
+                );
+            } catch (\Throwable) {
+            }
+
+            return [
+                'ok' => true,
+                'submission' => $submission?->fresh(),
+                'message' => 'Override reverted. The article was re-checked against current policy.',
+            ];
+        });
+    }
+
+    /**
+     * @return array{evaluation_report: array<string, mixed>}
+     */
+    protected function evaluationApprovedByOverride(ContentSubmission $submission, string $notes): array
+    {
+        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+        $checks = is_array($report['checks'] ?? null) ? $report['checks'] : [];
+        foreach ($checks as $i => $check) {
+            if (! is_array($check) || strtolower((string) ($check['status'] ?? '')) !== 'fail') {
+                continue;
+            }
+            $checks[$i]['status'] = 'pass';
+            $detail = trim((string) ($check['detail'] ?? $check['label'] ?? 'Restricted content'));
+            $checks[$i]['detail'] = 'Cleared by admin override: '.$detail;
+        }
+        $report['checks'] = $checks;
+        $report['passed_compliance'] = true;
+        $report['admin_override'] = true;
+        $report['admin_override_notes'] = $notes;
+        $report['summary'] = 'Approved by admin override.';
+
+        return ['evaluation_report' => $report];
     }
 }

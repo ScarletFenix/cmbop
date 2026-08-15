@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Mail\PlatformMailable;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -1269,6 +1270,57 @@ class AdminCampaignsTest extends TestCase
         Mail::assertQueued(AudienceCampaignMail::class, SendEmailCampaignJob::BATCH_SIZE);
     }
 
+    public function test_job_uses_a_smaller_batch_when_mail_is_sync_on_a_worker(): void
+    {
+        Queue::fake();
+        Mail::fake();
+        config([
+            'queue.default' => 'database',
+            'email_notifications.queue_connection' => 'sync',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $users = [];
+        for ($i = 0; $i < SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE + 3; $i++) {
+            $users[] = $this->makeUser('advertiser');
+        }
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Sync mail batch',
+            'subject' => 'Sync mail batch',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => count($users),
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        foreach ($users as $user) {
+            EmailCampaignRecipient::create([
+                'email_campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => EmailCampaignRecipient::STATUS_PENDING,
+            ]);
+        }
+
+        $job = new SendEmailCampaignJob($campaign->id);
+        $this->assertSame('database', $job->connection);
+        $job->handle();
+
+        $this->assertSame(
+            SendEmailCampaignJob::SYNC_MAIL_BATCH_SIZE,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_QUEUED)->count()
+        );
+        $this->assertSame(
+            3,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_PENDING)->count()
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
     public function test_job_timeout_redispatches_instead_of_wiping_pending(): void
     {
         Queue::fake();
@@ -1605,6 +1657,58 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(0, EmailCampaign::recoverStalled());
         Queue::assertNothingPushed();
         $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
+    }
+
+    public function test_stall_recovery_scans_default_queue_when_mail_jobs_table_is_missing(): void
+    {
+        Queue::fake();
+        config([
+            'email_notifications.queue_connection' => 'mail-db',
+            'queue.default' => 'database',
+            'queue.connections.mail-db.driver' => 'database',
+            'queue.connections.mail-db.table' => 'jobs_missing_mail_table',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'Other connection job',
+            'subject' => 'Other connection job',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $command = 'O:32:"App\\Jobs\\SendEmailCampaignJob":1:{s:10:"campaignId";i:'.$campaign->id.';}';
+        DB::table('jobs')->insert([
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => SendEmailCampaignJob::class,
+                'data' => [
+                    'commandName' => SendEmailCampaignJob::class,
+                    'command' => $command,
+                ],
+            ], JSON_THROW_ON_ERROR),
+            'attempts' => 0,
+            'reserved_at' => null,
+            'available_at' => now()->timestamp,
+            'created_at' => now()->timestamp,
+        ]);
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        Queue::assertNothingPushed();
     }
 
     public function test_stall_recovery_sees_mail_queue_job_when_app_queue_is_sync(): void

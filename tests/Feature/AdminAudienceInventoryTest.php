@@ -408,6 +408,10 @@ class AdminAudienceInventoryTest extends TestCase
         $this->assertContains($customer->id, $inventory->collectRecipientRows('advertisers_paid_orders')->pluck('id'));
         $this->assertContains($fundedIdle->id, $inventory->collectRecipientRows('advertisers_deposited_no_orders')->pluck('id'));
         $this->assertContains($draftOnly->id, $inventory->collectRecipientRows('publishers_no_active_sites')->pluck('id'));
+        $this->assertEqualsCanonicalizing(
+            ['id', 'email'],
+            array_keys($inventory->collectRecipientRows('advertisers_paid_orders')->first()->getAttributes())
+        );
     }
 
     public function test_inverted_registration_dates_are_swapped(): void
@@ -543,14 +547,21 @@ class AdminAudienceInventoryTest extends TestCase
     public function test_whitespace_only_email_is_not_a_recipient(): void
     {
         $blank = $this->makeUser('advertiser', ['email' => '   ']);
+        $tabOnly = $this->makeUser('advertiser', ['email' => "\t\n"]);
+        $noAt = $this->makeUser('advertiser', ['email' => 'not-an-email']);
         $plain = $this->makeUser('advertiser');
 
         $inventory = app(AudienceInventoryService::class);
         $ids = $inventory->collect('advertisers', null, true)->pluck('id')->all();
+        $rowIds = $inventory->collectRecipientRows('advertisers', null, true)->pluck('id')->all();
 
         $this->assertNotContains($blank->id, $ids);
+        $this->assertNotContains($tabOnly->id, $ids);
+        $this->assertNotContains($noAt->id, $ids);
         $this->assertContains($plain->id, $ids);
-        $this->assertSame(0, $inventory->count('selected', [$blank->id], true));
+        $this->assertSame($ids, $rowIds);
+        $this->assertSame(0, $inventory->count('selected', [$blank->id, $tabOnly->id, $noAt->id], true));
+        $this->assertSame(1, $inventory->count('advertisers', null, true));
     }
 
     public function test_all_advertisers_campaign_skips_dual_role_staff(): void
