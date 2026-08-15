@@ -177,7 +177,7 @@
                 @endif
                 
                 <div class="blog-content">
-                    {!! \App\Support\BlogInlineImages::rewriteLegacyAssetUrls($resolvedContent) !!}
+                    {!! app(\App\Services\BlogHtmlSanitizer::class)->sanitize(\App\Support\BlogInlineImages::rewriteLegacyAssetUrls($resolvedContent)) !!}
                 </div>
                 
                 <!-- Share Section -->

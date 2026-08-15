@@ -311,11 +311,9 @@ class BlogController extends Controller
                 $data['featured_image'] = null;
             }
 
-            if ($request->status === 'published' && $blog->status !== 'published') {
+            if ($request->status === 'published' && ! $blog->published_at) {
                 $data['published_at'] = now();
                 Log::info('Blog published', ['blog_id' => $id]);
-            } elseif ($request->status === 'draft' && $blog->status === 'published') {
-                $data['published_at'] = null;
             }
 
             DB::transaction(function () use ($blog, $data, $translations, $enSlug) {
@@ -413,12 +411,11 @@ class BlogController extends Controller
 
             if ($blog->status === 'published') {
                 $blog->status = 'draft';
-                $blog->published_at = null;
                 $message = 'Blog "'.$blog->title.'" moved to draft.';
                 Log::info('Blog unpublished', ['blog_id' => $id, 'title' => $blog->title]);
             } else {
                 $blog->status = 'published';
-                $blog->published_at = now();
+                $blog->published_at = $blog->published_at ?? now();
                 $message = 'Blog "'.$blog->title.'" published successfully!';
                 Log::info('Blog published', ['blog_id' => $id, 'title' => $blog->title]);
             }
@@ -455,6 +452,11 @@ class BlogController extends Controller
                 'success' => true,
                 'url' => $imageUrl,
             ]);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'success' => false,
+                'error' => collect($e->errors())->flatten()->first() ?: 'Invalid image.',
+            ], 422);
         } catch (\Exception $e) {
             Log::error('Image upload failed: '.$e->getMessage());
 
@@ -536,7 +538,9 @@ class BlogController extends Controller
             $slug = trim((string) ($item['slug'] ?? ''));
             $excerpt = isset($item['excerpt']) ? trim((string) $item['excerpt']) : null;
             $rawContent = trim((string) ($item['content'] ?? ''));
-            $content = BlogHtmlSanitizer::isEmptyHtml($rawContent) ? '' : $rawContent;
+            $content = BlogHtmlSanitizer::isEmptyHtml($rawContent)
+                ? ''
+                : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {
