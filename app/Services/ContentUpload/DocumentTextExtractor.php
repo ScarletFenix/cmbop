@@ -24,8 +24,8 @@ class DocumentTextExtractor
     /**
      * Policy-only read of the stored package. Includes headers, footers,
      * notes, comments, document properties, custom XML, image descr/tooltips,
-     * media filenames, and every external hyperlink. Does not store images
-     * or build preview HTML.
+     * media/embedding/SVG filenames, SVG text, and every external hyperlink.
+     * Does not store images or build preview HTML.
      *
      * @return array{ok:bool, text:string, links:list<string>}
      */
@@ -51,12 +51,18 @@ class DocumentTextExtractor
                 }
                 $name = str_replace('\\', '/', $name);
                 $lower = strtolower($name);
-                if (preg_match('/\.(png|jpe?g|gif|webp|bmp|emf|wmf|tiff?)$/i', $lower)) {
-                    $base = pathinfo($name, PATHINFO_FILENAME);
-                    if ($base !== '' && ! preg_match('/^(image|img|picture|pic)[\s_\-]?\d*$/i', $base)) {
-                        $texts[] = $base;
-                    }
-
+                $base = pathinfo($name, PATHINFO_FILENAME);
+                $scorePackageName = (bool) preg_match('#/(media|embeddings|activex|oleobjects?)/#i', $lower)
+                    || str_ends_with($lower, '.svg');
+                if ($scorePackageName
+                    && $base !== ''
+                    && ! preg_match('/^(image|img|picture|pic|oleobject|object|embedding|embed|file|media)[\s_\-]?\d*$/i', $base)) {
+                    $texts[] = $base;
+                }
+                if (preg_match('/\.(png|jpe?g|gif|webp|bmp|emf|wmf|tiff?)$/i', $lower)
+                    || (! str_ends_with($lower, '.xml')
+                        && ! str_ends_with($lower, '.rels')
+                        && ! str_ends_with($lower, '.svg'))) {
                     continue;
                 }
                 $xml = (string) $zip->getFromIndex($i);
@@ -65,6 +71,14 @@ class DocumentTextExtractor
                 }
                 if (str_ends_with($lower, '.rels')) {
                     $urls = array_merge($urls, $this->externalTargetsFromRels($xml));
+
+                    continue;
+                }
+                if (str_ends_with($lower, '.svg')) {
+                    $plain = $this->xmlToPolicyText($xml);
+                    if ($plain !== '') {
+                        $texts[] = $plain;
+                    }
 
                     continue;
                 }

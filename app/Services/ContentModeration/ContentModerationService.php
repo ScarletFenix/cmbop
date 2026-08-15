@@ -229,6 +229,33 @@ class ContentModerationService
             ];
         }
 
+        if (mb_strlen($text) > ContentModerationEngine::maxScannableChars()) {
+            $log = ContentModerationLog::create([
+                'user_id' => $user?->id,
+                'content_submission_id' => $contentSubmissionId,
+                'document_url' => $sourceLabel,
+                'document_id' => $documentId,
+                'status' => ContentModerationLog::STATUS_ERROR,
+                'passed' => false,
+                'error_code' => 'article_too_large',
+                'error_message' => 'This article is too large to re-check against content policy. Shorten it and try again.',
+                'scan_token' => Str::random(40),
+            ]);
+
+            return [
+                'passed' => false,
+                'status' => 'error',
+                'user_title' => 'Unable to Check Article',
+                'user_message' => $log->error_message,
+                'loading_done' => true,
+                'log' => $log,
+                'report' => ['error' => true, 'error_code' => 'article_too_large'],
+                'scan_token' => $log->scan_token,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
         if (! $this->isEnabled()) {
             $token = Str::random(40);
             $log = ContentModerationLog::create([

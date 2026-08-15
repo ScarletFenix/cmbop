@@ -11,8 +11,16 @@ namespace App\Services\ContentModeration;
  */
 class ContentModerationEngine
 {
-    /** Cap policy haystack so a 10 MB article cannot timeout the upload request. */
-    private const SCORE_TEXT_CHARS = 200000;
+    /** Per-window cap so a 10 MB article cannot timeout one regex pass. */
+    public const SCORE_TEXT_CHARS = 200000;
+
+    /** Max windows scored in full. Beyond this the article is fail-closed. */
+    public const SCORE_TEXT_WINDOWS = 20;
+
+    public static function maxScannableChars(): int
+    {
+        return self::SCORE_TEXT_CHARS * self::SCORE_TEXT_WINDOWS;
+    }
 
     /**
      * @param  array<string, mixed>  $categories
@@ -36,10 +44,80 @@ class ContentModerationEngine
         array $extraKeywords = [],
         array $exceptions = [],
     ): array {
-        if (mb_strlen($text) > self::SCORE_TEXT_CHARS) {
-            $text = mb_substr($text, 0, self::SCORE_TEXT_CHARS);
+        $merged = [
+            'scores' => [],
+            'max_confidence' => 0,
+            'detected_category' => null,
+            'signals' => ['hits' => [], 'blocked_urls' => []],
+            'matched_terms' => [],
+            'blocked_urls' => [],
+        ];
+
+        foreach ($this->policyTextWindows($text) as $window) {
+            $merged = $this->mergeScoreResults($merged, $this->scoreWindow(
+                $title,
+                $window,
+                $links,
+                $categories,
+                $extraKeywords,
+                $exceptions,
+            ));
         }
 
+        return $merged;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function policyTextWindows(string $text): array
+    {
+        $len = mb_strlen($text);
+        if ($len <= self::SCORE_TEXT_CHARS) {
+            return [$text];
+        }
+
+        $windows = [];
+        $max = self::SCORE_TEXT_WINDOWS;
+        $fullCover = $max * self::SCORE_TEXT_CHARS;
+        if ($len <= $fullCover) {
+            for ($offset = 0; $offset < $len; $offset += self::SCORE_TEXT_CHARS) {
+                $windows[] = mb_substr($text, $offset, self::SCORE_TEXT_CHARS);
+            }
+
+            return $windows;
+        }
+
+        for ($i = 0; $i < $max - 1; $i++) {
+            $windows[] = mb_substr($text, $i * self::SCORE_TEXT_CHARS, self::SCORE_TEXT_CHARS);
+        }
+        $windows[] = mb_substr($text, -self::SCORE_TEXT_CHARS);
+
+        return $windows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $categories
+     * @param  array<int, string|array{url?:string,anchor?:string}>  $links
+     * @param  array<int, string>  $extraKeywords
+     * @param  array<int, string>  $exceptions
+     * @return array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }
+     */
+    protected function scoreWindow(
+        string $title,
+        string $text,
+        array $links,
+        array $categories,
+        array $extraKeywords,
+        array $exceptions,
+    ): array {
         $rawHaystack = mb_strtolower($title."\n".$text);
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
         $urlStrings = $this->normalizeLinkList($links);
@@ -191,6 +269,80 @@ class ContentModerationEngine
             'matched_terms' => array_values(array_unique($allMatched)),
             'blocked_urls' => $allBlockedUrls,
         ];
+    }
+
+    /**
+     * @param  array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }  $into
+     * @param  array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }  $part
+     * @return array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }
+     */
+    protected function mergeScoreResults(array $into, array $part): array
+    {
+        foreach ($part['scores'] as $key => $conf) {
+            $into['scores'][$key] = max((int) ($into['scores'][$key] ?? 0), (int) $conf);
+        }
+        arsort($into['scores']);
+        $into['max_confidence'] = 0;
+        $into['detected_category'] = null;
+        foreach ($into['scores'] as $key => $conf) {
+            if ($conf > $into['max_confidence']) {
+                $into['max_confidence'] = $conf;
+                $into['detected_category'] = $conf > 0 ? $key : null;
+            }
+        }
+        $into['matched_terms'] = array_values(array_unique(array_merge(
+            $into['matched_terms'],
+            $part['matched_terms']
+        )));
+        $into['blocked_urls'] = array_values(array_unique(array_merge(
+            $into['blocked_urls'],
+            $part['blocked_urls']
+        )));
+        $into['signals']['blocked_urls'] = $into['blocked_urls'];
+        foreach ($part['signals']['hits'] ?? [] as $key => $hit) {
+            $existing = $into['signals']['hits'][$key] ?? null;
+            if (! is_array($existing)) {
+                $into['signals']['hits'][$key] = $hit;
+
+                continue;
+            }
+            $into['signals']['hits'][$key] = [
+                'term_hits' => max((int) ($existing['term_hits'] ?? 0), (int) ($hit['term_hits'] ?? 0)),
+                'confidence' => max((int) ($existing['confidence'] ?? 0), (int) ($hit['confidence'] ?? 0)),
+                'matched_terms' => array_values(array_unique(array_merge(
+                    $existing['matched_terms'] ?? [],
+                    $hit['matched_terms'] ?? []
+                ))),
+                'blocked_urls' => array_values(array_unique(array_merge(
+                    $existing['blocked_urls'] ?? [],
+                    $hit['blocked_urls'] ?? []
+                ))),
+                'hard_hit' => (bool) ($existing['hard_hit'] ?? false) || (bool) ($hit['hard_hit'] ?? false),
+            ];
+        }
+
+        return $into;
     }
 
     /**
@@ -397,11 +549,13 @@ class ContentModerationEngine
         ) ?? $text;
 
         if (class_exists(\Normalizer::class)) {
-            $normalized = \Normalizer::normalize($text, \Normalizer::FORM_KC);
+            $normalized = \Normalizer::normalize($text, \Normalizer::FORM_KD);
             if (is_string($normalized) && $normalized !== '') {
                 $text = $normalized;
             }
         }
+        // Combining slashes / accents used to hide "casino" as "c̸a̸s̸i̸n̸o̸".
+        $text = preg_replace('/\p{Mn}+/u', '', $text) ?? $text;
 
         $text = strtr($text, self::latinConfusables());
 
