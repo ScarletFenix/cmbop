@@ -74,7 +74,7 @@
                                             data-url="{{ route('admin.community.problems.update', $item->id) }}"
                                             data-status="{{ $item->status }}"
                                             data-statuses="{{ implode(',', $statuses) }}"
-                                            data-notes="{{ e($item->admin_notes) }}">Update</button>
+                                            data-notes="{{ $item->admin_notes }}">Update</button>
                                 </td>
                             </tr>
                         @empty
@@ -111,7 +111,7 @@
                                             data-url="{{ route('admin.community.suggestions.update', $item->id) }}"
                                             data-status="{{ $item->status }}"
                                             data-statuses="{{ implode(',', $statuses) }}"
-                                            data-notes="{{ e($item->admin_notes) }}">Update</button>
+                                            data-notes="{{ $item->admin_notes }}">Update</button>
                                 </td>
                             </tr>
                         @empty
@@ -154,7 +154,7 @@
                                             data-url="{{ route('admin.community.websites.update', $item->id) }}"
                                             data-status="{{ $item->status }}"
                                             data-statuses="{{ implode(',', $statuses) }}"
-                                            data-notes="{{ e($item->admin_notes) }}">Update</button>
+                                            data-notes="{{ $item->admin_notes }}">Update</button>
                                 </td>
                             </tr>
                         @empty
