@@ -356,19 +356,36 @@
 /* ——— Finance overview header actions ——— */
 
 .admin-finance-toolbar__search {
+  position: relative;
   min-width: 220px;
 }
 
-/* Status under the dossier field reserves a line. Collapse it when empty so
-   align-items-end keeps Open / ledger / export on the input baseline. */
-.admin-finance-toolbar .slb-search-status:empty {
-  min-height: 0;
-  height: 0;
-  margin: 0;
-  overflow: hidden;
+.admin-finance-toolbar__action {
+  display: flex;
+  flex-direction: column;
 }
 
-.admin-finance-toolbar .btn {
+.admin-finance-toolbar__action .form-label {
+  display: block;
+}
+
+/* Keep the 2-char hint out of the flex row so Open / ledger / export stay
+   on the input baseline instead of dropping when the status line appears. */
+.admin-finance-toolbar .slb-search-status {
+  position: absolute;
+  left: 0;
+  top: 100%;
+  z-index: 1;
+  min-height: 0;
+  margin: 0;
+}
+
+.admin-finance-toolbar .slb-search-status:empty {
+  display: none;
+}
+
+.admin-finance-toolbar .btn,
+.admin-finance-period__action .btn {
   min-height: calc(1.5em + 0.5rem + 2px);
 }
 
