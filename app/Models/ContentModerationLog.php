@@ -127,9 +127,9 @@ class ContentModerationLog extends Model
 
     public function articleUrl(): ?string
     {
-        $submissionId = $this->resolvedSubmissionId();
-        if ($submissionId) {
-            return route('admin.content-library.show', $submissionId);
+        // Only link when the FK is live. upload:{id} without a row 404s after delete.
+        if ($this->content_submission_id) {
+            return route('admin.content-library.show', $this->content_submission_id);
         }
 
         $url = trim((string) $this->document_url);

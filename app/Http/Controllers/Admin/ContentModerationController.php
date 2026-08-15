@@ -33,7 +33,7 @@ class ContentModerationController extends Controller
         $to = scalar_text($request->query('to', ''));
 
         $query = ContentModerationLog::query()
-            ->with(['user:id,name,email', 'submission:id,title,original_filename,user_id,moderation_status'])
+            ->with(['user:id,name,email', 'submission'])
             ->latest('id');
 
         if ($status === 'approved') {

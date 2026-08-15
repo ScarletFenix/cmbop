@@ -9,6 +9,7 @@ use App\Models\ContentSubmission;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
+use App\Services\ContentUpload\ArticleEvaluationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -63,6 +64,17 @@ class AdminModerationOverrideTest extends TestCase
 
         $submission->update([
             'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluation_status' => 'rejected',
+            'evaluation_report' => [
+                'summary' => $result['user_message'] ?? 'Restricted content',
+                'passed_compliance' => false,
+                'checks' => [[
+                    'key' => 'restricted_content',
+                    'label' => 'Restricted content',
+                    'status' => 'fail',
+                    'detail' => 'Found: casino',
+                ]],
+            ],
             'moderation_log_id' => $result['log']?->id,
             'scan_token' => $result['scan_token'],
         ]);
@@ -77,6 +89,27 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertInstanceOf(ContentModerationLog::class, $log);
         $this->assertSame((int) $submission->id, (int) $log->content_submission_id);
         $this->assertFalse((bool) ($log->passed ?? true));
+    }
+
+    public function test_weapons_evaluation_report_does_not_call_it_casino(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $body = 'Buy firearms and ammunition for sale, including ghost gun kits, shipped discreetly.';
+        $submission->update([
+            'title' => 'Weapons guide',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+        ]);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $result = app(ArticleEvaluationService::class)->evaluate($submission->fresh(), $advertiser);
+        $this->assertFalse((bool) ($result['approved'] ?? true));
+        $label = collect($result['report']['checks'] ?? [])
+            ->firstWhere('key', 'restricted_content')['label'] ?? '';
+        $this->assertStringContainsString('weapons', strtolower((string) $label));
+        $this->assertStringNotContainsString('casino', strtolower((string) $label));
     }
 
     public function test_weapons_rejection_does_not_call_the_hit_casino(): void
@@ -112,11 +145,34 @@ class AdminModerationOverrideTest extends TestCase
         $log->refresh();
         $this->assertTrue((bool) $log->admin_override);
         $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->moderation_status);
+        $this->assertSame('approved', $submission->evaluation_status);
+        $this->assertSame([], $submission->evaluationReasonGroups()['blocking']);
         $this->assertSame((int) $log->id, (int) $submission->moderation_log_id);
 
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
         $this->assertTrue($check['ok'], json_encode($check['failures']));
         $this->assertTrue(ActivityLog::query()->where('action', 'moderation.overridden')->exists());
+    }
+
+    public function test_title_change_after_override_revokes_the_pass(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $submission->refresh()->update([
+            'title' => 'Best online casino bonus guide',
+        ]);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 
     public function test_editing_after_override_revokes_the_pass(): void
@@ -182,6 +238,38 @@ class AdminModerationOverrideTest extends TestCase
             ->post(route('admin.moderation.override', $log), ['notes' => ''])
             ->assertRedirect(route('admin.moderation.index'))
             ->assertSessionHasErrors('notes');
+    }
+
+    public function test_index_shows_revert_on_the_current_override(): void
+    {
+        $admin = $this->admin();
+        [$submission, $log] = $this->rejectCasinoArticle($this->advertiser());
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), ['notes' => 'Allow this version.'])
+            ->assertRedirect();
+
+        $this->actingAs($admin)
+            ->get(route('admin.moderation.index'))
+            ->assertOk()
+            ->assertSee('Revert')
+            ->assertSee(route('admin.moderation.revert', $log), false);
+        $this->assertSame((int) $log->id, (int) $submission->fresh()->moderation_log_id);
+    }
+
+    public function test_override_fails_when_the_article_was_deleted(): void
+    {
+        $admin = $this->admin();
+        [$submission, $log] = $this->rejectCasinoArticle($this->advertiser());
+        $submission->delete();
+
+        $this->actingAs($admin)
+            ->from(route('admin.moderation.index'))
+            ->post(route('admin.moderation.override', $log), ['notes' => 'Approve anyway.'])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertFalse((bool) $log->fresh()->admin_override);
     }
 
     public function test_doc_button_does_not_use_upload_protocol(): void

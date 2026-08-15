@@ -115,9 +115,7 @@ class ArticleEvaluationService
 
         $text = trim((string) $submission->extracted_text);
         $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
-        $title = $submission->title
-            ?: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME)
-            ?: 'Article';
+        $title = $this->moderation->scanTitle($submission);
 
         // 0) Language vs selection — hard-block only on high-confidence mismatch;
         // mid-confidence / mixed copy is advisory (warn) and does not reject.
@@ -299,9 +297,7 @@ class ArticleEvaluationService
                 ?: ($cfg['help']['compliance_reject'] ?? 'Please revise restricted content and resubmit.');
             $report['summary'] = $message;
             $category = $scan['log']?->detected_category;
-            $policyLabel = $category === 'adult'
-                ? 'Adult / 18+ / porn'
-                : 'Casino / gambling / betting';
+            $policyLabel = 'Restricted content ('.$this->moderation->categoryTopic($category).')';
             $report['checks'][] = [
                 'key' => 'restricted_content',
                 'label' => $policyLabel,

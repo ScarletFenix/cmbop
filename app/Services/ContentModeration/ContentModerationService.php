@@ -361,7 +361,7 @@ class ContentModerationService
                 html: (string) ($submission->preview_html ?? ''),
                 sourceLabel: 'upload:'.$submission->id,
                 user: $user,
-                title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
+                title: $this->scanTitle($submission),
                 links: $this->linksFromSubmission($submission),
                 contentSubmissionId: (int) $submission->id,
             );
@@ -747,12 +747,25 @@ class ContentModerationService
         return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
     }
 
+    public function scanTitle(ContentSubmission $submission): string
+    {
+        $title = trim((string) $submission->title);
+        if ($title !== '') {
+            return $title;
+        }
+
+        $fromFile = pathinfo((string) $submission->original_filename, PATHINFO_FILENAME);
+
+        return $fromFile !== '' ? $fromFile : 'Article';
+    }
+
     public function contentFingerprint(ContentSubmission $submission): string
     {
         $links = $this->linksFromSubmission($submission);
         sort($links);
 
         return hash('sha256', implode("\n", [
+            $this->scanTitle($submission),
             (string) $submission->extracted_text,
             (string) $submission->preview_html,
             (string) $submission->target_url,
@@ -762,6 +775,10 @@ class ContentModerationService
 
     public function usableAdminOverride(ContentSubmission $submission): bool
     {
+        if ($submission->moderation_status !== ContentSubmission::STATUS_APPROVED) {
+            return false;
+        }
+
         $log = $submission->moderationLog;
         if (! $log || ! $log->admin_override || ! $log->passed) {
             return false;
@@ -784,13 +801,24 @@ class ContentModerationService
             return ['ok' => false, 'submission' => null, 'message' => 'Skipped scans cannot be overridden.'];
         }
 
-        if ($log->status !== ContentModerationLog::STATUS_REJECTED && ! $log->admin_override) {
-            return ['ok' => false, 'submission' => $this->submissionForLog($log), 'message' => 'Only rejected scans can be overridden.'];
+        $overridable = in_array($log->status, [
+            ContentModerationLog::STATUS_REJECTED,
+            ContentModerationLog::STATUS_ERROR,
+        ], true) || $log->admin_override;
+        if (! $overridable) {
+            return ['ok' => false, 'submission' => $this->submissionForLog($log), 'message' => 'Only rejected or error scans can be overridden.'];
         }
 
         $submission = $this->submissionForLog($log);
+        if (! $submission && $this->submissionIdFromSource((string) $log->document_url)) {
+            return ['ok' => false, 'submission' => null, 'message' => 'The linked article no longer exists.'];
+        }
 
         return DB::transaction(function () use ($log, $admin, $notes, $submission) {
+            if ($submission) {
+                $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
+            }
+
             $signals = is_array($log->signals) ? $log->signals : [];
             if ($submission) {
                 $signals['override_fingerprint'] = $this->contentFingerprint($submission);
@@ -807,11 +835,15 @@ class ContentModerationService
             ]);
 
             if ($submission) {
-                $submission->update([
-                    'moderation_status' => ContentSubmission::STATUS_APPROVED,
-                    'moderation_log_id' => $log->id,
-                    'scan_token' => $log->scan_token,
-                ]);
+                $submission->update(array_merge(
+                    $this->evaluationApprovedByOverride($submission, $notes),
+                    [
+                        'moderation_status' => ContentSubmission::STATUS_APPROVED,
+                        'evaluation_status' => 'approved',
+                        'moderation_log_id' => $log->id,
+                        'scan_token' => $log->scan_token,
+                    ]
+                ));
             }
 
             try {
@@ -875,7 +907,7 @@ class ContentModerationService
                     html: (string) ($submission->preview_html ?? ''),
                     sourceLabel: 'upload:'.$submission->id,
                     user: $submission->user,
-                    title: pathinfo((string) $submission->original_filename, PATHINFO_FILENAME) ?: 'Article',
+                    title: $this->scanTitle($submission),
                     links: $this->linksFromSubmission($submission),
                     contentSubmissionId: (int) $submission->id,
                 );
@@ -914,5 +946,29 @@ class ContentModerationService
                 'message' => 'Override reverted. The article was re-checked against current policy.',
             ];
         });
+    }
+
+    /**
+     * @return array{evaluation_report: array<string, mixed>}
+     */
+    protected function evaluationApprovedByOverride(ContentSubmission $submission, string $notes): array
+    {
+        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+        $checks = is_array($report['checks'] ?? null) ? $report['checks'] : [];
+        foreach ($checks as $i => $check) {
+            if (! is_array($check) || strtolower((string) ($check['status'] ?? '')) !== 'fail') {
+                continue;
+            }
+            $checks[$i]['status'] = 'pass';
+            $detail = trim((string) ($check['detail'] ?? $check['label'] ?? 'Restricted content'));
+            $checks[$i]['detail'] = 'Cleared by admin override: '.$detail;
+        }
+        $report['checks'] = $checks;
+        $report['passed_compliance'] = true;
+        $report['admin_override'] = true;
+        $report['admin_override_notes'] = $notes;
+        $report['summary'] = 'Approved by admin override.';
+
+        return ['evaluation_report' => $report];
     }
 }
