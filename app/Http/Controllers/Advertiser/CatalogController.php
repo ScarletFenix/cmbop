@@ -2363,6 +2363,7 @@ class CatalogController extends Controller
             'bonus_applied' => $bonusApplied,
             'schedule' => $schedule,
             'lines' => $packageLines,
+            'stripe_session_id' => OrderPaymentService::PENDING_STRIPE_SESSION_ID,
         ]);
 
         if ($bonusApplied > 0) {
@@ -5119,7 +5120,7 @@ class CatalogController extends Controller
     private function stripeCheckoutSessionIsPaid(array $package): bool
     {
         $sessionId = search_text($package['stripe_session_id'] ?? '');
-        if ($sessionId === '' || ! config('services.stripe.secret')) {
+        if ($sessionId === '' || ! str_starts_with($sessionId, 'cs_') || ! config('services.stripe.secret')) {
             return false;
         }
 

@@ -25,6 +25,13 @@ use Illuminate\Support\Facades\Schema;
 class OrderPaymentService
 {
     /**
+     * Occupies a Stripe-first checkout reference after the package is stored
+     * and before Stripe returns a real cs_ id, so a second Pay cannot reuse
+     * the ref or treat the in-progress hold as abandoned.
+     */
+    public const PENDING_STRIPE_SESSION_ID = 'pending';
+
+    /**
      * Mark pending card orders paid from a verified Stripe checkout session.
      * Idempotent: already-paid orders are left unchanged.
      *
@@ -447,7 +454,8 @@ class OrderPaymentService
      * reserve bonus again. Leaves bonus untouched when this reference already
      * has open paid/pending orders (approve/reject still owns that hold), or
      * when another checkout still has an open Stripe session (that tab can
-     * still settle and must keep its promo).
+     * still settle and must keep its promo). Uses the live hold only —
+     * leftover package JSON is a late-pay snapshot, not a second reserve.
      */
     public function releaseAbandonedStripeFirstBonus(int $userId, ?string $keepReference = null): void
     {
@@ -483,10 +491,9 @@ class OrderPaymentService
                 continue;
             }
 
-            $held = max(
-                app(CheckoutIntentService::class)->heldBonus($userId, $ref),
-                round((float) ($package['bonus_applied'] ?? 0), 2)
-            );
+            // Live hold only. package.bonus_applied is a late-pay snapshot —
+            // after cancel, held is 0 but the JSON still lists the promo.
+            $held = app(CheckoutIntentService::class)->heldBonus($userId, $ref);
             if ($held > 0.009) {
                 $roleId = Wallet::advertiserRoleId();
                 if ($roleId) {
@@ -497,7 +504,14 @@ class OrderPaymentService
             }
 
             if ($keepReference !== null && $ref !== $keepReference) {
-                $this->forgetPendingCheckout($ref);
+                $snapshotBonus = is_array($package)
+                    ? round((float) ($package['bonus_applied'] ?? 0), 2)
+                    : 0.0;
+                // Cancelled leftovers (held=0, snapshot still lists promo) must
+                // stay so a late paid webhook can still settle that cart.
+                if ($held > 0.009 || $snapshotBonus <= 0.009) {
+                    $this->forgetPendingCheckout($ref);
+                }
             }
         }
     }
