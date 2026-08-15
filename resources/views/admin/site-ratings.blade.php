@@ -20,7 +20,7 @@
                 <select name="site_id" class="form-select form-select-sm">
                     <option value="">All sites</option>
                     @foreach($sites as $site)
-                        <option value="{{ $site->id }}" @selected((string) request('site_id') === (string) $site->id)>
+                        <option value="{{ $site->id }}" @selected((string) (is_scalar(request('site_id')) ? request('site_id') : '') === (string) $site->id)>
                             {{ $site->site_name }} ({{ $site->domain }})
                         </option>
                     @endforeach
@@ -60,8 +60,8 @@
                     @forelse($ratings as $rating)
                         <tr data-id="{{ $rating->id }}">
                             <td>
-                                <div class="fw-semibold">{{ $rating->site->site_name ?? '—' }}</div>
-                                <div class="small text-muted">{{ $rating->site->domain ?? '' }}</div>
+                                <div class="fw-semibold">{{ $rating->site?->site_name ?? '—' }}</div>
+                                <div class="small text-muted">{{ $rating->site?->domain ?? '' }}</div>
                                 @if($rating->site)
                                     <div class="small text-muted">Avg {{ number_format($rating->site->rating_avg ?? 0, 1) }} ({{ $rating->site->rating_count ?? 0 }})</div>
                                 @endif

@@ -83,9 +83,9 @@ class SiteRatingController extends Controller
 
         SiteRating::refreshSiteAggregate((int) $data['site_id']);
 
-        ActivityLogger::log(
+        $this->logRatingActivity(
             'site.rating_saved',
-            auth()->user()->name.' saved a rating for site #'.$data['site_id'],
+            (auth()->user()->name ?? 'Staff').' saved a rating for site #'.$data['site_id'],
             $rating->site,
             ['rating_id' => $rating->id, 'rating' => $rating->rating, 'status' => $rating->status],
             $rating->site?->site_name
@@ -113,9 +113,9 @@ class SiteRatingController extends Controller
 
         SiteRating::refreshSiteAggregate($rating->site_id);
 
-        ActivityLogger::log(
+        $this->logRatingActivity(
             'site.rating_updated',
-            auth()->user()->name.' updated rating #'.$rating->id,
+            (auth()->user()->name ?? 'Staff').' updated rating #'.$rating->id,
             $rating->site,
             $data,
             $rating->site?->site_name
@@ -137,9 +137,9 @@ class SiteRatingController extends Controller
         $rating->delete();
         SiteRating::refreshSiteAggregate($siteId);
 
-        ActivityLogger::log(
+        $this->logRatingActivity(
             'site.rating_deleted',
-            auth()->user()->name.' deleted a site rating',
+            (auth()->user()->name ?? 'Staff').' deleted a site rating',
             null,
             ['site_id' => $siteId, 'rating_id' => $id],
             $siteName
@@ -149,6 +149,29 @@ class SiteRatingController extends Controller
             'success' => true,
             'message' => 'Rating deleted',
         ]);
+    }
+
+    /**
+     * Activity log is best-effort — a missing table must not turn a saved
+     * rating into a failed response (retry would insert another staff row).
+     *
+     * @param  array<string, mixed>  $properties
+     */
+    private function logRatingActivity(
+        string $action,
+        string $description,
+        ?Site $subject,
+        array $properties,
+        ?string $subjectLabel
+    ): void {
+        try {
+            ActivityLogger::log($action, $description, $subject, $properties, $subjectLabel);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log site rating activity', [
+                'action' => $action,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     /**

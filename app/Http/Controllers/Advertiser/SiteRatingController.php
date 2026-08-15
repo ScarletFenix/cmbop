@@ -133,9 +133,9 @@ class SiteRatingController extends Controller
                 'success' => true,
                 'message' => 'Thanks — your rating helps other advertisers.',
                 'rating' => $rating,
-                'rating_avg' => (float) ($site->rating_avg ?? 0),
-                'rating_count' => (int) ($site->rating_count ?? 0),
-                'label' => $site?->ratingStarsLabel(),
+                'rating_avg' => (float) ($site?->rating_avg ?? 0),
+                'rating_count' => (int) ($site?->rating_count ?? 0),
+                'label' => $site?->ratingStarsLabel() ?? 'No ratings yet',
             ],
         ];
     }

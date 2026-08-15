@@ -369,6 +369,52 @@ class SiteRatingTest extends TestCase
         $this->assertStringNotContainsString('Good &amp;amp;', $html);
     }
 
+    public function test_ratings_index_uses_nullsafe_site_access(): void
+    {
+        $blade = file_get_contents(resource_path('views/admin/site-ratings.blade.php'));
+
+        $this->assertStringContainsString('$rating->site?->site_name', $blade);
+        $this->assertStringContainsString('$rating->site?->domain', $blade);
+        $this->assertStringNotContainsString('$rating->site->site_name', $blade);
+        $this->assertStringNotContainsString('$rating->site->domain', $blade);
+    }
+
+    public function test_ratings_index_ok_when_q_is_array(): void
+    {
+        $this->actingAs($this->admin())
+            ->get(route('admin.site-ratings.index', ['q' => ['oops']]))
+            ->assertOk()
+            ->assertSee('Publisher Ratings', false);
+    }
+
+    public function test_admin_store_succeeds_when_activity_log_table_missing(): void
+    {
+        $publisher = User::factory()->create();
+        $site = $this->site($publisher);
+
+        Schema::dropIfExists('activity_logs');
+
+        try {
+            $this->actingAs($this->admin())->postJson(route('admin.site-ratings.store'), [
+                'site_id' => $site->id,
+                'rating' => 4,
+                'comment' => 'Staff note',
+                'status' => 'approved',
+            ])->assertOk()->assertJsonPath('success', true);
+
+            $this->assertDatabaseHas('site_ratings', [
+                'site_id' => $site->id,
+                'rating' => 4,
+                'is_admin' => 1,
+            ]);
+        } finally {
+            $this->artisan('migrate', [
+                '--path' => 'database/migrations/2026_07_15_150505_create_activity_logs_table.php',
+                '--force' => true,
+            ]);
+        }
+    }
+
     public function test_ratings_index_ok_when_table_missing(): void
     {
         Schema::dropIfExists('site_ratings');
