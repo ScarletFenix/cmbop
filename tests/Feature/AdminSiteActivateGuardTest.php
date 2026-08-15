@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -81,6 +82,37 @@ class AdminSiteActivateGuardTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'Verify this site before activating it.');
+
+        $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_activate_rejects_cancelled_bulk_leftover(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site = $this->site([
+            'verified' => true,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+            'bulk_site_request_id' => $bulk->id,
+        ]);
+
+        $this->assertFalse($site->marketingCanActivate());
+        $this->assertFalse($site->needsAdminReview());
+        $this->assertFalse($site->canBeActivated());
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', 'This listing is from a cancelled bulk request and cannot be activated.');
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
 
         $this->assertFalse((bool) $site->fresh()->active);
     }

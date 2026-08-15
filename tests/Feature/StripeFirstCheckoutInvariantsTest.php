@@ -432,4 +432,56 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
+
+    public function test_finalize_skips_listing_that_left_the_catalog(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'left-catalog.example', 80);
+        $live = $this->makeSite($publisher, 'still-live.example', 40);
+        $ref = 'LEFT-CATALOG-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+            $this->lineFor($live, 40),
+        ], 120));
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 120, 'cs_left_catalog')
+        );
+
+        $this->assertCount(1, $created);
+        $this->assertSame($live->id, (int) $created->first()->items()->first()?->site_id);
+        $this->assertSame(0, OrderItem::query()->where('site_id', $hidden->id)->count());
+    }
+
+    public function test_finalize_creates_no_orders_when_every_line_left_the_catalog(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'all-left-catalog.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'ALL-LEFT-CATALOG-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+        ], 60, 20));
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 60, 'cs_all_left_catalog')
+        );
+
+        $this->assertCount(0, $created);
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
 }

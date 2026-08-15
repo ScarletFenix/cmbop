@@ -987,12 +987,18 @@ class SiteController extends Controller
 
         $site->archived_at = null;
         $site->save();
+        $site->refresh();
+
+        $message = 'Site restored. It remains inactive until it is active again.';
+        if ($site->isCatalogVisible()) {
+            $message = 'Site restored to the catalog.';
+        } elseif ($site->isFromCancelledBulk()) {
+            $message = 'Site restored. It stays off the catalog because its bulk request was cancelled.';
+        }
 
         return response()->json([
             'success' => true,
-            'message' => $site->active
-                ? 'Site restored to the catalog.'
-                : 'Site restored. It remains inactive until it is active again.',
+            'message' => $message,
         ]);
     }
 

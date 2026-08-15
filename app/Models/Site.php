@@ -318,7 +318,7 @@ class Site extends Model
             });
         }
 
-        return $query;
+        return $query->notFromCancelledBulk();
     }
 
     public function enrichmentRuns()
@@ -1042,7 +1042,8 @@ class Site extends Model
         return ! (bool) $this->verified
             && ! (bool) $this->active
             && $this->isReadyForAdminReview()
-            && $this->isAcceptedByPublisher();
+            && $this->isAcceptedByPublisher()
+            && ! $this->isFromCancelledBulk();
     }
 
     /**
@@ -1165,6 +1166,10 @@ class Site extends Model
     {
         if ($this->isArchived()) {
             return 'This site is archived and cannot be activated.';
+        }
+
+        if ($this->isFromCancelledBulk()) {
+            return 'This listing is from a cancelled bulk request and cannot be activated.';
         }
 
         if ($this->awaitsPublisherDetails()) {
@@ -1634,7 +1639,7 @@ class Site extends Model
      */
     public function marketingCanActivate(): bool
     {
-        if ((bool) $this->active || $this->isArchived()) {
+        if ((bool) $this->active || $this->isArchived() || $this->isFromCancelledBulk()) {
             return false;
         }
         if ($this->isPendingPublisherAcceptance() || $this->isPendingPublisherBulkSubmit()) {

@@ -32,12 +32,18 @@ Dear {{ $site->publisher->name ?? 'Publisher' }},
         @break
     
     @case('activated')
+        @if($site->isCatalogVisible())
         Your site **{{ $site->site_name }}** has been **approved** and is now live on our platform.
         
         **Next steps:**
         - Your site will appear in our catalog
         - Advertisers can now view and purchase placements
         - You will receive notifications when orders are placed
+        @else
+        Your site **{{ $site->site_name }}** was marked active, but it is **not listed in the catalog**.
+        
+        This usually means the bulk request for this listing was cancelled. Contact support if you think this is a mistake.
+        @endif
         @break
     
     @case('deactivated')

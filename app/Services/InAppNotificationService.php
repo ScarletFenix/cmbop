@@ -599,7 +599,9 @@ class InAppNotificationService
         $labels = [
             'verified' => ['Site verified', 'Your site is verified and ready for marketplace listings.'],
             'unverified' => ['Site verification removed', 'Your site is no longer verified. Contact support if this looks wrong.'],
-            'activated' => ['Site activated', 'Your site is active and visible to advertisers.'],
+            'activated' => $site->isCatalogVisible()
+                ? ['Site activated', 'Your site is active and visible to advertisers.']
+                : ['Site activated', 'Your site was marked active, but it is not listed in the catalog (for example a cancelled bulk request).'],
             'deactivated' => ['Site deactivated', 'Your site was deactivated and is hidden from the catalog.'],
             'removed' => ['Site submission removed', 'Your site submission was removed and will not be listed.'],
             'archived' => ['Site archived', 'Your site was archived and is hidden from the catalog. Existing orders are unchanged.'],
