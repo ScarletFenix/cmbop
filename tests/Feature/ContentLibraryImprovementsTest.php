@@ -774,6 +774,104 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $leftover->id));
     }
 
+    public function test_failed_leftover_with_order_id_stays_editable_for_pay_again(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'edit-leftover');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = $this->failedCardOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+            'target_url' => null,
+        ]);
+
+        $fresh = $submission->fresh();
+        $this->assertTrue($fresh->isInUse());
+        $this->assertFalse($fresh->isLockedByPaidOrder());
+        $this->assertTrue($fresh->canEditArticle());
+        $this->assertFalse($fresh->isReadyToFulfill((int) $leftover->id));
+
+        $html = '<p>Fixed leftover article with a <a href="https://example.com/tools">complete link</a> for marketers.</p>'
+            .'<p>More compliant content about software tools and productivity for digital teams worldwide.</p>';
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $html,
+                'title' => 'Fixed Leftover Piece',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $leftover->id));
+    }
+
+    public function test_wallet_checkout_rewrites_stale_cancelled_owner_order_id(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'stale-owner', 50);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $cancelled = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wise',
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+        ]);
+        $submission->update(['order_id' => $cancelled->id]);
+        $this->fundAdvertiserWallet($advertiser);
+
+        $this->assertTrue($submission->fresh()->isReadyForCheckout());
+        $this->assertTrue($submission->fresh()->shouldAdoptOwnerOrder(999));
+        $this->assertFalse($submission->fresh()->isLockedByPaidOrder());
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $submission->id,
+                ]],
+                'checkout_content_submission_id' => $submission->id,
+                'checkout_schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'STALE1',
+                'publication_mode' => 'immediate',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $fresh = $submission->fresh();
+        $paid = Order::query()->where('reference_code', 'STALE1')->first();
+        $this->assertNotNull($paid);
+        $this->assertSame($paid->id, (int) $fresh->order_id);
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertFalse($fresh->canEditArticle());
+    }
+
     public function test_download_url_only_item_still_looks_like_a_library_line(): void
     {
         $item = new OrderItem([

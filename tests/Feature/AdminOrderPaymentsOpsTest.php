@@ -1138,4 +1138,82 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertSame('pending', $order->fresh()->payment_status);
         $this->assertNull($order->fresh()->paid_at);
     }
+
+    public function test_unpaid_wise_fail_releases_the_library_article(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $site = $this->makeSite($this->makeUser('publisher'), 'wise-fail-lib');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-WISE-FAIL-LIB-1',
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = $order->items()->first();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertSame('cancelled', $order->fresh()->status);
+        $released = $submission->fresh();
+        $this->assertNull($released->order_id);
+        $this->assertFalse($released->isInUse());
+        $this->assertFalse($released->isClaimedByAnotherOrder());
+        $this->assertTrue($released->isReadyForCheckout());
+    }
+
+    public function test_unpaid_card_fail_keeps_the_library_article_for_pay_again(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $site = $this->makeSite($this->makeUser('publisher'), 'card-fail-lib');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-CARD-FAIL-LIB-1',
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = $order->items()->first();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('failed', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->fresh()->status);
+        $held = $submission->fresh();
+        $this->assertSame($order->id, (int) $held->order_id);
+        $this->assertTrue($held->isClaimedByAnotherOrder());
+        $this->assertTrue($held->isReadyToFulfill((int) $order->id));
+        $this->assertFalse($held->isReadyForCheckout());
+    }
 }

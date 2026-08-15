@@ -322,6 +322,15 @@ class PaymentController extends Controller
             // releaseWalletHoldOnAdminFailed — do not dump the sibling share.
             if ($newStatus === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
                 $this->refundReservedCheckoutBonus($order);
+                // Card leftovers stay pending so Pay again works. Wise/bank/crypto
+                // have no retry, so cancel and free the library article.
+                if ($order->payment_method !== 'card') {
+                    if ($order->status !== 'cancelled') {
+                        $order->status = 'cancelled';
+                    }
+                    ContentSubmission::releaseAllForOrder((int) $order->id);
+                    $order->save();
+                }
             }
 
             DB::commit();

@@ -644,7 +644,55 @@ class ContentSubmission extends Model
 
     public function canEditArticle(): bool
     {
-        return ! $this->isInUse() && ! $this->isArchived() && ! $this->isExpired();
+        return ! $this->isLockedByPaidOrder() && ! $this->isArchived() && ! $this->isExpired();
+    }
+
+    /**
+     * Paid, non-cancelled owner — the article is already in fulfillment.
+     * Pending/failed leftovers stay editable so Pay again can be unblocked.
+     * Also locks when a paid line still points here after a stale cancelled
+     * order_id (legacy leftover that was reused without rewriting ownership).
+     */
+    public function isLockedByPaidOrder(): bool
+    {
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order
+            && $owner->status !== 'cancelled'
+            && $owner->payment_status === 'paid') {
+            return true;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            return $this->orderItems->contains(function (OrderItem $item) {
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+
+                return $order instanceof Order
+                    && $order->status !== 'cancelled'
+                    && $order->payment_status === 'paid';
+            });
+        }
+
+        return $this->orderItems()
+            ->whereHas('order', function ($q) {
+                $q->where('status', '!=', 'cancelled')
+                    ->where('payment_status', 'paid');
+            })
+            ->exists();
+    }
+
+    /**
+     * Checkout / revision may rewrite order_id when the row is free or already
+     * owned by this order. A cancelled leftover's stale order_id is not a lock.
+     */
+    public function shouldAdoptOwnerOrder(int $orderId): bool
+    {
+        return ! $this->isInUse() || (int) ($this->order_id ?? 0) === $orderId;
     }
 
     /**

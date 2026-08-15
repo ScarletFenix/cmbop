@@ -965,7 +965,7 @@ class OrderPaymentService
                         'scheduled_publish_at' => $order->scheduled_publish_at,
                         'timezone' => $order->schedule_timezone ?: $submission->timezone,
                     ];
-                    if (! $submission->order_id) {
+                    if ($submission->shouldAdoptOwnerOrder((int) $order->id)) {
                         $subPayload['order_id'] = $order->id;
                         $subPayload['order_item_id'] = $item->id;
                     }

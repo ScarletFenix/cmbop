@@ -517,7 +517,7 @@ class ContentUploadService
      */
     public function updateArticleContent(ContentSubmission $submission, string $html, ?string $title = null): array
     {
-        if ($submission->order_id) {
+        if ($submission->isLockedByPaidOrder()) {
             return ['ok' => false, 'approved' => false, 'message' => 'This article is already linked to an order and cannot be edited.'];
         }
 
