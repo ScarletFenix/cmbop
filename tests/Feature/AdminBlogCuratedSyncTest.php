@@ -362,4 +362,64 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->assertSame('live-link-checklist-renamed', $pillar->fresh()->slug);
         $this->assertSame(1, Blog::query()->where('curated_key', LiveLinkChecklistBlogPost::SLUG)->count());
     }
+
+    public function test_upsert_does_not_overwrite_custom_post_that_reused_a_catalog_slug(): void
+    {
+        $admin = $this->adminUser();
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+
+        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Custom Occupying Catalog Slug',
+                    'slug' => $slug,
+                    'content' => '<p>Leave this custom article alone.</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        $custom = Blog::query()->where('slug', $slug)->firstOrFail();
+        $this->assertNotNull($custom->manually_edited_at);
+        $this->assertNull($custom->curated_key);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertSame('Custom Occupying Catalog Slug', $custom->fresh()->title);
+        $this->assertSame($slug, $custom->fresh()->slug);
+        $this->assertNull($custom->fresh()->curated_key);
+
+        $pillar = Blog::query()->where('curated_key', $slug)->first();
+        $this->assertNotNull($pillar);
+        $this->assertNotSame($custom->id, $pillar->id);
+        $this->assertNotSame($slug, $pillar->slug);
+        $this->assertStringContainsString('What to Check After the Live Link', (string) $pillar->title);
+    }
+
+    public function test_ensure_present_creates_missing_pillar_when_custom_post_occupies_slug(): void
+    {
+        $admin = $this->adminUser();
+        $slug = LiveLinkChecklistBlogPost::SLUG;
+
+        $this->actingAs($admin)->post(route('admin.blogs.store'), [
+            'status' => 'published',
+            'translations' => [
+                'en' => [
+                    'title' => 'Custom Occupying Catalog Slug',
+                    'slug' => $slug,
+                    'content' => '<p>Custom body.</p>',
+                ],
+            ],
+        ])->assertRedirect(route('admin.blogs.index'));
+
+        Cache::forget('curated_blogs_present_v1');
+        $this->get(route('blog.index'))->assertOk();
+
+        $this->assertSame('Custom Occupying Catalog Slug', Blog::query()->where('slug', $slug)->value('title'));
+        $this->assertTrue(Blog::query()->where('curated_key', $slug)->exists());
+        $this->assertNotSame(
+            $slug,
+            Blog::query()->where('curated_key', $slug)->value('slug')
+        );
+    }
 }

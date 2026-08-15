@@ -66,6 +66,50 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertDontSee('hreflang="en-GB" href="'.url('/blog/deutscher-titel').'"', false);
     }
 
+    public function test_show_resolves_translation_slug_when_blogs_slug_was_renamed(): void
+    {
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English title',
+            'slug' => 'renamed-pillar-slug',
+            'content' => '<p>English body</p>',
+            'primary_locale' => 'de',
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'English title',
+            'slug' => 'english-title-renamed-pillar',
+            'excerpt' => 'English excerpt',
+            'content' => '<p>English body</p>',
+            'is_published' => true,
+        ]);
+
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Titel',
+            'slug' => 'deutscher-titel-renamed-pillar',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/de/blog/deutscher-titel-renamed-pillar')
+            ->assertOk()
+            ->assertSee('Deutscher Titel', false)
+            ->assertSee('Deutscher Inhalt', false);
+
+        $this->get('/blog/deutscher-titel-renamed-pillar')
+            ->assertOk()
+            ->assertSee('English title', false)
+            ->assertSee('English body', false);
+
+        $this->get('/blog/renamed-pillar-slug')
+            ->assertOk()
+            ->assertSee('English title', false);
+    }
+
     public function test_missing_locale_translation_falls_back_to_english_notice(): void
     {
         $blog = Blog::factory()->published()->create([

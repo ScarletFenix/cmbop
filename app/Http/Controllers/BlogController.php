@@ -73,6 +73,15 @@ class BlogController extends Controller
                 ->first();
         }
 
+        // Translation slugs are globally unique. /blog/{de-slug} must still
+        // resolve when blogs.slug was renamed or differs from the DE row.
+        if (! $translation) {
+            $translation = BlogTranslation::query()
+                ->where('slug', $slug)
+                ->where('is_published', true)
+                ->first();
+        }
+
         $blog = null;
         if ($translation) {
             $blog = Blog::published()
@@ -90,7 +99,14 @@ class BlogController extends Controller
                 }])
                 ->where('slug', $slug)
                 ->firstOrFail();
-            $translation = $blog->translationFor($requestedLocale, $fallbackLocale);
+        }
+
+        $display = $blog->translationFor($requestedLocale, $fallbackLocale)
+            ?: ($blog->primary_locale
+                ? $blog->translationFor($blog->primary_locale, null)
+                : null);
+        if ($display) {
+            $translation = $display;
         }
 
         if (! $translation) {

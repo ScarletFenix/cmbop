@@ -211,14 +211,13 @@ class CuratedBlogSync
                     self::curatedSlugs(),
                     static fn (string $slug): bool => ! CuratedBlogWriter::isTombstoned($slug)
                 ));
-                $found = Blog::query()
-                    ->where(function ($query) use ($slugs) {
-                        $query->whereIn('slug', $slugs);
-                        if (Schema::hasColumn('blogs', 'curated_key')) {
-                            $query->orWhereIn('curated_key', $slugs);
-                        }
-                    })
-                    ->count();
+                // Count real pillars only. A custom post that reused a catalog
+                // slug must not satisfy presence — otherwise auto-heal never
+                // creates the uniquified curated row.
+                $found = count(array_filter(
+                    $slugs,
+                    static fn (string $slug): bool => CuratedBlogWriter::findExisting($slug) !== null
+                ));
 
                 if ($slugs === [] || $found >= count($slugs)) {
                     return true;

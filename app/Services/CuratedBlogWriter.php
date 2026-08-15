@@ -8,6 +8,7 @@ use App\Models\CuratedBlogTombstone;
 use App\Models\User;
 use App\Support\PublicI18n;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 
 class CuratedBlogWriter
 {
@@ -74,6 +75,9 @@ class CuratedBlogWriter
         if (! $existing) {
             $data['published_at'] = $data['published_at'] ?? now();
             $data['created_by'] = $authorUserId;
+            if (isset($data['slug'])) {
+                $data['slug'] = self::uniquePublicSlug((string) $data['slug']);
+            }
         } else {
             $data['published_at'] = $existing->published_at ?? now();
             $data['created_by'] = $existing->created_by ?? $authorUserId;
@@ -124,7 +128,27 @@ class CuratedBlogWriter
             ->exists();
     }
 
-    private static function findExisting(string $slug): ?Blog
+    private static function uniquePublicSlug(string $slug, ?int $ignoreBlogId = null): string
+    {
+        $base = Str::slug($slug) ?: Str::random(8);
+        $candidate = $base;
+        $counter = 1;
+
+        while (self::publicSlugTakenByAnother($candidate, $ignoreBlogId ?? 0)) {
+            $candidate = $base.'-'.$counter;
+            $counter++;
+        }
+
+        return $candidate;
+    }
+
+    /**
+     * Resolve the pillar row for a catalog slug.
+     *
+     * Prefers curated_key. A custom admin post that only happens to reuse the
+     * catalog slug is not adopted — callers should create a new uniquified row.
+     */
+    public static function findExisting(string $slug): ?Blog
     {
         if (Schema::hasColumn('blogs', 'curated_key')) {
             $byKey = Blog::query()->where('curated_key', $slug)->first();
@@ -133,7 +157,22 @@ class CuratedBlogWriter
             }
         }
 
-        return Blog::query()->where('slug', $slug)->first();
+        $bySlug = Blog::query()->where('slug', $slug)->first();
+        if (! $bySlug) {
+            return null;
+        }
+
+        // A custom admin post can reuse a catalog slug. Do not adopt it as the
+        // pillar — create a new row with a uniquified slug instead.
+        if ($bySlug->manually_edited_at && ! filled($bySlug->curated_key)) {
+            return null;
+        }
+
+        if (filled($bySlug->curated_key) && $bySlug->curated_key !== $slug) {
+            return null;
+        }
+
+        return $bySlug;
     }
 
     /**

@@ -166,6 +166,7 @@ class BlogController extends Controller
                     'published_at' => $request->status === 'published' ? now() : null,
                     'created_by' => auth()->id(),
                     'updated_by' => auth()->id(),
+                    'manually_edited_at' => now(),
                 ]);
 
                 foreach ($translations as $locale => $data) {
@@ -327,7 +328,7 @@ class BlogController extends Controller
                         ? $enSlug
                         : $this->uniquePublicSlug(
                             $translationData['slug'] ?: Str::slug($translationData['title']),
-                            null,
+                            $blog->id,
                             $existing?->id
                         );
 
