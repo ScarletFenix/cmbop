@@ -122,7 +122,14 @@ class AdminInvoiceLinks
     public function primary(array $documents): ?array
     {
         foreach ($documents as $document) {
-            if (($document['type'] ?? null) === Invoice::TYPE_TAX_INVOICE) {
+            if (($document['type'] ?? null) === Invoice::TYPE_TAX_INVOICE
+                && ($document['status'] ?? null) !== Invoice::STATUS_CANCELLED) {
+                return $document;
+            }
+        }
+
+        foreach ($documents as $document) {
+            if (($document['status'] ?? null) !== Invoice::STATUS_CANCELLED) {
                 return $document;
             }
         }

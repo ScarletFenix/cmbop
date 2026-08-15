@@ -189,6 +189,34 @@ class AdminInvoiceCrossLinksTest extends TestCase
             ->assertJsonPath('data.invoice_url', route('admin.invoices.show', $invoice));
     }
 
+    public function test_primary_invoice_link_skips_cancelled_tax_invoice(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $order = $this->paidOrder($advertiser);
+        $invoice = app(BillingDocumentService::class)->handlePaymentPaid($order);
+        $receipt = Invoice::query()
+            ->where('order_id', $order->id)
+            ->where('type', Invoice::TYPE_PAYMENT_RECEIPT)
+            ->first();
+        $this->assertNotNull($receipt);
+
+        app(BillingDocumentService::class)->cancelInvoice($invoice, $admin, 'superseded');
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['search' => $order->order_number]))
+            ->assertOk()
+            ->assertJsonPath('data.0.invoice_url', route('admin.invoices.show', $receipt));
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.orders.data', ['search' => $order->order_number]))
+            ->assertOk()
+            ->assertJsonPath('data.0.invoice_url', route('admin.invoices.show', $receipt));
+    }
+
     public function test_deposits_list_and_show_link_to_receipt(): void
     {
         Storage::fake('local');
@@ -354,6 +382,24 @@ class AdminInvoiceCrossLinksTest extends TestCase
             ->assertOk()
             ->assertSee('INV-FILTER-FAIL', false)
             ->assertDontSee('INV-FILTER-PAID', false);
+    }
+
+    public function test_index_ignores_array_search_and_dates(): void
+    {
+        $admin = $this->admin();
+        $user = $this->advertiser();
+        $this->stubInvoice($user, ['invoice_number' => 'INV-ARRAY-1']);
+
+        $this->actingAs($admin)
+            ->get(route('admin.invoices.index', [
+                'search' => ['injected'],
+                'from' => ['2026-01-01'],
+                'to' => ['2026-12-31'],
+                'status' => ['paid'],
+                'type' => ['tax_invoice'],
+            ]))
+            ->assertOk()
+            ->assertSee('INV-ARRAY-1', false);
     }
 
     public function test_regenerate_pdf_and_guests_are_blocked(): void
