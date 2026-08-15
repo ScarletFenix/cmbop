@@ -1051,7 +1051,7 @@ class Site extends Model
         return $this->activationBlockReason() === null;
     }
 
-    public function activationBlockReason(): ?string
+    public function activationBlockReason(bool $requireVerified = true): ?string
     {
         if ($this->isArchived()) {
             return 'This site is archived and cannot be activated.';
@@ -1065,7 +1065,7 @@ class Site extends Model
             return 'This site is waiting for the publisher to accept it into My Sites.';
         }
 
-        if (! (bool) $this->verified) {
+        if ($requireVerified && ! (bool) $this->verified) {
             return 'Verify this site before activating it.';
         }
 

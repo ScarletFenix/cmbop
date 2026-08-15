@@ -125,6 +125,8 @@
                                         <td>
                                             @if($item->site_id)
                                                 <span class="badge text-bg-success">Yes</span>
+                                            @elseif($bulkRequest->isCancelled())
+                                                <span class="badge text-bg-secondary">Cancelled</span>
                                             @else
                                                 <span class="badge text-bg-light border">Pending</span>
                                             @endif

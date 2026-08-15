@@ -413,6 +413,41 @@ class MarketingDashboardQueuesTest extends TestCase
             ->assertJsonPath('bulk_waiting', 1);
     }
 
+    public function test_legacy_sheet_batch_counts_as_waiting_on_marketer(): void
+    {
+        $legacy = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_SHEET_SENT,
+            'estimated_count' => 8,
+            'sheet_sent_at' => now(),
+        ]);
+
+        $this->assertTrue($legacy->canAddDraftSites());
+        $this->assertTrue(
+            BulkSiteRequest::query()->whereKey($legacy->id)->blockingPublisher()->exists()
+        );
+        $this->assertTrue(MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($legacy->id)->exists());
+        $this->assertSame(1, MarketingOpsQueues::bulkWaitingOnMarketer()->count());
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame('1', $this->attrValue($html, 'data-stat', 'bulk-waiting-on-you', 'data-stat-value'));
+        $this->assertSame('1', $this->node($html, 'data-nav-badge', 'bulk')->attributes->getNamedItem('data-count')?->nodeValue);
+        $this->assertStringContainsString('#'.$legacy->id, $this->nodeText($html, 'data-queue', 'open-bulk'));
+
+        $index = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.index', [
+                'status' => MarketingOpsQueues::FILTER_NEEDS_MARKETER,
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $legacy), $index);
+    }
+
     public function test_empty_dashboard_shows_queue_ctas(): void
     {
         $html = $this->actingAs($this->marketer)

@@ -167,8 +167,9 @@ class BulkSiteRequestController extends Controller
 
         $previous = $bulkRequest->status;
         $removedDrafts = 0;
+        $archivedLive = 0;
 
-        DB::transaction(function () use ($bulkRequest, &$removedDrafts) {
+        DB::transaction(function () use ($bulkRequest, $reason, &$removedDrafts, &$archivedLive) {
             $drafts = $bulkRequest->sites()
                 ->where(function ($q) {
                     $q->where('verified', 0)->orWhereNull('verified');
@@ -186,6 +187,15 @@ class BulkSiteRequestController extends Controller
                 $removedDrafts++;
             }
 
+            $survivors = $bulkRequest->sites()->notArchived()->get();
+            foreach ($survivors as $site) {
+                if ($site->archiveByStaff($reason)) {
+                    $archivedLive++;
+                }
+            }
+
+            $bulkRequest->items()->whereNull('site_id')->delete();
+
             $bulkRequest->forceFill([
                 'status' => BulkSiteRequest::STATUS_CANCELLED,
                 'handled_by' => auth()->id(),
@@ -202,6 +212,7 @@ class BulkSiteRequestController extends Controller
                 'from_status' => $previous,
                 'reason' => $reason,
                 'drafts_removed' => $removedDrafts,
+                'sites_archived' => $archivedLive,
                 'sites_remaining' => $bulkRequest->sites()->notArchived()->count(),
             ],
             'Bulk request #'.$bulkRequest->id
@@ -228,9 +239,14 @@ class BulkSiteRequestController extends Controller
             Log::warning('Failed to send in-app bulk cancel notice: '.$e->getMessage());
         }
 
+        $flash = 'Bulk request cancelled. The publisher has been notified. History is kept.';
+        if ($archivedLive > 0) {
+            $flash .= ' '.$archivedLive.' live listing'.($archivedLive === 1 ? ' was' : 's were').' archived.';
+        }
+
         return redirect()
             ->to(staff_route('bulk-site-requests.index'))
-            ->with('success', 'Bulk request cancelled. The publisher has been notified. History is kept.');
+            ->with('success', $flash);
     }
 
     /**
@@ -615,11 +631,21 @@ class BulkSiteRequestController extends Controller
             foreach ($rows as $row) {
                 $domain = $row['domain'];
 
-                if (Site::where('domain', $domain)->exists()) {
+                $existing = Site::query()
+                    ->where('domain', $domain)
+                    ->when(Site::hasSitesColumn('archived_at'), function ($q) {
+                        $q->orderByRaw('case when archived_at is null then 0 else 1 end');
+                    })
+                    ->orderBy('id')
+                    ->first();
+
+                if ($existing) {
                     $failures[] = [
                         'line' => $row['line'],
                         'url' => $row['site_url'],
-                        'errors' => ['Domain already registered: '.$domain],
+                        'errors' => [$existing->isArchived()
+                            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+                            : 'Domain already registered: '.$domain],
                     ];
 
                     continue;

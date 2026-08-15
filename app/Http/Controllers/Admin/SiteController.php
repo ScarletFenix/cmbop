@@ -477,8 +477,8 @@ class SiteController extends Controller
                 : null,
             'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'archived' => $site->isArchived(),
-            'can_activate' => $site->canBeActivated(),
-            'activate_block_reason' => $site->activationBlockReason(),
+            'can_activate' => $this->staffCanActivateSite($site),
+            'activate_block_reason' => $this->staffActivateBlockReason($site),
             'orders_count' => $site->orderItemsCount(),
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
@@ -2856,6 +2856,36 @@ class SiteController extends Controller
         }
     }
 
+    private function isMarketingActor(?User $actor = null): bool
+    {
+        $actor ??= auth()->user();
+
+        return (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
+    }
+
+    private function marketingMaySkipVerify(bool $isMarketingActor, Site $site): bool
+    {
+        return $isMarketingActor && ($site->marketingCanActivate() || $site->needsAdminReview());
+    }
+
+    private function staffCanActivateSite(Site $site): bool
+    {
+        if ($this->isMarketingActor()) {
+            return $site->marketingCanActivate();
+        }
+
+        return $site->canBeActivated();
+    }
+
+    private function staffActivateBlockReason(Site $site): ?string
+    {
+        if ($this->staffCanActivateSite($site)) {
+            return null;
+        }
+
+        return $site->activationBlockReason(! $this->marketingMaySkipVerify($this->isMarketingActor(), $site));
+    }
+
     // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
     public function toggleActive(Request $request, $id)
     {
@@ -2885,7 +2915,7 @@ class SiteController extends Controller
                     ], 422);
                 }
 
-                $block = $site->activationBlockReason();
+                $block = $site->activationBlockReason(! $this->marketingMaySkipVerify($isMarketingActor, $site));
                 if ($block !== null) {
                     return response()->json([
                         'success' => false,
@@ -2906,6 +2936,15 @@ class SiteController extends Controller
             $oldStatus = (int) $site->active;
             $site->active = $activating ? 1 : 0;
             if ($activating) {
+                // Marketing has no verify route; Activate is the go-live action
+                // and the catalog requires verified + active.
+                if ($isMarketingActor && ! (bool) $site->verified && $site->needsAdminReview()) {
+                    $site->verified = 1;
+                    $site->verified_at = now();
+                    $site->verify_method = 'manual';
+                    $site->verify_token = null;
+                    $site->verify_token_created_at = null;
+                }
                 // Leave the review/onboarding queue once live.
                 $site->onboarding_status = null;
             } else {

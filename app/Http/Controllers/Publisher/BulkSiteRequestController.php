@@ -26,12 +26,20 @@ class BulkSiteRequestController extends Controller
         $open = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
             ->blockingPublisher()
-            ->exists();
+            ->latest('id')
+            ->first();
 
         if ($open) {
+            $publisherOwesWork = $open->status === BulkSiteRequest::STATUS_AWAITING_PUBLISHER
+                || $open->pendingPublisherCount() > 0;
+
+            $message = $publisherOwesWork
+                ? 'Finish your pending sites under Complete details before submitting another bulk request.'
+                : 'You already have an open bulk request. Wait for our team to finish it, or message support.';
+
             return redirect()
                 ->route('publisher.websites')
-                ->with('error', 'You already have an open bulk request. Wait for our team to finish it, or message support.');
+                ->with('error', $message);
         }
 
         $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;

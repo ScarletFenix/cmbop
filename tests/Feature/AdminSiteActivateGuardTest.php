@@ -16,6 +16,8 @@ class AdminSiteActivateGuardTest extends TestCase
 
     private User $admin;
 
+    private User $marketer;
+
     private User $publisher;
 
     protected function setUp(): void
@@ -30,6 +32,13 @@ class AdminSiteActivateGuardTest extends TestCase
             'active_role_id' => $adminRole->id,
         ]);
         $this->admin->roles()->attach($adminRole->id);
+
+        $marketingRole = Role::where('name', 'marketing')->firstOrFail();
+        $this->marketer = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $marketingRole->id,
+        ]);
+        $this->marketer->roles()->attach($marketingRole->id);
 
         $pubRole = Role::where('name', 'publisher')->firstOrFail();
         $this->publisher = User::factory()->create([
@@ -74,6 +83,44 @@ class AdminSiteActivateGuardTest extends TestCase
             ->assertJsonPath('message', 'Verify this site before activating it.');
 
         $this->assertFalse((bool) $site->fresh()->active);
+    }
+
+    public function test_marketer_can_activate_unverified_review_queue_site(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+
+        $this->assertTrue($site->marketingCanActivate());
+        $this->assertTrue($site->needsAdminReview());
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.active', $site->id), ['active' => 1])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('active', true);
+
+        $fresh = $site->fresh();
+        $this->assertTrue((bool) $fresh->active);
+        $this->assertTrue((bool) $fresh->verified);
+        $this->assertTrue($fresh->isCatalogVisible());
+        $this->assertNull($fresh->onboarding_status);
+    }
+
+    public function test_marketer_list_allows_activate_for_unverified_review_site(): void
+    {
+        $site = $this->site([
+            'verified' => false,
+            'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->getJson(route('marketing.users.sites', $this->publisher->id))
+            ->assertOk()
+            ->assertJsonPath('sites.0.id', $site->id)
+            ->assertJsonPath('sites.0.can_activate', true)
+            ->assertJsonPath('sites.0.activate_block_reason', null);
     }
 
     public function test_activate_requires_marketplace_country(): void

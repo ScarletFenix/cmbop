@@ -1171,7 +1171,123 @@ class BulkDoneRejectRowsTest extends TestCase
                 ],
             ])
             ->assertRedirect(route('publisher.websites'))
-            ->assertSessionHas('error');
+            ->assertSessionHas('error', 'You already have an open bulk request. Wait for our team to finish it, or message support.');
+    }
+
+    public function test_second_bulk_tells_publisher_to_finish_complete_details(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'owe-details');
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.bulk-sites.request'), [
+                'sites' => [
+                    ['url' => 'https://owe-a.example', 'price' => 40],
+                    ['url' => 'https://owe-b.example', 'price' => 50],
+                ],
+            ])
+            ->assertRedirect(route('publisher.websites'))
+            ->assertSessionHas(
+                'error',
+                'Finish your pending sites under Complete details before submitting another bulk request.'
+            );
+    }
+
+    public function test_cancel_archives_live_bulk_sites_and_clears_pending_rows(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(2, 'cancel-live');
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $live = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $live->forceFill([
+            'verified' => true,
+            'verified_at' => now(),
+            'active' => true,
+            'onboarding_status' => null,
+        ])->save();
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk), [
+                'reason' => 'Publisher asked to stop this batch after one listing went live.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.index'))
+            ->assertSessionHas('success', function ($message) {
+                return is_string($message) && str_contains($message, '1 live listing was archived');
+            });
+
+        $freshLive = $live->fresh();
+        $this->assertTrue($freshLive->isArchived());
+        $this->assertFalse((bool) $freshLive->active);
+        $this->assertSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
+        $this->assertSame(0, $bulk->items()->whereNull('site_id')->count());
+        $this->assertFalse(
+            BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
+        );
+        Mail::assertQueued(BulkSiteRequestCancelled::class, 1);
+    }
+
+    public function test_done_reports_archived_domain_instead_of_generic_duplicate(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 're-done-arch');
+        $archived = Site::query()->create([
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Archived Twin',
+            'site_url' => 'https://'.$items[0]->domain,
+            'domain' => $items[0]->domain,
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 10000,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'News',
+            'price' => 40,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => str_repeat('Archived listing description. ', 3),
+            'verified' => false,
+            'active' => false,
+            'archived_at' => now(),
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error')
+            ->assertSessionHas('seed_failures', function ($failures) {
+                return is_array($failures)
+                    && collect($failures)->contains(function ($row) {
+                        $errors = $row['errors'] ?? [];
+
+                        return collect($errors)->contains(
+                            fn ($error) => str_contains((string) $error, 'including archived')
+                        );
+                    });
+            });
+
+        $this->assertNull($items[0]->fresh()->site_id);
+        $this->assertDatabaseMissing('sites', [
+            'domain' => $items[0]->domain,
+            'bulk_site_request_id' => $bulk->id,
+        ]);
+        $this->assertTrue($archived->fresh()->isArchived());
     }
 
     public function test_seed_rejects_domain_not_on_pending_list(): void
