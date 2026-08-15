@@ -183,6 +183,13 @@ class CampaignController extends Controller
                 'campaign_id' => $campaign->id,
                 'error' => $e->getMessage(),
             ]);
+            $campaign->refresh()->recountRecipientTotals();
+            if ($campaign->status === EmailCampaign::STATUS_SENT) {
+                return redirect()
+                    ->route('admin.campaigns.index')
+                    ->with('success', "Campaign queued for {$count} recipient(s).");
+            }
+
             EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaign->id)
                 ->where('status', EmailCampaignRecipient::STATUS_PENDING)
@@ -191,10 +198,12 @@ class CampaignController extends Controller
                     'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
                 ]);
             $campaign->refresh()->recountRecipientTotals();
-            $campaign->update([
-                'status' => EmailCampaign::STATUS_FAILED,
-                'sent_at' => now(),
-            ]);
+            if ($campaign->status !== EmailCampaign::STATUS_SENT) {
+                $campaign->update([
+                    'status' => EmailCampaign::STATUS_FAILED,
+                    'sent_at' => $campaign->sent_at ?? now(),
+                ]);
+            }
 
             return back()->withInput()->with('error', 'Campaign was saved but could not be queued. Try again.');
         }
