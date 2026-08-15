@@ -119,11 +119,17 @@ class LogSentEmail
             $existing->save();
 
             foreach ($open->skip(1) as $stale) {
+                // Failed leftovers are retryable. This send already
+                // delivered — marking the extra row failed made Email
+                // Center retry blast a second Welcome / campaign mail
+                // once the 10-minute window lapsed.
                 $stale->fill([
-                    'status' => EmailLog::STATUS_FAILED,
-                    'error' => 'Closed: duplicate open log for the same send',
+                    'status' => EmailLog::STATUS_DELIVERED,
+                    'error' => null,
+                    'sent_at' => $stale->sent_at ?? $existing->sent_at ?? now(),
                 ]);
                 $stale->meta = array_filter(array_merge((array) $stale->meta, [
+                    'suppressed' => 'duplicate',
                     'superseded_by' => $existing->id,
                 ]));
                 $stale->save();

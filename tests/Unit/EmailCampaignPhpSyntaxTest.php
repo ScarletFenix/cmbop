@@ -107,6 +107,10 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
+        $sent = (string) file_get_contents($root.'/app/Listeners/LogSentEmail.php');
+        $this->assertStringContainsString("'suppressed' => 'duplicate'", $sent);
+        $this->assertStringNotContainsString('Closed: duplicate open log for the same send', $sent);
+
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
