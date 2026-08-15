@@ -29,9 +29,6 @@
         @if($copyFilter === 'all')
             <input type="hidden" name="copy" value="all">
         @endif
-        @if($focusUserId > 0)
-            <input type="hidden" name="user" value="{{ $focusUserId }}">
-        @endif
         <div class="input-group" style="max-width: 28rem;">
             <input type="search" name="q" value="{{ $q }}" class="form-control form-control-sm"
                    placeholder="Search email or name" aria-label="Search accounts">
@@ -121,8 +118,10 @@
                                             : '—' }}
                                     </td>
                                     <td class="small text-muted">
-                                        @if($row['in_hide_mode'] && $row['hide_until'])
+                                        @if($row['hide_until'] && $row['in_hide_mode'])
                                             {{ $row['hide_until']->timezone(config('app.timezone'))->format('M j, H:i') }}
+                                        @elseif($row['hide_until'] && $row['status'] === \App\Models\User::CATALOG_COPY_POST_HIDE)
+                                            Ended {{ $row['hide_until']->timezone(config('app.timezone'))->format('M j, H:i') }}
                                         @else
                                             —
                                         @endif

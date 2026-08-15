@@ -93,6 +93,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'catalog_reveal_exempt_until' => 'datetime',
         'catalog_copy_strike_count' => 'integer',
         'catalog_copy_warned_at' => 'datetime',
+        'catalog_copy_after_id' => 'integer',
         'catalog_hide_until' => 'datetime',
     ];
 

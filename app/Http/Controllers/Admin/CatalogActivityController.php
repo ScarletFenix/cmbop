@@ -9,12 +9,14 @@ use App\Models\Order;
 use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\Catalog\CatalogCopyStrikeGuard;
 use App\Services\Catalog\RevealPaceGuard;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\View\View;
 
@@ -103,7 +105,7 @@ class CatalogActivityController extends Controller
             return [
                 'user' => $user,
                 'total' => $total,
-                'last_at' => $row->last_at ? Carbon::parse($row->last_at) : null,
+                'last_at' => $this->parseDbTimestamp($row->last_at),
                 'orders' => $orders,
                 'orders_lifetime' => (int) ($ordersLifetime[$row->user_id] ?? 0),
                 'per_order' => $orders > 0 ? round($total / $orders, 1) : null,
@@ -182,7 +184,8 @@ class CatalogActivityController extends Controller
         $model->catalog_hide_until = null;
         $model->save();
 
-        ActivityLogger::log(
+        CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
+        $this->logActivity(
             'catalog_hide_lifted',
             $model->email.' is out of catalog hide mode. Strike ladder is unchanged.',
             $model,
@@ -214,9 +217,13 @@ class CatalogActivityController extends Controller
 
         $model->catalog_copy_strike_count = 0;
         $model->catalog_copy_warned_at = null;
+        if (Schema::hasColumn('users', 'catalog_copy_after_id')) {
+            $model->catalog_copy_after_id = null;
+        }
         $model->save();
 
-        ActivityLogger::log(
+        CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
+        $this->logActivity(
             'catalog_strikes_reset',
             $model->email.' copy-strike ladder was reset.',
             $model,
@@ -255,9 +262,13 @@ class CatalogActivityController extends Controller
         $model->catalog_hide_until = null;
         $model->catalog_copy_strike_count = 0;
         $model->catalog_copy_warned_at = null;
+        if (Schema::hasColumn('users', 'catalog_copy_after_id')) {
+            $model->catalog_copy_after_id = null;
+        }
         $model->save();
 
-        ActivityLogger::log(
+        CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
+        $this->logActivity(
             'catalog_hide_cleared',
             $model->email.' hide mode lifted and strikes reset. Copy history is kept.',
             $model,
@@ -288,7 +299,7 @@ class CatalogActivityController extends Controller
             $model->catalog_reveal_exempt_until = null;
             $model->save();
 
-            ActivityLogger::log(
+            $this->logActivity(
                 'catalog_pace_exempted',
                 $model->email.' is back under the usual pace checks.',
                 $model,
@@ -306,7 +317,7 @@ class CatalogActivityController extends Controller
         $model->catalog_reveal_exempt_until = $until;
         $model->save();
 
-        ActivityLogger::log(
+        $this->logActivity(
             'catalog_pace_exempted',
             $model->email.' is trusted for '.$minutes.' minutes.',
             $model,
@@ -372,7 +383,9 @@ class CatalogActivityController extends Controller
         $capped = $users->count() > 100;
         $users = $users->take(100)->values();
 
-        if ($focusUserId > 0 && ! $users->contains(fn (User $u) => (int) $u->id === $focusUserId)) {
+        // Notification deep-links use ?user= with no search. A later search
+        // must not keep pinning that account via a leftover query param.
+        if ($q === '' && $focusUserId > 0 && ! $users->contains(fn (User $u) => (int) $u->id === $focusUserId)) {
             $focus = User::find($focusUserId);
             if ($focus) {
                 $users->push($focus);
@@ -561,6 +574,40 @@ class CatalogActivityController extends Controller
         }
 
         return $totals;
+    }
+
+    private function parseDbTimestamp(mixed $value): ?Carbon
+    {
+        if ($value instanceof Carbon) {
+            return $value;
+        }
+
+        if ($value instanceof \DateTimeInterface) {
+            return Carbon::parse($value->format('Y-m-d H:i:s'), 'UTC');
+        }
+
+        $raw = trim((string) $value);
+        if ($raw === '') {
+            return null;
+        }
+
+        return Carbon::parse($raw, 'UTC');
+    }
+
+    /**
+     * @param  array<string, mixed>  $properties
+     */
+    private function logActivity(string $action, string $description, User $subject, array $properties = []): void
+    {
+        try {
+            ActivityLogger::log($action, $description, $subject, $properties);
+        } catch (\Throwable $e) {
+            Log::warning('Catalog activity log failed', [
+                'action' => $action,
+                'user_id' => $subject->id,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 
     private function hideRemainingLabel(?Carbon $until): ?string

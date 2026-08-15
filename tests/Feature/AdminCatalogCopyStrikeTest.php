@@ -306,6 +306,106 @@ class AdminCatalogCopyStrikeTest extends TestCase
         $this->assertSame(2, (int) $advertiser->catalog_copy_strike_count);
     }
 
+    public function test_warning_keeps_copy_events_visible_on_the_queue(): void
+    {
+        config([
+            'catalog.copy_strikes.threshold' => 3,
+            'catalog.copy_strikes.window_seconds' => 120,
+        ]);
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser', ['email' => 'kept-copies@example.com']);
+        $publisher = $this->userWithRole('publisher');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        for ($i = 1; $i <= 3; $i++) {
+            $guard->record($advertiser, $this->site($publisher, "kept-{$i}.example")->id, "kept-{$i}.example");
+        }
+
+        $this->assertSame(3, CatalogCopyEvent::where('user_id', $advertiser->id)->count());
+
+        $this->actingAs($admin)
+            ->get(route('admin.catalog-activity'))
+            ->assertOk()
+            ->assertSee('kept-copies@example.com')
+            ->assertSee('Warned');
+
+        $this->actingAs($admin)
+            ->get(route('admin.catalog-activity.show', $advertiser->id))
+            ->assertOk()
+            ->assertSee('kept-1.example')
+            ->assertSee('kept-3.example')
+            ->assertSee('Reset strikes')
+            ->assertDontSee('Lift hide');
+    }
+
+    public function test_search_does_not_pin_a_leftover_user_query(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $hidden = $this->userWithRole('advertiser', ['email' => 'hidden-copy@example.com']);
+        $hidden->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_copy_warned_at' => now()->subHour(),
+            'catalog_hide_until' => now()->addHours(4),
+        ])->save();
+        $other = $this->userWithRole('advertiser', ['email' => 'other-copy@example.com']);
+        $other->forceFill([
+            'catalog_copy_strike_count' => 1,
+            'catalog_copy_warned_at' => now()->subMinutes(10),
+        ])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.catalog-activity', [
+                'q' => 'other-copy@',
+                'user' => $hidden->id,
+            ]))
+            ->assertOk()
+            ->assertSee('other-copy@example.com')
+            ->assertDontSee('hidden-copy@example.com');
+    }
+
+    public function test_lift_hide_allows_a_new_hide_mode_bell(): void
+    {
+        config([
+            'catalog.copy_strikes.threshold' => 2,
+            'catalog.copy_strikes.window_seconds' => 120,
+        ]);
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $guard = app(CatalogCopyStrikeGuard::class);
+
+        for ($i = 1; $i <= 2; $i++) {
+            $guard->record($advertiser->fresh(), $this->site($publisher, "bell1-{$i}.example")->id, "bell1-{$i}.example");
+        }
+        for ($i = 1; $i <= 2; $i++) {
+            $guard->record($advertiser->fresh(), $this->site($publisher, "bell2-{$i}.example")->id, "bell2-{$i}.example");
+        }
+        $this->assertTrue($advertiser->fresh()->inCatalogHideMode());
+        $this->assertSame(
+            1,
+            InAppNotification::query()->where('user_id', $admin->id)->where('title', 'Catalog hide mode started')->count()
+        );
+
+        $this->actingAs($admin)
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
+            ->assertRedirect();
+
+        $advertiser->refresh();
+        $this->assertFalse($advertiser->inCatalogHideMode());
+
+        for ($i = 1; $i <= 2; $i++) {
+            $guard->record($advertiser->fresh(), $this->site($publisher, "bell3-{$i}.example")->id, "bell3-{$i}.example");
+        }
+
+        $this->assertTrue($advertiser->fresh()->inCatalogHideMode());
+        $this->assertSame(
+            2,
+            InAppNotification::query()->where('user_id', $admin->id)->where('title', 'Catalog hide mode started')->count()
+        );
+    }
+
     public function test_search_isolates_one_account(): void
     {
         $admin = $this->userWithRole('admin');
