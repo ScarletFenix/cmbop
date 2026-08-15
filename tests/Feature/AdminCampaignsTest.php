@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
+use App\Models\ActivityLog;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
@@ -15,6 +16,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Services\AudienceInventoryService;
 use Database\Seeders\RolesTableSeeder;
+use Illuminate\Contracts\Bus\Dispatcher;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -672,6 +674,28 @@ class AdminCampaignsTest extends TestCase
 
         Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
         Mail::assertNothingQueued();
+        $this->assertSame(1, ActivityLog::query()->where('action', 'campaign.queued')->count());
+    }
+
+    public function test_failed_campaign_dispatch_does_not_log_queued(): void
+    {
+        $this->mock(Dispatcher::class, function ($mock) {
+            $mock->shouldReceive('dispatch')->andThrow(new \RuntimeException('broker down'));
+        });
+
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->from(route('admin.campaigns.index'))
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertSame(0, ActivityLog::query()->where('action', 'campaign.queued')->count());
+        $this->assertSame(EmailCampaign::STATUS_FAILED, EmailCampaign::query()->latest('id')->value('status'));
     }
 
     public function test_send_job_uses_mail_database_when_app_queue_is_sync(): void
