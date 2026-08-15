@@ -341,20 +341,17 @@ class EmailCampaign extends Model
             return false;
         }
 
-        try {
-            $connection = (string) config(
-                'email_notifications.queue_connection',
-                config('queue.default')
-            );
-            if ($connection === 'sync'
-                || config("queue.connections.{$connection}.driver") !== 'database') {
-                return false;
-            }
+        foreach (self::sendJobQueueConnections() as $connection) {
+            try {
+                if ($connection === 'sync'
+                    || config("queue.connections.{$connection}.driver") !== 'database') {
+                    continue;
+                }
 
-            $table = (string) config("queue.connections.{$connection}.table", 'jobs');
-            if (! Schema::hasTable($table)) {
-                return false;
-            }
+                $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
 
             return DB::table($table)
                 ->where('payload', 'like', '%SendEmailCampaignJob%')
@@ -363,6 +360,23 @@ class EmailCampaign extends Model
         } catch (\Throwable) {
             return false;
         }
+
+        return false;
+    }
+
+    /**
+     * The send job uses the app default connection (it does not call
+     * onConnection). Mail may use MAIL_QUEUE_CONNECTION. Check both so a
+     * sync mail connection cannot hide a database-queued send job.
+     *
+     * @return list<string>
+     */
+    protected static function sendJobQueueConnections(): array
+    {
+        return array_values(array_unique(array_filter([
+            (string) config('queue.default'),
+            (string) config('email_notifications.queue_connection', config('queue.default')),
+        ])));
     }
 
     /**

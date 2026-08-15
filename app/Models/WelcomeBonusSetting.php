@@ -111,11 +111,7 @@ class WelcomeBonusSetting extends Model
             DB::transaction(function () use ($enabled, $updatedBy) {
                 $rows = static::configRows(true);
                 $keep = $rows->first();
-                try {
-                    $current = is_array($keep?->value) ? $keep->value : [];
-                } catch (\Throwable) {
-                    $current = [];
-                }
+                $current = static::payloadForWrite($rows, $keep);
 
                 $current['enabled'] = $enabled;
                 $current['updated_at'] = now()->toIso8601String();
@@ -142,27 +138,54 @@ class WelcomeBonusSetting extends Model
         }
     }
 
+    public static function maxAmount(): float
+    {
+        return round(max(0, (float) config('welcome_bonus.max_amount', 500)), 2);
+    }
+
+    public static function normalizeAmount(mixed $amount): float
+    {
+        if (! is_numeric($amount)) {
+            return 0.0;
+        }
+
+        return round(max(0, min((float) $amount, static::maxAmount())), 2);
+    }
+
+    /**
+     * Live grant ceiling: stored admin amount when present, else config default.
+     * Always clamped to max_amount so a corrupt settings row cannot mint more.
+     */
+    public static function configuredAmount(): float
+    {
+        $stored = static::config();
+        if (is_array($stored) && array_key_exists('amount', $stored)) {
+            // A present but unreadable amount must not fall back to €20.
+            return is_numeric($stored['amount'])
+                ? static::normalizeAmount($stored['amount'])
+                : 0.0;
+        }
+
+        return static::normalizeAmount(config('welcome_bonus.amount', 20));
+    }
+
     public static function setAmount(float $amount, ?int $updatedBy = null): void
     {
         if (! Schema::hasTable((new static)->getTable())) {
             return;
         }
 
-        $amount = round(max(0, $amount), 2);
+        $amount = static::normalizeAmount($amount);
 
         $write = function () use ($amount, $updatedBy): void {
             DB::transaction(function () use ($amount, $updatedBy) {
                 $rows = static::configRows(true);
                 $keep = $rows->first();
-                try {
-                    $current = is_array($keep?->value) ? $keep->value : [];
-                } catch (\Throwable) {
-                    $current = [];
-                }
+                $current = static::payloadForWrite($rows, $keep);
 
-                if (! array_key_exists('enabled', $current)) {
-                    $current['enabled'] = static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true);
-                }
+                // Do not default a missing enabled flag to on — that would
+                // undo Disable (or fail-closed) when collapsing duplicates.
+                $current['enabled'] = static::enabledAfterAmountWrite($rows, $keep);
                 $current['amount'] = $amount;
                 $current['updated_at'] = now()->toIso8601String();
                 if ($updatedBy !== null) {
@@ -270,11 +293,15 @@ class WelcomeBonusSetting extends Model
      * Duplicate config rows (no unique on key) can leave Disable on one row
      * and enabled=true on another. Any explicit off wins so Disable sticks.
      *
+     * A later ON row with no amount (grant-created leftover) must not wipe an
+     * earlier explicit amount — that falls back to €20 and undoes Set amount 0.
+     *
      * @param  Collection<int, static>  $rows
      */
     private static function authoritativeConfigValue($rows): mixed
     {
         $latestOn = null;
+        $carriedAmount = null;
         foreach ($rows as $row) {
             try {
                 $value = $row->value;
@@ -290,9 +317,69 @@ class WelcomeBonusSetting extends Model
                 return $value;
             }
 
+            if (array_key_exists('amount', $value)) {
+                $carriedAmount = $value['amount'];
+            } elseif ($carriedAmount !== null) {
+                $value['amount'] = $carriedAmount;
+            }
+
             $latestOn = $value;
         }
 
         return $latestOn;
+    }
+
+    /**
+     * Collapse onto the oldest row using the same payload reads trust, so
+     * Enable/Disable cannot resurrect a stale higher amount (or wipe €0).
+     *
+     * @param  Collection<int, static>  $rows
+     */
+    private static function payloadForWrite($rows, ?self $keep): array
+    {
+        try {
+            $current = is_array($keep?->value) ? $keep->value : [];
+        } catch (\Throwable) {
+            $current = [];
+        }
+
+        if ($keep === null || $rows->isEmpty()) {
+            return $current;
+        }
+
+        $authoritative = static::authoritativeConfigValue($rows);
+        if (is_array($authoritative)) {
+            $current = array_merge($current, $authoritative);
+        }
+
+        if (is_array($authoritative) && array_key_exists('amount', $authoritative)) {
+            $current['amount'] = is_numeric($authoritative['amount'])
+                ? static::normalizeAmount($authoritative['amount'])
+                : 0.0;
+        } else {
+            unset($current['amount']);
+        }
+
+        return $current;
+    }
+
+    /**
+     * Set amount must not turn the bonus back on. Duplicate rows: any
+     * explicit off or unreadable enabled flag wins. Never configured: default on.
+     *
+     * @param  Collection<int, static>  $rows
+     */
+    private static function enabledAfterAmountWrite($rows, ?self $keep): bool
+    {
+        if ($keep === null || $rows->isEmpty()) {
+            return static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true);
+        }
+
+        $authoritative = static::authoritativeConfigValue($rows);
+        if (! is_array($authoritative) || ! array_key_exists('enabled', $authoritative)) {
+            return false;
+        }
+
+        return static::parseEnabledFlag($authoritative['enabled'], false);
     }
 }

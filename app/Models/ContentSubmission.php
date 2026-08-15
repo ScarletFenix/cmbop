@@ -455,6 +455,82 @@ class ContentSubmission extends Model
     }
 
     /**
+     * No non-cancelled (and non-clawed) order item still points here.
+     * Cancelled leftover rows keep content_submission_id on purpose —
+     * they must not block retention strip of an unused expired file.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutOpenOrderItemLink($query)
+    {
+        $query->where(function ($q) {
+            $q->whereNull('order_item_id')
+                ->orWhereDoesntHave('orderItem', function ($item) {
+                    $item->whereHas('order', function ($order) {
+                        $order->where('status', '!=', 'cancelled');
+                    });
+                });
+        });
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return $query;
+        }
+
+        return $query->whereDoesntHave('orderItems', function ($item) {
+            $item->whereHas('order', function ($order) {
+                $order->where('status', '!=', 'cancelled');
+            });
+            $this->excludeClawedBackItems($item);
+        });
+    }
+
+    /**
+     * Unused expired rows. A cancelled leftover's stale order_id is not a lock.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeExpiredUnused($query)
+    {
+        return $query->withoutOpenOwnerOrder()
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '<=', now());
+    }
+
+    /**
+     * Mid-evaluation uploads that are not on an open owner order.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeEvaluatingInLibrary($query)
+    {
+        return $query->whereIn('moderation_status', [
+            self::STATUS_PENDING,
+            self::STATUS_PROCESSING,
+        ])->withoutOpenOwnerOrder()
+            ->where(function ($exp) {
+                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            });
+    }
+
+    /**
+     * Approved unused articles approaching content:purge-expired.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNearExpiryInLibrary($query, int $withinDays = 7)
+    {
+        return $query->where('moderation_status', self::STATUS_APPROVED)
+            ->withoutOpenOwnerOrder()
+            ->whereNotNull('expires_at')
+            ->where('expires_at', '>', now())
+            ->where('expires_at', '<=', now()->addDays(max(1, $withinDays)));
+    }
+
+    /**
      * SQL mirror of imageRightsCoverContent() — no images, or a covering claim.
      *
      * @param  Builder<static>  $query
@@ -560,7 +636,7 @@ class ContentSubmission extends Model
                     self::STATUS_ERROR,
                 ])->orWhere(function ($rights) {
                     $rights->where('moderation_status', self::STATUS_APPROVED)
-                        ->whereNull('order_id')
+                        ->withoutOpenOwnerOrder()
                         ->withoutImageRightsCover();
                 })->orWhere(function ($links) {
                     $links->orderable()->withoutCheckoutReadyLinks();
@@ -1338,7 +1414,7 @@ class ContentSubmission extends Model
         return in_array($this->moderation_status, [
             self::STATUS_PENDING,
             self::STATUS_PROCESSING,
-        ], true) && $this->order_id === null && ! $this->isArchived();
+        ], true) && ! $this->isInUse() && ! $this->isArchived();
     }
 
     /**
