@@ -568,7 +568,10 @@
                 </td>
             </tr>
 
-            <tr class="expanded-row-{{ $site->id }}" id="site-details-{{ $site->id }}" style="display: none;">
+            <tr class="expanded-row-{{ $site->id }} catalog-site-details"
+                id="site-details-{{ $site->id }}"
+                data-id="{{ $site->id }}"
+                style="display: none;">
     <td colspan="7" class="catalog-expand-cell">
         <div class="row">
             <div class="col-md-12">
@@ -622,7 +625,9 @@
                     <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-4' : 'col-lg-5') }} col-md-6 catalog-expand-description">
                         <p class="mb-1"><strong class="small">Description</strong></p>
                         <div class="text-muted small">
-                            @if($hasExpandDescription)
+                            @if($inCatalogHideMode && ! $showsIdentity)
+                                <span>Use the eye to show this listing’s name and URL, then the description appears.</span>
+                            @elseif($hasExpandDescription)
                                 {!! $expandDescriptionHtml !!}
                             @else
                                 <span>No description yet</span>
@@ -852,7 +857,7 @@
                                         <a href="{{ $sampleVisit }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
-                                           class="text-decoration-none"
+                                           class="text-decoration-none catalog-site-url"
                                            style="word-break: break-all;">
                                             {{ Str::limit($site->example_url, 50) }}
                                         </a>
@@ -1452,8 +1457,15 @@
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
-                        {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml(). --}}
-                        <dd class="catalog-card-details__description text-muted small">{{ site_description_excerpt($site->description) }}</dd>
+                        {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml().
+                             Hide-mode rows stay gated — publishers often paste the listing URL here. --}}
+                        <dd class="catalog-card-details__description text-muted small">
+                            @if($inCatalogHideMode && ! $showsIdentity)
+                                Use the eye to show this listing’s name and URL, then the description appears.
+                            @else
+                                {{ site_description_excerpt($site->description) }}
+                            @endif
+                        </dd>
                     </div>
                 @endif
                 <div class="catalog-card-details__row">
@@ -1463,7 +1475,10 @@
                         @if($inCatalogHideMode && ! $showsIdentity)
                             Use the eye to show this listing’s name and URL, then the sample article link appears.
                         @elseif($site->example_url && ($mobileSampleUrl = safe_external_url($site->example_url)) !== '#')
-                            <a href="{{ route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]) }}" target="_blank" rel="noopener noreferrer">
+                            <a href="{{ route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="catalog-site-url">
                                 {{ Str::limit($site->example_url, 46) }}
                             </a>
                         @else

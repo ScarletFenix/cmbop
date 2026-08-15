@@ -90,6 +90,27 @@ class CatalogHideModeIdentityTest extends TestCase
         $this->assertStringContainsString($maskedName, $html);
     }
 
+    public function test_hide_mode_does_not_print_a_url_buried_in_the_description(): void
+    {
+        $site = $this->site('desc-leak.example', 'Desc Leak Brand');
+        $site->update([
+            'description' => 'Read more at https://desc-leak.example/about and hire us.',
+        ]);
+        $user = $this->advertiser([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addHours(24),
+        ]);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('desc-leak.example', $html);
+        $this->assertStringNotContainsString('Desc Leak Brand', $html);
+        $this->assertStringContainsString('then the description appears', $html);
+    }
+
     public function test_outside_hide_mode_site_name_stays_visible(): void
     {
         $site = $this->site('open-brand.example', 'Open Brand Media');
@@ -174,5 +195,6 @@ class CatalogHideModeIdentityTest extends TestCase
 
         $this->assertStringContainsString("data.status === 'hide_mode'", $js);
         $this->assertStringContainsString('window.location.reload()', $js);
+        $this->assertStringContainsString('.catalog-site-details', $js);
     }
 }

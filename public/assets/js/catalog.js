@@ -4696,7 +4696,7 @@ document.addEventListener('click', async function (e) {
         if (node.closest('.bulk-deal-card, [data-bulk-deal-card], [data-bulk-rail]')) {
             return null;
         }
-        const row = node.closest('.site-row, .catalog-mobile-card, [data-id]');
+        const row = node.closest('.site-row, .catalog-mobile-card, .catalog-site-details, [data-id]');
         if (!row) return null;
         if (row.closest('.bulk-deal-card, [data-bulk-rail]')) return null;
         const id = parseInt(row.getAttribute('data-id') || '', 10);
@@ -4718,9 +4718,10 @@ document.addEventListener('click', async function (e) {
             return null;
         }
 
-        // Prefer explicit URL cells; also accept any selection inside a site row.
+        // Prefer explicit URL cells; also accept any selection inside a site
+        // row, mobile card, or Details expand (sibling <tr>, not .site-row).
         const urlCell = node.closest('.catalog-site-url');
-        const row = node.closest('.site-row, .catalog-mobile-card');
+        const row = node.closest('.site-row, .catalog-mobile-card, .catalog-site-details');
         if (!urlCell && !row) return null;
 
         return { text, siteId: rowSiteId(urlCell || row) };

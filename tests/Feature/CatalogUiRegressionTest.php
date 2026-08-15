@@ -133,6 +133,8 @@ class CatalogUiRegressionTest extends TestCase
             '/copy-example-url[\s\S]*?CatalogCopyTrack\.report\(/',
             $js
         );
+        // Details expand is a sibling <tr>, not .site-row — still count copies.
+        $this->assertStringContainsString('.catalog-site-details', $js);
         $this->assertMatchesRegularExpression(
             '/inCatalogHideMode\)\s*\{[\s\S]*?addEventListener\(\s*[\'"]click[\'"]\s*,\s*function\s*\([^)]*\)\s*\{[\s\S]*?reveal-url[\s\S]*?\}\s*,\s*true\s*\)/',
             $js

@@ -274,6 +274,9 @@ class CatalogHarvestResistanceTest extends TestCase
         $this->assertStringContainsString('guest-post', $html);
         $this->assertStringNotContainsString('href="https://sample-href.example/guest-post"', $html);
         $this->assertStringContainsString('/advertiser/go/'.$site->id.'?sample=1', $html);
+        $this->assertStringContainsString('catalog-site-details', $html);
+        $this->assertStringContainsString('data-id="'.$site->id.'"', $html);
+        $this->assertStringContainsString('class="text-decoration-none catalog-site-url"', $html);
     }
 
     public function test_sample_article_opens_through_our_redirect(): void
