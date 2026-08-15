@@ -55,4 +55,21 @@ class EmailCampaignRecipient extends Model
     {
         return 'audience_campaign:'.$campaignId.':user:'.$userId;
     }
+
+    /**
+     * A real SMTP success (or duplicate-of-a-real-send) must overwrite
+     * these. Expire can flip queued → skipped stale while the mailer is
+     * still in flight; that skip is not a veto of a delivery that landed.
+     *
+     * @return list<string>
+     */
+    public static function statusesOpenForDelivery(): array
+    {
+        return [
+            self::STATUS_PENDING,
+            self::STATUS_QUEUED,
+            self::STATUS_FAILED,
+            self::STATUS_SKIPPED,
+        ];
+    }
 }

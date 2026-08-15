@@ -457,10 +457,16 @@ class EmailCampaign extends Model
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
         $rows = EmailCampaignRecipient::query()
-            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNull('email_log_id')
             ->where('updated_at', '<=', $cutoff)
-            ->get(['id', 'email_campaign_id', 'user_id', 'updated_at']);
+            ->where(function ($query) {
+                $query->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                    ->orWhere(function ($skipped) {
+                        $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                            ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                    });
+            })
+            ->get(['id', 'email_campaign_id', 'user_id', 'status', 'updated_at']);
 
         if ($rows->isEmpty()) {
             return;
@@ -504,6 +510,13 @@ class EmailCampaign extends Model
                 fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
             );
 
+            $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
+            // Expire already parked the row. Only a delivered log proves the
+            // mail went out — do not revive a stale skip from an old failure.
+            if ($staleSkip && ! $deliveredLog) {
+                continue;
+            }
+
             $log = $deliveredLog;
             if (! $log && $failedLog) {
                 // An older failed log must not kill a newer in-flight retry.
@@ -527,9 +540,13 @@ class EmailCampaign extends Model
                 && ! $log->updated_at->greaterThan($row->updated_at)) {
                 continue;
             }
+            $expected = $staleSkip
+                ? EmailCampaignRecipient::STATUS_SKIPPED
+                : EmailCampaignRecipient::STATUS_QUEUED;
+
             EmailCampaignRecipient::query()
                 ->whereKey($row->id)
-                ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                ->where('status', $expected)
                 ->whereNull('email_log_id')
                 ->update([
                     'status' => $delivered
