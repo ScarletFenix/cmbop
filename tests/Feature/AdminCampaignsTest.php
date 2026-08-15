@@ -3178,4 +3178,43 @@ class AdminCampaignsTest extends TestCase
         $this->assertNull($fresh->email_log_id);
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
+
+    public function test_campaign_mail_stays_duplicate_after_the_transactional_window(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $campaign = EmailCampaign::create([
+            'name' => 'One shot',
+            'subject' => 'One shot',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $delivered = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'One shot',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subMinutes(20),
+            'attempts' => 1,
+        ]);
+        EmailLog::query()->whereKey($delivered->id)->update([
+            'created_at' => now()->subMinutes(20),
+            'updated_at' => now()->subMinutes(20),
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = $dedupe;
+        $method = new \ReflectionMethod($mailable, 'isDuplicate');
+        $method->setAccessible(true);
+
+        $this->assertTrue($method->invoke($mailable, $dedupe));
+    }
 }
