@@ -10,6 +10,7 @@ use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Services\Wallet\WithdrawalDuplicatePayoutWarning;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Log;
 
 /**

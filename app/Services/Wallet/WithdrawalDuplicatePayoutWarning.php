@@ -21,28 +21,15 @@ class WithdrawalDuplicatePayoutWarning
      */
     public function matches(Withdrawal $withdrawal): Collection
     {
-        if (! $withdrawal->isActionable()) {
+        $ids = $this->matchIdsByWithdrawalId([$withdrawal])[(int) $withdrawal->id] ?? [];
+        if ($ids === []) {
             return collect();
         }
 
-        $since = now()->subDays($this->lookbackDays());
-        $net = round((float) $withdrawal->net_amount, 2);
-
         return Withdrawal::query()
-            ->where('user_id', $withdrawal->user_id)
-            ->where('status', 'completed')
-            ->whereKeyNot($withdrawal->id)
-            ->where('net_amount', $net)
-            ->where(function ($q) use ($since) {
-                $q->where('processed_at', '>=', $since)
-                    ->orWhere(function ($inner) use ($since) {
-                        $inner->whereNull('processed_at')
-                            ->where('created_at', '>=', $since);
-                    });
-            })
+            ->whereIn('id', $ids)
             ->orderByDesc('processed_at')
             ->orderByDesc('id')
-            ->limit(5)
             ->get();
     }
 

@@ -390,7 +390,7 @@ function renderWithdrawals(withdrawals) {
         const checked = selectedIds.has(w.id) ? 'checked' : '';
         const copyEncoded = encodeURIComponent(w.destination_copy_text || '');
         const matchIds = Array.isArray(w.duplicate_match_ids) ? w.duplicate_match_ids : [];
-        withdrawalFlags.set(w.id, {
+        withdrawalFlags.set(Number(w.id), {
             possible_duplicate: !!w.possible_duplicate,
             duplicate_match_ids: matchIds,
         });
@@ -541,7 +541,7 @@ $(document).on('click', '.act-paid', async function() {
     const name = $(this).data('name');
     const net = $(this).data('net');
     const method = $(this).data('method');
-    const isDuplicate = String($(this).data('duplicate') || '') === '1';
+    const isDuplicate = $(this).attr('data-duplicate') === '1';
     const matchRefs = $(this).attr('data-duplicate-ids') || '';
     const notes = await confirmNotes(
         'Mark paid?',
@@ -619,7 +619,7 @@ $('#clearSelectionBtn').on('click', function() {
 function selectedDuplicateRefs() {
     const refs = [];
     selectedIds.forEach(function (id) {
-        const flag = withdrawalFlags.get(id);
+        const flag = withdrawalFlags.get(Number(id));
         if (flag && flag.possible_duplicate) {
             refs.push('WD-' + id);
         }
@@ -746,6 +746,12 @@ function renderDetails(withdrawal) {
     }
 
     lastDetailsCopyText = withdrawal.destination_copy_text || '';
+    const matchRefs = (Array.isArray(withdrawal.duplicate_match_ids) ? withdrawal.duplicate_match_ids : [])
+        .map(function (id) { return 'WD-' + id; })
+        .join(', ');
+    const duplicateAlert = withdrawal.possible_duplicate
+        ? `<div class="alert alert-warning" role="alert">${duplicateWarningHtml(matchRefs).replace(/^<br>/, '')}</div>`
+        : '';
 
     const userId = withdrawal.user?.id;
     if (userId) {
@@ -765,6 +771,7 @@ function renderDetails(withdrawal) {
     }
 
     $('#detailsContent').html(`
+        ${duplicateAlert}
         <div class="row mb-3">
             <div class="col-md-6">
                 <div class="bg-light p-3 rounded">

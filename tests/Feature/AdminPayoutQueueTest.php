@@ -73,6 +73,7 @@ class AdminPayoutQueueTest extends TestCase
         $this->assertStringContainsString('params.set(key, value);', $html);
         $this->assertStringContainsString('function duplicateWarningHtml', $html);
         $this->assertStringContainsString('confirm_duplicates', $html);
+        $this->assertStringContainsString('withdrawal.possible_duplicate', $html);
     }
 
     public function test_data_endpoint_defaults_to_open_queue_oldest_first(): void
@@ -496,6 +497,64 @@ class AdminPayoutQueueTest extends TestCase
         $this->assertFalse($rows[$differentNet->id]['possible_duplicate']);
         $this->assertFalse($rows[$otherUser->id]['possible_duplicate']);
         $this->assertFalse($rows[$stale->id]['possible_duplicate']);
+    }
+
+    public function test_duplicate_warning_matches_two_decimal_net_amounts(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+
+        $paid = $this->seedWithdrawal($publisher, [
+            'status' => 'completed',
+            'processed_at' => now()->subDay(),
+            'amount' => 90.10,
+            'fee' => 0,
+            'net_amount' => 90.10,
+        ]);
+        $open = $this->seedWithdrawal($publisher, [
+            'amount' => 90.1,
+            'fee' => 0,
+            'net_amount' => 90.1,
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.withdrawals.show', $open->id))
+            ->assertOk()
+            ->assertJsonPath('data.possible_duplicate', true)
+            ->assertJsonPath('data.duplicate_match_ids.0', $paid->id);
+    }
+
+    public function test_export_ignores_array_search_and_invalid_dates(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $open = $this->seedWithdrawal($publisher, [
+            'payment_method' => 'bank',
+            'payment_details' => [
+                'bank_name' => 'Test Bank',
+                'account_holder' => 'Pat',
+                'account_number' => 'DE89370400440532013000',
+            ],
+        ]);
+        $this->seedWithdrawal($publisher, [
+            'status' => 'completed',
+            'processed_at' => now(),
+            'amount' => 10,
+            'fee' => 0,
+            'net_amount' => 10,
+        ]);
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.withdrawals.export', [
+                'search' => ['injected'],
+                'date_from' => 'not-a-date',
+                'queue' => ['history'],
+            ]))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('WD-'.$open->id, $csv);
+        $this->assertStringContainsString('iban_account', $csv);
     }
 
     public function test_batch_mark_paid_requires_confirm_when_duplicate(): void

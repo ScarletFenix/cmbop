@@ -387,13 +387,17 @@ class AdminWithdrawalController extends Controller
         }
 
         $refs = array_map(fn (int $id) => 'WD-'.$id, $duplicateIds);
+        $matchIds = [];
+        foreach ($duplicateIds as $withdrawalId) {
+            $matchIds[$withdrawalId] = $map[$withdrawalId] ?? [];
+        }
 
         return response()->json([
             'success' => false,
             'needs_duplicate_confirm' => true,
             'message' => 'Possible duplicate payout: same publisher was paid this net amount recently ('.implode(', ', $refs).'). Confirm you are not paying twice.',
             'duplicate_ids' => $duplicateIds,
-            'duplicate_match_ids' => $map,
+            'duplicate_match_ids' => $matchIds,
         ], 422);
     }
 
