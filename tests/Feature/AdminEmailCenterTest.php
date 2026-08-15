@@ -886,6 +886,7 @@ class AdminEmailCenterTest extends TestCase
                 'displayName' => WelcomeEmail::class,
                 'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
                 'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => 'customer@example.com',
             ]),
             'exception' => 'SMTP failed',
             'failed_at' => now(),
@@ -903,6 +904,45 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $fresh->status);
         $this->assertSame(2, $fresh->attempts);
         $this->assertNull($fresh->error);
+    }
+
+    public function test_retry_production_log_refuses_unidentified_unique_job(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => WelcomeEmail::class,
+            'template_key' => 'welcome',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Welcome to SEOLinkBuildings',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => (string) Str::uuid(),
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => WelcomeEmail::class,
+                'job' => 'Illuminate\\Queue\\CallQueuedHandler@call',
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+            ]),
+            'exception' => 'SMTP failed',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')->never();
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('error');
+
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
     }
 
     public function test_retry_production_log_uses_recipient_matching_job(): void

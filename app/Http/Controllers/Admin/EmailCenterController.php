@@ -570,21 +570,9 @@ class EmailCenterController extends Controller
             return (string) $tight[0]->uuid;
         }
 
-        if (count($tight) > 1) {
-            return null;
-        }
-
-        if (count($candidates) !== 1) {
-            return null;
-        }
-
-        $payload = (string) $candidates[0]->payload;
-        $logHasIdentity = ($to !== '' && $to !== 'unknown') || $dedupe !== '';
-        if ($logHasIdentity && MailJobPayload::looksIdentified($payload)) {
-            return null;
-        }
-
-        return (string) $candidates[0]->uuid;
+        // Unique class match without a recipient token is how an anonymous
+        // Welcome job was retried against the wrong failed log.
+        return null;
     }
 
     protected function failedJobMatchesLog(string $payload, EmailLog $log): bool
