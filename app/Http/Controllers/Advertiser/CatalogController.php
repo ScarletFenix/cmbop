@@ -2213,6 +2213,22 @@ class CatalogController extends Controller
                         'message' => 'Those listings left the catalog before checkout finished. Your bonus was not spent.',
                     ], 422);
                 }
+                $fulfilledTotal = round(array_sum(array_column(
+                    array_column($fulfillableLines, 'orderItem'),
+                    'price'
+                )), 2);
+                $excessBonus = round(max(0, $bonusApplied - $fulfilledTotal), 2);
+                if ($excessBonus > 0.009) {
+                    $advertiserRoleId = Wallet::advertiserRoleId();
+                    if ($advertiserRoleId) {
+                        $holdWallet = Wallet::lockOrCreateForRole((int) $userId, (int) $advertiserRoleId);
+                        $holdWallet->refundReserved($excessBonus, $excessBonus);
+                    }
+                    $bonusApplied = $fulfilledTotal;
+                    $this->rememberCheckoutBonus((int) $userId, (string) $referenceCode, $bonusApplied);
+                }
+                $totalAmount = $fulfilledTotal;
+
                 foreach ($fulfillableLines as $line) {
                     $orderItem = $line['orderItem'];
                     $submission = $line['submission'];
@@ -2240,6 +2256,15 @@ class CatalogController extends Controller
                     ));
                     $this->attachSubmissionToOrder($submission, $order, $item);
                     $created->push($order);
+                }
+                if ($created->isEmpty()) {
+                    DB::rollBack();
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Those listings left the catalog before checkout finished. Your bonus was not spent.',
+                    ], 422);
                 }
                 DB::commit();
                 $this->forgetCheckoutBonus((int) $userId, (string) $referenceCode);

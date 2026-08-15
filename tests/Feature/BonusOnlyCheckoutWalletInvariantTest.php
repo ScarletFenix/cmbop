@@ -190,6 +190,77 @@ class BonusOnlyCheckoutWalletInvariantTest extends TestCase
         $this->assertGreaterThanOrEqual(0.0, (float) $wallet->reserved_balance);
     }
 
+    public function test_bonus_only_releases_promo_for_line_that_left_catalog(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $keep = $this->activeSite($publisher, 'bonus-keep', 20);
+        $drop = $this->activeSite($publisher, 'bonus-drop', 20);
+        $keepTotal = (float) app(CartPricingService::class)
+            ->priceForAdvertiser($keep, null, 1, 'none', false)['total'];
+        $dropTotal = (float) app(CartPricingService::class)
+            ->priceForAdvertiser($drop, null, 1, 'none', false)['total'];
+        $wallet = $this->advertiserBonusWallet($advertiser, $keepTotal + $dropTotal);
+        $this->publisherWallet($publisher);
+        $keepSub = $this->createApprovedSubmission($advertiser, $keep->id);
+        $dropSub = $this->createApprovedSubmission($advertiser, $drop->id);
+
+        $hidden = false;
+        $retrieved = 'eloquent.retrieved: '.Wallet::class;
+        Wallet::retrieved(function () use ($drop, &$hidden) {
+            if ($hidden) {
+                return;
+            }
+            $hidden = true;
+            $drop->update(['verified' => false, 'active' => false]);
+        });
+
+        try {
+            $this->actingAs($advertiser)
+                ->withSession([
+                    'cart' => [
+                        [
+                            'id' => $keep->id,
+                            'name' => $keep->site_name,
+                            'quantity' => 1,
+                            'content_submission_id' => $keepSub->id,
+                            'language' => 'en',
+                            'homepage_days' => 'none',
+                        ],
+                        [
+                            'id' => $drop->id,
+                            'name' => $drop->site_name,
+                            'quantity' => 1,
+                            'content_submission_id' => $dropSub->id,
+                            'language' => 'en',
+                            'homepage_days' => 'none',
+                        ],
+                    ],
+                ])
+                ->postJson(route('advertiser.checkout.process'), [
+                    'payment_method' => 'card',
+                    'use_bonus' => '1',
+                    'reference_code' => 'BONUSP',
+                    'publication_mode' => 'immediate',
+                    'content_submissions' => [
+                        $keep->id => [$keepSub->id],
+                        $drop->id => [$dropSub->id],
+                    ],
+                ])
+                ->assertOk()
+                ->assertJson(['success' => true]);
+
+            $this->assertSame(1, Order::where('reference_code', 'BONUSP')->count());
+            $this->assertEqualsWithDelta($keepTotal, (float) Order::where('reference_code', 'BONUSP')->value('total_amount'), 0.01);
+            $wallet->refresh();
+            $this->assertEqualsWithDelta($keepTotal, (float) $wallet->bonus_reserved, 0.01);
+            $this->assertEqualsWithDelta($dropTotal, (float) $wallet->bonus_balance, 0.01);
+            $this->assertEqualsWithDelta($keepTotal, (float) $wallet->reserved_balance, 0.01);
+        } finally {
+            Wallet::getEventDispatcher()?->forget($retrieved);
+        }
+    }
+
     public function test_approving_bonus_only_order_spends_promo_and_never_goes_negative(): void
     {
         [$advertiser, $publisher, $site, $wallet, $total] = $this->bonusCoveredCheckoutSetup();

@@ -555,6 +555,36 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
+    public function test_finalize_releases_bonus_share_for_listing_that_left_the_catalog(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'bonus-left-catalog.example', 80);
+        $live = $this->makeSite($publisher, 'bonus-still-live.example', 40);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'BONUS-LEFT-CATALOG-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+            $this->lineFor($live, 40),
+        ], 100, 20));
+
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 100, 'cs_bonus_left_catalog')
+        );
+
+        $this->assertCount(1, $created);
+        $this->assertEqualsWithDelta(40.0, (float) $created->first()->total_amount, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+        $this->assertEqualsWithDelta(round(20 * (40 / 120), 2), (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(round(20 - (20 * (40 / 120)), 2), (float) $wallet->bonus_balance, 0.01);
+    }
+
     public function test_finalize_creates_no_orders_when_every_line_left_the_catalog(): void
     {
         $advertiser = $this->makeUser('advertiser');

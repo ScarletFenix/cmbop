@@ -340,11 +340,41 @@ class OrderPaymentService
     }
 
     /**
-     * Refund promotional credit reserved for a card checkout reference.
+     * Keep only the fulfilled share of checkout promo. Leftover/hidden lines
+     * must not leave their bonus slice reserved forever.
      */
-    /**
-     * @param  Collection<int, Order>|null  $failedOrders
-     */
+    public function keepCheckoutBonusForFulfilled(
+        int $userId,
+        string $referenceCode,
+        float $heldBonus,
+        float $orderTotal,
+        float $fulfilled
+    ): float {
+        $heldBonus = round($heldBonus, 2);
+        $orderTotal = round($orderTotal, 2);
+        $fulfilled = round($fulfilled, 2);
+        if ($userId <= 0 || $heldBonus <= 0.009) {
+            return 0.0;
+        }
+
+        $keep = $orderTotal > 0.009
+            ? round(min($heldBonus, $heldBonus * ($fulfilled / $orderTotal)), 2)
+            : 0.0;
+        $release = round(max(0, $heldBonus - $keep), 2);
+        if ($release <= 0.009) {
+            return $heldBonus;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if ($roleId) {
+            $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+            $wallet->refundReserved($release, $release);
+        }
+        app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $keep);
+
+        return $keep;
+    }
+
     /**
      * If fail/cancel already returned this checkout's promo to bonus_balance,
      * hold it again when the same card payment later marks the order paid.
@@ -385,6 +415,9 @@ class OrderPaymentService
         return $moved;
     }
 
+    /**
+     * @param  Collection<int, Order>|null  $failedOrders
+     */
     public function refundBonusReservedForReference(
         int $userId,
         string $referenceCode,
@@ -456,7 +489,11 @@ class OrderPaymentService
             }
 
             if ($keepReference !== null && $ref !== $keepReference) {
-                $this->forgetPendingCheckout($ref);
+                $openStripeSession = is_array($package)
+                    && search_text($package['stripe_session_id'] ?? '') !== '';
+                if (! $openStripeSession) {
+                    $this->forgetPendingCheckout($ref);
+                }
             }
         }
     }
@@ -989,12 +1026,19 @@ class OrderPaymentService
             );
         }
 
-        if ($userId > 0) {
-            $this->rereserveReleasedCheckoutBonus(
+        $packageBonus = round((float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0), 2);
+        $packageTotal = round((float) ($package['order_total'] ?? $meta['order_total'] ?? 0), 2);
+        $bonusKeep = $userId > 0
+            ? $this->keepCheckoutBonusForFulfilled(
                 $userId,
                 $referenceCode,
-                (float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0)
-            );
+                $packageBonus,
+                $packageTotal,
+                $fulfilled
+            )
+            : 0.0;
+        if ($userId > 0) {
+            $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
         }
 
         $this->forgetPendingCheckout($referenceCode);
@@ -1008,8 +1052,8 @@ class OrderPaymentService
         $this->recordAdvertiserPurchaseForPaidCheckout(
             $referenceCode,
             $created,
-            (float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0),
-            (float) ($package['order_total'] ?? $meta['order_total'] ?? 0)
+            $bonusKeep,
+            $fulfilled
         );
         $this->evaluateSpendBudgetAfterPaidOrders($created);
 
