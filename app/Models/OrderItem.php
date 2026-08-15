@@ -151,6 +151,21 @@ class OrderItem extends Model
             ->exists();
     }
 
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutClawback($query)
+    {
+        if (! OrderItemDispute::tableAvailable()) {
+            return $query;
+        }
+
+        return $query->whereDoesntHave('disputes', function ($dispute) {
+            $dispute->where('status', OrderItemDispute::STATUS_UPHELD);
+        });
+    }
+
     public function site()
     {
         return $this->belongsTo(Site::class);
@@ -159,6 +174,23 @@ class OrderItem extends Model
     public function contentSubmission(): BelongsTo
     {
         return $this->belongsTo(ContentSubmission::class);
+    }
+
+    /**
+     * Library file download for the assigned publisher. Upheld clawbacks
+     * already refunded this line — do not keep serving the reusable article.
+     */
+    public function publisherContentDownloadUrl(): ?string
+    {
+        if ($this->isClawedBack()) {
+            return null;
+        }
+
+        if ((int) ($this->content_submission_id ?? 0) > 0) {
+            return route('publisher.content.download', $this->content_submission_id);
+        }
+
+        return filled($this->content_link) ? (string) $this->content_link : null;
     }
 
     /**

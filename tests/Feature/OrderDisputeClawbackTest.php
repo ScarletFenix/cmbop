@@ -371,6 +371,16 @@ class OrderDisputeClawbackTest extends TestCase
             ContentSubmission::query()->whereKey($disputedArticle->id)->checkoutReady()->exists()
         );
         $this->assertFalse($siblingArticle->fresh()->isReadyForCheckout());
+        $released = $released->load(['orderItems.disputes', 'orderItems.order']);
+        $this->assertNull($released->liveUrl());
+        $this->assertNull($released->placementItem());
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $disputedArticle))
+            ->assertForbidden();
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $siblingArticle))
+            ->assertOk();
 
         $this->actingAs($advertiser)
             ->deleteJson(route('advertiser.content-submissions.destroy', $disputedArticle))

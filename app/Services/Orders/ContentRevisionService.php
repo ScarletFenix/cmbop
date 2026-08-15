@@ -272,6 +272,7 @@ class ContentRevisionService
                     ->where('order_id', $lockedOrder->id)
                     ->where('id', '!=', $item->id)
                     ->where('content_submission_id', $submission->id)
+                    ->withoutClawback()
                     ->exists();
 
                 if (! $sameAsCurrent && (

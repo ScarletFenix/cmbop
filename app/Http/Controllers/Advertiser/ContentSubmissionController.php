@@ -779,6 +779,7 @@ class ContentSubmissionController extends Controller
                     $q->orWhere('id', $submission->order_item_id);
                 }
             })
+            ->withoutClawback()
             ->whereHas('site', fn ($q) => $q->where('publisher_id', $publisherId))
             ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
             ->exists();

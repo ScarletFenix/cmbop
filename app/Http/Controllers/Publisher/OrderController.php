@@ -50,6 +50,7 @@ class OrderController extends Controller
     {
         $allowed = OrderItem::query()
             ->where('content_submission_id', $submission->id)
+            ->withoutClawback()
             ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
             ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
             ->exists();
@@ -210,9 +211,7 @@ class OrderController extends Controller
                     'social_channels' => $item->enabledSocialChannels(),
                     'social_post_urls' => $item->socialPostUrls(),
                     'content_link' => $item->content_link,
-                    'content_download_url' => $item->content_submission_id
-                        ? route('publisher.content.download', $item->content_submission_id)
-                        : $item->content_link,
+                    'content_download_url' => $item->publisherContentDownloadUrl(),
                     'content_original_name' => $item->content_original_name,
                     'anchor_text' => $item->anchor_text,
                     'target_url' => $item->target_url,
@@ -363,9 +362,7 @@ class OrderController extends Controller
                 'social_channels' => $orderItem->enabledSocialChannels(),
                 'social_post_urls' => $orderItem->socialPostUrls(),
                 'content_link' => $orderItem->content_link,
-                'content_download_url' => $orderItem->content_submission_id
-                    ? route('publisher.content.download', $orderItem->content_submission_id)
-                    : $orderItem->content_link,
+                'content_download_url' => $orderItem->publisherContentDownloadUrl(),
                 'content_original_name' => $orderItem->content_original_name,
                 'anchor_text' => $orderItem->anchor_text,
                 'target_url' => $orderItem->target_url,
