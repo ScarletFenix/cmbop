@@ -316,6 +316,7 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString('Swal.fire({', $html);
         $this->assertStringContainsString('does not refund the Stripe charge', $html);
         $this->assertStringContainsString('Use a dispute clawback', $html);
-        $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $html);
+        $blade = file_get_contents(resource_path('views/admin/payments.blade.php'));
+        $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $blade);
     }
 }

@@ -2,7 +2,7 @@
 
 // app/Http/Controllers/Admin/PaymentController.php
 
-namespace App\Http/Controllers\Admin;
+namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\OrderPaymentConfirmed;
@@ -663,6 +663,13 @@ class PaymentController extends Controller
     private function disallowedStatusMessage(Order $order, string $newStatus): string
     {
         if ($order->payment_status === 'paid' && $order->status === 'completed') {
+            if ($newStatus === 'refunded') {
+                return 'Completed orders cannot be refunded here. Use a dispute clawback so the publisher payout is reversed first.';
+            }
+            if ($newStatus === 'failed') {
+                return 'Completed orders cannot be marked failed here. Use a dispute clawback so the publisher payout is reversed first.';
+            }
+
             return 'Completed orders cannot be changed here. Use a dispute clawback so the publisher payout is reversed first.';
         }
 

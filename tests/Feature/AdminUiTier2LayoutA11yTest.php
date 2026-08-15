@@ -161,8 +161,10 @@ class AdminUiTier2LayoutA11yTest extends TestCase
         foreach (['searchInput', 'paymentStatusFilter', 'paymentMethodFilter', 'orderStatusFilter'] as $id) {
             $this->assertStringContainsString('for="'.$id.'"', $payments);
         }
-        $this->assertStringContainsString('aria-label="Paid from date"', $payments);
-        $this->assertStringContainsString('aria-label="Paid to date"', $payments);
+        $this->assertStringContainsString('aria-label="From date"', $payments);
+        $this->assertStringContainsString('aria-label="To date"', $payments);
+        $this->assertStringContainsString('for="dateFrom"', $payments);
+        $this->assertStringContainsString('aria-label="Date field"', $payments);
     }
 
     public function test_rating_stars_are_announced_once(): void

@@ -257,7 +257,7 @@ class AdminFailWalletReleaseTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false)
             ->assertJsonFragment([
-                'message' => 'Completed orders cannot be changed here. Use a dispute clawback so the publisher payout is reversed first.',
+                'message' => 'Completed orders cannot be marked failed here. Use a dispute clawback so the publisher payout is reversed first.',
             ]);
 
         $order->refresh();
