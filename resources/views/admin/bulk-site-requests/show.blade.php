@@ -156,6 +156,7 @@
                         Fill a complete block (Language, Country, DA, DR, Traffic, Niches) and click Done — one row, several, or all at once.
                         Finished rows become drafts and notify the publisher; the rest stay here until you fill them.
                         Delete a row you will not add — those sites leave this batch and the publisher gets one note for all removed sites.
+                        Marketing Activate needs DA ≥ {{ \App\Models\Site::GOOD_MIN_DA }}, DR ≥ {{ \App\Models\Site::GOOD_MIN_DR }}, and traffic ≥ {{ number_format(\App\Models\Site::GOOD_MIN_TRAFFIC) }}. Done below this is allowed.
                     </p>
 
                     @if($errors->any())
@@ -197,7 +198,10 @@
                               action="{{ staff_route('bulk-site-requests.done', $bulkRequest) }}"
                               id="bulkDoneForm"
                               enctype="multipart/form-data"
-                              novalidate>
+                              novalidate
+                              data-min-da="{{ \App\Models\Site::GOOD_MIN_DA }}"
+                              data-min-dr="{{ \App\Models\Site::GOOD_MIN_DR }}"
+                              data-min-traffic="{{ \App\Models\Site::GOOD_MIN_TRAFFIC }}">
                             @csrf
                             @php
                                 $oldRejectedIds = collect(old('rejected_item_ids', []))
@@ -212,53 +216,80 @@
                                     <input type="hidden" name="rejected_item_ids[]" value="{{ $rejectedId }}">
                                 @endforeach
                             </div>
-                            <div class="bulk-done-table-wrap admin-contained-scroll mb-3">
-                                <table class="table table-sm align-middle mb-0 bulk-done-grid">
-                                    <thead>
-                                        <tr>
-                                            <th>Website</th>
-                                            <th>Price</th>
-                                            <th>Country <span class="text-danger">*</span></th>
-                                            <th>Language <span class="text-danger">*</span></th>
-                                            <th>DA <span class="text-danger">*</span></th>
-                                            <th>DR <span class="text-danger">*</span></th>
-                                            <th>Traffic <span class="text-danger">*</span></th>
-                                            <th>Niches <span class="text-danger">*</span></th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        @foreach($pendingItems as $item)
-                                            @php
-                                                $old = old('items.'.$item->id, []);
-                                                $oldCategories = $old['categories'] ?? '';
-                                                if (is_array($oldCategories)) {
-                                                    $oldCategories = implode('|', $oldCategories);
-                                                }
-                                                $uid = 'done'.$item->id;
-                                                $oldCountry = strtolower((string) ($old['country'] ?? ''));
-                                                $oldLanguage = strtolower((string) ($old['language'] ?? ''));
-                                                $isRejected = in_array((int) $item->id, $oldRejectedIds, true);
-                                            @endphp
-                                            <tr data-bulk-done-row
-                                                data-item-id="{{ $item->id }}"
-                                                @class(['d-none' => $isRejected])
-                                                @if($isRejected) data-bulk-rejected="1" @endif>
-                                                <td>
-                                                    <div class="fw-semibold small text-break">{{ $item->domain }}</div>
-                                                    <a class="small text-muted text-break" href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
-                                                        {{ $item->site_url }}
-                                                    </a>
-                                                    <button type="button"
-                                                            class="btn btn-sm btn-outline-danger mt-2 bulk-done-reject"
-                                                            data-bulk-reject-row
-                                                            @disabled($isRejected)>
-                                                        Delete
-                                                    </button>
-                                                </td>
-                                                <td class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</td>
-                                                <td>
-                                                    <select name="items[{{ $item->id }}][country]"
-                                                            class="form-select form-select-sm @error('items.'.$item->id.'.country') is-invalid @enderror"
+                            <div class="bulk-done-table-wrap bulk-done-list admin-contained-scroll mb-3">
+                                @php $openedFirstEmpty = false; @endphp
+                                @foreach($pendingItems as $item)
+                                    @php
+                                        $old = old('items.'.$item->id, []);
+                                        if (! is_array($old)) {
+                                            $old = [];
+                                        }
+                                        $oldCategories = $old['categories'] ?? '';
+                                        if (is_array($oldCategories)) {
+                                            $oldCategories = implode('|', $oldCategories);
+                                        }
+                                        $uid = 'done'.$item->id;
+                                        $oldCountry = strtolower((string) ($old['country'] ?? ''));
+                                        $oldLanguage = strtolower((string) ($old['language'] ?? ''));
+                                        $isRejected = in_array((int) $item->id, $oldRejectedIds, true);
+                                        $filledCount = 0;
+                                        foreach (['country', 'language', 'da', 'dr', 'traffic'] as $doneField) {
+                                            if (trim((string) ($old[$doneField] ?? '')) !== '') {
+                                                $filledCount++;
+                                            }
+                                        }
+                                        if (trim((string) $oldCategories) !== '') {
+                                            $filledCount++;
+                                        }
+                                        $itemErrorPrefix = 'items.'.$item->id.'.';
+                                        $rowHasErrors = collect($errors->keys())->contains(
+                                            fn ($key) => $key === 'items.'.$item->id || str_starts_with((string) $key, $itemErrorPrefix)
+                                        );
+                                        $openAsFirstEmpty = ! $isRejected && $filledCount === 0 && ! $rowHasErrors && ! $openedFirstEmpty;
+                                        $rowOpen = ! $isRejected && ($rowHasErrors || $filledCount > 0 || $openAsFirstEmpty);
+                                        if ($openAsFirstEmpty) {
+                                            $openedFirstEmpty = true;
+                                        }
+                                        $chipLabel = $filledCount === 0
+                                            ? 'Empty'
+                                            : ($filledCount === 6 ? 'Ready' : $filledCount.'/6 filled');
+                                        $chipClass = $filledCount === 0
+                                            ? 'is-empty'
+                                            : ($filledCount === 6 ? 'is-ready' : 'is-partial');
+                                        $oldDa = trim((string) ($old['da'] ?? ''));
+                                        $oldDr = trim((string) ($old['dr'] ?? ''));
+                                        $oldTraffic = trim((string) ($old['traffic'] ?? ''));
+                                        $metricsFilled = $oldDa !== '' && $oldDr !== '' && $oldTraffic !== '';
+                                        $belowQuality = $metricsFilled
+                                            && ((int) $oldDa < \App\Models\Site::GOOD_MIN_DA
+                                                || (int) $oldDr < \App\Models\Site::GOOD_MIN_DR
+                                                || (int) $oldTraffic < \App\Models\Site::GOOD_MIN_TRAFFIC);
+                                    @endphp
+                                    <details class="bulk-done-row" data-bulk-done-row
+                                             data-item-id="{{ $item->id }}"
+                                             @class(['d-none' => $isRejected])
+                                             @if($isRejected) data-bulk-rejected="1" @endif
+                                             @if($rowOpen) open @endif>
+                                        <summary class="bulk-done-row__summary">
+                                            <span class="bulk-done-row__identity">
+                                                <span class="fw-semibold text-break">{{ $item->domain }}</span>
+                                                <a class="small text-muted text-break" href="{{ $item->site_url }}" target="_blank" rel="noopener noreferrer">
+                                                    {{ $item->site_url }}
+                                                </a>
+                                            </span>
+                                            <span class="bulk-done-row__meta">
+                                                <span class="text-nowrap">€{{ number_format((float) $item->price, 2) }}</span>
+                                                <span class="bulk-done-row__chip {{ $chipClass }}" data-bulk-done-chip>{{ $chipLabel }}</span>
+                                                <span class="bulk-done-row__chip is-below-bar{{ $belowQuality ? '' : ' d-none' }}" data-bulk-quality-chip>Below bar</span>
+                                            </span>
+                                        </summary>
+                                        <div class="bulk-done-row__body">
+                                            <div class="bulk-done-row__fields">
+                                                <div class="bulk-done-field">
+                                                    <label class="form-label" for="bulk-done-country-{{ $item->id }}">Country <span class="text-danger">*</span></label>
+                                                    <select id="bulk-done-country-{{ $item->id }}"
+                                                            name="items[{{ $item->id }}][country]"
+                                                            class="form-select @error('items.'.$item->id.'.country') is-invalid @enderror"
                                                             required
                                                             data-bulk-required
                                                             data-bulk-country
@@ -274,10 +305,12 @@
                                                     @error('items.'.$item->id.'.country')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
-                                                </td>
-                                                <td>
-                                                    <select name="items[{{ $item->id }}][language]"
-                                                            class="form-select form-select-sm @error('items.'.$item->id.'.language') is-invalid @enderror"
+                                                </div>
+                                                <div class="bulk-done-field">
+                                                    <label class="form-label" for="bulk-done-language-{{ $item->id }}">Language <span class="text-danger">*</span></label>
+                                                    <select id="bulk-done-language-{{ $item->id }}"
+                                                            name="items[{{ $item->id }}][language]"
+                                                            class="form-select @error('items.'.$item->id.'.language') is-invalid @enderror"
                                                             required
                                                             data-bulk-required
                                                             data-bulk-language
@@ -295,13 +328,16 @@
                                                     @error('items.'.$item->id.'.language')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
-                                                </td>
-                                                <td>
+                                                </div>
+                                                <div class="bulk-done-field">
+                                                    <label class="form-label" for="bulk-done-da-{{ $item->id }}">DA <span class="text-danger">*</span></label>
                                                     <input type="number"
+                                                           id="bulk-done-da-{{ $item->id }}"
                                                            name="items[{{ $item->id }}][da]"
-                                                           class="form-control form-control-sm @error('items.'.$item->id.'.da') is-invalid @enderror"
+                                                           class="form-control @error('items.'.$item->id.'.da') is-invalid @enderror"
                                                            placeholder="0–100"
                                                            min="0" max="100" step="1"
+                                                           inputmode="numeric"
                                                            value="{{ $old['da'] ?? '' }}"
                                                            required
                                                            data-bulk-required
@@ -310,13 +346,16 @@
                                                     @error('items.'.$item->id.'.da')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
-                                                </td>
-                                                <td>
+                                                </div>
+                                                <div class="bulk-done-field">
+                                                    <label class="form-label" for="bulk-done-dr-{{ $item->id }}">DR <span class="text-danger">*</span></label>
                                                     <input type="number"
+                                                           id="bulk-done-dr-{{ $item->id }}"
                                                            name="items[{{ $item->id }}][dr]"
-                                                           class="form-control form-control-sm @error('items.'.$item->id.'.dr') is-invalid @enderror"
+                                                           class="form-control @error('items.'.$item->id.'.dr') is-invalid @enderror"
                                                            placeholder="0–100"
                                                            min="0" max="100" step="1"
+                                                           inputmode="numeric"
                                                            value="{{ $old['dr'] ?? '' }}"
                                                            required
                                                            data-bulk-required
@@ -325,12 +364,14 @@
                                                     @error('items.'.$item->id.'.dr')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
-                                                </td>
-                                                <td>
+                                                </div>
+                                                <div class="bulk-done-field bulk-done-field--traffic">
+                                                    <label class="form-label" for="bulk-done-traffic-{{ $item->id }}">Traffic <span class="text-danger">*</span></label>
                                                     {{-- Traffic is monthly visitors (can be millions/billions). Never clamp like DA/DR. --}}
                                                     <input type="number"
+                                                           id="bulk-done-traffic-{{ $item->id }}"
                                                            name="items[{{ $item->id }}][traffic]"
-                                                           class="form-control form-control-sm @error('items.'.$item->id.'.traffic') is-invalid @enderror"
+                                                           class="form-control @error('items.'.$item->id.'.traffic') is-invalid @enderror"
                                                            placeholder="e.g. 1500000"
                                                            min="0"
                                                            max="4294967295"
@@ -344,8 +385,9 @@
                                                     @error('items.'.$item->id.'.traffic')
                                                         <div class="invalid-feedback d-block">{{ $message }}</div>
                                                     @enderror
-                                                </td>
-                                                <td class="bulk-done-niches-cell">
+                                                </div>
+                                                <div class="bulk-done-field bulk-done-field--niches bulk-done-niches-cell">
+                                                    <label class="form-label" for="categoryInput-{{ $uid }}">Niches <span class="text-danger">*</span></label>
                                                     <input type="hidden"
                                                            name="items[{{ $item->id }}][categories]"
                                                            id="selectedCategories-{{ $uid }}"
@@ -354,7 +396,7 @@
                                                            class="@error('items.'.$item->id.'.categories') is-invalid @enderror"
                                                            @disabled($isRejected)>
                                                     <div class="multi-select-wrapper" id="categoryWrapper-{{ $uid }}" data-multi-select="category">
-                                                        <div class="multi-select-input multi-select-input--sm"
+                                                        <div class="multi-select-input"
                                                              id="categoryInput-{{ $uid }}"
                                                              role="button"
                                                              tabindex="0"
@@ -378,34 +420,37 @@
                                                             <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
                                                         </div>
                                                     </div>
-                                                    <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
+                                                    @error('items.'.$item->id.'.categories')
+                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
+                                                    @enderror
                                                 </div>
                                             </div>
-                                            @error('items.'.$item->id.'.categories')
-                                                <div class="invalid-feedback d-block">{{ $message }}</div>
-                                            @enderror
+                                            <div class="alert alert-warning border-0 py-2 px-3 small mb-0{{ $belowQuality ? '' : ' d-none' }}"
+                                                 data-bulk-quality-warn
+                                                 role="status">
+                                                These metrics are below the marketing Activate bar. You can still Done this row — the draft stays inactive until the publisher finishes details and staff Activate after the bar is met.
+                                            </div>
+                                            <div class="bulk-done-row__actions">
+                                                <button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-clear-row @disabled($isRejected)>
+                                                    Clear row
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-secondary"
+                                                        data-bulk-copy-above
+                                                        @disabled($loop->first || $isRejected)>
+                                                    Copy from row above
+                                                </button>
+                                                <button type="button"
+                                                        class="btn btn-sm btn-outline-danger bulk-done-reject"
+                                                        data-bulk-reject-row
+                                                        @disabled($isRejected)>
+                                                    Delete
+                                                </button>
+                                            </div>
                                         </div>
-                                    </div>
-                                    <div class="alert alert-warning border-0 py-2 px-3 small mb-0{{ $belowQuality ? '' : ' d-none' }}"
-                                         data-bulk-quality-warn
-                                         role="status">
-                                        These metrics are below the marketing Activate bar. You can still Done this row — the draft stays inactive until the publisher finishes details and staff Activate after the bar is met.
-                                    </div>
-                                    <div class="bulk-done-row__actions">
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-clear-row>
-                                            Clear row
-                                        </button>
-                                        <button type="button"
-                                                class="btn btn-sm btn-outline-secondary"
-                                                data-bulk-copy-above
-                                                @disabled($loop->first)>
-                                            Copy from row above
-                                        </button>
-                                    </div>
-                                </div>
-                            </details>
-                        @endforeach
-                    </div>
+                                    </details>
+                                @endforeach
+                            </div>
 
                             <div id="bulkRejectionNoteWrap" class="mb-3{{ $oldRejectedIds === [] && ! $errors->has('rejection_note') ? ' d-none' : '' }}">
                                 <label for="rejection_note" class="form-label small fw-semibold">Note to publisher (removed sites)</label>
@@ -841,6 +886,103 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         return match ? match[1] : null;
     }
 
+    function expandBulkDoneRow(field) {
+        const row = field && field.closest('[data-bulk-done-row]');
+        if (row) {
+            row.open = true;
+        }
+    }
+
+    function refreshBulkDoneQuality(row) {
+        const da = parseInt((row.querySelector('input[name*="[da]"]') || {}).value, 10);
+        const dr = parseInt((row.querySelector('input[name*="[dr]"]') || {}).value, 10);
+        const traffic = parseInt((row.querySelector('input[name*="[traffic]"]') || {}).value, 10);
+        const filled = Number.isFinite(da) && Number.isFinite(dr) && Number.isFinite(traffic);
+        const below = filled && (da < qualityMinDa || dr < qualityMinDr || traffic < qualityMinTraffic);
+        const warn = row.querySelector('[data-bulk-quality-warn]');
+        const chip = row.querySelector('[data-bulk-quality-chip]');
+        if (warn) warn.classList.toggle('d-none', !below);
+        if (chip) chip.classList.toggle('d-none', !below);
+    }
+
+    function updateBulkDoneChip(row) {
+        const required = rowFields(row);
+        const filled = required.filter(fieldFilled).length;
+        const chip = row.querySelector('[data-bulk-done-chip]');
+        if (chip) {
+            chip.classList.remove('is-empty', 'is-partial', 'is-ready');
+            if (filled === 0) {
+                chip.classList.add('is-empty');
+                chip.textContent = 'Empty';
+            } else if (filled >= required.length) {
+                chip.classList.add('is-ready');
+                chip.textContent = 'Ready';
+            } else {
+                chip.classList.add('is-partial');
+                chip.textContent = filled + '/' + required.length + ' filled';
+            }
+        }
+        refreshBulkDoneQuality(row);
+    }
+
+    function clearBulkDoneRow(row) {
+        rowFields(row).forEach(function (field) {
+            field.value = '';
+        });
+        refreshBulkDoneLanguages(row, '');
+        const id = rowItemId(row);
+        if (id && multiSelects[id]) {
+            multiSelects[id].setSelectedItems([], []);
+        }
+        row.querySelectorAll('.is-invalid').forEach(function (el) {
+            el.classList.remove('is-invalid');
+        });
+        scheduleDraftSave();
+        syncDoneState();
+    }
+
+    function copyBulkDoneRowFromAbove(row) {
+        row.open = true;
+        let prev = row.previousElementSibling;
+        while (prev && !prev.hasAttribute('data-bulk-done-row')) {
+            prev = prev.previousElementSibling;
+        }
+        if (!prev) return;
+
+        const srcCountry = prev.querySelector('[data-bulk-country]');
+        const destCountry = row.querySelector('[data-bulk-country]');
+        if (srcCountry && destCountry) {
+            destCountry.value = srcCountry.value;
+        }
+        const srcLang = prev.querySelector('[data-bulk-language]');
+        refreshBulkDoneLanguages(row, (srcLang && srcLang.value) || '');
+        const destLang = row.querySelector('[data-bulk-language]');
+        if (srcLang && destLang && srcLang.value) {
+            destLang.value = srcLang.value;
+        }
+
+        ['da', 'dr', 'traffic'].forEach(function (field) {
+            const src = prev.querySelector('input[name*="[' + field + ']"]');
+            const dest = row.querySelector('input[name*="[' + field + ']"]');
+            if (src && dest) dest.value = src.value;
+        });
+
+        const srcCats = prev.querySelector('input[name*="[categories]"]');
+        const nicheValues = String((srcCats && srcCats.value) || '')
+            .split('|')
+            .map(function (v) { return v.trim(); })
+            .filter(Boolean);
+        const destId = rowItemId(row);
+        if (destId && multiSelects[destId]) {
+            multiSelects[destId].setSelectedItems(nicheValues, nicheValues);
+        } else {
+            const destCats = row.querySelector('input[name*="[categories]"]');
+            if (destCats) destCats.value = nicheValues.join('|');
+        }
+        scheduleDraftSave();
+        syncDoneState();
+    }
+
     function setIncompleteRowsDisabled(disabled) {
         doneRows().forEach(function (row) {
             if (rowFilled(row)) return;
@@ -894,6 +1036,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     }
 
     function syncDoneState() {
+        doneRows().forEach(updateBulkDoneChip);
         const open = submitBtn && submitBtn.getAttribute('data-open') === '1';
         const state = doneFormReady();
         const complete = state.complete;
@@ -981,6 +1124,22 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     form.querySelectorAll('[data-bulk-done-row][data-bulk-rejected="1"]').forEach(function (row) {
         row.querySelectorAll('select, input, textarea, button').forEach(function (el) {
             el.disabled = true;
+        });
+    });
+    form.querySelectorAll('[data-bulk-clear-row]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row && row.getAttribute('data-bulk-rejected') !== '1') {
+                clearBulkDoneRow(row);
+            }
+        });
+    });
+    form.querySelectorAll('[data-bulk-copy-above]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            const row = btn.closest('[data-bulk-done-row]');
+            if (row && row.getAttribute('data-bulk-rejected') !== '1') {
+                copyBulkDoneRowFromAbove(row);
+            }
         });
     });
     form.querySelectorAll('[data-bulk-reject-row]').forEach(function (btn) {
