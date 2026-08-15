@@ -10,6 +10,8 @@ use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
+use App\Models\EmailLog;
+use App\Models\EmailNotificationPreference;
 use App\Models\InAppNotification;
 use App\Models\Language;
 use App\Models\Role;
@@ -393,7 +395,55 @@ class BulkDoneRejectRowsTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('Finish the boxes first.', $html);
+        $this->assertStringContainsString('Finish this field, or clear the row and submit only complete blocks.', $html);
         $this->assertStringNotContainsString('Add a publisher note.', $html);
+        $this->assertStringNotContainsString('Add a note for the publisher about the removed sites', $html);
+    }
+
+    public function test_reject_email_still_sends_when_publisher_opts_out_of_system_updates(): void
+    {
+        EmailNotificationPreference::create([
+            'user_id' => $this->publisher->id,
+            'preference_key' => 'system_updates',
+            'enabled' => false,
+        ]);
+
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'pref-off');
+        $mail = new BulkSiteItemsRejected(
+            $bulk,
+            $this->publisher,
+            [$items[0]->domain],
+            'These metrics do not meet our listing bar.',
+            [$items[0]->id]
+        );
+
+        $this->assertNull(config('email_notifications.types.bulk_request_items_rejected.preference'));
+
+        $method = new \ReflectionMethod($mail, 'passesNotificationPolicy');
+        $this->assertTrue($method->invoke($mail));
+    }
+
+    public function test_seeded_email_dedupe_keys_differ_for_separate_same_size_batches(): void
+    {
+        [$bulk] = $this->makeBulkWithItems(2, 'seed-dedupe');
+        $first = new BulkSitesSeededNotification($bulk, 1, $this->publisher, ['seed-dedupe-1.example']);
+        $second = new BulkSitesSeededNotification($bulk, 1, $this->publisher, ['seed-dedupe-2.example']);
+        $retry = new BulkSitesSeededNotification($bulk, 1, $this->publisher, ['seed-dedupe-1.example']);
+
+        $this->assertNotSame($first->dedupeKey, $second->dedupeKey);
+        $this->assertSame($first->dedupeKey, $retry->dedupeKey);
+
+        EmailLog::create([
+            'to_email' => $this->publisher->email,
+            'subject' => 'Your sites were added to Pending sites',
+            'notification_type' => 'bulk_sites_seeded',
+            'dedupe_key' => $first->dedupeKey,
+            'status' => EmailLog::STATUS_DELIVERED,
+        ]);
+
+        $isDuplicate = new \ReflectionMethod(BulkSitesSeededNotification::class, 'isDuplicate');
+        $this->assertFalse($isDuplicate->invoke($second, $second->dedupeKey));
+        $this->assertTrue($isDuplicate->invoke($retry, $retry->dedupeKey));
     }
 
     public function test_cannot_reject_item_that_already_has_a_site(): void

@@ -161,6 +161,14 @@
                             $hasItemErrors = collect($errors->keys())->contains(
                                 fn ($key) => $key === 'items' || str_starts_with((string) $key, 'items.')
                             );
+                            $itemError = $hasItemErrors
+                                ? collect($errors->messages())->first(
+                                    fn ($msgs, $key) => $key === 'items' || str_starts_with((string) $key, 'items.')
+                                )
+                                : null;
+                            $alertBody = is_array($itemError)
+                                ? ($itemError[0] ?? $errors->first())
+                                : $errors->first();
                         @endphp
                         <div class="alert alert-danger py-2 small">
                             <strong>
@@ -170,7 +178,7 @@
                                     Finish the boxes first.
                                 @endif
                             </strong>
-                            {{ $errors->first() }}
+                            {{ $alertBody }}
                         </div>
                     @endif
 

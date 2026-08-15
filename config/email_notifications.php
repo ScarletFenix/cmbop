@@ -460,7 +460,7 @@ return [
         'bulk_request_items_rejected' => [
             'name' => 'Bulk Request Sites Not Added',
             'audience' => 'publisher',
-            'preference' => 'system_updates',
+            'preference' => null,
             'mailable' => BulkSiteItemsRejected::class,
             'default_enabled' => true,
         ],

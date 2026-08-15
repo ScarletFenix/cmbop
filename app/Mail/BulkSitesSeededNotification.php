@@ -11,14 +11,24 @@ class BulkSitesSeededNotification extends PlatformMailable
 
     public int $createdCount;
 
-    public function __construct(BulkSiteRequest $bulkRequest, int $createdCount, ?User $recipient = null)
+    /**
+     * @param  list<string>  $domains
+     */
+    public function __construct(BulkSiteRequest $bulkRequest, int $createdCount, ?User $recipient = null, array $domains = [])
     {
         parent::__construct();
         $this->bulkRequest = $bulkRequest;
         $this->createdCount = $createdCount;
         $this->recipientUser = $recipient ?? $bulkRequest->publisher;
         $this->notificationType = 'bulk_sites_seeded';
-        $this->dedupeKey = 'bulk-seeded-'.$bulkRequest->id.'-'.$createdCount;
+        $sorted = $domains !== [] ? array_values(array_filter(array_map(
+            static fn ($domain) => trim((string) $domain),
+            $domains
+        ))) : [(string) $createdCount];
+        sort($sorted);
+        // Count alone collided when staff Done'd two same-size batches
+        // within the dedupe window — the publisher never heard about the second.
+        $this->dedupeKey = 'bulk-seeded-'.$bulkRequest->id.':'.sha1(implode(',', $sorted));
     }
 
     public function build()

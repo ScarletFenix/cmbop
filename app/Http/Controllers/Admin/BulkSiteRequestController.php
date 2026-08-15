@@ -280,16 +280,6 @@ class BulkSiteRequestController extends Controller
                 return;
             }
 
-            if ($rejectedItemIds !== []) {
-                $note = trim((string) $request->input('rejection_note', ''));
-                if (mb_strlen($note) < 10) {
-                    $validator->errors()->add(
-                        'rejection_note',
-                        'Add a note for the publisher about the removed sites (at least 10 characters).'
-                    );
-                }
-            }
-
             foreach ($inputItems as $itemId => $row) {
                 $itemId = (int) $itemId;
                 if (in_array($itemId, $rejectedItemIds, true)) {
@@ -366,6 +356,18 @@ class BulkSiteRequestController extends Controller
                 }
                 foreach ($resolved['unknown'] as $cat) {
                     $validator->errors()->add('items.'.$itemId.'.categories', 'Unknown niche: '.$cat);
+                }
+            }
+
+            // After item errors so $errors->first() is a box message when both
+            // a short note and unfinished fields are present (title says boxes).
+            if ($rejectedItemIds !== []) {
+                $note = trim((string) $request->input('rejection_note', ''));
+                if (mb_strlen($note) < 10) {
+                    $validator->errors()->add(
+                        'rejection_note',
+                        'Add a note for the publisher about the removed sites (at least 10 characters).'
+                    );
                 }
             }
 
@@ -653,7 +655,9 @@ class BulkSiteRequestController extends Controller
 
             try {
                 if ($publisher?->email) {
-                    Mail::to($publisher->email)->send(new BulkSitesSeededNotification($fresh, $created, $publisher));
+                    Mail::to($publisher->email)->send(
+                        new BulkSitesSeededNotification($fresh, $created, $publisher, $createdDomains)
+                    );
                 }
             } catch (\Throwable $e) {
                 Log::warning('Failed to email publisher after bulk Done: '.$e->getMessage());
