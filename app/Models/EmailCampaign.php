@@ -538,7 +538,7 @@ class EmailCampaign extends Model
             return null;
         }
 
-        if ($sawUnscoped || $mailFailed) {
+        if ($sawUnscoped) {
             return null;
         }
 
@@ -1035,10 +1035,7 @@ class EmailCampaign extends Model
             return;
         }
 
-        $keys = $expired->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
-            (int) $row->email_campaign_id,
-            (int) $row->user_id
-        ))->unique()->values()->all();
+        $now = now();
 
         try {
             foreach (array_chunk($keys, 500) as $chunk) {
@@ -1048,14 +1045,11 @@ class EmailCampaign extends Model
                     ->update([
                         'status' => EmailLog::STATUS_FAILED,
                         'error' => 'Expired: campaign mail was not confirmed',
+                        'updated_at' => $now,
                     ]);
             }
         } catch (\Throwable) {
             // Missing email_logs table must not break recover.
-        }
-
-        foreach ($expired->pluck('email_campaign_id')->unique()->filter()->all() as $id) {
-            static::query()->find($id)?->recountRecipientTotals();
         }
     }
 }

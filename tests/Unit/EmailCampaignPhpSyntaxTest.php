@@ -69,12 +69,13 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('return $scanFailed && ! $scannedOk;', $matches[1]);
 
         $this->assertTrue((bool) preg_match(
-            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId\): \?array\s*\{(.*?)\n    protected static function hasQueuedSendJob/s',
+            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId\): \?array\s*\{(.*?)\n    protected static function collectCampaignMailUserIdsFromTable/s',
             $source,
             $inFlight
         ));
         $this->assertStringContainsString('$mailScannedOk = true;', $inFlight[1]);
         $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $inFlight[1]);
+        $this->assertStringNotContainsString('$mailFailed', $inFlight[1]);
         $this->assertDoesNotMatchRegularExpression(
             '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
             $inFlight[1]
@@ -109,6 +110,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
         $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function collectCampaignMailUserIdsFromTable\b/', $model));
         $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
         $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
         $this->assertTrue((bool) preg_match(
@@ -136,6 +138,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $failPending
         ));
         $this->assertStringContainsString('inFlightCampaignMailUserIds', $failPending[1]);
+        $this->assertStringNotContainsString('$expired', $failPending[1]);
+        $this->assertStringContainsString("'updated_at'", $failPending[1]);
 
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
@@ -152,8 +156,5 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
             $payloadTest
         ));
-        $this->assertStringContainsString('$mailFailed = true;', $inFlight[1]);
-        $this->assertStringNotContainsString('if (! Schema::hasColumn($table, \'payload\')) {
-                    return null;', $inFlight[1]);
     }
 }
