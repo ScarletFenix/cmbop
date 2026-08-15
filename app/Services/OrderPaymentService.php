@@ -626,6 +626,16 @@ class OrderPaymentService
             return false;
         }
 
+        if (! $order->hasCatalogVisibleFulfillment()) {
+            Log::warning('Skipping Stripe mark-paid; listing left the catalog', [
+                'order_id' => $order->id,
+                'reference_code' => $order->reference_code,
+                'payment_status' => $order->payment_status,
+            ]);
+
+            return false;
+        }
+
         return true;
     }
 

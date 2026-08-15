@@ -3,6 +3,8 @@
 namespace Tests\Feature;
 
 use App\Models\BulkSiteRequest;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -135,5 +137,77 @@ class CatalogVisibleScopeTest extends TestCase
 
         $this->assertStringContainsString('Independent Live Site', $html);
         $this->assertStringNotContainsString('Cancelled Bulk Leftover', $html);
+    }
+
+    public function test_cancelled_bulk_leftover_does_not_occupy_domain(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $leftover = $this->site($publisher, [
+            'domain' => 'relist-after-cancel.example',
+            'site_url' => 'https://relist-after-cancel.example',
+            'bulk_site_request_id' => $bulk->id,
+            'archived_at' => now(),
+            'active' => false,
+        ]);
+
+        $this->assertTrue($leftover->isFromCancelledBulk());
+        $this->assertNull(Site::findOccupyingDomain('relist-after-cancel.example'));
+        $this->assertNull(Site::findOccupyingDomain('www.relist-after-cancel.example'));
+    }
+
+    public function test_release_deletes_unused_cancelled_leftover_and_tombstones_ordered_one(): void
+    {
+        $publisher = $this->userWithRole('publisher');
+        $advertiser = $this->userWithRole('advertiser');
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 2,
+        ]);
+        $unused = $this->site($publisher, [
+            'domain' => 'unused-cancel.example',
+            'site_url' => 'https://unused-cancel.example',
+            'bulk_site_request_id' => $bulk->id,
+            'archived_at' => now(),
+            'active' => false,
+        ]);
+        $ordered = $this->site($publisher, [
+            'domain' => 'ordered-cancel.example',
+            'site_url' => 'https://ordered-cancel.example',
+            'bulk_site_request_id' => $bulk->id,
+            'archived_at' => now(),
+            'active' => false,
+        ]);
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-CANCEL-1',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $ordered->id,
+            'site_name' => $ordered->site_name,
+            'site_url' => $ordered->site_url,
+            'content_link' => 'https://example.com/article',
+            'price' => 40,
+        ]);
+
+        $this->assertSame(1, Site::releaseCancelledBulkDomain('unused-cancel.example', $publisher->id));
+        $this->assertDatabaseMissing('sites', ['id' => $unused->id]);
+
+        $this->assertSame(1, Site::releaseCancelledBulkDomain('ordered-cancel.example', $publisher->id));
+        $this->assertSame('cancelled-'.$ordered->id.'.invalid', $ordered->fresh()->domain);
+        $this->assertNull(Site::findOccupyingDomain('ordered-cancel.example'));
     }
 }

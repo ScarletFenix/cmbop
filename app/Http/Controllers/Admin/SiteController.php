@@ -850,6 +850,7 @@ class SiteController extends Controller
 
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$storedImagePath, &$site) {
+                Site::releaseCancelledBulkDomain($domain, $publisherId);
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
                     throw ValidationException::withMessages([
@@ -1585,6 +1586,7 @@ class SiteController extends Controller
                 if (! $this->isMarketplaceHost($domain)) {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
+                    Site::releaseCancelledBulkDomain($domain, (int) $site->publisher_id);
                     $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
@@ -1901,6 +1903,7 @@ class SiteController extends Controller
                 if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
+                    Site::releaseCancelledBulkDomain($domain, (int) $site->publisher_id);
                     $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));

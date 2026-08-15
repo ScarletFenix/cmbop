@@ -726,6 +726,8 @@ class Site extends Model
     /**
      * Prefer a live listing when legacy duplicates exist so the restore copy
      * is not shown while a non-archived row already occupies the domain.
+     * Cancelled-bulk leftovers can never return to the catalog, so they do
+     * not occupy the marketplace domain.
      */
     public static function findOccupyingDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?self
     {
@@ -746,6 +748,9 @@ class Site extends Model
         if ($exceptId !== null) {
             $query->where('id', '!=', $exceptId);
         }
+        if (static::hasSitesColumn('bulk_site_request_id')) {
+            $query->notFromCancelledBulk();
+        }
         if (static::hasSitesColumn('archived_at')) {
             $query->orderByRaw('case when archived_at is null then 0 else 1 end');
         }
@@ -755,6 +760,70 @@ class Site extends Model
         }
 
         return $query->first();
+    }
+
+    /**
+     * Same publisher still has unique(publisher_id, domain) on leftovers.
+     * Delete unused cancelled rows; tombstone leftovers that keep order history.
+     */
+    public static function releaseCancelledBulkDomain(string $domain, int $publisherId): int
+    {
+        if ($publisherId <= 0 || ! static::hasSitesColumn('bulk_site_request_id')) {
+            return 0;
+        }
+
+        $candidates = static::domainLookupCandidates($domain);
+        if ($candidates === []) {
+            return 0;
+        }
+
+        $normalized = static::normalizeMarketplaceDomain($domain);
+        $leftovers = static::query()
+            ->where('publisher_id', $publisherId)
+            ->where(function ($q) use ($candidates, $normalized) {
+                $q->whereIn('domain', $candidates);
+                if ($normalized !== '') {
+                    $escaped = addcslashes($normalized, '%_\\');
+                    $q->orWhere('domain', 'like', $escaped.':%')
+                        ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+                }
+            })
+            ->whereHas('bulkSiteRequest', function ($bulk) {
+                $bulk->where('status', BulkSiteRequest::STATUS_CANCELLED);
+            })
+            ->get();
+
+        $released = 0;
+        foreach ($leftovers as $site) {
+            if ($site->releaseCancelledBulkOccupancy()) {
+                $released++;
+            }
+        }
+
+        return $released;
+    }
+
+    public function releaseCancelledBulkOccupancy(): bool
+    {
+        if (! $this->isFromCancelledBulk()) {
+            return false;
+        }
+
+        if ($this->orderItemsCount() === 0) {
+            $this->delete();
+
+            return true;
+        }
+
+        $tombstone = 'cancelled-'.$this->id.'.invalid';
+        if ($this->domain === $tombstone) {
+            return false;
+        }
+
+        $this->domain = $tombstone;
+        $this->save();
+
+        return true;
     }
 
     public function occupyingDomainMessage(): string

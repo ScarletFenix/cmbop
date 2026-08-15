@@ -1234,11 +1234,74 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertTrue($freshLive->isArchived());
         $this->assertFalse((bool) $freshLive->active);
         $this->assertSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
+        $this->assertNull(Site::findOccupyingDomain($freshLive->domain));
         $this->assertSame(0, $bulk->items()->whereNull('site_id')->count());
         $this->assertFalse(
             BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists()
         );
         Mail::assertQueued(BulkSiteRequestCancelled::class, 1);
+    }
+
+    public function test_publisher_can_relist_domain_after_cancelled_bulk_leftover(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'relist-live');
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $leftover = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $leftover->forceFill([
+            'verified' => true,
+            'verified_at' => now(),
+            'active' => true,
+            'onboarding_status' => null,
+        ])->save();
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.cancel', $bulk), [
+                'reason' => 'Publisher asked to withdraw this live listing and start over.',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.index'));
+
+        $this->assertTrue($leftover->fresh()->isArchived());
+        $this->assertNull(Site::findOccupyingDomain($leftover->domain));
+
+        $category = Category::query()->firstOrFail();
+        [$country, $language] = $this->marketplaceCodes();
+
+        $this->actingAs($this->publisher)
+            ->from(route('publisher.websites'))
+            ->post(route('publisher.sites.store'), [
+                'siteName' => 'Relisted After Cancel',
+                'siteUrl' => 'https://'.$items[0]->domain,
+                'exampleUrl' => 'https://'.$items[0]->domain.'/post',
+                'da' => 10,
+                'dr' => 10,
+                'traffic' => 100,
+                'country' => $country,
+                'language' => $language,
+                'categories' => [$category->name],
+                'price' => 50,
+                'turnaround_time' => '3days',
+                'publicationTime' => 'permanent',
+                'link_type' => 'dofollow',
+                'siteDescription' => str_repeat('Relist after cancelled bulk leftover. ', 4),
+                'site_tag' => 'as_you_prefer',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('sites', ['id' => $leftover->id]);
+        $this->assertDatabaseHas('sites', [
+            'domain' => $items[0]->domain,
+            'publisher_id' => $this->publisher->id,
+            'site_name' => 'Relisted After Cancel',
+        ]);
+        $this->assertNotNull(Site::findOccupyingDomain($items[0]->domain));
     }
 
     public function test_done_reports_archived_domain_instead_of_generic_duplicate(): void

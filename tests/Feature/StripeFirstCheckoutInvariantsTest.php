@@ -484,4 +484,43 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
     }
+
+    public function test_mark_paid_skips_legacy_order_when_listing_left_the_catalog(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'legacy-hidden.example', 80);
+        $ref = 'LEGACY-HIDDEN-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/a',
+            'price' => 80,
+        ]);
+
+        $site->update(['verified' => false, 'active' => false]);
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_legacy_hidden')
+        );
+
+        $this->assertCount(0, $paid);
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertSame('pending', $order->fresh()->status);
+    }
 }

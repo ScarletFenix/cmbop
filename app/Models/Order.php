@@ -171,6 +171,29 @@ class Order extends Model
         return $this->hasMany(OrderItem::class);
     }
 
+    /**
+     * True when every linked listing is still buyable. Lines without a
+     * site_id (legacy guest-post) are ignored.
+     */
+    public function hasCatalogVisibleFulfillment(): bool
+    {
+        $this->loadMissing('items.site');
+
+        foreach ($this->items as $item) {
+            $siteId = (int) ($item->site_id ?? 0);
+            if ($siteId <= 0) {
+                continue;
+            }
+
+            $site = $item->site;
+            if (! $site || ! $site->isCatalogVisible()) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     public function disputes()
     {
         return $this->hasMany(OrderItemDispute::class);

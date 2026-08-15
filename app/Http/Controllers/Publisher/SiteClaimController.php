@@ -65,7 +65,7 @@ class SiteClaimController extends Controller
 
         $site = null;
         if (! empty($data['site_id'])) {
-            $site = Site::find($data['site_id']);
+            $site = Site::query()->catalogVisible()->find($data['site_id']);
         } else {
             $domain = $this->extractDomain((string) ($data['website_url'] ?? ''));
             if (! $domain) {

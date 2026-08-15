@@ -637,6 +637,7 @@ class BulkSiteRequestController extends Controller
             foreach ($rows as $row) {
                 $domain = $row['domain'];
 
+                Site::releaseCancelledBulkDomain($domain, (int) $bulkRequest->publisher_id);
                 $existing = Site::findOccupyingDomain($domain, lock: true);
 
                 if ($existing) {

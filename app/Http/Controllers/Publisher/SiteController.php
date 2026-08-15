@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class SiteController extends Controller
 {
@@ -242,6 +243,14 @@ class SiteController extends Controller
 
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, &$site) {
+                Site::releaseCancelledBulkDomain($domain, (int) auth()->id());
+                $existing = Site::findOccupyingDomain($domain, lock: true);
+                if ($existing) {
+                    throw ValidationException::withMessages([
+                        'siteUrl' => [$existing->occupyingDomainMessage()],
+                    ]);
+                }
+
                 $site = new Site;
 
                 $sensitivePrices = $this->collectSensitivePrices($request);
@@ -290,6 +299,8 @@ class SiteController extends Controller
 
                 $site->save();
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Publisher site store failed', [
                 'user_id' => auth()->id(),

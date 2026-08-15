@@ -191,6 +191,7 @@ class AgencySiteImportService
                 }
                 $seenDomainsInFile[$domain] = $rowNumber;
 
+                Site::releaseCancelledBulkDomain($domain, (int) $publisher->id);
                 if (Site::findOccupyingDomain($domain)) {
                     $failure = [
                         'row' => $rowNumber,

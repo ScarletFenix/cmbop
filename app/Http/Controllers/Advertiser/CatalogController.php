@@ -3432,6 +3432,13 @@ class CatalogController extends Controller
             $packageTotal = round((float) $package->sum('total_amount'), 2);
             $referenceCode = (string) $order->reference_code;
 
+            if ($package->contains(fn (Order $row) => ! $row->hasCatalogVisibleFulfillment())) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This listing is no longer available. Open checkout if you still want to order other sites.',
+                ], 422);
+            }
+
             // Pay again charges the full package on the card. Release any leftover
             // checkout bonus for this reference first so promo is not left reserved
             // while the advertiser pays the original total again.
@@ -3518,7 +3525,8 @@ class CatalogController extends Controller
         return $order->payment_method === 'card'
             && $order->payment_status === 'failed'
             && $order->status === 'pending'
-            && $order->items->isNotEmpty();
+            && $order->items->isNotEmpty()
+            && $order->hasCatalogVisibleFulfillment();
     }
 
     /**
