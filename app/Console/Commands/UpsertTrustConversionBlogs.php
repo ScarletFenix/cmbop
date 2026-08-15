@@ -15,7 +15,6 @@ use App\Support\MarketplaceVsOutreachBlogPost;
 use App\Support\PublicI18n;
 use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Schema;
 
 /**
@@ -87,17 +86,9 @@ class UpsertTrustConversionBlogs extends Command
             return;
         }
 
-        $source = public_path($class::FEATURED_ASSET);
-        $destination = storage_path('app/public/'.$class::FEATURED_STORAGE);
-
-        if (! File::exists($source)) {
-            $this->warn('Featured asset missing: '.$source);
-
-            return;
+        if (! BlogInlineImages::publishFeatured($class::FEATURED_STORAGE, $class::FEATURED_ASSET)) {
+            $this->warn('Featured asset missing: '.public_path($class::FEATURED_ASSET));
         }
-
-        File::ensureDirectoryExists(dirname($destination));
-        File::copy($source, $destination);
     }
 
     private function syncPrimaryTranslation(Blog $blog): void

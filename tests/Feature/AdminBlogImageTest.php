@@ -213,6 +213,49 @@ class AdminBlogImageTest extends TestCase
         Storage::disk('public')->assertMissing($path);
     }
 
+    public function test_admin_cannot_delete_bundled_curated_image(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = 'blogs/content/gastbeitraege-europa-sprachen.jpg';
+        Storage::disk('public')->put($path, 'bundled-bytes');
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.blogs.delete-content-image'), [
+                'url' => '/media/'.$path,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Storage::disk('public')->assertExists($path);
+    }
+
+    public function test_admin_cannot_delete_image_still_referenced_by_a_post(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = UploadedFile::fake()->image('shared-inline.jpg')->store('blogs/content', 'public');
+
+        Blog::create([
+            'title' => 'Still Uses Image',
+            'slug' => 'still-uses-image',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/media/'.$path.'"></p>',
+            'status' => 'draft',
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.blogs.delete-content-image'), [
+                'url' => '/media/'.$path,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Storage::disk('public')->assertExists($path);
+    }
+
     public function test_admin_cannot_delete_image_outside_blog_storage(): void
     {
         Storage::fake('public');

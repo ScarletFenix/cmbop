@@ -12,6 +12,7 @@ use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
 use App\Services\CuratedBlogWriter;
 use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Support\BlogInlineImages;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
@@ -301,6 +302,7 @@ class BlogController extends Controller
             );
             $data['slug'] = $this->uniqueBlogSlug($enSlug, $blog->id);
 
+            $oldFeaturedToDelete = null;
             if ($request->hasFile('featured_image')) {
                 $stored = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
                 if ($stored === null) {
@@ -312,13 +314,11 @@ class BlogController extends Controller
                 $oldFeatured = $blog->featured_image;
                 $data['featured_image'] = $stored;
                 if (filled($oldFeatured) && $oldFeatured !== $stored) {
-                    $this->deletePublicBlogPath((string) $oldFeatured);
-                    Log::info('Old featured image deleted', ['path' => $oldFeatured]);
+                    $oldFeaturedToDelete = (string) $oldFeatured;
                 }
                 Log::info('New featured image uploaded', ['path' => $stored]);
             } elseif ($request->boolean('remove_featured_image')) {
-                $this->deletePublicBlogPath((string) $blog->featured_image);
-                Log::info('Featured image removed', ['path' => $blog->featured_image]);
+                $oldFeaturedToDelete = filled($blog->featured_image) ? (string) $blog->featured_image : null;
                 $data['featured_image'] = null;
             }
 
@@ -350,6 +350,11 @@ class BlogController extends Controller
                     ->where('locale', '!=', 'en')
                     ->delete();
             });
+
+            if (filled($oldFeaturedToDelete)) {
+                $this->deletePublicBlogPath($oldFeaturedToDelete, $blog->id);
+                Log::info('Old featured image deleted', ['path' => $oldFeaturedToDelete]);
+            }
 
             Log::info('Blog updated successfully', [
                 'blog_id' => $blog->id,
@@ -498,10 +503,8 @@ class BlogController extends Controller
         }
 
         try {
-            if (Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-                Log::info('Blog content image deleted', ['path' => $path]);
-            }
+            $this->deletePublicBlogPath($path);
+            Log::info('Blog content image delete requested', ['path' => $path]);
 
             return response()->json(['success' => true]);
         } catch (\Exception $e) {
@@ -548,10 +551,14 @@ class BlogController extends Controller
         return $path;
     }
 
-    private function deletePublicBlogPath(?string $path): void
+    private function deletePublicBlogPath(?string $path, ?int $exceptBlogId = null): void
     {
         $resolved = $this->blogStoragePathFromUrl((string) $path);
-        if ($resolved === null) {
+        if ($resolved === null || BlogInlineImages::isBundledAsset($resolved)) {
+            return;
+        }
+
+        if ($this->blogImageIsReferenced($resolved, $exceptBlogId)) {
             return;
         }
 
@@ -560,9 +567,32 @@ class BlogController extends Controller
         }
     }
 
+    private function blogImageIsReferenced(string $path, ?int $exceptBlogId = null): bool
+    {
+        $like = '%'.addcslashes($path, '\\%_').'%';
+
+        $usedOnBlog = Blog::query()
+            ->when($exceptBlogId, fn ($query) => $query->where('id', '!=', $exceptBlogId))
+            ->where(function ($query) use ($path, $like) {
+                $query->where('featured_image', $path)
+                    ->orWhere('content', 'like', $like);
+            })
+            ->exists();
+
+        $usedOnTranslation = BlogTranslation::query()
+            ->when($exceptBlogId, fn ($query) => $query->where('blog_id', '!=', $exceptBlogId))
+            ->where('content', 'like', $like)
+            ->exists();
+
+        return $usedOnBlog || $usedOnTranslation;
+    }
+
     private function deleteStoredBlogImages(Blog $blog): void
     {
-        $rules = [];
+        $paths = [];
+        if (filled($blog->featured_image)) {
+            $paths[] = (string) $blog->featured_image;
+        }
 
         $html = (string) $blog->content;
         foreach ($blog->translations as $translation) {
@@ -573,7 +603,21 @@ class BlogController extends Controller
             $paths = array_merge($paths, $matches[1]);
         }
 
-        return $rules;
+        foreach (array_unique($paths) as $path) {
+            $resolved = $this->blogStoragePathFromUrl($path);
+            if ($resolved === null || BlogInlineImages::isBundledAsset($resolved)) {
+                continue;
+            }
+
+            if ($this->blogImageIsReferenced($resolved, $blog->id)) {
+                continue;
+            }
+
+            if (Storage::disk('public')->exists($resolved)) {
+                Storage::disk('public')->delete($resolved);
+                Log::info('Blog image deleted with post', ['path' => $resolved]);
+            }
+        }
     }
 
     /**

@@ -7,7 +7,6 @@ use App\Services\CuratedBlogWriter;
 use App\Support\AdvertiserPlatformGuideBlogPost;
 use App\Support\BlogInlineImages;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\File;
 
 class UpsertAdvertiserPlatformGuideBlog extends Command
 {
@@ -46,16 +45,11 @@ class UpsertAdvertiserPlatformGuideBlog extends Command
             BlogInlineImages::publish($file);
         }
 
-        $source = public_path(AdvertiserPlatformGuideBlogPost::FEATURED_ASSET);
-        $destination = storage_path('app/public/'.AdvertiserPlatformGuideBlogPost::FEATURED_STORAGE);
-
-        if (! File::exists($source)) {
-            $this->warn('Featured asset missing: '.$source);
-
-            return;
+        if (! BlogInlineImages::publishFeatured(
+            AdvertiserPlatformGuideBlogPost::FEATURED_STORAGE,
+            AdvertiserPlatformGuideBlogPost::FEATURED_ASSET
+        )) {
+            $this->warn('Featured asset missing: '.public_path(AdvertiserPlatformGuideBlogPost::FEATURED_ASSET));
         }
-
-        File::ensureDirectoryExists(dirname($destination));
-        File::copy($source, $destination);
     }
 }
