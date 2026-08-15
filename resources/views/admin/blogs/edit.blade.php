@@ -38,7 +38,7 @@
                             $translationMap = $blog->translations->keyBy('locale');
                         @endphp
                         <ul class="nav nav-tabs mb-3" role="tablist">
-                            @foreach(($locales ?? ['en','de','fr','nl']) as $index => $locale)
+                            @foreach(($locales ?? \App\Support\PublicI18n::supported()) as $index => $locale)
                                 <li class="nav-item" role="presentation">
                                     <button
                                         class="nav-link {{ $index === 0 ? 'active' : '' }}"
@@ -47,14 +47,14 @@
                                         type="button"
                                         role="tab"
                                     >
-                                        {{ strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
+                                        {{ $locale === 'en' ? 'UK' : strtoupper($locale) }} {!! $locale === 'en' ? '<span class="text-danger">*</span>' : '' !!}
                                     </button>
                                 </li>
                             @endforeach
                         </ul>
 
                         <div class="tab-content border rounded p-3 bg-white">
-                            @foreach(($locales ?? ['en','de','fr','nl']) as $index => $locale)
+                            @foreach(($locales ?? \App\Support\PublicI18n::supported()) as $index => $locale)
                                 @php
                                     $prefix = "translations.$locale";
                                     $t = $translationMap[$locale] ?? null;
@@ -163,7 +163,7 @@
                             <label class="form-label fw-semibold">Primary locale</label>
                             <select name="primary_locale" class="form-select @error('primary_locale') is-invalid @enderror">
                                 <option value="">Auto (current URL locale)</option>
-                                @foreach(($locales ?? ['en','de','fr','nl']) as $code)
+                                @foreach(($locales ?? \App\Support\PublicI18n::supported()) as $code)
                                     <option value="{{ $code }}" {{ old_text('primary_locale', $blog->primary_locale) === $code ? 'selected' : '' }}>{{ strtoupper($code) }}</option>
                                 @endforeach
                             </select>
@@ -216,7 +216,7 @@ var articleImagesManager = null;
 
 var quills = {};
 var activeLocale = 'en';
-['en', 'de', 'fr', 'nl'].forEach(function (locale) {
+(@json($locales ?? \App\Support\PublicI18n::supported())).forEach(function (locale) {
     var el = document.getElementById('quillEditor-' + locale);
     if (!el) return;
     quills[locale] = new Quill(el, {

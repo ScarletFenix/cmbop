@@ -130,7 +130,12 @@ class BlogRoutesTest extends TestCase
         $slug = BacklinksAufbauenBlogPost::SLUG;
         $canonical = PublicI18n::urlForLocale('blog/'.$slug, 'de');
 
-        foreach (['/blog/'.$slug, '/de/blog/'.$slug, '/fr/blog/'.$slug, '/nl/blog/'.$slug] as $path) {
+        $paths = ['/blog/'.$slug];
+        foreach (PublicI18n::prefixed() as $locale) {
+            $paths[] = '/'.$locale.'/blog/'.$slug;
+        }
+
+        foreach ($paths as $path) {
             $this->get($path)
                 ->assertOk()
                 ->assertSee('Backlinks aufbauen', false)

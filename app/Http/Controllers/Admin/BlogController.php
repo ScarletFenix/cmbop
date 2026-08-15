@@ -83,23 +83,7 @@ class BlogController extends Controller
                 'tags' => 'nullable|string',
                 'status' => 'required|in:draft,published',
                 'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-                'translations.en.title' => 'required|string|max:255',
-                'translations.en.slug' => 'nullable|string|max:255',
-                'translations.en.excerpt' => 'nullable|string|max:300',
-                'translations.en.content' => 'required|string',
-                'translations.de.title' => 'nullable|string|max:255',
-                'translations.de.slug' => 'nullable|string|max:255',
-                'translations.de.excerpt' => 'nullable|string|max:300',
-                'translations.de.content' => 'nullable|string',
-                'translations.fr.title' => 'nullable|string|max:255',
-                'translations.fr.slug' => 'nullable|string|max:255',
-                'translations.fr.excerpt' => 'nullable|string|max:300',
-                'translations.fr.content' => 'nullable|string',
-                'translations.nl.title' => 'nullable|string|max:255',
-                'translations.nl.slug' => 'nullable|string|max:255',
-                'translations.nl.excerpt' => 'nullable|string|max:300',
-                'translations.nl.content' => 'nullable|string',
-            ]);
+            ] + $this->translationValidationRules());
 
             if (! auth()->check()) {
                 throw new \Exception('You must be logged in to create a blog post.');
@@ -249,23 +233,7 @@ class BlogController extends Controller
                 'tags' => 'nullable|string',
                 'status' => 'required|in:draft,published',
                 'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-                'translations.en.title' => 'required|string|max:255',
-                'translations.en.slug' => 'nullable|string|max:255',
-                'translations.en.excerpt' => 'nullable|string|max:300',
-                'translations.en.content' => 'required|string',
-                'translations.de.title' => 'nullable|string|max:255',
-                'translations.de.slug' => 'nullable|string|max:255',
-                'translations.de.excerpt' => 'nullable|string|max:300',
-                'translations.de.content' => 'nullable|string',
-                'translations.fr.title' => 'nullable|string|max:255',
-                'translations.fr.slug' => 'nullable|string|max:255',
-                'translations.fr.excerpt' => 'nullable|string|max:300',
-                'translations.fr.content' => 'nullable|string',
-                'translations.nl.title' => 'nullable|string|max:255',
-                'translations.nl.slug' => 'nullable|string|max:255',
-                'translations.nl.excerpt' => 'nullable|string|max:300',
-                'translations.nl.content' => 'nullable|string',
-            ]);
+            ] + $this->translationValidationRules());
 
             $tags = null;
             if ($request->tags) {
@@ -524,6 +492,24 @@ class BlogController extends Controller
         }
 
         return $path;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function translationValidationRules(): array
+    {
+        $rules = [];
+
+        foreach (PublicI18n::supported() as $locale) {
+            $required = $locale === 'en' ? 'required' : 'nullable';
+            $rules["translations.{$locale}.title"] = $required.'|string|max:255';
+            $rules["translations.{$locale}.slug"] = 'nullable|string|max:255';
+            $rules["translations.{$locale}.excerpt"] = 'nullable|string|max:300';
+            $rules["translations.{$locale}.content"] = $required.'|string';
+        }
+
+        return $rules;
     }
 
     private function sanitizeTranslations(array $translations, bool $requireEnglish): array

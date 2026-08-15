@@ -8,6 +8,7 @@ use App\Models\User;
 use App\Support\BlogInlineImages;
 use App\Support\FasterPublisherPayoutsBlogPost;
 use App\Support\HowToPriceYourSiteBlogPost;
+use App\Support\PublicI18n;
 use App\Support\WhySitesGetRejectedBlogPost;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\File;
@@ -112,7 +113,7 @@ class UpsertPublisherSupplyBlogs extends Command
             return;
         }
 
-        $locale = in_array($blog->primary_locale, ['en', 'de', 'fr', 'nl'], true)
+        $locale = PublicI18n::isSupported($blog->primary_locale)
             ? $blog->primary_locale
             : 'en';
 
