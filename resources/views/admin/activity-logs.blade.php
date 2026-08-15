@@ -8,7 +8,11 @@
             <h1 class="h3 mb-1">Activity History</h1>
             <p class="text-muted mb-0">Append-only log of actions recorded by ActivityLogger (sites, bulk onboarding, selected money and growth events). History cannot be deleted.</p>
         </div>
-        <a href="{{ route('admin.activity-logs.export', request()->query()) }}" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+        @if(empty($dateErrors) && empty($exportCapped))
+            <a href="{{ route('admin.activity-logs.export', $exportQuery ?? []) }}" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+        @elseif(!empty($exportCapped))
+            <p class="small text-muted mb-0">More than {{ number_format($exportLimit ?? \App\Http\Controllers\Admin\ActivityLogController::EXPORT_LIMIT) }} events match — narrow filters to export.</p>
+        @endif
     </div>
 
     <form method="GET" class="card border-0 shadow-sm mb-3">

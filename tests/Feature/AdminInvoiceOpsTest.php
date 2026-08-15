@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\DepositApproved;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\WithdrawalStatusUpdated;
+use App\Models\ActivityLog;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -339,6 +340,71 @@ class AdminInvoiceOpsTest extends TestCase
         $invoice = Invoice::where('order_id', $order->id)->where('type', Invoice::TYPE_TAX_INVOICE)->first();
         $this->assertNotNull($invoice);
         $this->assertSame(Invoice::STATUS_ISSUED, $invoice->status);
+    }
+
+    public function test_generate_logs_when_invoice_is_new(): void
+    {
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $order = $this->paidOrder($advertiser);
+        Invoice::query()->where('order_id', $order->id)->delete();
+
+        $this->mock(BillingDocumentService::class, function ($mock) use ($advertiser, $order) {
+            $mock->shouldReceive('generateManually')
+                ->once()
+                ->andReturnUsing(function () use ($advertiser, $order) {
+                    return Invoice::create([
+                        'invoice_number' => 'DOC-NEW-'.uniqid(),
+                        'type' => Invoice::TYPE_TAX_INVOICE,
+                        'status' => Invoice::STATUS_ISSUED,
+                        'user_id' => $advertiser->id,
+                        'order_id' => $order->id,
+                        'order_number' => $order->order_number,
+                        'customer_name' => $advertiser->name,
+                        'customer_email' => $advertiser->email,
+                        'subtotal' => 10,
+                        'total_amount' => 10,
+                        'invoice_date' => now(),
+                        'line_items' => [['description' => 'Test', 'line_total' => 10]],
+                        'pdf_disk' => 'local',
+                    ]);
+                });
+        });
+
+        $this->actingAs($admin)
+            ->from(route('admin.invoices.index'))
+            ->post(route('admin.invoices.generate'), ['order_id' => $order->id])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'invoice.generated')->count());
+    }
+
+    public function test_generate_reuse_does_not_log_again(): void
+    {
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $order = $this->paidOrder($advertiser);
+        $existing = $this->stubInvoice($advertiser, [
+            'order_id' => $order->id,
+            'type' => Invoice::TYPE_TAX_INVOICE,
+            'status' => Invoice::STATUS_ISSUED,
+            'order_number' => $order->order_number,
+        ]);
+
+        $this->mock(BillingDocumentService::class, function ($mock) use ($existing) {
+            $mock->shouldReceive('generateManually')
+                ->once()
+                ->andReturn($existing);
+        });
+
+        $this->actingAs($admin)
+            ->from(route('admin.invoices.index'))
+            ->post(route('admin.invoices.generate'), ['order_id' => $order->id])
+            ->assertRedirect(route('admin.invoices.show', $existing))
+            ->assertSessionHas('success');
+
+        $this->assertSame(0, ActivityLog::query()->where('action', 'invoice.generated')->count());
     }
 
     public function test_admin_download_does_not_increment_customer_download_count(): void

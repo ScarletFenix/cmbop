@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 trait HasPromotionSchedule
 {
+    use ToleratesUnparseableDates;
+
     public function scheduleState(): string
     {
         try {
@@ -79,6 +81,13 @@ trait HasPromotionSchedule
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    public function visibleToAudience(string $audience): bool
+    {
+        $mine = scalar_text($this->audience ?: 'all');
+
+        return $mine === 'all' || $mine === $audience;
     }
 
     public function safeStartsAt(): ?DateTimeInterface

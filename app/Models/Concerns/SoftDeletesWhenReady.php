@@ -22,7 +22,9 @@ trait SoftDeletesWhenReady
     protected function performDeleteOnModel()
     {
         if (! OptionalSoftDeletingScope::columnReady($this)) {
-            $this->forceDeleting = true;
+            // Hard-delete used to keep Hostinger from 500ing, but staff
+            // "Delete" then permanently dropped the row and the undo bar lied.
+            throw new \RuntimeException('Soft-delete column is not ready.');
         }
 
         return $this->performSoftDeleteOnModel();

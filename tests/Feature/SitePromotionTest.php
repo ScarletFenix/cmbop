@@ -12,6 +12,7 @@ use App\Models\Wallet;
 use App\Services\CartPricingService;
 use App\Services\SitePromotionService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -69,6 +70,55 @@ class SitePromotionTest extends TestCase
         $site->refresh();
         $this->assertTrue($site->isFeatured());
         $this->assertSame(40.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+    }
+
+    public function test_feature_succeeds_when_existing_featured_until_is_unparseable(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update(['featured_until' => now()->addDays(3)]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'featured_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($site->fresh()->isFeatured());
+
+        $this->actingAs($publisher)->postJson(route('publisher.sites.feature', $site->id))
+            ->assertOk()
+            ->assertJson(['success' => true]);
+
+        $this->assertTrue($site->fresh()->isFeatured());
+        $this->assertSame(40.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+    }
+
+    public function test_promo_ajax_ok_when_sibling_promo_dates_are_unparseable(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $site->update([
+            'featured_until' => now()->addDays(3),
+            'custom_discount_percent' => 15,
+            'custom_discount_starts_at' => now()->subDay(),
+            'custom_discount_ends_at' => now()->addDays(5),
+        ]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'featured_until' => 'not-a-date',
+            'custom_discount_starts_at' => 'not-a-date',
+            'custom_discount_ends_at' => 'also-bad',
+        ]);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.bulk-join', $site->id), ['percent' => 12])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.sites.discount', $site->id), ['percent' => 20, 'days' => 7])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertTrue($site->fresh()->hasActiveCustomDiscount());
+        $this->assertTrue($site->fresh()->joinsBulkDiscount());
     }
 
     public function test_feature_cannot_spend_promotional_bonus(): void

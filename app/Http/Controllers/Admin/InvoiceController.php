@@ -196,19 +196,28 @@ class InvoiceController extends Controller
 
         $order = Order::with(['user', 'items'])->findOrFail($data['order_id']);
 
+        $existingId = Invoice::query()
+            ->where('order_id', $order->id)
+            ->where('type', Invoice::TYPE_TAX_INVOICE)
+            ->where('status', '!=', Invoice::STATUS_CANCELLED)
+            ->latest('id')
+            ->value('id');
+
         try {
             $invoice = $billing->generateManually($order, auth()->user());
         } catch (\Throwable $e) {
             return back()->with('error', UserFacingError::message($e, 'Could not generate the invoice.'));
         }
 
-        ActivityLogger::tryLog(
-            'invoice.generated',
-            (auth()->user()?->name ?? 'Admin').' generated invoice '.$invoice->invoice_number,
-            $invoice,
-            ['invoice_id' => $invoice->id, 'order_id' => $order->id],
-            $invoice->invoice_number
-        );
+        if (! $existingId || (int) $invoice->id !== (int) $existingId) {
+            ActivityLogger::tryLog(
+                'invoice.generated',
+                (auth()->user()?->name ?? 'Admin').' generated invoice '.$invoice->invoice_number,
+                $invoice,
+                ['invoice_id' => $invoice->id, 'order_id' => $order->id],
+                $invoice->invoice_number
+            );
+        }
 
         $redirect = redirect()
             ->route('admin.invoices.show', $invoice)

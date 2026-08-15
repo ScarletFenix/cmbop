@@ -5,7 +5,9 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Support\ActivityLogDateBounds;
+use App\Support\ActivityLogTextSearch;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -47,22 +49,42 @@ class ActivityLogController extends Controller
         }
         sort($actions);
 
+        $exportQuery = $this->filterQueryParams($request);
+        $exportLimit = $this->exportLimit();
+        $exportCapped = $logs->total() > $exportLimit;
+
         return view('admin.activity-logs', array_merge($meta, compact(
             'logs',
             'actions',
-            'actionCounts'
+            'actionCounts',
+            'exportQuery',
+            'exportCapped',
+            'exportLimit'
         )));
     }
 
-    public function export(Request $request): StreamedResponse
+    public function export(Request $request): StreamedResponse|RedirectResponse
     {
         [$query, $meta] = $this->filteredQuery($request);
+
+        if ($meta['dateErrors'] !== []) {
+            return redirect()
+                ->route('admin.activity-logs.index', $this->filterQueryParams($request))
+                ->with('error', implode(' ', $meta['dateErrors']));
+        }
 
         if ($meta['selectedAction'] !== '') {
             $query->where('action', $meta['selectedAction']);
         }
 
-        $rows = $query->latest('id')->limit(self::EXPORT_LIMIT)->get();
+        $limit = $this->exportLimit();
+        if ((clone $query)->count() > $limit) {
+            return redirect()
+                ->route('admin.activity-logs.index', $this->filterQueryParams($request))
+                ->with('error', 'More than '.number_format($limit).' events match. Narrow the filters before exporting — a partial CSV would look complete.');
+        }
+
+        $rows = $query->latest('id')->limit($limit)->get();
         $filename = 'activity-logs-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(function () use ($rows) {
@@ -145,9 +167,11 @@ class ActivityLogController extends Controller
         if ($needle !== '') {
             $like = like_contains($needle);
             $matchedActions = activity_action_actions_matching($needle);
-            $query->where(function ($q) use ($like, $matchedActions) {
-                $q->whereRaw('subject_label LIKE ? ESCAPE ?', [$like, '\\'])
-                    ->orWhereRaw('description LIKE ? ESCAPE ?', [$like, '\\']);
+            $query->where(function ($q) use ($like, $needle, $matchedActions) {
+                $q->whereRaw('subject_label LIKE ? ESCAPE ?', [$like, '\\']);
+                $q->orWhere(function ($inner) use ($needle) {
+                    ActivityLogTextSearch::whereDescriptionHasWord($inner, $needle);
+                });
                 if ($matchedActions !== []) {
                     $q->orWhereIn('action', $matchedActions);
                 }
@@ -176,6 +200,29 @@ class ActivityLogController extends Controller
                 'selectedRole' => $selectedRole,
             ],
         ];
+    }
+
+    private function exportLimit(): int
+    {
+        $configured = (int) config('activity_logs.export_limit', self::EXPORT_LIMIT);
+
+        return $configured > 0 ? $configured : self::EXPORT_LIMIT;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    private function filterQueryParams(Request $request): array
+    {
+        $out = [];
+        foreach (['user', 'user_id', 'q', 'action', 'role', 'from', 'to'] as $key) {
+            $value = $request->input($key);
+            if (is_string($value) && $value !== '') {
+                $out[$key] = $value;
+            }
+        }
+
+        return $out;
     }
 
     private function csvCell(mixed $value): string
