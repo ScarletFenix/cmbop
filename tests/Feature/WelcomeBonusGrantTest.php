@@ -9,7 +9,9 @@ use App\Models\WelcomeBonusClaim;
 use App\Services\Wallet\WelcomeBonusService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
@@ -28,12 +30,14 @@ class WelcomeBonusGrantTest extends TestCase
     {
         parent::setUp();
         $this->seed(RolesTableSeeder::class);
-        RateLimiter::clear('register:1.2.3.4');
-        RateLimiter::clear('register:9.9.9.9');
-        RateLimiter::clear('register:10.0.0.2');
-        RateLimiter::clear('register:127.0.0.1');
-        RateLimiter::clear('register:8.8.8.8');
-        RateLimiter::clear('register:11.11.11.11');
+        foreach ([
+            '1.2.3.4', '9.9.9.9', '10.0.0.2', '127.0.0.1',
+            '8.8.8.8', '11.11.11.11', '203.0.113.80',
+            '203.0.113.90', '203.0.113.91',
+        ] as $ip) {
+            RateLimiter::clear('register:'.$ip);
+            RateLimiter::clear('register-http:'.$ip);
+        }
     }
 
     public function test_first_advertiser_from_ip_receives_bonus_and_claim(): void
@@ -65,6 +69,9 @@ class WelcomeBonusGrantTest extends TestCase
         RateLimiter::clear('register:9.9.9.9');
         RateLimiter::clear('register:8.8.8.8');
         RateLimiter::clear('register:1.2.3.4');
+        RateLimiter::clear('register-http:1.2.3.4');
+        RateLimiter::clear('register-http:9.9.9.9');
+        RateLimiter::clear('register-http:8.8.8.8');
 
         $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
             ->withHeaders(['X-Forwarded-For' => '8.8.8.8'])
@@ -89,6 +96,7 @@ class WelcomeBonusGrantTest extends TestCase
             ->assertOk();
 
         RateLimiter::clear('register:1.2.3.4');
+        RateLimiter::clear('register-http:1.2.3.4');
 
         $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
             ->postJson('/register', $this->registerPayload('second-ip@example.com'))
@@ -212,6 +220,110 @@ class WelcomeBonusGrantTest extends TestCase
         $this->assertNotNull($second);
         $this->assertAdvertiserBonus($second, 0.0);
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_register_rate_limit_ignores_forwarded_for_spoof(): void
+    {
+        Notification::fake();
+
+        $remote = '203.0.113.80';
+        for ($i = 1; $i <= 5; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => $remote])
+                ->withHeaders(['X-Forwarded-For' => '198.51.100.'.$i])
+                ->postJson('/register', $this->registerPayload("xff-limit-{$i}@example.com"))
+                ->assertOk()
+                ->assertJsonPath('status', 'success');
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => $remote])
+            ->withHeaders(['X-Forwarded-For' => '198.51.100.99'])
+            ->postJson('/register', $this->registerPayload('xff-limit-blocked@example.com'))
+            ->assertStatus(429);
+
+        $this->assertNull(User::where('email', 'xff-limit-blocked@example.com')->first());
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_deleting_the_claimant_does_not_free_the_place_for_another_bonus(): void
+    {
+        Notification::fake();
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.90'])
+            ->postJson('/register', $this->registerPayload('doomed-claimant@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $user = User::where('email', 'doomed-claimant@example.com')->first();
+        $this->assertAdvertiserBonus($user, 20.0);
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+
+        $user->delete();
+
+        $this->assertNull(User::where('email', 'doomed-claimant@example.com')->first());
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+        $this->assertNull(WelcomeBonusClaim::query()->value('user_id'));
+        $this->assertSame('203.0.113.90', WelcomeBonusClaim::query()->value('ip_address'));
+
+        RateLimiter::clear('register:203.0.113.90');
+        RateLimiter::clear('register-http:203.0.113.90');
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.90'])
+            ->postJson('/register', $this->registerPayload('after-delete@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $second = User::where('email', 'after-delete@example.com')->first();
+        $this->assertAdvertiserBonus($second, 0.0);
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_google_signup_shares_the_register_place_rate_limit(): void
+    {
+        Mail::fake();
+        $this->configureGoogle();
+
+        $request = Request::create('/register', 'POST', [], [], [], ['REMOTE_ADDR' => '203.0.113.91']);
+        $key = app(WelcomeBonusService::class)->registerRateLimitKey($request);
+        for ($i = 0; $i < 5; $i++) {
+            RateLimiter::hit($key, 600);
+        }
+
+        $this->mockGoogleCallback('google-limited', 'google-limited@example.com');
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.91'])
+            ->get(route('auth.google.callback'))
+            ->assertRedirect('/login');
+
+        $this->assertNull(User::where('email', 'google-limited@example.com')->first());
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_google_login_ignores_register_place_rate_limit(): void
+    {
+        Mail::fake();
+        $this->configureGoogle();
+
+        $role = Role::where('name', 'advertiser')->firstOrFail();
+        $existing = User::factory()->create([
+            'email' => 'google-existing@example.com',
+            'email_verified_at' => now(),
+            'password' => Hash::make('ExistingPass1!'),
+            'active_role_id' => $role->id,
+        ]);
+        $existing->roles()->attach($role->id);
+
+        $request = Request::create('/register', 'POST', [], [], [], ['REMOTE_ADDR' => '203.0.113.91']);
+        $key = app(WelcomeBonusService::class)->registerRateLimitKey($request);
+        for ($i = 0; $i < 5; $i++) {
+            RateLimiter::hit($key, 600);
+        }
+
+        $this->mockGoogleCallback('google-existing', 'google-existing@example.com');
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.91'])
+            ->get(route('auth.google.callback'))
+            ->assertRedirect('/advertiser/dashboard');
+
+        $this->assertAuthenticatedAs($existing->fresh());
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
     public function test_register_page_hides_bonus_copy_when_disabled(): void

@@ -211,10 +211,31 @@ class WelcomeBonusService
         }
 
         try {
-            return WelcomeBonusClaim::query()->whereIn('ip_address', $this->ipClaimKeys($ip))->exists();
+            if (WelcomeBonusClaim::query()->whereIn('ip_address', $this->ipClaimKeys($ip))->exists()) {
+                return true;
+            }
+
+            return $this->legacyIpv6AllocationClaimed($ip);
         } catch (\Throwable) {
             return true;
         }
+    }
+
+    /**
+     * Rate-limit / claim place key. Same source as the €20 lock: REMOTE_ADDR,
+     * or CF-Connecting-IP only from a Cloudflare edge. Never X-Forwarded-For.
+     */
+    public function placeKey(Request $request): string
+    {
+        return $this->normalizedIp($request) ?? 'unknown';
+    }
+
+    /**
+     * Shared signup flood key for form register and Google new-user create.
+     */
+    public function registerRateLimitKey(Request $request): string
+    {
+        return 'register:'.$this->placeKey($request);
     }
 
     /**
@@ -228,6 +249,48 @@ class WelcomeBonusService
         }
 
         return array_values(array_unique($keys));
+    }
+
+    /**
+     * Rows written before the /64 lock stored the full 128-bit address.
+     * Exact-key lookup misses those, so a second signup in the same
+     * allocation would collect another €20.
+     */
+    private function legacyIpv6AllocationClaimed(string $ip): bool
+    {
+        $wanted = $this->ipv6AllocationKey($ip);
+        if ($wanted === null) {
+            return false;
+        }
+
+        $stored = WelcomeBonusClaim::query()
+            ->where('ip_address', 'like', '%:%')
+            ->pluck('ip_address');
+
+        foreach ($stored as $rowIp) {
+            if ($this->ipv6AllocationKey((string) $rowIp) === $wanted) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function ipv6AllocationKey(string $ip): ?string
+    {
+        $packed = @inet_pton($ip);
+        if ($packed === false || strlen($packed) !== 16) {
+            return null;
+        }
+
+        // IPv4-mapped rows are covered by ipClaimKeys(), not the /64 lock.
+        if (substr($packed, 0, 12) === str_repeat("\x00", 10)."\xff\xff") {
+            return null;
+        }
+
+        $normalized = inet_ntop(substr($packed, 0, 8).str_repeat("\x00", 8));
+
+        return $normalized !== false ? $normalized : null;
     }
 
     private function claimsTableReady(): bool

@@ -14,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
@@ -106,6 +107,16 @@ class SocialiteController extends Controller
                 );
             }
 
+            $request = request();
+            $bonusService = app(WelcomeBonusService::class);
+            $registerKey = $bonusService->registerRateLimitKey($request);
+            if (RateLimiter::tooManyAttempts($registerKey, 5)) {
+                return $this->loginRedirect(
+                    'Too many registration attempts. Please try again later.'
+                );
+            }
+            RateLimiter::hit($registerKey, 600);
+
             DB::beginTransaction();
 
             $advertiserRole = Role::where('name', 'advertiser')->first();
@@ -138,8 +149,6 @@ class SocialiteController extends Controller
 
             $user->roles()->sync([$advertiserRole->id, $publisherRole->id]);
 
-            $request = request();
-            $bonusService = app(WelcomeBonusService::class);
             $welcomeBonus = $bonusService->amountFor($request, 'advertiser');
             if ($welcomeBonus > 0 && ! $bonusService->recordClaim($user, $request, $welcomeBonus, 'socialite')) {
                 $welcomeBonus = 0.0;
