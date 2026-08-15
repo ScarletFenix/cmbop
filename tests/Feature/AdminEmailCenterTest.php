@@ -634,7 +634,9 @@ class AdminEmailCenterTest extends TestCase
             ->assertRedirect(route('admin.emails.index'))
             ->assertSessionHas('success');
 
-        $this->assertSame(EmailLog::STATUS_FAILED, EmailLog::query()->first()->status);
+        // The WelcomeEmail job has no recipient in the payload, so the only
+        // failed welcome log is the unique match and is pending-marked.
+        $this->assertSame(EmailLog::STATUS_PENDING, EmailLog::query()->first()->status);
         $this->assertTrue(DB::table('failed_jobs')->where('uuid', $otherUuid)->exists());
     }
 
