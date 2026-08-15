@@ -374,7 +374,7 @@
                             </div>
                             @else
                             <div class="d-inline-flex flex-wrap gap-1 justify-content-end">
-                                @if($submission->isReadyForCheckout() || $submission->canReplaceUnpaidLeftover())
+                                @if($submission->isAvailableForPicker())
                                     <a class="btn btn-sm btn-primary"
                                        href="{{ route('advertiser.content-library.order', $submission, false) }}">
                                         Order
