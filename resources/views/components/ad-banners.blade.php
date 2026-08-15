@@ -16,7 +16,7 @@
     @foreach($banners as $banner)
         @php
             $src = $banner->imageSrc();
-            $href = $banner->link_url
+            $href = $banner->clickHref()
                 ? route('banners.click', $banner)
                 : null;
         @endphp
