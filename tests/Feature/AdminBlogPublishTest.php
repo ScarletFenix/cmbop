@@ -74,6 +74,51 @@ class AdminBlogPublishTest extends TestCase
         $this->assertTrue($republished->published_at->isSameSecond($publishedAt));
     }
 
+    public function test_store_rejects_content_that_sanitizes_to_blank(): void
+    {
+        $admin = $this->adminUser();
+
+        $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => 'Blank After Sanitize',
+                        'slug' => 'blank-after-sanitize',
+                        'content' => '<p><img src="javascript:alert(1)"></p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.create'))
+            ->assertSessionHasErrors();
+
+        $this->assertDatabaseMissing('blogs', ['slug' => 'blank-after-sanitize']);
+    }
+
+    public function test_create_redisplay_rewrites_legacy_asset_images(): void
+    {
+        $admin = $this->adminUser();
+
+        $html = $this->actingAs($admin)
+            ->from(route('admin.blogs.create'))
+            ->followingRedirects()
+            ->post(route('admin.blogs.store'), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => '',
+                        'content' => '<p><img src="/assets/img/blog/gastbeitraege-europa-sprachen.jpg" alt="A"></p>',
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('/media/blogs/content/gastbeitraege-europa-sprachen.jpg', $html);
+        $this->assertStringNotContainsString('/assets/img/blog/gastbeitraege-europa-sprachen.jpg', $html);
+    }
+
     public function test_store_sanitizes_script_tags_before_persist(): void
     {
         $admin = $this->adminUser();

@@ -191,11 +191,22 @@ class Blog extends Model
     public function featuredImageUrl(): ?string
     {
         $path = $this->featured_image;
-        if (is_string($path) && preg_match('#^(https?:)?//#i', $path) === 1) {
-            $urlPath = parse_url($path, PHP_URL_PATH);
-            if (is_string($urlPath) && preg_match('#/(?:storage|media)/(blogs/(?:content|featured)/.+)$#i', $urlPath, $matches)) {
-                $path = $matches[1];
-            }
+        if (! is_string($path) || trim($path) === '') {
+            return null;
+        }
+
+        $path = trim($path);
+        $urlPath = $path;
+        if (preg_match('#^(https?:)?//#i', $path) === 1) {
+            $parsed = parse_url($path, PHP_URL_PATH);
+            $urlPath = is_string($parsed) && $parsed !== '' ? $parsed : $path;
+        }
+
+        $normalized = ltrim(str_replace('\\', '/', $urlPath), '/');
+        if (preg_match('#(?:^|/)assets/img/blog/([^/]+)$#i', $normalized, $matches)) {
+            $path = 'blogs/content/'.$matches[1];
+        } elseif (preg_match('#(?:storage|media)/(blogs/(?:content|featured)/.+)$#i', $normalized, $matches)) {
+            $path = $matches[1];
         }
 
         return Site::publicDiskUrl($path);

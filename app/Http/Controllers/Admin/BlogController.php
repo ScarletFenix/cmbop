@@ -332,9 +332,16 @@ class BlogController extends Controller
                     ->delete();
             });
 
-            $blog->refresh()->load('translations');
-            foreach (array_diff($oldImagePaths, $this->collectStoredBlogImagePaths($blog)) as $stalePath) {
-                $this->deletePublicBlogPath($stalePath, $blog->id);
+            try {
+                $blog->refresh()->load('translations');
+                foreach (array_diff($oldImagePaths, $this->collectStoredBlogImagePaths($blog)) as $stalePath) {
+                    $this->deletePublicBlogPath($stalePath, $blog->id);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Blog image cleanup after update failed', [
+                    'blog_id' => $blog->id,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             Log::info('Blog updated successfully', [
@@ -368,11 +375,21 @@ class BlogController extends Controller
             $blog = Blog::with('translations')->findOrFail($id);
             $imagePaths = $this->collectStoredBlogImagePaths($blog);
             $blogTitle = $blog->title;
-            CuratedBlogWriter::rememberDeleted($blog);
-            $blog->delete();
 
-            foreach ($imagePaths as $path) {
-                $this->deletePublicBlogPath($path);
+            DB::transaction(function () use ($blog) {
+                CuratedBlogWriter::rememberDeleted($blog);
+                $blog->delete();
+            });
+
+            try {
+                foreach ($imagePaths as $path) {
+                    $this->deletePublicBlogPath($path);
+                }
+            } catch (\Throwable $e) {
+                Log::error('Blog image cleanup after delete failed', [
+                    'title' => $blogTitle,
+                    'error' => $e->getMessage(),
+                ]);
             }
 
             Log::info('Blog deleted successfully', [
@@ -645,6 +662,9 @@ class BlogController extends Controller
             $content = BlogHtmlSanitizer::isBlank($rawContent)
                 ? ''
                 : app(BlogHtmlSanitizer::class)->sanitize($rawContent);
+            if (BlogHtmlSanitizer::isBlank($content)) {
+                $content = '';
+            }
 
             if ($locale === 'en') {
                 if ($requireEnglish && ($title === '' || $content === '')) {
