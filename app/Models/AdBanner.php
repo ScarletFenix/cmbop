@@ -81,8 +81,8 @@ class AdBanner extends Model
     public function imageSrc(): ?string
     {
         if (filled($this->image_path)) {
-            $path = str_replace('\\', '/', rawurldecode((string) $this->image_path));
-            if ($path !== '' && ! str_contains($path, '..') && ! str_starts_with($path, '/')) {
+            $path = PromotionUrl::safePublicStoragePath((string) $this->image_path);
+            if ($path !== null) {
                 return '/storage/'.$path;
             }
         }

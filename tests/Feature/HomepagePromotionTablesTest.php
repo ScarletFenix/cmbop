@@ -127,4 +127,32 @@ class HomepagePromotionTablesTest extends TestCase
         $this->assertStringContainsString('Second cap notice', $html);
         $this->assertStringNotContainsString('Third cap notice', $html);
     }
+
+    public function test_announcement_click_is_404_when_table_is_missing(): void
+    {
+        Schema::dropIfExists('site_announcements');
+
+        $this->get('/announcements/1/click')->assertNotFound();
+    }
+
+    public function test_only_trashed_is_empty_when_deleted_at_is_missing(): void
+    {
+        SiteAnnouncement::create([
+            'title' => 'Still listed',
+            'message' => 'Body',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+
+        Schema::table('site_announcements', function ($table) {
+            $table->dropSoftDeletes();
+        });
+        $this->assertFalse(Schema::hasColumn('site_announcements', 'deleted_at'));
+
+        $this->assertSame(0, SiteAnnouncement::onlyTrashed()->count());
+        $this->assertSame(1, SiteAnnouncement::query()->count());
+        $this->assertFalse(SiteAnnouncement::query()->first()->restore());
+    }
 }

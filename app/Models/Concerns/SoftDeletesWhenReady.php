@@ -11,6 +11,7 @@ trait SoftDeletesWhenReady
     use SoftDeletes {
         SoftDeletes::bootSoftDeletes as private bootAlwaysSoftDeletes;
         SoftDeletes::performDeleteOnModel as private performSoftDeleteOnModel;
+        SoftDeletes::restore as private performRestore;
     }
 
     public static function bootSoftDeletes(): void
@@ -25,6 +26,36 @@ trait SoftDeletesWhenReady
         }
 
         return $this->performSoftDeleteOnModel();
+    }
+
+    public function restore()
+    {
+        if (! OptionalSoftDeletingScope::columnReady($this)) {
+            return false;
+        }
+
+        return $this->performRestore();
+    }
+
+    /**
+     * Implicit route binding must not 500 when Hostinger is still missing the table.
+     */
+    public function resolveRouteBinding($value, $field = null)
+    {
+        try {
+            return parent::resolveRouteBinding($value, $field);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    public function resolveSoftDeletableRouteBinding($value, $field = null)
+    {
+        try {
+            return parent::resolveSoftDeletableRouteBinding($value, $field);
+        } catch (\Throwable) {
+            return null;
+        }
     }
 
     public static function deletedAtColumnReady(): bool

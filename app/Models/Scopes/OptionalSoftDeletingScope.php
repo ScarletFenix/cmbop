@@ -36,4 +36,49 @@ class OptionalSoftDeletingScope extends SoftDeletingScope
             return false;
         }
     }
+
+    public function extend(Builder $builder): void
+    {
+        parent::extend($builder);
+
+        $builder->onDelete(function (Builder $builder) {
+            if (! self::columnReady($builder->getModel())) {
+                return $builder->toBase()->delete();
+            }
+
+            $column = $this->getDeletedAtColumn($builder);
+
+            return $builder->update([
+                $column => $builder->getModel()->freshTimestampString(),
+            ]);
+        });
+    }
+
+    protected function addOnlyTrashed(Builder $builder)
+    {
+        $builder->macro('onlyTrashed', function (Builder $builder) {
+            $model = $builder->getModel();
+            $builder->withoutGlobalScope($this);
+
+            if (! self::columnReady($model)) {
+                return $builder->whereRaw('0 = 1');
+            }
+
+            return $builder->whereNotNull($model->getQualifiedDeletedAtColumn());
+        });
+    }
+
+    protected function addWithoutTrashed(Builder $builder)
+    {
+        $builder->macro('withoutTrashed', function (Builder $builder) {
+            $model = $builder->getModel();
+            $builder->withoutGlobalScope($this);
+
+            if (! self::columnReady($model)) {
+                return $builder;
+            }
+
+            return $builder->whereNull($model->getQualifiedDeletedAtColumn());
+        });
+    }
 }
