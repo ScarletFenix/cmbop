@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Role;
 use App\Models\Site;
+use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -167,6 +168,40 @@ class CatalogHideModeIdentityTest extends TestCase
 
         $visibility->reveal($hidden, $site);
         $this->assertSame('Policy Name Co', $visibility->nameFor($hidden->fresh(), $site));
+    }
+
+    public function test_reveal_and_conceal_ok_when_concealed_at_is_unparseable(): void
+    {
+        $site = $this->site('leftover-conceal.example', 'Leftover Conceal Brand');
+        $user = $this->advertiser([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ]);
+
+        $row = SiteUrlReveal::create([
+            'user_id' => $user->id,
+            'site_id' => $site->id,
+            'source' => SiteUrlReveal::SOURCE_CATALOG,
+            'concealed_at' => now(),
+        ]);
+        DB::table('site_url_reveals')->where('id', $row->id)->update([
+            'concealed_at' => 'not-a-date',
+        ]);
+
+        $visibility = app(SiteUrlVisibility::class);
+        $this->assertSame('leftover-conceal.example', $visibility->reveal($user, $site));
+        $this->assertNull($row->fresh()->concealed_at);
+
+        $visibility->conceal($user, $site);
+        $this->assertNotNull($row->fresh()->concealed_at);
+
+        $html = $this->actingAs($user)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertDontSee('Something went wrong')
+            ->getContent();
+
+        $this->assertStringNotContainsString('Leftover Conceal Brand', $html);
     }
 
     public function test_catalog_ok_when_hide_until_is_unparseable(): void

@@ -9,6 +9,7 @@ use App\Models\SiteUrlReveal;
 use App\Models\User;
 use App\Services\Catalog\RevealPaceGuard;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -348,6 +349,27 @@ class CatalogPaceGuardTest extends TestCase
         $bell = InAppNotification::where('audience', InAppNotification::AUDIENCE_ADMIN)->latest('id')->first();
         $this->assertNotNull($bell, 'No admin was told about unusual volume.');
         $this->assertStringContainsString('Nothing has been restricted', (string) $bell->message);
+    }
+
+    public function test_unparseable_reveal_dates_do_not_inflate_pace_or_500(): void
+    {
+        $user = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+
+        for ($i = 0; $i < 8; $i++) {
+            $reveal = SiteUrlReveal::create([
+                'user_id' => $user->id,
+                'site_id' => $this->site($publisher, "garbage-pace-{$i}.example")->id,
+                'source' => SiteUrlReveal::SOURCE_CATALOG,
+            ]);
+            DB::table('site_url_reveals')->where('id', $reveal->id)->update([
+                'created_at' => 'not-a-date',
+            ]);
+        }
+
+        $this->assertSame(0, $this->guard()->countWithinSeconds($user, 3600));
+        $this->assertSame(RevealPaceGuard::OK, $this->guard()->assess($user)['state']);
+        $this->assertFalse($this->guard()->looksMetronomic($user));
     }
 
     public function test_the_admin_screen_ranks_by_activity_and_shows_the_ratio(): void

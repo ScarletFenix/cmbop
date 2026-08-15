@@ -6,6 +6,7 @@ use App\Models\CatalogCopyEvent;
 use App\Models\Role;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -63,6 +64,37 @@ class AdminCatalogCopyStrikeTest extends TestCase
             ->assertSee('Warned')
             ->assertSee('Clear hide mode')
             ->assertDontSee('clean-copy@example.com');
+    }
+
+    public function test_leftover_hide_until_is_not_listed_as_hide_mode(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $real = $this->userWithRole('advertiser');
+        $real->forceFill([
+            'email' => 'real-hide@example.com',
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addHours(20),
+        ])->save();
+
+        $leftover = $this->userWithRole('advertiser');
+        $leftover->forceFill([
+            'email' => 'garbage-hide@example.com',
+            'catalog_copy_strike_count' => 0,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+        DB::table('users')->where('id', $leftover->id)->update([
+            'catalog_hide_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($leftover->fresh()->inCatalogHideMode());
+
+        $this->actingAs($admin)
+            ->get(route('admin.catalog-activity'))
+            ->assertOk()
+            ->assertSee('real-hide@example.com')
+            ->assertDontSee('garbage-hide@example.com')
+            ->assertDontSee('Something went wrong');
     }
 
     public function test_admin_can_clear_copy_hide_mode_and_reset_strikes(): void

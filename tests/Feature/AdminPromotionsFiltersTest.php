@@ -49,6 +49,36 @@ class AdminPromotionsFiltersTest extends TestCase
             ->assertDontSee('Live row', false);
     }
 
+    public function test_active_scope_excludes_unparseable_ends_at(): void
+    {
+        $live = SiteAnnouncement::create([
+            'title' => 'Really live sql',
+            'message' => 'y',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+        ]);
+        $broken = SiteAnnouncement::create([
+            'title' => 'Broken ends sql',
+            'message' => 'x',
+            'type' => 'general',
+            'style' => 'info',
+            'audience' => 'all',
+            'is_active' => true,
+            'ends_at' => now()->addDay(),
+        ]);
+        DB::table('site_announcements')->where('id', $broken->id)->update([
+            'ends_at' => 'not-a-date',
+        ]);
+
+        $ids = SiteAnnouncement::query()->active()->pluck('id');
+
+        $this->assertTrue($ids->contains($live->id));
+        $this->assertFalse($ids->contains($broken->id));
+        $this->assertFalse($broken->fresh()->isCurrentlyLive());
+    }
+
     public function test_status_live_excludes_unparseable_schedule_rows(): void
     {
         $this->seed(RolesTableSeeder::class);

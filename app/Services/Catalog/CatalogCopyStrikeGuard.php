@@ -213,6 +213,7 @@ class CatalogCopyStrikeGuard
         $exists = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->when(
                 $siteId !== null,
                 fn ($q) => $q->where('site_id', $siteId),
@@ -240,6 +241,7 @@ class CatalogCopyStrikeGuard
         $withSite = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNotNull('site_id')
             ->distinct()
             ->count('site_id');
@@ -247,6 +249,7 @@ class CatalogCopyStrikeGuard
         $hostOnly = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNull('site_id')
             ->distinct()
             ->count('normalized_host');

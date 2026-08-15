@@ -415,9 +415,13 @@ class SiteUrlVisibility
             );
         }
 
-        if ($this->concealColumnAvailable() && $row->concealed_at !== null) {
-            $row->concealed_at = null;
-            $row->save();
+        if ($this->concealColumnAvailable()) {
+            $raw = $row->getAttributes()['concealed_at'] ?? null;
+            if ($raw !== null && $raw !== '') {
+                // Query-builder write: leftover concealed_at would 500 Eloquent save().
+                SiteUrlReveal::query()->whereKey($row->id)->update(['concealed_at' => null]);
+                $row->setAttribute('concealed_at', null);
+            }
         }
 
         $this->revealCache[(int) $user->id][(int) $site->id] = true;
@@ -451,9 +455,11 @@ class SiteUrlVisibility
             );
         }
 
-        if ($row->concealed_at === null) {
-            $row->concealed_at = now();
-            $row->save();
+        $raw = $row->getAttributes()['concealed_at'] ?? null;
+        $parsed = $row->concealed_at;
+        if ($raw === null || $raw === '' || $parsed === null) {
+            // Heal leftover unparseable concealed_at the same way as a fresh hide.
+            SiteUrlReveal::query()->whereKey($row->id)->update(['concealed_at' => now()]);
         }
 
         $this->revealCache[(int) $user->id][(int) $site->id] = false;

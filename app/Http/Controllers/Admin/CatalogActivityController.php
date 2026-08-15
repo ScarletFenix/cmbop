@@ -160,10 +160,15 @@ class CatalogActivityController extends Controller
                 $q->where('catalog_copy_strike_count', '>', 0)
                     ->orWhere(function ($q2) {
                         $q2->whereNotNull('catalog_hide_until')
-                            ->where('catalog_hide_until', '>', now());
+                            ->where('catalog_hide_until', '>', now())
+                            ->where('catalog_hide_until', '>=', User::PLAUSIBLE_SQL_DATETIME_FLOOR)
+                            ->where('catalog_hide_until', '<=', User::PLAUSIBLE_SQL_DATETIME_CEIL);
                     });
             })
-            ->orderByRaw('CASE WHEN catalog_hide_until IS NOT NULL AND catalog_hide_until > ? THEN 0 ELSE 1 END', [now()])
+            ->orderByRaw(
+                'CASE WHEN catalog_hide_until IS NOT NULL AND catalog_hide_until > ? AND catalog_hide_until >= ? AND catalog_hide_until <= ? THEN 0 ELSE 1 END',
+                [now(), User::PLAUSIBLE_SQL_DATETIME_FLOOR, User::PLAUSIBLE_SQL_DATETIME_CEIL]
+            )
             ->orderByDesc('catalog_hide_until')
             ->orderByDesc('catalog_copy_strike_count')
             ->orderByDesc('catalog_copy_warned_at')
@@ -181,6 +186,7 @@ class CatalogActivityController extends Controller
                 ->select('user_id', DB::raw('COUNT(*) as recent_copies'))
                 ->whereIn('user_id', $users->pluck('id'))
                 ->where('created_at', '>=', now()->subSeconds($window))
+                ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
                 ->groupBy('user_id')
                 ->pluck('recent_copies', 'user_id');
         }
