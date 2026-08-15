@@ -193,8 +193,9 @@
                             </div>
                             <div class="col-12">
                                 <div class="form-check">
+                                    <input type="hidden" name="respect_preferences" value="0">
                                     <input class="form-check-input" type="checkbox" name="respect_preferences" value="1" id="respect_preferences"
-                                        @checked(old('respect_preferences', true))>
+                                        @checked(filter_var(old('respect_preferences', true), FILTER_VALIDATE_BOOLEAN))>
                                     <label class="form-check-label" for="respect_preferences">
                                         Respect user “Marketing Emails” preference (recommended)
                                     </label>
@@ -203,7 +204,7 @@
                         </div>
 
                         <div class="d-flex flex-wrap gap-2 mt-4">
-                            <button type="submit" class="btn btn-primary"
+                            <button type="submit" class="btn btn-primary" id="campaignSendBtn"
                                     data-slb-confirm="Send this campaign to the selected audience now?"
                                     data-slb-confirm-title="Send campaign?"
                                     data-slb-confirm-text="Send now"
@@ -226,7 +227,7 @@
                 </div>
                 <div class="card-body">
                     <iframe id="previewFrame" title="Campaign preview" style="width:100%; min-height:360px; border:1px solid #e2e8f0; border-radius:12px; background:#fff;"></iframe>
-                    <div class="small text-muted mt-2">Click “Preview email” to render the branded message.</div>
+                    <div class="small text-muted mt-2" id="previewStatus">Click “Preview email” to render the branded message.</div>
                 </div>
             </div>
 
@@ -317,24 +318,155 @@
         });
     });
 
+    const previewStatus = document.getElementById('previewStatus');
+    const previewFrame = document.getElementById('previewFrame');
+    const sendBtn = document.getElementById('campaignSendBtn');
+    const countUrl = @json(route('admin.campaigns.recipient-count'));
+
+    function setPreviewStatus(message, isError) {
+        previewStatus.textContent = message;
+        previewStatus.classList.toggle('text-danger', !!isError);
+        previewStatus.classList.toggle('text-muted', !isError);
+    }
+
+    function selectedUserIds() {
+        return Array.from(document.querySelectorAll('.user-check:checked:not(:disabled)')).map(function (el) {
+            return el.value;
+        });
+    }
+
+    async function fetchRecipientCount() {
+        const params = new URLSearchParams();
+        params.set('audience', audience.value);
+        if (audience.value === 'selected') {
+            selectedUserIds().forEach(function (id) {
+                params.append('user_ids[]', id);
+            });
+        }
+
+        const res = await fetch(countUrl + '?' + params.toString(), {
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+        });
+        if (!res.ok) {
+            throw new Error('count-failed');
+        }
+
+        return res.json();
+    }
+
+    function confirmSend(text) {
+        if (typeof window.slbConfirm === 'function') {
+            return window.slbConfirm({
+                title: 'Send campaign?',
+                text: text,
+                confirmText: 'Send now',
+                icon: 'question',
+            });
+        }
+
+        return Promise.resolve(window.confirm(text));
+    }
+
+    function alertSend(title) {
+        if (typeof window.slbAlert === 'function') {
+            return window.slbAlert({ icon: 'error', title: title, toast: false });
+        }
+
+        window.alert(title);
+        return Promise.resolve();
+    }
+
+    form.addEventListener('submit', function (e) {
+        if (form.dataset.slbAllowSubmit === '1') {
+            if (sendBtn) {
+                sendBtn.disabled = true;
+                sendBtn.setAttribute('aria-busy', 'true');
+            }
+            return;
+        }
+
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        if (sendBtn) {
+            sendBtn.disabled = true;
+        }
+
+        fetchRecipientCount()
+            .then(function (data) {
+                const count = Number(data.count || 0);
+                const label = data.label || 'the selected audience';
+                if (count < 1) {
+                    return alertSend('No recipients found for that audience.').then(function () {
+                        return false;
+                    });
+                }
+
+                const text = 'Send to ' + count.toLocaleString() + ' recipient' + (count === 1 ? '' : 's') + ' (' + label + ')?';
+                sendBtn.setAttribute('data-slb-confirm', text);
+
+                return confirmSend(text);
+            })
+            .then(function (ok) {
+                if (!ok) {
+                    return;
+                }
+                form.dataset.slbAllowSubmit = '1';
+                if (typeof form.requestSubmit === 'function') {
+                    form.requestSubmit(sendBtn);
+                } else {
+                    HTMLFormElement.prototype.submit.call(form);
+                }
+            })
+            .catch(function () {
+                return alertSend('Could not count recipients — refresh and retry.');
+            })
+            .finally(function () {
+                if (form.dataset.slbAllowSubmit !== '1' && sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.removeAttribute('aria-busy');
+                }
+            });
+    }, true);
+
     document.getElementById('previewBtn').addEventListener('click', async function () {
         const fd = new FormData();
         fd.append('_token', form.querySelector('[name=_token]').value);
-        fd.append('subject', document.getElementById('campaignSubject').value || 'Preview');
-        fd.append('body_html', document.getElementById('campaignBody').value || '<p>Preview</p>');
+        fd.append('subject', document.getElementById('campaignSubject').value);
+        fd.append('body_html', document.getElementById('campaignBody').value);
         const ctaLabel = form.querySelector('[name=cta_label]').value;
         const ctaUrl = form.querySelector('[name=cta_url]').value;
         if (ctaLabel) fd.append('cta_label', ctaLabel);
         if (ctaUrl) fd.append('cta_url', ctaUrl);
 
-        const res = await fetch(@json(route('admin.campaigns.preview')), {
-            method: 'POST',
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
-            body: fd,
-        });
-        const html = await res.text();
-        const frame = document.getElementById('previewFrame');
-        frame.srcdoc = html;
+        setPreviewStatus('Rendering preview…', false);
+
+        try {
+            const res = await fetch(@json(route('admin.campaigns.preview')), {
+                method: 'POST',
+                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+                body: fd,
+            });
+
+            if (res.status === 422) {
+                previewFrame.removeAttribute('srcdoc');
+                setPreviewStatus('Fix subject/body and try again.', true);
+                return;
+            }
+
+            if (!res.ok) {
+                previewFrame.removeAttribute('srcdoc');
+                setPreviewStatus('Preview failed — refresh and retry.', true);
+                return;
+            }
+
+            const html = await res.text();
+            previewFrame.srcdoc = html;
+            setPreviewStatus('Click “Preview email” to render the branded message.', false);
+        } catch (err) {
+            previewFrame.removeAttribute('srcdoc');
+            setPreviewStatus('Preview failed — refresh and retry.', true);
+        }
     });
 
     syncAudience();

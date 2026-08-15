@@ -619,8 +619,15 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/audiences', [AdminAudienceController::class, 'index'])->name('audiences.index');
         Route::get('/audiences/export', [AdminAudienceController::class, 'export'])->name('audiences.export');
         Route::get('/campaigns', [AdminCampaignController::class, 'index'])->name('campaigns.index');
-        Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])->name('campaigns.preview');
-        Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])->name('campaigns.send');
+        Route::get('/campaigns/recipient-count', [AdminCampaignController::class, 'recipientCount'])
+            ->middleware('throttle:30,1')
+            ->name('campaigns.recipient-count');
+        Route::post('/campaigns/preview', [AdminCampaignController::class, 'preview'])
+            ->middleware('throttle:20,1')
+            ->name('campaigns.preview');
+        Route::post('/campaigns/send', [AdminCampaignController::class, 'send'])
+            ->middleware('throttle:6,1')
+            ->name('campaigns.send');
 
         Route::get('/moderation', [AdminContentModerationController::class, 'index'])->name('moderation.index');
         Route::post('/moderation/settings', [AdminContentModerationController::class, 'updateSettings'])->name('moderation.settings');

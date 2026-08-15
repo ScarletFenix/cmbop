@@ -51,26 +51,34 @@ class CampaignController extends Controller
         return response($mailable->render());
     }
 
+    public function recipientCount(Request $request, AudienceInventoryService $inventory)
+    {
+        $data = $request->validate([
+            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
+            'user_ids' => ['nullable', 'array'],
+            'user_ids.*' => ['integer', 'exists:users,id'],
+        ]);
+
+        $count = $inventory->count($data['audience'], $data['user_ids'] ?? []);
+
+        return response()->json([
+            'count' => $count,
+            'label' => EmailCampaign::labelForAudience($data['audience']),
+        ]);
+    }
+
     public function send(Request $request, AudienceInventoryService $inventory)
     {
         $data = $request->validate([
             'name' => ['nullable', 'string', 'max:120'],
             'subject' => ['required', 'string', 'max:180'],
             'body_html' => ['required', 'string', 'max:20000'],
-            'audience' => ['required', Rule::in([
-                'advertisers',
-                'publishers',
-                'both',
-                'selected',
-                'advertisers_no_orders',
-                'publishers_no_sites',
-                'advertisers_never_deposited',
-            ])],
+            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
             'user_ids' => ['nullable', 'array'],
             'user_ids.*' => ['integer', 'exists:users,id'],
             'cta_label' => ['nullable', 'string', 'max:80'],
             'cta_url' => ['nullable', 'url', 'max:500'],
-            'respect_preferences' => ['sometimes', 'boolean'],
+            'respect_preferences' => ['boolean'],
         ]);
 
         if ($data['audience'] === 'selected' && empty($data['user_ids'])) {
@@ -82,7 +90,7 @@ class CampaignController extends Controller
             return back()->withInput()->with('error', 'No recipients found for that audience.');
         }
 
-        $respectPrefs = $request->boolean('respect_preferences', true);
+        $respectPrefs = $request->boolean('respect_preferences');
 
         $campaign = EmailCampaign::create([
             'name' => ($data['name'] ?? null) ?: $data['subject'],
@@ -133,7 +141,7 @@ class CampaignController extends Controller
             'sent_at' => now(),
         ]);
 
-        $msg = "Campaign sent to {$sent} recipient(s).";
+        $msg = "Queued for {$sent} recipient(s).";
         if ($skipped > 0) {
             $msg .= " Skipped {$skipped} (preferences or errors).";
         }

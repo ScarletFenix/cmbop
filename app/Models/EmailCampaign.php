@@ -46,9 +46,9 @@ class EmailCampaign extends Model
         return $this->belongsTo(User::class, 'created_by');
     }
 
-    public function audienceLabel(): string
+    public static function labelForAudience(?string $audience): string
     {
-        return match ($this->audience) {
+        return match ($audience) {
             'advertisers' => 'Advertisers',
             'publishers' => 'Publishers',
             'both' => 'Advertisers + Publishers',
@@ -56,7 +56,12 @@ class EmailCampaign extends Model
             'publishers_no_sites' => 'Publishers (no sites)',
             'advertisers_never_deposited' => 'Advertisers (never deposited)',
             'selected' => 'Selected users',
-            default => ucfirst((string) $this->audience),
+            default => ucfirst((string) $audience),
         };
+    }
+
+    public function audienceLabel(): string
+    {
+        return self::labelForAudience($this->audience);
     }
 }

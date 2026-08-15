@@ -25,6 +25,22 @@ class AudienceInventoryService
 
     public const AUDIENCE_ADVERTISERS_NEVER_DEPOSITED = 'advertisers_never_deposited';
 
+    /**
+     * @return list<string>
+     */
+    public static function audienceKeys(): array
+    {
+        return [
+            self::AUDIENCE_ADVERTISERS,
+            self::AUDIENCE_PUBLISHERS,
+            self::AUDIENCE_BOTH,
+            self::AUDIENCE_SELECTED,
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS,
+            self::AUDIENCE_PUBLISHERS_NO_SITES,
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,
+        ];
+    }
+
     public function advertiserCount(): int
     {
         return $this->queryForRole('advertiser')->count();
@@ -167,6 +183,59 @@ class AudienceInventoryService
         };
     }
 
+    /**
+     * Recipient count without hydrating User models.
+     *
+     * @param  array<int, int|string>|null  $selectedIds
+     */
+    public function count(string $audience, ?array $selectedIds = null): int
+    {
+        return match ($audience) {
+            self::AUDIENCE_ADVERTISERS => $this->advertiserCount(),
+            self::AUDIENCE_PUBLISHERS => $this->publisherCount(),
+            self::AUDIENCE_BOTH => $this->bothUniqueCount(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->advertisersNoOrdersCount(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->publishersNoSitesCount(),
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->advertisersNeverDepositedCount(),
+            self::AUDIENCE_SELECTED => $this->selectedCount($selectedIds),
+            default => 0,
+        };
+    }
+
+    public function bothUniqueCount(): int
+    {
+        $roleIds = Role::query()
+            ->whereIn('name', ['advertiser', 'publisher'])
+            ->pluck('id');
+
+        if ($roleIds->isEmpty()) {
+            return 0;
+        }
+
+        return User::query()
+            ->whereNotNull('email')
+            ->where('email', '!=', '')
+            ->whereHas('roles', fn (Builder $q) => $q->whereIn('roles.id', $roleIds))
+            ->count();
+    }
+
+    /**
+     * @param  array<int, int|string>|null  $selectedIds
+     */
+    protected function selectedCount(?array $selectedIds): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $selectedIds ?: [])));
+
+        if ($ids === []) {
+            return 0;
+        }
+
+        return User::query()
+            ->whereIn('id', $ids)
+            ->whereNotNull('email')
+            ->count();
+    }
+
     public function exportCsv(string $audienceKey): StreamedResponse
     {
         $filename = $audienceKey.'-audience-'.now()->format('Y-m-d-His').'.csv';
@@ -209,7 +278,7 @@ class AudienceInventoryService
         return [
             'advertisers' => $this->advertiserCount(),
             'publishers' => $this->publisherCount(),
-            'both_unique' => $this->collect(self::AUDIENCE_BOTH)->count(),
+            'both_unique' => $this->bothUniqueCount(),
             'advertisers_no_orders' => $this->advertisersNoOrdersCount(),
             'publishers_no_sites' => $this->publishersNoSitesCount(),
             'advertisers_never_deposited' => $this->advertisersNeverDepositedCount(),
