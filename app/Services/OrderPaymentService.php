@@ -295,7 +295,11 @@ class OrderPaymentService
                 }
                 $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback, $marked);
             }
-            $this->forgetPendingCheckout($referenceCode);
+            // Legacy rows can be marked paid later. Stripe-first has no rows yet —
+            // keep the package so a late paid webhook can still settle.
+            if ($marked->isNotEmpty()) {
+                $this->forgetPendingCheckout($referenceCode);
+            }
 
             if ($marked->isNotEmpty()) {
                 Log::info('Marked card orders payment_status=failed', [
@@ -602,6 +606,7 @@ class OrderPaymentService
                 'reference_code' => $referenceCode,
                 'session_id' => $session->id ?? null,
             ]);
+            $this->creditCapturedCardWhenPackageMissing($referenceCode, $session);
 
             return collect();
         }
@@ -624,6 +629,26 @@ class OrderPaymentService
             $expected = round((float) $meta['expected_amount'], 2);
         }
         $this->assertStripeAmountMatchesExpected($session, $expected, $referenceCode);
+
+        $userId = (int) ($package['user_id'] ?? $metaUserId);
+        $bonusNeeded = round((float) ($package['bonus_applied'] ?? $meta['bonus_applied'] ?? 0), 2);
+        if ($userId > 0 && $bonusNeeded > 0.009) {
+            $held = $this->ensureCheckoutBonusReserved($userId, $referenceCode, $bonusNeeded);
+            if ($held + 0.009 < $bonusNeeded) {
+                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $expected);
+                $this->forgetPendingCheckout($referenceCode);
+                Log::warning('Stripe-first paid after bonus was released and could not be re-reserved', [
+                    'reference_code' => $referenceCode,
+                    'session_id' => $session->id ?? null,
+                    'user_id' => $userId,
+                    'bonus_needed' => $bonusNeeded,
+                    'bonus_held' => $held,
+                    'wallet_credit' => $expected,
+                ]);
+
+                return collect();
+            }
+        }
 
         $schema = app(CheckoutSchemaService::class);
         $schema->ensureCheckoutTables();
@@ -993,9 +1018,63 @@ class OrderPaymentService
     }
 
     /**
-     * Refuse to finalize if Stripe charged amount does not match expected euros (within 1 cent).
+     * Re-reserve checkout promo after cancel/expiry released it.
+     * Returns $needed when the hold is in place, otherwise 0.
      */
-    public function assertStripeAmountMatchesExpected(object $session, float $expectedEuros, string $referenceCode): void
+    private function ensureCheckoutBonusReserved(int $userId, string $referenceCode, float $needed): float
+    {
+        $needed = round($needed, 2);
+        if ($userId <= 0 || $needed <= 0) {
+            return 0.0;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId) {
+            return 0.0;
+        }
+
+        return (float) DB::transaction(function () use ($userId, $roleId, $referenceCode, $needed) {
+            $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+            $held = app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode);
+            $reserved = round((float) $wallet->bonus_reserved, 2);
+            if ($held + 0.009 >= $needed && $reserved + 0.009 >= $needed) {
+                return $needed;
+            }
+
+            $got = $wallet->reserveBonusOnly($needed);
+            if ($got + 0.009 >= $needed) {
+                app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $needed);
+
+                return $needed;
+            }
+
+            if ($got > 0.009) {
+                $wallet->refundReserved($got, $got);
+            }
+
+            return 0.0;
+        });
+    }
+
+    /**
+     * Last-resort credit when Stripe captured a card checkout after the package was dropped.
+     */
+    private function creditCapturedCardWhenPackageMissing(string $referenceCode, object $session): float
+    {
+        $meta = $this->sessionMetadataArray($session);
+        $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
+        $amount = isset($meta['expected_amount']) && $meta['expected_amount'] !== ''
+            ? round((float) $meta['expected_amount'], 2)
+            : (float) ($this->stripeEurosFromSession($session) ?? 0);
+
+        if ($userId <= 0 || $amount <= 0.009) {
+            return 0.0;
+        }
+
+        return $this->creditUnfulfilledCardCapture($userId, $referenceCode, $amount);
+    }
+
+    private function stripeEurosFromSession(object $session): ?float
     {
         $stripeCents = null;
         if (isset($session->amount_total)) {
@@ -1004,7 +1083,16 @@ class OrderPaymentService
             $stripeCents = (int) ($session->amount_received ?: $session->amount);
         }
 
-        if ($stripeCents === null) {
+        return $stripeCents === null ? null : StripePaymentService::fromCents($stripeCents);
+    }
+
+    /**
+     * Refuse to finalize if Stripe charged amount does not match expected euros (within 1 cent).
+     */
+    public function assertStripeAmountMatchesExpected(object $session, float $expectedEuros, string $referenceCode): void
+    {
+        $stripeEuros = $this->stripeEurosFromSession($session);
+        if ($stripeEuros === null) {
             Log::error('Stripe session missing amount fields; refusing to finalize', [
                 'reference_code' => $referenceCode,
                 'session_id' => $session->id ?? null,
@@ -1015,7 +1103,6 @@ class OrderPaymentService
             );
         }
 
-        $stripeEuros = StripePaymentService::fromCents($stripeCents);
         if (abs($stripeEuros - $expectedEuros) > 0.01) {
             Log::error('Stripe amount mismatch for order payment', [
                 'reference_code' => $referenceCode,

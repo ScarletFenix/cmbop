@@ -345,6 +345,8 @@ class ContentSubmission extends Model
             $table.'.order_id',
             $table.'.archived_at',
             $table.'.expires_at',
+            $table.'.anchor_text',
+            $table.'.target_url',
         ]);
     }
 
@@ -1053,16 +1055,15 @@ class ContentSubmission extends Model
         $this->fill($attrs)->save();
     }
 
-    public function isReadyForCheckout(): bool
+    /**
+     * Checkout and revision attach allow no link, or a complete HTTPS pair.
+     * A half-filled or http:// target is not usable on an order item.
+     */
+    public function hasCheckoutReadyLinks(): bool
     {
-        if (! $this->canBeOrdered()) {
-            return false;
-        }
-
         $anchor = trim((string) $this->anchor_text);
         $target = trim((string) $this->target_url);
 
-        // Advertisers may place orders without a link when the article has none.
         if ($anchor === '' && $target === '') {
             return true;
         }
@@ -1071,6 +1072,11 @@ class ContentSubmission extends Model
             && $target !== ''
             && (bool) filter_var($target, FILTER_VALIDATE_URL)
             && str_starts_with(strtolower($target), 'https://');
+    }
+
+    public function isReadyForCheckout(): bool
+    {
+        return $this->canBeOrdered() && $this->hasCheckoutReadyLinks();
     }
 
     public function deleteStoredFile(): void
