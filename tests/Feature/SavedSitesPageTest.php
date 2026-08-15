@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\UserBlacklist;
 use App\Models\UserFavorite;
+use App\Services\Catalog\SiteUrlVisibility;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -194,5 +195,33 @@ class SavedSitesPageTest extends TestCase
         $this->assertNotFalse($scheduledPos);
         $this->assertNotFalse($savedPos);
         $this->assertLessThan($savedPos, $scheduledPos, 'Saved Sites should appear after Scheduled in the sidebar');
+    }
+
+    public function test_hide_mode_masks_saved_site_names_and_hosts(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $advertiser->forceFill([
+            'catalog_copy_strike_count' => 2,
+            'catalog_hide_until' => now()->addDay(),
+        ])->save();
+
+        $fav = $this->site($publisher, 'Harvest Brand Media');
+        UserFavorite::create(['user_id' => $advertiser->id, 'site_id' => $fav->id]);
+
+        $visibility = app(SiteUrlVisibility::class);
+        $maskedName = $visibility->nameFor($advertiser->fresh(), $fav);
+        $maskedHost = $visibility->hostFor($advertiser->fresh(), $fav);
+
+        $html = $this->actingAs($advertiser)
+            ->get(route('advertiser.saved-sites', ['tab' => 'favorites']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringNotContainsString('Harvest Brand Media', $html);
+        $this->assertStringNotContainsString('harvestbrandmedia.example', $html);
+        $this->assertStringContainsString($maskedName, $html);
+        $this->assertStringContainsString($maskedHost, $html);
+        $this->assertStringNotContainsString('data-name="Harvest Brand Media"', $html);
     }
 }

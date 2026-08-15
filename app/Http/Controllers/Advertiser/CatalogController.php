@@ -28,6 +28,7 @@ use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
 use App\Services\Catalog\CatalogSearchQuery;
 use App\Services\Catalog\CatalogUrlQuery;
+use App\Services\Catalog\RevealPaceGuard;
 use App\Services\Catalog\SiteUrlVisibility;
 use App\Services\CheckoutIntentService;
 use App\Services\CheckoutSchemaService;
@@ -1695,17 +1696,24 @@ class CatalogController extends Controller
                 $line = $this->applyCartLineContentIds($line, $ids);
                 $cart[$existingItem] = $this->normalizeCartLineForSite($site, $line);
             } else {
-                // Inside hide mode the row is masked — carting it unlocks identity
-                // for that listing (and counts toward pace). Outside hide mode
-                // identity is already open; do not invent a disclosure row.
+                // Inside hide mode the row is masked — carting it unlocks
+                // identity for checkout when pace allows. The add itself is
+                // never refused. SLOW/FROZEN must not be bypassed by Buy
+                // (otherwise a script unmasks the catalog via add/remove).
                 $visibility = app(SiteUrlVisibility::class);
                 $cartUser = auth()->user();
-                if ($cartUser && $visibility->inHideMode($cartUser)) {
-                    $visibility->reveal(
-                        $cartUser,
-                        $site,
-                        SiteUrlReveal::SOURCE_CART
-                    );
+                if ($cartUser && $visibility->inHideMode($cartUser) && ! $visibility->canSee($cartUser, $site)) {
+                    $alreadySeen = $visibility->hasEverSeen($cartUser, $site);
+                    $verdict = $alreadySeen
+                        ? ['state' => RevealPaceGuard::OK]
+                        : app(RevealPaceGuard::class)->assess($cartUser);
+                    if (! in_array($verdict['state'], [RevealPaceGuard::SLOW, RevealPaceGuard::FROZEN], true)) {
+                        $visibility->reveal(
+                            $cartUser,
+                            $site,
+                            SiteUrlReveal::SOURCE_CART
+                        );
+                    }
                 }
 
                 $line = [

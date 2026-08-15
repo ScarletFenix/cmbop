@@ -128,6 +128,10 @@ class CatalogUiRegressionTest extends TestCase
             $js
         );
         $this->assertStringContainsString('syncHideModeFromPayload', $js);
+        // A sticky client flag after hide_mode would silence /copy-track if the
+        // reload never happens and an admin later lifts (or the window expires).
+        $this->assertStringNotContainsString('trackingStopped', $js);
+        $this->assertStringContainsString('hideToastShown = false', $js);
         $this->assertStringContainsString('window.CatalogCopyTrack', $js);
         $this->assertMatchesRegularExpression(
             '/copy-example-url[\s\S]*?CatalogCopyTrack\.report\(/',
@@ -138,6 +142,7 @@ class CatalogUiRegressionTest extends TestCase
         // Table-cell copies often include a trailing newline; multi-select dumps
         // include several hosts. Do not drop the whole clipboard.
         $this->assertStringContainsString('extractDomainish', $js);
+        $this->assertStringContainsString('.split(/[\\s,;|]+/)', $js);
         $this->assertDoesNotMatchRegularExpression(
             '/if \(!t \|\| t\.length > 500 \|\| \/\\\\r\|\\\\n\/\.test\(t\)\) return false;/',
             $js

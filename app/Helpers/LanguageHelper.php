@@ -588,6 +588,8 @@ if (! function_exists('activity_action_labels')) {
             'website.suggested' => 'Suggested a website',
             'catalog_activity.exempt_toggled' => 'Toggled catalog pace exemption',
             'catalog_activity.copy_hide_cleared' => 'Cleared catalog copy hide',
+            'catalog_hide_lifted' => 'Lifted catalog hide mode',
+            'catalog_strikes_reset' => 'Reset catalog copy strikes',
             'blog.published' => 'Published blog',
             'blog.unpublished' => 'Unpublished blog',
             'blog.deleted' => 'Deleted blog',

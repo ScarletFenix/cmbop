@@ -462,6 +462,72 @@ class CatalogUrlRevealTest extends TestCase
         ]);
     }
 
+    public function test_cart_add_does_not_unmask_the_catalog_during_a_slow_down(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.slow_after' => 2,
+            'catalog.url_reveal.pace.slow_window_seconds' => 60,
+            'catalog.url_reveal.pace.freeze_after' => 250,
+        ]);
+
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+
+        foreach (['cart-slow-a.example', 'cart-slow-b.example'] as $domain) {
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.catalog.reveal-url', $this->site($publisher, $domain)->id))
+                ->assertOk();
+        }
+
+        $blocked = $this->site($publisher, 'cart-slow-should-stay-masked.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $blocked->id])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $blocked->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertDontSee('cart-slow-should-stay-masked.example');
+    }
+
+    public function test_cart_add_does_not_unmask_the_catalog_while_frozen(): void
+    {
+        config([
+            'catalog.url_reveal.pace.enforce' => true,
+            'catalog.url_reveal.pace.freeze_after' => 3,
+            'catalog.url_reveal.pace.freeze_window_minutes' => 30,
+        ]);
+
+        $advertiser = $this->putInHideMode($this->userWithRole('advertiser'));
+        $publisher = $this->userWithRole('publisher');
+
+        foreach (['cart-freeze-a.example', 'cart-freeze-b.example', 'cart-freeze-c.example'] as $domain) {
+            $this->actingAs($advertiser)
+                ->postJson(route('advertiser.catalog.reveal-url', $this->site($publisher, $domain)->id))
+                ->assertOk();
+        }
+
+        $blocked = $this->site($publisher, 'cart-freeze-should-stay-masked.example');
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.cart.add'), ['id' => $blocked->id])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertDatabaseMissing('site_url_reveals', [
+            'user_id' => $advertiser->id,
+            'site_id' => $blocked->id,
+        ]);
+    }
+
     // —— Who else can see ————————————————————————————————————————
 
     public function test_a_publisher_always_sees_their_own_listing(): void
