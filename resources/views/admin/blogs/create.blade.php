@@ -179,6 +179,14 @@
                         </div>
 
                         <div class="mb-3">
+                            <label class="form-label fw-semibold">Author</label>
+                            <input type="text" name="author" class="form-control @error('author') is-invalid @enderror" value="{{ old_text('author', auth()->user()?->name) }}" maxlength="120">
+                            @error('author')
+                                <div class="invalid-feedback">{{ $message }}</div>
+                            @enderror
+                        </div>
+
+                        <div class="mb-3">
                             <label class="form-label fw-semibold">Tags</label>
                             <input type="text" name="tags" class="form-control @error('tags') is-invalid @enderror" value="{{ old_text('tags') }}" placeholder="laravel, php, web development">
                             <small class="text-muted">Comma-separated tags</small>

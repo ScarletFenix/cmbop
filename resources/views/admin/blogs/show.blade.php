@@ -65,7 +65,7 @@
             <div class="row mt-4 pt-3 border-top">
                 <div class="col-md-6">
                     <small class="text-muted">
-                        <strong>Author:</strong> {{ $blog->author ?? $blog->creator->name ?? 'Admin' }}
+                        <strong>Author:</strong> {{ $blog->author ?? $blog->creator?->name ?? 'Admin' }}
                     </small>
                 </div>
                 <div class="col-md-6 text-md-end">
