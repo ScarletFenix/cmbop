@@ -7,7 +7,7 @@
     @include('admin.partials.page-header', [
         'title' => 'Payments Management',
         'subtitle' => 'Confirm Wise / bank / crypto, fail unpaid checkouts, or refund in-flight paid orders to the advertiser wallet',
-        'actionUrl' => route('admin.orders.index'),
+        'actionUrl' => route('admin.orders.index', absolute: false),
         'actionLabel' => 'Orders console',
         'actionIcon' => 'fa-shopping-bag',
     ])
@@ -23,7 +23,7 @@
             </div>
         </div>
         <div class="col-md-8 d-flex align-items-end justify-content-md-end gap-2">
-            <a id="exportPaymentsBtn" href="{{ route('admin.payments.export') }}" class="btn btn-outline-secondary btn-sm">
+            <a id="exportPaymentsBtn" href="{{ route('admin.payments.export', absolute: false) }}" class="btn btn-outline-secondary btn-sm">
                 <i class="fa fa-download me-1"></i> Export CSV
             </a>
         </div>
@@ -253,10 +253,10 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
-const PAYMENTS_DATA = @json(route('admin.payments.data'));
-const PAYMENTS_UPDATE = @json(route('admin.payments.updateStatus', ['id' => '__ID__']));
-const PAYMENTS_EXPORT = @json(route('admin.payments.export'));
-const ORDERS_SHOW = @json(route('admin.orders.show', ['id' => '__ID__']));
+const PAYMENTS_DATA = @json(route('admin.payments.data', absolute: false));
+const PAYMENTS_UPDATE = @json(route('admin.payments.updateStatus', ['id' => '__ID__'], absolute: false));
+const PAYMENTS_EXPORT = @json(route('admin.payments.export', absolute: false));
+const ORDERS_SHOW = @json(route('admin.orders.show', ['id' => '__ID__'], absolute: false));
 
 function paymentUrl(template, id) {
     return String(template).replace('__ID__', encodeURIComponent(id));
@@ -558,8 +558,11 @@ $(document).ready(function() {
                     $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(response.message || 'Failed to load payments') + '</td></tr>');
                 }
             },
-            error: function() {
-                $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">Error loading payments. Please refresh the page.</td></tr>');
+            error: function(xhr) {
+                var message = xhr.responseJSON && xhr.responseJSON.message
+                    ? xhr.responseJSON.message
+                    : 'Error loading payments. Please refresh the page.';
+                $('#paymentsTableBody').html('<tr><td colspan="10" class="text-center text-danger py-5">' + escapeHtml(message) + '</td></tr>');
             }
         });
     }

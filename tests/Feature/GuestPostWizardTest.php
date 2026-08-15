@@ -360,6 +360,35 @@ class GuestPostWizardTest extends TestCase
             ->assertRedirect(route('advertiser.checkout', ['wizard' => 1]));
     }
 
+    public function test_pay_drops_an_incomplete_link_assignment(): void
+    {
+        $advertiser = $this->advertiser();
+        $site = $this->activeSite($this->publisher());
+        $article = $this->createApprovedSubmission($advertiser, null, 0, 'anchor', 'https://example.com/a', 'us', 'en');
+        $article->update(['target_url' => null]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                GuestPostWizardController::SESSION_KEY => [
+                    'language' => 'en',
+                    'categories' => [],
+                ],
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'price' => 46,
+                    'quantity' => 1,
+                    'language' => 'en',
+                    'country' => 'us',
+                    'content_submission_id' => $article->id,
+                ]],
+            ])
+            ->get(route('advertiser.wizard.pay'))
+            ->assertRedirect(route('advertiser.wizard.content'));
+
+        $this->assertSame(0, (int) (session('cart')[0]['content_submission_id'] ?? 0));
+    }
+
     public function test_catalog_and_library_still_work_without_wizard(): void
     {
         $advertiser = $this->advertiser();

@@ -223,6 +223,123 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
     }
 
+    public function test_wallet_approve_first_sibling_does_not_burn_other_leftover(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 120,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->site($publisher);
+        $first = $this->walletOrder($advertiser, $site, 50, 'REF-WALLET-APPROVE-SIB');
+        $this->walletOrder($advertiser, $site, 50, 'REF-WALLET-APPROVE-SIB');
+        $first->order->update(['status' => 'review']);
+        $first->update([
+            'live_url' => 'https://card-bonus.example/live-wallet-sib',
+            'live_url_submitted_at' => now()->subHour(),
+            'accepted_at' => now()->subHours(2),
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-APPROVE-SIB', 20);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $first->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(70.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(30.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-OTHER-APPROVE-SIB'),
+            0.01
+        );
+    }
+
+    public function test_card_approve_does_not_burn_another_checkout_leftover(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 40,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->site($publisher);
+        $item = $this->cardOrder($advertiser, $site, 80, 'REF-CARD-APPROVE-ISO');
+        $item->order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://card-bonus.example/live-card-iso',
+            'live_url_submitted_at' => now()->subHour(),
+            'accepted_at' => now()->subHours(2),
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-CARD-APPROVE-ISO', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-CARD-APPROVE', 20);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-OTHER-CARD-APPROVE'),
+            0.01
+        );
+    }
+
+    public function test_rejecting_card_does_not_steal_another_checkout_leftover(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 40,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-CARD-REJECT-ISO');
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-CARD-REJECT-ISO', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-CARD-REJECT', 20);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $item->id), [
+                'reason' => 'The topic does not fit our editorial guidelines.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-OTHER-CARD-REJECT'),
+            0.01
+        );
+    }
+
     public function test_wallet_approve_does_not_burn_another_checkout_leftover(): void
     {
         $advertiser = $this->userWithRole('advertiser');
@@ -394,11 +511,11 @@ class CardBonusRefundInvariantTest extends TestCase
 
         $wallet->refresh();
         $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
-        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
-        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
-        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(30.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(30.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(
-            0.0,
+            10.0,
             app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-REFUND-THEN-FAIL'),
             0.01
         );
@@ -411,7 +528,7 @@ class CardBonusRefundInvariantTest extends TestCase
             ->assertJsonPath('success', true);
 
         $wallet->refresh();
-        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);

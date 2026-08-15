@@ -427,6 +427,87 @@ class AdminFinanceHubTest extends TestCase
         $this->assertStringContainsString('.finance-ledger-filters__action .btn', $css);
     }
 
+    public function test_overview_toolbar_aligns_actions_with_dossier_input(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance'))
+            ->assertOk()
+            ->assertSee('Find user dossier')
+            ->assertSee('Wallet ledger')
+            ->assertSee('Export period CSV')
+            ->getContent();
+
+        $this->assertStringContainsString('admin-finance-toolbar', $html);
+        $this->assertStringContainsString('admin-finance-toolbar d-flex flex-wrap align-items-end', $html);
+        $this->assertStringContainsString('admin-finance-toolbar__search', $html);
+        $this->assertStringContainsString('admin-finance-toolbar__action', $html);
+        $this->assertStringContainsString('for="adminFinanceUserSearch"', $html);
+        $this->assertStringContainsString('id="adminFinanceUserOpen"', $html);
+        $this->assertStringContainsString('id="adminFinanceWalletLedger"', $html);
+        $this->assertStringContainsString('id="adminFinanceExport"', $html);
+        $this->assertStringContainsString('id="adminFinanceApplyRange"', $html);
+
+        $blade = (string) file_get_contents(resource_path('views/admin/finance.blade.php'));
+        $this->assertStringNotContainsString('admin-finance-toolbar d-flex flex-wrap gap-2 align-items-start', $blade);
+        $this->assertStringNotContainsString('btn-outline-primary mb-3', $blade);
+
+        $css = (string) file_get_contents(public_path('assets/css/admin-components.css'));
+        $this->assertStringContainsString('.admin-finance-toolbar__search', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar .slb-search-status', $css);
+        $this->assertMatchesRegularExpression('/\.admin-finance-toolbar \.slb-search-status\s*\{[^}]*position:\s*absolute/s', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar .slb-search-status:empty', $css);
+        $this->assertStringContainsString('.admin-finance-toolbar .btn', $css);
+    }
+
+    public function test_overview_dossier_search_keeps_selected_period(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance', ['period' => 'week']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('name="period" value="week"', $html);
+        $this->assertStringNotContainsString('<input type="hidden" name="date_from"', $html);
+        $this->assertSame(2, substr_count($html, 'name="period" value="week"'));
+    }
+
+    public function test_overview_dossier_search_keeps_custom_dates(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance', [
+                'date_from' => '2026-01-01',
+                'date_to' => '2026-01-31',
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('name="date_from" value="2026-01-01"', $html);
+        $this->assertStringContainsString('name="date_to" value="2026-01-31"', $html);
+        $this->assertStringNotContainsString('name="period"', $html);
+    }
+
+    public function test_overview_period_form_and_presets_keep_dossier_query(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance', ['q' => 'zz-no-match', 'period' => 'all']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('name="q" value="zz-no-match"', $html);
+        $this->assertStringContainsString('admin-finance-period', $html);
+        $this->assertStringContainsString('period=all&amp;q=zz-no-match', $html);
+        $this->assertStringContainsString('period=week&amp;q=zz-no-match', $html);
+        $this->assertStringContainsString('period=month&amp;q=zz-no-match', $html);
+    }
+
     public function test_ledger_rejects_invalid_dates_and_array_search(): void
     {
         $admin = $this->makeUser('admin');

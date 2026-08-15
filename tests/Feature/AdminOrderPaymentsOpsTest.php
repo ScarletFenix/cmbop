@@ -443,6 +443,60 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertEqualsWithDelta(10.0, (float) $wallet->fresh()->balance, 0.01);
     }
 
+    public function test_wallet_fail_first_sibling_does_not_take_other_leftover(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 120,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->makeSite($this->makeUser('publisher'), 'wallet-sib-left');
+        $first = $this->makeOrder($advertiser, $site, [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 50,
+            'subtotal' => 50,
+            'reference_code' => 'PAY-WALLET-SIB-LEFT',
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 50,
+            'subtotal' => 50,
+            'reference_code' => 'PAY-WALLET-SIB-LEFT',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PAY-OTHER-SIB-LEFT', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $first->id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(70.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(30.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'PAY-OTHER-SIB-LEFT'),
+            0.01
+        );
+    }
+
     public function test_wallet_fail_without_intent_does_not_steal_other_leftover(): void
     {
         $admin = $this->makeUser('admin');
@@ -916,8 +970,11 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertStringContainsString('willMoveMoney', $html);
         $this->assertStringContainsString('does not credit the wallet again', $html);
         $this->assertStringContainsString('Choose a payment status first.', $html);
+        $this->assertStringContainsString(json_encode(route('admin.payments.data', absolute: false)), $html);
+        $this->assertStringNotContainsString('const PAYMENTS_DATA = '.json_encode(route('admin.payments.data')), $html);
         $blade = file_get_contents(resource_path('views/admin/payments.blade.php'));
         $this->assertStringNotContainsString('cdn.jsdelivr.net/npm/sweetalert2@11', $blade);
+        $this->assertStringContainsString("route('admin.payments.data', absolute: false)", $blade);
     }
 
     public function test_cannot_mark_paid_when_listing_left_the_catalog(): void

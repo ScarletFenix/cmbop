@@ -263,6 +263,7 @@ class ContentUploadService
         $fresh = $fresh->fresh();
         $result = $this->presentEvaluationResult($fresh, $result);
         $this->persistPresentedEvaluationReport($fresh, $result);
+        $this->syncWizardStepWithPresentedResult($fresh, $result);
         $fresh = $fresh->fresh();
         $this->notifyAdvertiserOfEvaluation($fresh, $result);
 
@@ -464,6 +465,19 @@ class ContentUploadService
     /**
      * @param  array<string, mixed>  $result
      */
+    protected function syncWizardStepWithPresentedResult(ContentSubmission $submission, array $result): void
+    {
+        $step = ! empty($result['approved']) ? max(2, (int) $submission->wizard_step) : 1;
+        if ((int) $submission->wizard_step === $step) {
+            return;
+        }
+
+        $submission->update(['wizard_step' => $step]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
     protected function notifyInApp(User $user, ContentSubmission $submission, array $result): void
     {
         app(InAppNotificationService::class)->notifyContentEvaluation($user, $submission, $result);
@@ -636,6 +650,7 @@ class ContentUploadService
         $fresh = $submission->fresh();
         $result = $this->presentEvaluationResult($fresh, $result);
         $this->persistPresentedEvaluationReport($fresh, $result);
+        $this->syncWizardStepWithPresentedResult($fresh, $result);
         $fresh = $fresh->fresh();
         if ($notify) {
             $this->notifyAdvertiserOfEvaluation($fresh, $result);
