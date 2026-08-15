@@ -50,6 +50,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
+        $this->assertStringContainsString('re-check staff roles at send time', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
