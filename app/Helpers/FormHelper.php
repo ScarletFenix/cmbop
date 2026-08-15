@@ -51,6 +51,19 @@ if (! function_exists('search_text')) {
     }
 }
 
+if (! function_exists('like_contains')) {
+    /**
+     * LIKE pattern that matches a literal needle (%, _, \ are escaped).
+     *
+     * Pair with `ESCAPE '\\'` so SQLite and MySQL treat the backslashes
+     * as escapes instead of leftover wildcards.
+     */
+    function like_contains(string $value): string
+    {
+        return '%'.str_replace(['\\', '%', '_'], ['\\\\', '\%', '\_'], $value).'%';
+    }
+}
+
 if (! function_exists('filter_number')) {
     /**
      * Numeric query/body value, or null when missing / non-scalar / non-numeric.

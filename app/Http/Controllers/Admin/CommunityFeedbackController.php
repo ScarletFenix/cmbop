@@ -20,11 +20,22 @@ class CommunityFeedbackController extends Controller
 
     public function index(Request $request)
     {
-        $tab = CommunityInbox::normalizeTab($request->get('tab'));
-        $status = CommunityInbox::normalizeStatus($tab, $request->get('status'));
         $q = search_text($request->get('q'));
-        $statuses = CommunityInbox::statusesFor($tab);
         $tabs = CommunityInbox::TABS;
+        $counts = [
+            'problems' => ProblemReport::where('status', 'pending')->count(),
+            'suggestions' => Suggestion::where('status', 'pending')->count(),
+            'websites' => WebsiteSuggestion::where('status', 'pending')->count(),
+            'claims' => SiteClaim::where('status', 'pending')->count(),
+        ];
+
+        $tabProvided = search_text($request->query('tab')) !== '';
+        $tab = $tabProvided
+            ? CommunityInbox::normalizeTab($request->query('tab'))
+            : CommunityInbox::landingTab($counts);
+        $status = CommunityInbox::normalizeStatus($tab, $request->get('status'));
+        $statuses = CommunityInbox::statusesFor($tab);
+        $filtered = $q !== '' || $status !== null;
         $tabQueries = [];
         foreach (array_keys($tabs) as $key) {
             $tabQueries[$key] = CommunityInbox::tabQuery($key, $q, $request->get('status'));
@@ -35,10 +46,8 @@ class CommunityFeedbackController extends Controller
             ->when($tab === 'problems' && $status, fn ($query) => $query->where('status', $status))
             ->when($tab === 'problems' && $q !== '', function ($query) use ($q) {
                 $query->where(function ($inner) use ($q) {
-                    $inner->where('subject', 'like', "%{$q}%")
-                        ->orWhere('message', 'like', "%{$q}%")
-                        ->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('name', 'like', "%{$q}%");
+                    CommunityInbox::constrainSearch($inner, ['subject', 'message', 'email', 'name', 'page_url'], $q);
+                    $inner->orWhereHas('user', fn ($u) => CommunityInbox::constrainSearch($u, ['name', 'email'], $q));
                 });
             })
             ->latest('id')
@@ -50,9 +59,8 @@ class CommunityFeedbackController extends Controller
             ->when($tab === 'suggestions' && $status, fn ($query) => $query->where('status', $status))
             ->when($tab === 'suggestions' && $q !== '', function ($query) use ($q) {
                 $query->where(function ($inner) use ($q) {
-                    $inner->where('message', 'like', "%{$q}%")
-                        ->orWhere('email', 'like', "%{$q}%")
-                        ->orWhere('name', 'like', "%{$q}%");
+                    CommunityInbox::constrainSearch($inner, ['message', 'email', 'name', 'page_url'], $q);
+                    $inner->orWhereHas('user', fn ($u) => CommunityInbox::constrainSearch($u, ['name', 'email'], $q));
                 });
             })
             ->latest('id')
@@ -64,10 +72,8 @@ class CommunityFeedbackController extends Controller
             ->when($tab === 'websites' && $status, fn ($query) => $query->where('status', $status))
             ->when($tab === 'websites' && $q !== '', function ($query) use ($q) {
                 $query->where(function ($inner) use ($q) {
-                    $inner->where('website_name', 'like', "%{$q}%")
-                        ->orWhere('website_url', 'like', "%{$q}%")
-                        ->orWhere('domain', 'like', "%{$q}%")
-                        ->orWhere('notes', 'like', "%{$q}%");
+                    CommunityInbox::constrainSearch($inner, ['website_name', 'website_url', 'domain', 'notes'], $q);
+                    $inner->orWhereHas('user', fn ($u) => CommunityInbox::constrainSearch($u, ['name', 'email'], $q));
                 });
             })
             ->latest('id')
@@ -76,41 +82,52 @@ class CommunityFeedbackController extends Controller
 
         $claims = SiteClaim::query()
             ->with([
-                'site:id,site_name,domain,site_url,publisher_id',
+                'site:id,site_name,domain,site_url,publisher_id,verified',
                 'site.publisher:id,name,email',
                 'claimer:id,name,email',
+                'claimer.roles',
                 'reviewer:id,name',
             ])
             ->when($tab === 'claims' && $status, fn ($query) => $query->where('status', $status))
             ->when($tab === 'claims' && $q !== '', function ($query) use ($q) {
                 $query->where(function ($inner) use ($q) {
-                    $inner->where('website_name', 'like', "%{$q}%")
-                        ->orWhere('domain', 'like', "%{$q}%")
-                        ->orWhere('proof_message', 'like', "%{$q}%")
-                        ->orWhereHas('claimer', function ($u) use ($q) {
-                            $u->where('name', 'like', "%{$q}%")->orWhere('email', 'like', "%{$q}%");
-                        });
+                    CommunityInbox::constrainSearch($inner, ['website_name', 'domain', 'proof_message', 'contact_email'], $q);
+                    $inner->orWhereHas('claimer', fn ($u) => CommunityInbox::constrainSearch($u, ['name', 'email'], $q));
+                    $inner->orWhereHas('site', fn ($s) => CommunityInbox::constrainSearch($s, ['site_name', 'domain'], $q));
                 });
             })
             ->latest('id')
             ->paginate(25, ['*'], 'claims_page')
             ->withQueryString();
 
-        $counts = [
-            'problems' => ProblemReport::where('status', 'pending')->count(),
-            'suggestions' => Suggestion::where('status', 'pending')->count(),
-            'websites' => WebsiteSuggestion::where('status', 'pending')->count(),
-            'claims' => SiteClaim::where('status', 'pending')->count(),
-        ];
-
-        // Open (in-flight) order / dispute counts per pending claim so the approve dialog can warn.
         $claimOpenOrders = [];
         $claimOpenDisputes = [];
+        $claimContexts = [];
+        $claimSiblingPending = [];
+        $siteIds = $claims->getCollection()->pluck('site_id')->filter()->unique()->values();
+        $pendingBySite = $siteIds->isEmpty()
+            ? collect()
+            : SiteClaim::query()
+                ->whereIn('site_id', $siteIds)
+                ->where('status', 'pending')
+                ->selectRaw('site_id, COUNT(*) as aggregate')
+                ->groupBy('site_id')
+                ->pluck('aggregate', 'site_id');
+
         foreach ($claims as $claim) {
             if ($claim->status === 'pending' && $claim->site) {
                 $claimOpenOrders[$claim->id] = $this->claimTransfers->openOrderItemsCount($claim->site);
                 $claimOpenDisputes[$claim->id] = $this->claimTransfers->openDisputesCount($claim->site);
             }
+            $pendingOnSite = (int) ($pendingBySite[$claim->site_id] ?? 0);
+            $claimSiblingPending[$claim->id] = max(0, $pendingOnSite - ($claim->status === 'pending' ? 1 : 0));
+            $claimContexts[$claim->id] = [
+                'open_orders' => $claimOpenOrders[$claim->id] ?? 0,
+                'open_disputes' => $claimOpenDisputes[$claim->id] ?? 0,
+                'verified' => (bool) ($claim->site?->verified),
+                'name_matches' => (bool) $claim->name_matches,
+                'claimer_has_publisher_role' => (bool) ($claim->claimer?->roles?->contains('name', 'publisher')),
+            ];
         }
 
         return view('admin.community.index', compact(
@@ -118,6 +135,8 @@ class CommunityFeedbackController extends Controller
             'tabs',
             'status',
             'statuses',
+            'q',
+            'filtered',
             'tabQueries',
             'problems',
             'suggestions',
@@ -125,7 +144,9 @@ class CommunityFeedbackController extends Controller
             'claims',
             'counts',
             'claimOpenOrders',
-            'claimOpenDisputes'
+            'claimOpenDisputes',
+            'claimContexts',
+            'claimSiblingPending'
         ));
     }
 
@@ -224,11 +245,16 @@ class CommunityFeedbackController extends Controller
             'admin_notes' => 'nullable|string|max:2000',
         ]);
 
+        $goingPending = $data['status'] === 'pending';
+        $leavingPending = $model->status === 'pending' && ! $goingPending;
+
         $model->forceFill([
             'status' => $data['status'],
             'admin_notes' => $data['admin_notes'] ?? $model->admin_notes,
-            'reviewed_at' => now(),
-            'reviewed_by' => auth()->id(),
+            'reviewed_at' => $goingPending ? null : now(),
+            'reviewed_by' => $goingPending
+                ? null
+                : ($leavingPending ? auth()->id() : ($model->reviewed_by ?: auth()->id())),
         ])->save();
 
         ActivityLogger::log(

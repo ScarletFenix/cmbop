@@ -63,4 +63,42 @@ class CommunityInboxTest extends TestCase
         $this->assertNull(CommunityInbox::normalizeStatus('problems', ['pending']));
         $this->assertNull(CommunityInbox::normalizeStatus('problems', ''));
     }
+
+    public function test_landing_tab_picks_the_first_pending_inbox(): void
+    {
+        $this->assertSame('problems', CommunityInbox::landingTab([
+            'problems' => 0,
+            'suggestions' => 0,
+            'websites' => 0,
+            'claims' => 0,
+        ]));
+        $this->assertSame('claims', CommunityInbox::landingTab([
+            'problems' => 0,
+            'suggestions' => 0,
+            'websites' => 0,
+            'claims' => 2,
+        ]));
+        $this->assertSame('suggestions', CommunityInbox::landingTab([
+            'problems' => 0,
+            'suggestions' => 1,
+            'websites' => 4,
+            'claims' => 2,
+        ]));
+    }
+
+    public function test_safe_http_url_rejects_non_http_schemes(): void
+    {
+        $this->assertSame('https://app.example/checkout', CommunityInbox::safeHttpUrl('https://app.example/checkout'));
+        $this->assertSame('http://app.example/x', CommunityInbox::safeHttpUrl('http://app.example/x'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('javascript:alert(1)'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('/relative'));
+        $this->assertNull(CommunityInbox::safeHttpUrl(['https://x.example']));
+    }
+
+    public function test_status_badge_classes(): void
+    {
+        $this->assertSame('bg-warning text-dark', CommunityInbox::statusBadgeClass('pending'));
+        $this->assertSame('bg-success', CommunityInbox::statusBadgeClass('approved'));
+        $this->assertSame('bg-danger', CommunityInbox::statusBadgeClass('rejected'));
+    }
 }

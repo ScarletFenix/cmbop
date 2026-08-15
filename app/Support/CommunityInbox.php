@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Illuminate\Database\Eloquent\Builder;
+
 /**
  * Per-tab status vocabulary for the admin Community inbox.
  *
@@ -91,5 +93,67 @@ class CommunityInbox
         }
 
         return $params;
+    }
+
+    /**
+     * First tab that still has pending items (problems → claims).
+     *
+     * @param  array<string, int>  $pendingCounts
+     */
+    public static function landingTab(array $pendingCounts): string
+    {
+        foreach (array_keys(self::TABS) as $tab) {
+            if ((int) ($pendingCounts[$tab] ?? 0) > 0) {
+                return $tab;
+            }
+        }
+
+        return self::DEFAULT_TAB;
+    }
+
+    public static function statusBadgeClass(string $status): string
+    {
+        return match ($status) {
+            'pending' => 'bg-warning text-dark',
+            'reviewed' => 'bg-info text-dark',
+            'resolved', 'accepted', 'approved' => 'bg-success',
+            'rejected' => 'bg-danger',
+            default => 'bg-secondary',
+        };
+    }
+
+    public static function safeHttpUrl(mixed $url): ?string
+    {
+        $url = search_text($url);
+        if ($url === '' || ! preg_match('#^https?://#i', $url)) {
+            return null;
+        }
+
+        return $url;
+    }
+
+    /**
+     * AND-group of LIKE ? ESCAPE '\\' matches across the given columns.
+     *
+     * @param  Builder|\Illuminate\Database\Query\Builder  $query
+     * @param  list<string>  $columns
+     */
+    public static function constrainSearch($query, array $columns, string $q): void
+    {
+        if ($q === '' || $columns === []) {
+            return;
+        }
+
+        $like = like_contains($q);
+        $query->where(function ($inner) use ($columns, $like) {
+            foreach ($columns as $i => $column) {
+                $sql = $column.' LIKE ? ESCAPE ?';
+                if ($i === 0) {
+                    $inner->whereRaw($sql, [$like, '\\']);
+                } else {
+                    $inner->orWhereRaw($sql, [$like, '\\']);
+                }
+            }
+        });
     }
 }

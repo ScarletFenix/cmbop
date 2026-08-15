@@ -375,4 +375,143 @@ class CommunityFeedbackTest extends TestCase
         $this->assertStringNotContainsString('</textarea><img src=x onerror=alert(1)>', $html);
         $this->assertStringContainsString('&lt;/textarea&gt;', $html);
     }
+
+    public function test_reopening_a_problem_clears_reviewer_and_keeps_first_reviewer_on_resolve(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $other = $this->userWithRole('admin');
+        $report = ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'reviewed',
+        ])->assertOk();
+
+        $report->refresh();
+        $this->assertSame('reviewed', $report->status);
+        $this->assertNotNull($report->reviewed_at);
+        $this->assertSame($admin->id, (int) $report->reviewed_by);
+
+        $this->actingAs($other)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+        ])->assertOk();
+
+        $report->refresh();
+        $this->assertSame('resolved', $report->status);
+        $this->assertSame($admin->id, (int) $report->reviewed_by);
+        $this->assertNotNull($report->reviewed_at);
+
+        $this->actingAs($other)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'pending',
+        ])->assertOk();
+
+        $report->refresh();
+        $this->assertSame('pending', $report->status);
+        $this->assertNull($report->reviewed_at);
+        $this->assertNull($report->reviewed_by);
+    }
+
+    public function test_filtered_empty_state_and_page_url_are_visible(): void
+    {
+        $admin = $this->userWithRole('admin');
+        ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'page_url' => 'https://app.example/checkout',
+            'status' => 'pending',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('https://app.example/checkout', $html);
+        $this->assertStringContainsString('communityDrawer', $html);
+        $this->assertStringContainsString('btn-community-drawer', $html);
+        $this->assertStringContainsString('bg-warning text-dark', $html);
+
+        $empty = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'problems', 'status' => 'resolved']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No matches for this filter.', $empty);
+        $this->assertStringNotContainsString('No problem reports yet.', $empty);
+    }
+
+    public function test_website_search_finds_requester_email_and_literal_percent_is_not_a_wildcard(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $other = $this->userWithRole('advertiser');
+
+        WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://fresh-tech.example',
+            'domain' => 'fresh-tech.example',
+            'status' => 'pending',
+        ]);
+        WebsiteSuggestion::create([
+            'user_id' => $other->id,
+            'website_name' => 'Other News',
+            'website_url' => 'https://other-news.example',
+            'domain' => 'other-news.example',
+            'status' => 'pending',
+        ]);
+
+        $byEmail = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'websites', 'q' => $advertiser->email]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Fresh Tech Blog', $byEmail);
+        $this->assertStringNotContainsString('Other News', $byEmail);
+
+        $percent = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['tab' => 'websites', 'q' => '%']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No matches for this filter.', $percent);
+        $this->assertStringNotContainsString('Fresh Tech Blog', $percent);
+        $this->assertStringNotContainsString('Other News', $percent);
+    }
+
+    public function test_community_without_tab_lands_on_the_busiest_pending_inbox(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $owner = $this->userWithRole('publisher');
+        $claimer = $this->userWithRole('publisher');
+        $site = $this->siteFor($owner);
+
+        SiteClaim::create([
+            'site_id' => $site->id,
+            'claimer_id' => $claimer->id,
+            'website_name' => $site->site_name,
+            'website_url' => $site->site_url,
+            'domain' => $site->domain,
+            'name_matches' => true,
+            'proof_message' => 'Landing-tab claim proof unique string.',
+            'contact_email' => $claimer->email,
+            'status' => 'pending',
+        ]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.community.index', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('Landing-tab claim proof unique string.', $html);
+        $this->assertStringContainsString('nav-link active', $html);
+        $this->assertMatchesRegularExpression('/tab=claims/', $html);
+    }
 }
