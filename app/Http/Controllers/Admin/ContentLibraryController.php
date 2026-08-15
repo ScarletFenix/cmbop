@@ -34,7 +34,8 @@ class ContentLibraryController extends Controller
                 'user:id,name,email',
                 'order:id,status,payment_status,order_number',
                 'orderItem.site:id,site_name,site_url',
-                'orderItems.order:id,status,payment_status',
+                'orderItems.site:id,site_name,site_url',
+                'orderItems.order:id,status,payment_status,order_number',
             ])
             ->latest('id');
 
