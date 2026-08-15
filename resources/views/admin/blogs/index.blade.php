@@ -95,7 +95,7 @@
                             <td>{{ $blog->id }}</td>
                             <td>
                                 @if($blog->featured_image)
-                                    <img src="{{ Storage::url($blog->featured_image) }}" alt="{{ $blog->title }}" class="rounded" style="width: 50px; height: 50px; object-fit: cover;">
+                                    <img src="{{ $blog->featuredImageUrl() }}" alt="{{ $blog->title }}" class="rounded" style="width: 50px; height: 50px; object-fit: cover;">
                                 @else
                                     <div class="bg-light rounded d-flex align-items-center justify-content-center" style="width: 50px; height: 50px;">
                                         <i class="fa fa-image text-muted"></i>

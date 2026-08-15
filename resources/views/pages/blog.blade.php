@@ -97,7 +97,7 @@
                                         @if($post->featured_image)
                                             <div class="col-md-4">
                                                 <div style="height: 100%; overflow: hidden;">
-                                                    <img src="{{ Storage::url($post->featured_image) }}" 
+                                                    <img src="{{ $post->featuredImageUrl() }}" 
                                                          class="img-fluid w-100 h-100" 
                                                          alt="{{ $post->title }}"
                                                          style="object-fit: cover; transition: transform 0.3s;">
@@ -188,7 +188,7 @@
                             <a href="{{ localized_url('blog/'.$recent->slug) }}" class="text-decoration-none d-block mb-3">
                                 <div class="d-flex gap-3 align-items-start">
                                     @if($recent->featured_image)
-                                        <img src="{{ Storage::url($recent->featured_image) }}" 
+                                        <img src="{{ $recent->featuredImageUrl() }}" 
                                              alt="{{ $recent->title }}" 
                                              style="width: 60px; height: 60px; object-fit: cover; border-radius: 12px;">
                                     @else

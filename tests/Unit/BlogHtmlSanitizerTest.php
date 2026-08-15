@@ -74,10 +74,20 @@ class BlogHtmlSanitizerTest extends TestCase
         $clean = $this->sanitizer->sanitize(
             '<img src="https://cdn.example.com/a.png" alt="A">'
             .'<img src="/storage/blogs/content/b.png" alt="B">'
+            .'<img src="/media/blogs/content/c.webp" alt="C">'
         );
 
         $this->assertStringContainsString('src="https://cdn.example.com/a.png"', $clean);
         $this->assertStringContainsString('src="/storage/blogs/content/b.png"', $clean);
+        $this->assertStringContainsString('src="/media/blogs/content/c.webp"', $clean);
+    }
+
+    public function test_image_with_untrusted_media_prefix_is_removed(): void
+    {
+        $clean = $this->sanitizer->sanitize('<img src="/media/sites/cover.webp" alt="No">');
+
+        $this->assertStringNotContainsString('<img', $clean);
+        $this->assertStringNotContainsString('/media/sites/', $clean);
     }
 
     public function test_image_with_unsupported_scheme_is_removed(): void

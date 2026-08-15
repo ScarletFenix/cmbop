@@ -170,7 +170,7 @@ class SeoAndSecurityHeadersTest extends TestCase
             ->assertSee('BlogPosting', false)
             ->assertSee('Structured Data Post', false)
             ->assertSee('twitter:card', false)
-            ->assertSee('storage/blogs/featured/structured-data.jpg', false)
+            ->assertSee('media/blogs/featured/structured-data.jpg', false)
             ->assertSee('BreadcrumbList', false);
     }
 

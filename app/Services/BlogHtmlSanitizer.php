@@ -101,6 +101,7 @@ class BlogHtmlSanitizer
                 $allowed = $src !== '' && (
                     preg_match('#^https?://#i', $src)
                     || str_starts_with($src, '/storage/')
+                    || str_starts_with($src, '/media/blogs/')
                     || str_starts_with($src, 'data:image/')
                 );
                 if (! $allowed) {

@@ -7,12 +7,15 @@ use App\Http\Requests\Admin\StoreBlogRequest;
 use App\Http\Requests\Admin\UpdateBlogRequest;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
+use App\Models\Site;
 use App\Services\BlogHtmlSanitizer;
 use App\Services\CuratedBlogSync;
 use App\Services\CuratedBlogWriter;
+use App\Services\SiteEnrichment\ImageOptimizationService;
 use App\Support\PublicI18n;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
@@ -123,7 +126,12 @@ class BlogController extends Controller
         try {
             $featuredImage = null;
             if ($request->hasFile('featured_image')) {
-                $featuredImage = $request->file('featured_image')->store('blogs/featured', 'public');
+                $featuredImage = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+                if ($featuredImage === null) {
+                    throw ValidationException::withMessages([
+                        'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
+                }
                 Log::info('Featured image uploaded', ['path' => $featuredImage]);
             }
 
@@ -279,7 +287,12 @@ class BlogController extends Controller
                     Log::info('Old featured image deleted', ['path' => $blog->featured_image]);
                 }
 
-                $data['featured_image'] = $request->file('featured_image')->store('blogs/featured', 'public');
+                $data['featured_image'] = $this->storeBlogImage($request->file('featured_image'), 'blogs/featured');
+                if ($data['featured_image'] === null) {
+                    throw ValidationException::withMessages([
+                        'featured_image' => ['Could not save the featured image to storage. Check disk permissions and MEDIA_PATH.'],
+                    ]);
+                }
                 Log::info('New featured image uploaded', ['path' => $data['featured_image']]);
             } elseif ($request->boolean('remove_featured_image')) {
                 if ($blog->featured_image && Storage::disk('public')->exists($blog->featured_image)) {
@@ -411,8 +424,14 @@ class BlogController extends Controller
                 'image' => 'required|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
             ]);
 
-            $imagePath = $request->file('image')->store('blogs/content', 'public');
-            $imageUrl = Storage::url($imagePath);
+            $imagePath = $this->storeBlogImage($request->file('image'), 'blogs/content');
+            if ($imagePath === null) {
+                return response()->json([
+                    'success' => false,
+                    'error' => 'Could not save the image to storage. Check disk permissions and MEDIA_PATH.',
+                ], 500);
+            }
+            $imageUrl = Site::publicDiskUrl($imagePath);
 
             Log::info('Image uploaded via editor', ['path' => $imagePath]);
 
@@ -480,8 +499,10 @@ class BlogController extends Controller
         }
 
         $path = ltrim($path, '/');
-        if (str_starts_with($path, 'storage/')) {
-            $path = substr($path, strlen('storage/'));
+        foreach (['storage/', 'media/'] as $prefix) {
+            if (str_starts_with($path, $prefix)) {
+                $path = ltrim(substr($path, strlen($prefix)), '/');
+            }
         }
 
         $path = ltrim($path, '/');
@@ -508,7 +529,7 @@ class BlogController extends Controller
             $html .= ' '.$translation->content;
         }
 
-        if (preg_match_all('#(?:/storage/)?(blogs/(?:content|featured)/[^"\'\s>]+)#', $html, $matches)) {
+        if (preg_match_all('#(?:/(?:storage|media)/)?(blogs/(?:content|featured)/[^"\'\s>]+)#', $html, $matches)) {
             $paths = array_merge($paths, $matches[1]);
         }
 
@@ -538,6 +559,33 @@ class BlogController extends Controller
                 Storage::disk('public')->delete($resolved);
                 Log::info('Blog image deleted with post', ['path' => $resolved]);
             }
+        }
+    }
+
+    /**
+     * Persist a blog image as WebP when GD can convert; otherwise keep the original file.
+     */
+    private function storeBlogImage(UploadedFile $file, string $directory): ?string
+    {
+        try {
+            $disk = Storage::disk('public');
+            $disk->makeDirectory($directory);
+
+            $stored = app(ImageOptimizationService::class)->storeUploadedImageAsWebp($file, $directory)
+                ?? $file->store($directory, 'public');
+
+            if (! is_string($stored) || $stored === '' || ! $disk->exists($stored)) {
+                return null;
+            }
+
+            return $stored;
+        } catch (\Throwable $e) {
+            Log::error('Blog image store failed', [
+                'directory' => $directory,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
         }
     }
 

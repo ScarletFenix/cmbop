@@ -151,6 +151,37 @@ class AdminBlogPublishTest extends TestCase
         Storage::disk('public')->assertMissing($path);
     }
 
+    public function test_destroy_deletes_unreferenced_media_content_images(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = UploadedFile::fake()->image('inline-media-cleanup.webp')->store('blogs/content', 'public');
+
+        $blog = Blog::factory()->create([
+            'title' => 'Media Cleanup Post',
+            'slug' => 'media-cleanup-post',
+            'content' => '<p><img src="/media/'.$path.'"></p>',
+            'created_by' => $admin->id,
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'en',
+            'title' => 'Media Cleanup Post',
+            'slug' => 'media-cleanup-post',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/media/'.$path.'"></p>',
+            'is_published' => true,
+        ]);
+
+        Storage::disk('public')->assertExists($path);
+
+        $this->actingAs($admin)
+            ->delete(route('admin.blogs.destroy', $blog->id))
+            ->assertRedirect(route('admin.blogs.index'));
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
     public function test_admin_can_filter_blogs_by_search_and_set_author(): void
     {
         $admin = $this->adminUser();

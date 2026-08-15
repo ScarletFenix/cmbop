@@ -166,7 +166,7 @@
                             <div class="border rounded p-3 text-center" style="background: #f8f9fa;">
                                 <div id="featuredImagePreview" class="mb-2">
                                     @if($blog->featured_image)
-                                        <img src="{{ Storage::url($blog->featured_image) }}" alt="Current Image" class="img-fluid rounded" style="max-height: 150px;">
+                                        <img src="{{ $blog->featuredImageUrl() }}" alt="Current Image" class="img-fluid rounded" style="max-height: 150px;">
                                     @else
                                         <div id="noImagePlaceholder">
                                             <i class="fa fa-image fa-3x text-muted mb-2"></i>
