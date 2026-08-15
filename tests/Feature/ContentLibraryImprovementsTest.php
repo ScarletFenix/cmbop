@@ -2343,7 +2343,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('preview_html: previewModalState.html || \'\'', $js);
         $this->assertStringContainsString('const html = previewModalState.html || \'\'', $js);
         $this->assertStringContainsString('let previewOpenedFromEditor = false', $js);
-        $this->assertStringContainsString('data.approved === true && !sub.needs_image_rights', $js);
+        $this->assertStringContainsString('const stillApproved = libraryModerationPassed(data, sub);', $js);
         $this->assertStringNotContainsString('data.approved !== false', $js);
         $this->assertStringNotContainsString(
             "preview_html: document.getElementById('articlePreviewBody').innerHTML",
@@ -2538,7 +2538,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('submission.ready === false', $js);
-        $this->assertStringContainsString('sub.ready === true', $js);
+        $this->assertStringContainsString('if (stillApproved && sub.ready)', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
         $this->assertStringContainsString('function libraryModerationPassed', $js);
         $this->assertStringContainsString('goToLibraryResult(saved, saved.editor_notice || \'\', passed)', $js);
