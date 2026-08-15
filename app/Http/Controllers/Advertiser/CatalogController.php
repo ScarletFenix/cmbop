@@ -5211,7 +5211,7 @@ class CatalogController extends Controller
             $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
         }
 
-        $paymentService->forgetPendingCheckout($referenceCode);
+        $paymentService->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $userId);
 
         $restoredCart = session('cart', []);
         $submissionId = session('checkout_content_submission_id');

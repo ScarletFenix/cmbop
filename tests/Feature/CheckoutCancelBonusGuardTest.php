@@ -119,6 +119,97 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
     }
 
+    public function test_fail_pending_sibling_keeps_paid_sibling_leftover_hold(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher);
+        $wallet = $this->wallet($advertiser, 40);
+        $this->paidCardOrder($advertiser, $site, 80, 'REF-PAID-SIB-FAIL');
+        $this->cardOrder($advertiser, $site, 50, 'REF-PAID-SIB-FAIL', 'pending');
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PAID-SIB-FAIL', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-FAIL-HOLD', 20);
+
+        app(OrderPaymentService::class)->markOrdersFailedFromReference('REF-PAID-SIB-FAIL', 'expired');
+
+        $leftover = round(20 - (20 * (50 / 130)), 2);
+        $this->assertEqualsWithDelta(
+            $leftover,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-PAID-SIB-FAIL'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-FAIL-HOLD'),
+            0.01
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(round(40 - (20 * (50 / 130)), 2), (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(round(20 * (50 / 130), 2), (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_cancel_url_keeps_paid_sibling_leftover_hold(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher);
+        $wallet = $this->wallet($advertiser, 40);
+        $this->paidCardOrder($advertiser, $site, 80, 'REF-PAID-SIB-CANCEL');
+        $this->cardOrder($advertiser, $site, 50, 'REF-PAID-SIB-CANCEL', 'pending');
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PAID-SIB-CANCEL', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-CANCEL-HOLD', 20);
+
+        $this->actingAs($advertiser)
+            ->withSession(['cart' => [['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1]]])
+            ->get(route('advertiser.checkout', ['canceled' => 1, 'ref' => 'REF-PAID-SIB-CANCEL']));
+
+        $leftover = round(20 - (20 * (50 / 130)), 2);
+        $this->assertEqualsWithDelta(
+            $leftover,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-PAID-SIB-CANCEL'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-CANCEL-HOLD'),
+            0.01
+        );
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(round(40 - (20 * (50 / 130)), 2), (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_reject_after_fail_sibling_does_not_mint_cash_when_other_checkout_is_open(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $site = $this->site($publisher);
+        $wallet = $this->wallet($advertiser, 40);
+        $paid = $this->paidCardOrder($advertiser, $site, 80, 'REF-PAID-SIB-REJECT');
+        $this->cardOrder($advertiser, $site, 50, 'REF-PAID-SIB-REJECT', 'pending');
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-PAID-SIB-REJECT', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-REJECT-HOLD', 20);
+
+        app(OrderPaymentService::class)->markOrdersFailedFromReference('REF-PAID-SIB-REJECT', 'expired');
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $paid->id), [
+                'reason' => 'The topic does not fit our editorial guidelines.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $leftover = round(20 - (20 * (50 / 130)), 2);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(round(80 - $leftover, 2), $wallet->withdrawableBalance(), 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'REF-OTHER-REJECT-HOLD'),
+            0.01
+        );
+    }
+
     public function test_late_mark_paid_rereserves_bonus_released_on_fail(): void
     {
         $advertiser = $this->userWithRole('advertiser');

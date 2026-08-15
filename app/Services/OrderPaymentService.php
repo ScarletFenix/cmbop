@@ -311,8 +311,10 @@ class OrderPaymentService
             }
             // Legacy rows can be marked paid later. Stripe-first has no rows yet —
             // keep the package so a late paid webhook can still settle.
+            // Paid siblings on this ref still need the leftover hold for
+            // approve/reject — a full forget made cardLeftoverBonusCap return 0.
             if ($marked->isNotEmpty()) {
-                $this->forgetPendingCheckout($referenceCode);
+                $this->forgetPendingCheckoutKeepLeftoverHold($referenceCode, $resolvedUserId);
             }
 
             if ($marked->isNotEmpty()) {
@@ -705,6 +707,22 @@ class OrderPaymentService
     public function forgetPendingCheckout(string $referenceCode): void
     {
         app(CheckoutIntentService::class)->forget($referenceCode);
+    }
+
+    /**
+     * Drop the package but keep leftover promo so approve/reject can cap this
+     * ref. Used after fail/cancel when a paid sibling on the same checkout
+     * still owns reserved bonus.
+     */
+    public function forgetPendingCheckoutKeepLeftoverHold(string $referenceCode, int $userId): void
+    {
+        $held = $userId > 0
+            ? app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode)
+            : 0.0;
+        $this->forgetPendingCheckout($referenceCode);
+        if ($userId > 0 && $held > 0.009) {
+            app(CheckoutIntentService::class)->rememberBonus($userId, $referenceCode, $held);
+        }
     }
 
     /**
