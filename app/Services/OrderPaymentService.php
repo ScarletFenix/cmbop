@@ -567,12 +567,18 @@ class OrderPaymentService
 
     /**
      * Cancel leftovers only when the articles are free for a new checkout
-     * afterwards. A concurrent claim rolls the cancel back so Pay again stays.
+     * afterwards. A concurrent paid claim or leftover that is still attached
+     * rolls the cancel back so Pay again stays. $keepReferenceCode leaves the
+     * in-flight Stripe-first package in place when forgetting after commit.
      *
      * @param  array<int, int|string>  $submissionIds
      */
-    public function replaceUnpaidLeftoversIfStillOrderable(int $userId, array $submissionIds): bool
-    {
+    public function replaceUnpaidLeftoversIfStillOrderable(
+        int $userId,
+        array $submissionIds,
+        ?string $keepReferenceCode = null,
+        bool $forgetPackages = true
+    ): bool {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
             return true;
@@ -596,7 +602,9 @@ class OrderPaymentService
             return false;
         }
 
-        $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds);
+        if ($forgetPackages) {
+            $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds, $keepReferenceCode);
+        }
 
         return true;
     }

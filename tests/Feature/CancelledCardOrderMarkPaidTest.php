@@ -2889,4 +2889,208 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertEqualsWithDelta($balanceBefore, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount('REF-STALE-PKG-PAY-AGAIN'), 0.01);
     }
+
+    public function test_stale_leftover_cannot_reorder_an_article_already_on_a_paid_order(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'paid-lock-leftover.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Lock Leftover']);
+
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-LOCK',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        $paidItem = OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STALE-LEFTOVER-PAID',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/stale',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertTrue($fresh->isContentReadyForOrder());
+        $this->assertFalse($fresh->canOrderFromLibrary());
+        $this->assertSame(ContentSubmission::PAID_ORDER_CLAIM_MESSAGE, $fresh->editorNotice());
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.orders'))
+            ->assertSessionHas('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+
+        $this->assertFalse(app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
+            (int) $advertiser->id,
+            [(int) $submission->id]
+        ));
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+    }
+
+    public function test_wallet_checkout_does_not_cancel_stale_leftover_on_a_paid_article(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'paid-lock-checkout.example');
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 200,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-LOCK-WALLET',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        $paidItem = OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/paid',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STALE-LEFTOVER-WALLET',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $leftoverItem = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/stale',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $leftoverItem->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-NEW-PAID-LOCK',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertStatus(422);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertSame(0, Order::query()->where('reference_code', 'REF-NEW-PAID-LOCK')->count());
+    }
+
+    public function test_expired_claimed_leftover_is_ready_to_fulfill_at_expiry_instant(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'expiry-instant.example');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-EXPIRY-INSTANT',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+            'expires_at' => now(),
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->isExpired());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $leftover->id));
+        $this->assertFalse($fresh->isReadyToFulfill(null));
+        $this->assertFalse($fresh->canOrderFromLibrary());
+    }
 }

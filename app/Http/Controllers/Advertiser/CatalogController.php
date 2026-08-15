@@ -2294,12 +2294,17 @@ class CatalogController extends Controller
                         'message' => 'Those listings left the catalog before checkout finished. Your bonus was not spent.',
                     ], 422);
                 }
-                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                     (int) $userId,
                     ['lines' => $fulfillableLines],
                     null,
                     false
-                );
+                )) {
+                    DB::rollBack();
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+
+                    return $this->leftoverReplaceBlockedResponse(['lines' => $fulfillableLines]);
+                }
                 $fulfilledTotal = round(array_sum(array_column(
                     array_column($fulfillableLines, 'orderItem'),
                     'price'
@@ -2529,11 +2534,18 @@ class CatalogController extends Controller
             $storedPackage = $paymentService->getPendingCheckout($referenceCode) ?? [];
             $storedPackage['stripe_session_id'] = $checkoutSession->id;
             $paymentService->storePendingCheckout($referenceCode, $storedPackage);
-            $this->replaceUnpaidLeftoversAtCheckoutCommit(
+            if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                 (int) $userId,
                 $checkoutContent,
                 (string) $referenceCode
-            );
+            )) {
+                $paymentService->forgetPendingCheckout((string) $referenceCode);
+                if ($bonusApplied > 0) {
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+                }
+
+                return $this->leftoverReplaceBlockedResponse($checkoutContent);
+            }
 
             Log::info('Stripe-first card checkout session ready (Add Funds style)', [
                 'reference_code' => $referenceCode,
@@ -2622,6 +2634,8 @@ class CatalogController extends Controller
                     $checkoutContent,
                     $referenceCode
                 );
+                // Charge already captured. If replace rolled back because the
+                // article is still claimed, finalize refunds that capture.
                 $intent = (object) [
                     'id' => $payResult['payment_intent_id'],
                     'object' => 'payment_intent',
@@ -2670,11 +2684,16 @@ class CatalogController extends Controller
             }
 
             if (! empty($payResult['redirect_url']) || ! empty($payResult['client_secret'])) {
-                $this->replaceUnpaidLeftoversAtCheckoutCommit(
+                if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                     $userId,
                     $checkoutContent,
                     $referenceCode
-                );
+                )) {
+                    $this->refundCheckoutBonus($userId, $referenceCode);
+                    $paymentService->forgetPendingCheckout($referenceCode);
+
+                    return $this->leftoverReplaceBlockedResponse($checkoutContent);
+                }
             }
 
             if (! empty($payResult['redirect_url'])) {
@@ -2949,12 +2968,16 @@ class CatalogController extends Controller
                 ], 422);
             }
 
-            $this->replaceUnpaidLeftoversAtCheckoutCommit(
+            if (! $this->replaceUnpaidLeftoversAtCheckoutCommit(
                 (int) $userId,
                 ['lines' => $fulfillableLines],
                 null,
                 false
-            );
+            )) {
+                DB::rollBack();
+
+                return $this->leftoverReplaceBlockedResponse(['lines' => $fulfillableLines]);
+            }
             $advertiserWallet->refresh();
 
             $expandedOrders = array_column($fulfillableLines, 'orderItem');
@@ -5713,13 +5736,50 @@ class CatalogController extends Controller
         array $checkoutContent,
         ?string $keepReferenceCode = null,
         bool $forgetPackages = true
-    ): void {
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+    ): bool {
+        return app(OrderPaymentService::class)->replaceUnpaidLeftoversIfStillOrderable(
             $userId,
             $this->collectSubmissionIdsFromCheckoutContent($checkoutContent),
             $keepReferenceCode,
             $forgetPackages
         );
+    }
+
+    /**
+     * @param  array{lines?: array<int, mixed>}  $checkoutContent
+     */
+    private function leftoverReplaceBlockedResponse(array $checkoutContent): JsonResponse
+    {
+        $message = ContentSubmission::UNAVAILABLE_MESSAGE;
+        foreach ($checkoutContent['lines'] ?? [] as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $submission = $line['submission'] ?? null;
+            if (! $submission instanceof ContentSubmission) {
+                continue;
+            }
+            $fresh = $submission->fresh() ?? $submission;
+            if ($fresh->isLockedByPaidOrder()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ContentSubmission::PAID_ORDER_CLAIM_MESSAGE,
+                ], 422);
+            }
+            if ($fresh->canReplaceUnpaidLeftover() || $fresh->activeClaimOrderId()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $fresh->libraryFixSummary()
+                        ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE,
+                ], 422);
+            }
+            $message = $fresh->libraryFixSummary() ?: ContentSubmission::UNAVAILABLE_MESSAGE;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => $message,
+        ], 422);
     }
 
     /**

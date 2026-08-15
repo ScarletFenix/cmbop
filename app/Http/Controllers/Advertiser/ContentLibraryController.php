@@ -524,6 +524,12 @@ class ContentLibraryController extends Controller
                 ->with('error', $message);
         }
 
+        if ($submission->isLockedByPaidOrder()) {
+            return redirect()
+                ->route('advertiser.orders')
+                ->with('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
+        }
+
         if (! $submission->canOrderFromLibrary()) {
             return redirect()
                 ->route('advertiser.content-library')
