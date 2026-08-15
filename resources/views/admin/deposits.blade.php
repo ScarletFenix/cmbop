@@ -91,10 +91,10 @@
     <!-- Filters -->
     <div class="card border-0 shadow-sm mb-4">
         <div class="card-body">
-            <form method="GET" class="row g-3 align-items-end">
+            <form method="GET" class="row g-3 align-items-end admin-deposits-filters">
                 <div class="col-md-3">
-                    <label class="form-label fw-semibold">Status</label>
-                    <select name="status" class="form-select">
+                    <label class="form-label fw-semibold" for="adminDepositsStatus">Status</label>
+                    <select name="status" id="adminDepositsStatus" class="form-select">
                         <option value="">All</option>
                         <option value="pending" {{ request('status') == 'pending' ? 'selected' : '' }}>Pending</option>
                         <option value="approved" {{ request('status') == 'approved' ? 'selected' : '' }}>Approved</option>
@@ -105,17 +105,16 @@
                 <div class="col-md-4">
                     <x-slb-search-field name="search" id="adminDepositsSearch" :value="request('search')" placeholder="Reference, Name, Email" input-class="form-control" label-class="form-label fw-semibold" />
                 </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold">&nbsp;</label>
-                    <button type="submit" class="btn btn-primary w-100">
-                        <i class="fa fa-search me-1"></i> Filter
-                    </button>
-                </div>
-                <div class="col-md-2">
-                    <label class="form-label fw-semibold">&nbsp;</label>
-                    <a href="{{ route('admin.deposits') }}" class="btn btn-outline-secondary w-100">
-                        <i class="fa fa-refresh me-1"></i> Reset
-                    </a>
+                <div class="col-md-auto admin-deposits-filters__actions">
+                    <label class="form-label fw-semibold" for="adminDepositsFilter">&nbsp;</label>
+                    <div class="d-flex gap-2">
+                        <button type="submit" id="adminDepositsFilter" class="btn btn-primary">
+                            <i class="fa fa-search me-1"></i> Filter
+                        </button>
+                        <a href="{{ route('admin.deposits') }}" class="btn btn-outline-secondary">
+                            <i class="fa fa-refresh me-1"></i> Reset
+                        </a>
+                    </div>
                 </div>
             </form>
         </div>

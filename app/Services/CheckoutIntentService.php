@@ -90,7 +90,19 @@ class CheckoutIntentService
     }
 
     /**
-     * Read leftover checkout bonus for this reference without consuming it.
+     * Reserved bonus still recorded for this reference (cache + durable row).
+     */
+    public function heldBonus(int $userId, string $referenceCode): float
+    {
+        if ($userId <= 0 || $referenceCode === '') {
+            return 0.0;
+        }
+
+        return $this->peekBonus($userId, $referenceCode);
+    }
+
+    /**
+     * Reserved bonus recorded for this reference (cache, durable row, then fallback).
      */
     public function peekBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
@@ -113,7 +125,7 @@ class CheckoutIntentService
         $bonus = $this->peekBonus($userId, $referenceCode, $fallback);
         Cache::forget(self::bonusCacheKey($userId, $referenceCode));
         $intent = $this->findIntent($referenceCode);
-        if ($intent && round((float) $intent->bonus_applied, 2) > 0) {
+        if ($intent && (float) $intent->bonus_applied > 0) {
             $intent->update(['bonus_applied' => 0]);
         }
 

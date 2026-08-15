@@ -215,7 +215,7 @@ class CatalogController extends Controller
         try {
             $orderableScope = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->orderable();
+                ->checkoutReady();
 
             // Count must not reuse a limited list — same exists-style gate as the dashboard.
             $approvedArticleCount = (clone $orderableScope)->count();
@@ -766,7 +766,7 @@ class CatalogController extends Controller
             ->forArticlePicker()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
@@ -1084,7 +1084,7 @@ class CatalogController extends Controller
         $approved = ContentSubmission::query()
             ->forArticlePicker()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->latest('id')
             ->limit(100)
             ->get();
@@ -1110,10 +1110,10 @@ class CatalogController extends Controller
                         ->forArticlePicker()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
-                        ->orderable()
+                        ->checkoutReady()
                         ->first();
                 }
-                if (! $submission || ! $submission->canBeOrdered()) {
+                if (! $submission || ! $submission->isReadyForCheckout()) {
                     $cleaned[$copyIndex] = 0;
                     $lineDirty = true;
                 } elseif ($site && ! $submission->matchesSite($site, $requireSame)) {
@@ -1483,7 +1483,7 @@ class CatalogController extends Controller
         if (! $submission->isReadyForCheckout()) {
             return response()->json([
                 'success' => false,
-                'error' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
+                'error' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
             ], 422);
         }
 
@@ -1589,7 +1589,7 @@ class CatalogController extends Controller
                     ->forArticlePicker()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
-                    ->orderable()
+                    ->checkoutReady()
                     ->first();
 
                 if (! $librarySubmission || ! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
@@ -2166,6 +2166,7 @@ class CatalogController extends Controller
         $bonusApplied = 0.0;
         $amountDue = $totalAmount;
         $paymentService = app(OrderPaymentService::class);
+        $paymentService->releaseAbandonedStripeFirstBonus((int) $userId, (string) $referenceCode);
 
         try {
             if ($useBonus) {
@@ -2394,6 +2395,10 @@ class CatalogController extends Controller
                 ->createCheckoutSession($sessionPayload, $user, true);
 
             session()->put('pending_card_reference', $referenceCode);
+
+            $storedPackage = $paymentService->getPendingCheckout($referenceCode) ?? [];
+            $storedPackage['stripe_session_id'] = $checkoutSession->id;
+            $paymentService->storePendingCheckout($referenceCode, $storedPackage);
 
             Log::info('Stripe-first card checkout session ready (Add Funds style)', [
                 'reference_code' => $referenceCode,
@@ -3381,12 +3386,10 @@ class CatalogController extends Controller
 
         $articles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->latest('id')
-            ->limit(80)
+            ->limit(50)
             ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
-            ->filter(fn (ContentSubmission $s) => $s->hasCheckoutReadyLinks())
-            ->take(50)
             ->map(fn (ContentSubmission $s) => [
                 'id' => $s->id,
                 'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
@@ -4413,7 +4416,7 @@ class CatalogController extends Controller
             if (! $submission->isReadyForCheckout()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
+                    'message' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                 ], 422);
             }
 
@@ -4668,6 +4671,10 @@ class CatalogController extends Controller
             throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
         }
 
+        if ($locked->order_id === null && ! $locked->isReadyForCheckout()) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+
         // Each article is published on one site only. Keep the first order/item linkage on the
         // submission row; every OrderItem still stores its own content_submission_id.
         $payload = [
@@ -4799,7 +4806,13 @@ class CatalogController extends Controller
             return true;
         }
 
-        return $userId > 0 && (int) ($package['user_id'] ?? 0) === $userId;
+        if ($userId <= 0 || (int) ($package['user_id'] ?? 0) !== $userId) {
+            return false;
+        }
+
+        // An open Stripe session still owns this ref. Reusing it overwrites
+        // the package so a late first-session webhook would settle the new cart.
+        return search_text($package['stripe_session_id'] ?? '') === '';
     }
 
     private function refundCheckoutBonus(int $userId, string $referenceCode): void
@@ -4811,10 +4824,16 @@ class CatalogController extends Controller
             ->where('status', '!=', 'cancelled')
             ->get();
 
+        $package = app(OrderPaymentService::class)->getPendingCheckout($referenceCode);
+        $fallback = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : null;
+
         app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
             $userId,
             $referenceCode,
-            $failed
+            $failed,
+            $fallback
         );
     }
 
@@ -4985,22 +5004,74 @@ class CatalogController extends Controller
         }
     }
 
+    private function stripeCheckoutSessionIsPaid(array $package): bool
+    {
+        $sessionId = search_text($package['stripe_session_id'] ?? '');
+        if ($sessionId === '' || ! config('services.stripe.secret')) {
+            return false;
+        }
+
+        try {
+            Stripe::setApiKey(config('services.stripe.secret'));
+            $session = Session::retrieve($sessionId);
+
+            return ($session->payment_status ?? null) === 'paid';
+        } catch (\Throwable $e) {
+            Log::warning('Could not verify Stripe session before cancel cleanup', [
+                'session_id' => $sessionId,
+                'error' => $e->getMessage(),
+            ]);
+
+            return false;
+        }
+    }
+
     private function cancelUnpaidCardOrdersAndRestoreCart(string $referenceCode): void
     {
+        $referenceCode = search_text($referenceCode);
+        if ($referenceCode === '') {
+            return;
+        }
+
         $paymentService = app(OrderPaymentService::class);
+        $userId = (int) auth()->id();
 
         $canceled = Order::with('items')
-            ->where('user_id', auth()->id())
+            ->where('user_id', $userId)
             ->where('reference_code', $referenceCode)
             ->where('payment_method', 'card')
             ->whereIn('payment_status', ['pending', 'failed'])
             ->whereIn('status', ['pending', 'cancelled'])
             ->get();
 
-        // Stripe-first (Add Funds style): no order rows yet. Release reserved
-        // bonus, but keep the package so a late paid webhook can still settle.
+        // Stripe-first: no order rows yet. Keep the package so a late paid
+        // webhook can still settle. Only release THIS reference's bonus.
         if ($canceled->isEmpty()) {
-            $this->refundCheckoutBonus((int) auth()->id(), $referenceCode);
+            $alreadyPaid = Order::query()
+                ->where('user_id', $userId)
+                ->where('reference_code', $referenceCode)
+                ->where('payment_method', 'card')
+                ->where('payment_status', 'paid')
+                ->exists();
+            if ($alreadyPaid) {
+                return;
+            }
+
+            $package = $paymentService->getPendingCheckout($referenceCode);
+            if (! is_array($package) || (int) ($package['user_id'] ?? 0) !== $userId) {
+                return;
+            }
+
+            if ($this->stripeCheckoutSessionIsPaid($package)) {
+                Log::info('Skipping cancel bonus release; Stripe session already paid', [
+                    'reference_code' => $referenceCode,
+                    'session_id' => $package['stripe_session_id'] ?? null,
+                ]);
+
+                return;
+            }
+
+            $this->refundCheckoutBonus($userId, $referenceCode);
             session()->forget(['pending_card_reference', 'checkout_deferred_cart']);
 
             Log::info('Cancelled Stripe-first card checkout (no order rows yet)', [

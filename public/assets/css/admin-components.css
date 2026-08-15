@@ -169,6 +169,19 @@
   cursor: pointer;
 }
 
+/* Live-search status reserves a line under Search. Collapse it when empty so
+   align-items-end keeps Filter / Reset on the same baseline as the inputs. */
+.admin-deposits-filters .slb-search-status:empty {
+  min-height: 0;
+  height: 0;
+  margin: 0;
+  overflow: hidden;
+}
+
+.admin-deposits-filters__actions .btn {
+  min-height: calc(1.5em + 0.75rem + 2px);
+}
+
 /* ——— Email centre ——— */
 
 .ec-kpi,

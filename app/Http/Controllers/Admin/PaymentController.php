@@ -719,9 +719,25 @@ class PaymentController extends Controller
                 'email' => $order->user->email,
             ] : null,
             'allowed_statuses' => $this->allowedPaymentStatuses($order),
-            'invoice_url' => $order->invoice_url,
+            'invoice_url' => $order->invoice_url ?? null,
             'invoice_documents' => $order->invoice_documents ?? [],
         ];
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function attachInvoiceDocuments($orders): void
+    {
+        $links = app(AdminInvoiceLinks::class);
+        $byOrder = $links->forOrders($orders);
+
+        foreach ($orders as $order) {
+            $documents = $byOrder->get((int) $order->id, []);
+            $order->setAttribute('invoice_documents', $documents);
+            $primary = $links->primary($documents);
+            $order->setAttribute('invoice_url', data_get($primary, 'url'));
+        }
     }
 
     /**

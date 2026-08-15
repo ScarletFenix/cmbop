@@ -45,3 +45,11 @@
     min-height: 1.15em;
     margin-top: .15rem;
 }
+
+/* Empty status must not add a phantom line or filter buttons sit off the inputs. */
+.slb-search-status:empty {
+    min-height: 0;
+    height: 0;
+    margin: 0;
+    overflow: hidden;
+}

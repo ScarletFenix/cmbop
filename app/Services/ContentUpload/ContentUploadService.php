@@ -393,6 +393,19 @@ class ContentUploadService
             return $result;
         }
 
+        if ($policyApproved && ! $submission->hasCheckoutReadyLinks()) {
+            $result['approved'] = false;
+            $result['title'] = 'Finish your link';
+            $result['message'] = ContentSubmission::CHECKOUT_LINK_MESSAGE;
+            $result['notify_status'] = 'needs_checkout_link';
+            if (! isset($result['report']) || ! is_array($result['report'])) {
+                $result['report'] = [];
+            }
+            $result['report']['summary'] = $result['message'];
+
+            return $result;
+        }
+
         $result['notify_status'] = ! empty($result['approved'])
             ? 'approved'
             : $moderationStatus;
@@ -430,7 +443,7 @@ class ContentUploadService
      */
     protected function persistPresentedEvaluationReport(ContentSubmission $submission, array $result): void
     {
-        if (($result['notify_status'] ?? null) !== 'needs_image_rights') {
+        if (! in_array($result['notify_status'] ?? null, ['needs_image_rights', 'needs_checkout_link'], true)) {
             return;
         }
 
