@@ -945,12 +945,67 @@ class BulkDoneRejectRowsTest extends TestCase
                 ->assertOk()
                 ->assertSee('Waiting on marketer', false);
 
+            Mail::assertNotQueued(SiteStatusNotification::class);
+            $this->assertSame(0, InAppNotification::query()
+                ->where('user_id', $this->publisher->id)
+                ->where('title', 'like', 'Site submission removed%')
+                ->count());
+
             $this->actingAs($this->publisher)
                 ->get(route('publisher.websites'))
                 ->assertOk()
                 ->assertSee('Waiting on marketer', false)
-                ->assertDontSee('awaiting publisher', false);
+                ->assertSee('our marketer adds DA/DR', false)
+                ->assertDontSee('awaiting publisher', false)
+                ->assertDontSee('Complete details, then we approve', false);
         }
+    }
+
+    public function test_done_after_last_draft_delete_reseeds_and_awaits_publisher(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'reseed');
+        $item = $items[0];
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($item),
+            ])
+            ->assertRedirect();
+
+        $firstSite = Site::query()->where('domain', $item->domain)->firstOrFail();
+
+        $this->actingAs($this->marketer)
+            ->deleteJson(route('marketing.sites.destroy', $firstSite->id), [
+                'reason' => 'Wrong metrics were seeded; will Done again.',
+            ])
+            ->assertOk();
+
+        $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
+        $this->assertNull($item->fresh()->site_id);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($item->fresh()),
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('success');
+
+        $reseeds = Site::query()->where('domain', $item->domain)->get();
+        $this->assertCount(1, $reseeds);
+        $this->assertNotSame($firstSite->id, $reseeds->first()->id);
+        $this->assertSame($reseeds->first()->id, $item->fresh()->site_id);
+        $this->assertSame(BulkSiteRequest::STATUS_AWAITING_PUBLISHER, $bulk->fresh()->status);
+        $this->assertSame('Waiting on publisher', $bulk->fresh()->statusLabel());
+
+        $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->assertSee('Waiting on publisher', false)
+            ->assertSee('Complete details, then we approve', false)
+            ->assertDontSee('our marketer adds DA/DR', false);
     }
 
     public function test_show_heals_awaiting_publisher_with_no_sites_and_pending_rows(): void
@@ -997,6 +1052,8 @@ class BulkDoneRejectRowsTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
+
+        Mail::assertNotQueued(SiteStatusNotification::class);
 
         $this->assertDatabaseHas('sites', ['id' => $keep->id]);
         $this->assertDatabaseMissing('sites', ['id' => $drop->id]);

@@ -8,6 +8,7 @@ use App\Jobs\EnrichSiteJob;
 use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\SiteStatusNotification;
 use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
@@ -3184,7 +3185,11 @@ class SiteController extends Controller
             (int) ($outcome['mediaSiteId'] ?? 0)
         );
 
-        $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
+        // Deleting a seeded draft re-pends the URL+price row (site_id nullOnDelete).
+        // That is a staff correction, not a rejection — Done-reject notifies instead.
+        if (! $this->bulkItemWasRepended($bulkRequestId, $domain)) {
+            $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
+        }
 
         ActivityLogger::log(
             $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
@@ -3224,6 +3229,19 @@ class SiteController extends Controller
         }
 
         $bulk->refreshProgressStatus();
+    }
+
+    private function bulkItemWasRepended(?int $bulkRequestId, ?string $domain): bool
+    {
+        if (! $bulkRequestId || ! filled($domain)) {
+            return false;
+        }
+
+        return BulkSiteRequestItem::query()
+            ->where('bulk_site_request_id', $bulkRequestId)
+            ->where('domain', $domain)
+            ->whereNull('site_id')
+            ->exists();
     }
 
     private function notifyPublisherSiteRemoved(

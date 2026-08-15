@@ -93,7 +93,14 @@ class BulkSiteRequest extends Model
 
     public function refreshProgressStatus(): void
     {
-        if (in_array($this->status, [self::STATUS_CANCELLED, self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)) {
+        if ($this->status === self::STATUS_CANCELLED) {
+            return;
+        }
+
+        // Don't rewind a brand-new or sheet-only batch. Once drafts exist,
+        // allow progress to move forward (Done/seed may have left status stale).
+        if (in_array($this->status, [self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)
+            && $this->sites()->doesntExist()) {
             return;
         }
 
