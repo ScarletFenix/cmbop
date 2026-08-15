@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
 use App\Services\AudienceInventoryService;
+use App\Support\MailJobPayload;
 use Illuminate\Contracts\Cache\LockProvider;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -357,8 +358,8 @@ class EmailCampaign extends Model
 
             return DB::table($table)
                 ->where('payload', 'like', '%SendEmailCampaignJob%')
-                ->where('payload', 'like', '%campaignId";i:'.$campaignId.';%')
-                ->exists();
+                ->pluck('payload')
+                ->contains(fn ($payload) => MailJobPayload::containsCampaignId((string) $payload, $campaignId));
         } catch (\Throwable) {
             return false;
         }
@@ -384,7 +385,7 @@ class EmailCampaign extends Model
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNull('email_log_id')
             ->where('updated_at', '<=', $cutoff)
-            ->get(['id', 'email_campaign_id', 'user_id']);
+            ->get(['id', 'email_campaign_id', 'user_id', 'updated_at']);
 
         if ($rows->isEmpty()) {
             return;
@@ -419,6 +420,13 @@ class EmailCampaign extends Model
             }
 
             $delivered = $log->status === EmailLog::STATUS_DELIVERED;
+            // An older failed log must not kill a newer in-flight retry.
+            if (! $delivered
+                && $log->updated_at
+                && $row->updated_at
+                && ! $log->updated_at->greaterThan($row->updated_at)) {
+                continue;
+            }
             EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
