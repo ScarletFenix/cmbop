@@ -8,6 +8,7 @@ use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
+use App\Models\EmailNotificationSetting;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
@@ -461,7 +462,7 @@ class AdminCampaignsTest extends TestCase
             $campaign->recipients()->where('user_id', $optedOut->id)->value('skip_reason')
         );
 
-        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($optedIn->email));
+        Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($optedIn->email) && $mail->skipUserPreference === false);
         Mail::assertNotQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($optedOut->email));
     }
 
@@ -526,6 +527,11 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $fresh->status);
         $this->assertNotSame(EmailCampaign::STATUS_SENDING, $fresh->status);
         $this->assertSame(0, $fresh->sent_count);
+        $this->assertSame(1, $fresh->skipped_count);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_FAILED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
     }
 
     public function test_job_exception_recounts_recipients_already_queued(): void
@@ -569,7 +575,19 @@ class AdminCampaignsTest extends TestCase
         $fresh = $campaign->fresh();
         $this->assertSame(EmailCampaign::STATUS_FAILED, $fresh->status);
         $this->assertSame(1, $fresh->sent_count);
-        $this->assertSame(0, $fresh->skipped_count);
+        $this->assertSame(1, $fresh->skipped_count);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $queuedUser->id)->value('status')
+        );
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_FAILED,
+            $campaign->recipients()->where('user_id', $pendingUser->id)->value('status')
+        );
+        $this->assertSame(
+            EmailCampaignRecipient::SKIP_ERROR,
+            $campaign->recipients()->where('user_id', $pendingUser->id)->value('skip_reason')
+        );
     }
 
     public function test_sent_mail_syncs_email_log_and_marks_recipient_delivered(): void
@@ -717,7 +735,7 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailLog::STATUS_FAILED,
             'error' => 'SMTP down',
             'attempts' => 1,
-            'meta' => [],
+            'meta' => ['failed_job_uuid' => 'keep-me'],
         ]);
 
         $mailable = new AudienceCampaignMail($campaign, $advertiser);
@@ -732,7 +750,130 @@ class AdminCampaignsTest extends TestCase
         $this->assertNull($fresh->error);
         $this->assertSame(2, $fresh->attempts);
         $this->assertSame($campaign->id, (int) data_get($fresh->meta, 'campaign_id'));
+        $this->assertSame('keep-me', data_get($fresh->meta, 'failed_job_uuid'));
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
         $this->assertSame($failed->id, $row->fresh()->email_log_id);
+    }
+
+    public function test_queued_mail_honors_unsubscribe_before_send(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Late opt-out',
+            'subject' => 'Late opt-out',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => true,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        EmailNotificationPreference::updateOrCreate(
+            [
+                'user_id' => $advertiser->id,
+                'preference_key' => 'marketing_emails',
+            ],
+            ['enabled' => false]
+        );
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id;
+        $mailable->to($advertiser->email);
+
+        $this->assertFalse($mailable->skipUserPreference);
+        $this->assertNull($mailable->send(app('mailer')));
+        $this->assertSame(EmailCampaignRecipient::STATUS_SKIPPED, $row->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_PREFERENCE, $row->fresh()->skip_reason);
+        $this->assertSame(0, $campaign->fresh()->sent_count);
+        $this->assertSame(1, $campaign->fresh()->skipped_count);
+    }
+
+    public function test_mailable_failed_marks_recipient_failed(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'SMTP fail',
+            'subject' => 'SMTP fail',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id;
+        $mailable->failed(new \RuntimeException('SMTP down'));
+
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $fresh->status);
+        $this->assertSame(EmailCampaignRecipient::SKIP_ERROR, $fresh->skip_reason);
+        $this->assertNotNull($fresh->email_log_id);
+        $this->assertSame(0, $campaign->fresh()->sent_count);
+        $this->assertSame(1, $campaign->fresh()->skipped_count);
+        $this->assertDatabaseHas('email_logs', [
+            'id' => $fresh->email_log_id,
+            'status' => EmailLog::STATUS_FAILED,
+            'dedupe_key' => $mailable->dedupeKey,
+        ]);
+    }
+
+    public function test_job_skips_pending_when_campaign_type_is_disabled(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        EmailNotificationSetting::updateOrCreate(
+            ['type' => 'audience_campaign'],
+            ['enabled' => false]
+        );
+        EmailNotificationSetting::flushCache('audience_campaign');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Disabled type',
+            'subject' => 'Disabled type',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        (new SendEmailCampaignJob($campaign->id))->handle();
+
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $fresh->status);
+        $this->assertSame(0, $fresh->sent_count);
+        $this->assertSame(1, $fresh->skipped_count);
+        $this->assertSame(
+            EmailCampaignRecipient::SKIP_DISABLED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('skip_reason')
+        );
     }
 }

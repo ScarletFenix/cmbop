@@ -100,6 +100,7 @@ class LogSentEmail
         $existing = EmailLog::findOpenByDedupe($dedupeKey);
         if ($existing) {
             $existing->fill($payload);
+            $existing->meta = array_filter(array_merge((array) $existing->meta, $logMeta));
             $existing->attempts = max(1, (int) $existing->attempts) + 1;
             $existing->save();
             $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $existing->id);

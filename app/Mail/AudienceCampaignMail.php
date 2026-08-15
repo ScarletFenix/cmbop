@@ -4,10 +4,14 @@ namespace App\Mail;
 
 use App\Models\EmailCampaign;
 use App\Models\EmailCampaignRecipient;
+use App\Models\EmailLog;
+use App\Models\EmailNotificationPreference;
 use App\Models\User;
 use App\Support\EmailUnsubscribeLink;
 use Carbon\Carbon;
 use Illuminate\Mail\Mailables\Headers;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 
 class AudienceCampaignMail extends PlatformMailable
 {
@@ -20,6 +24,7 @@ class AudienceCampaignMail extends PlatformMailable
         parent::__construct();
         $this->notificationType = 'audience_campaign';
         $this->recipientUser = $recipient;
+        $this->skipUserPreference = ! $campaign->respect_preferences;
     }
 
     public function unsubscribeUrl(): string
@@ -56,16 +61,19 @@ class AudienceCampaignMail extends PlatformMailable
 
     public function send($mailer)
     {
-        $stale = $this->isStale();
         $result = parent::send($mailer);
 
         if ($result === null) {
-            $this->markRecipientSkipped($stale
-                ? EmailCampaignRecipient::SKIP_STALE
-                : EmailCampaignRecipient::SKIP_DISABLED);
+            $this->markRecipientSkipped($this->skipReasonForSuppressedSend());
         }
 
         return $result;
+    }
+
+    public function failed(?\Throwable $exception): void
+    {
+        parent::failed($exception);
+        $this->markRecipientFailed();
     }
 
     /**
@@ -86,26 +94,82 @@ class AudienceCampaignMail extends PlatformMailable
         }
     }
 
+    protected function skipReasonForSuppressedSend(): string
+    {
+        if ($this->isStale()) {
+            return EmailCampaignRecipient::SKIP_STALE;
+        }
+
+        if ($this->campaign->respect_preferences
+            && ! EmailNotificationPreference::allows($this->recipient, 'marketing_emails')) {
+            return EmailCampaignRecipient::SKIP_PREFERENCE;
+        }
+
+        return EmailCampaignRecipient::SKIP_DISABLED;
+    }
+
     protected function markRecipientSkipped(string $reason): void
+    {
+        $this->syncRecipientRow([
+            'status' => EmailCampaignRecipient::STATUS_SKIPPED,
+            'skip_reason' => $reason,
+        ]);
+    }
+
+    protected function markRecipientFailed(): void
+    {
+        $logId = null;
+        if (filled($this->dedupeKey)) {
+            $logId = EmailLog::query()
+                ->where('dedupe_key', $this->dedupeKey)
+                ->where('status', EmailLog::STATUS_FAILED)
+                ->latest('id')
+                ->value('id');
+        }
+
+        $payload = [
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+        ];
+        if ($logId) {
+            $payload['email_log_id'] = (int) $logId;
+        }
+
+        $this->syncRecipientRow($payload);
+    }
+
+    /**
+     * @param  array<string, mixed>  $payload
+     */
+    protected function syncRecipientRow(array $payload): void
     {
         if (! $this->campaign->id || ! $this->recipient->id) {
             return;
         }
 
-        $updated = EmailCampaignRecipient::query()
-            ->where('email_campaign_id', $this->campaign->id)
-            ->where('user_id', $this->recipient->id)
-            ->whereIn('status', [
-                EmailCampaignRecipient::STATUS_PENDING,
-                EmailCampaignRecipient::STATUS_QUEUED,
-            ])
-            ->update([
-                'status' => EmailCampaignRecipient::STATUS_SKIPPED,
-                'skip_reason' => $reason,
-            ]);
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return;
+            }
 
-        if ($updated) {
-            $this->campaign->refresh()->recountRecipientTotals();
+            $updated = EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $this->campaign->id)
+                ->where('user_id', $this->recipient->id)
+                ->whereIn('status', [
+                    EmailCampaignRecipient::STATUS_PENDING,
+                    EmailCampaignRecipient::STATUS_QUEUED,
+                ])
+                ->update($payload);
+
+            if ($updated) {
+                $this->campaign->refresh()->recountRecipientTotals();
+            }
+        } catch (\Throwable $e) {
+            Log::warning('Campaign recipient status sync failed', [
+                'campaign_id' => $this->campaign->id,
+                'user_id' => $this->recipient->id,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 }
