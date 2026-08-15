@@ -1597,7 +1597,7 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('function dismissLibraryUploadByUser', $js);
-        $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.can_order)', $js);
+        $this->assertStringContainsString('goToLibraryResult(saved, \'\', !!saved.ready)', $js);
         $this->assertStringContainsString('libraryResultFlash', $js);
         $this->assertStringContainsString('function applyLibraryResultFocus', $js);
         $this->assertStringNotContainsString('window.location.reload()', $js);
