@@ -866,7 +866,10 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false);
 
-        $this->assertSame($original, (string) $submission->fresh()->preview_html);
+        $fresh = $submission->fresh();
+        $this->assertSame($original, (string) $fresh->preview_html);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertTrue($fresh->canBeOrdered());
     }
 
     public function test_advertiser_can_edit_article_html_with_links_and_images(): void

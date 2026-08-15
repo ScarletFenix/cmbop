@@ -453,13 +453,19 @@ class ContentLibraryController extends Controller
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
                 ->whereNull('order_id')
-                ->whereNull('archived_at')
                 ->first();
             if ($replace?->isExpired()) {
                 return response()->json([
                     'success' => false,
                     'title' => 'Expired',
                     'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
+            if ($replace?->isArchived()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Archived',
+                    'message' => 'Restore this article before replacing it.',
                 ], 422);
             }
         }

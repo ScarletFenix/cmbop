@@ -116,6 +116,13 @@ class ContentSubmissionController extends Controller
                     'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
                 ], 422);
             }
+            if ($replace?->isArchived()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Archived',
+                    'message' => 'Restore this article before replacing it.',
+                ], 422);
+            }
         }
 
         try {
@@ -479,6 +486,20 @@ class ContentSubmissionController extends Controller
         }
 
         unset($data['scheduled_date'], $data['scheduled_time']);
+
+        // Reject empty bodies before flipping approved → processing. Otherwise a
+        // 422 leaves the row stuck in Evaluating and not orderable.
+        if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
+            $pendingClean = ArticlePreviewHtml::normalize(
+                (new ArticleHtmlSanitizer)->sanitize($data['preview_html'])
+            );
+            if ($pendingClean === '') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Article content cannot be empty.',
+                ], 422);
+            }
+        }
 
         if ($contentChanged && $submission->isApproved()) {
             $submission->forceFill([
