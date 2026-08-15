@@ -70,10 +70,18 @@ class EmailCampaign extends Model
             ])
             ->count();
 
-        $this->update([
+        $payload = [
             'sent_count' => $sent,
             'skipped_count' => $skipped,
-        ]);
+        ];
+
+        // Finalize treats queued mail as sent. After a retry or a late
+        // failure, keep the terminal status honest against those totals.
+        if (in_array($this->status, [self::STATUS_SENT, self::STATUS_FAILED], true)) {
+            $payload['status'] = $sent > 0 ? self::STATUS_SENT : self::STATUS_FAILED;
+        }
+
+        $this->update($payload);
     }
 
     public static function labelForAudience(?string $audience): string
@@ -84,5 +92,55 @@ class EmailCampaign extends Model
     public function audienceLabel(): string
     {
         return self::labelForAudience($this->audience);
+    }
+
+    /**
+     * Re-queue campaigns whose worker died (OOM, deploy, drain timeout)
+     * instead of leaving them stuck on queued/sending.
+     */
+    public static function recoverStalled(int $staleMinutes = 2): int
+    {
+        $stale = now()->subMinutes(max(1, $staleMinutes));
+        $dispatched = 0;
+
+        $ids = static::query()
+            ->where(function ($query) use ($stale) {
+                $query->where(function ($queued) use ($stale) {
+                    $queued->where('status', self::STATUS_QUEUED)
+                        ->where('updated_at', '<=', $stale);
+                })->orWhere(function ($sending) use ($stale) {
+                    $sending->where('status', self::STATUS_SENDING)
+                        ->where('updated_at', '<=', $stale);
+                });
+            })
+            ->pluck('id');
+
+        foreach ($ids as $id) {
+            $campaign = static::query()->find($id);
+            if (! $campaign) {
+                continue;
+            }
+
+            if ($campaign->status === self::STATUS_SENDING
+                && ! $campaign->recipients()
+                    ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+                    ->exists()) {
+                $campaign->recountRecipientTotals();
+                $campaign->refresh();
+                $campaign->update([
+                    'status' => $campaign->sent_count > 0
+                        ? self::STATUS_SENT
+                        : self::STATUS_FAILED,
+                    'sent_at' => $campaign->sent_at ?? now(),
+                ]);
+
+                continue;
+            }
+
+            SendEmailCampaignJob::dispatch((int) $id);
+            $dispatched++;
+        }
+
+        return $dispatched;
     }
 }

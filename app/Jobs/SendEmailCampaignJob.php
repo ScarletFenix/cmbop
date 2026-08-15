@@ -12,6 +12,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Queue\TimeoutExceededException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 
@@ -19,9 +20,16 @@ class SendEmailCampaignJob implements ShouldQueue
 {
     use Dispatchable, InteractsWithQueue, Queueable, SerializesModels;
 
+    public const BATCH_SIZE = 20;
+
     public int $tries = 1;
 
-    public int $timeout = 600;
+    /**
+     * One batch must finish inside the web-drain worker timeout (30s) and
+     * mail:drain-queue max-time. A 600s monolith was killed mid-send and
+     * markFailed() then wiped every leftover pending row.
+     */
+    public int $timeout = 25;
 
     public function __construct(public int $campaignId)
     {
@@ -35,15 +43,44 @@ class SendEmailCampaignJob implements ShouldQueue
             return;
         }
 
+        if ($campaign->status === EmailCampaign::STATUS_QUEUED) {
+            $claimed = EmailCampaign::query()
+                ->whereKey($this->campaignId)
+                ->where('status', EmailCampaign::STATUS_QUEUED)
+                ->update(['status' => EmailCampaign::STATUS_SENDING]);
+
+            if ($claimed === 0) {
+                $campaign->refresh();
+                if ($campaign->status !== EmailCampaign::STATUS_SENDING) {
+                    return;
+                }
+            } else {
+                $campaign->refresh();
+            }
+        } elseif ($campaign->status !== EmailCampaign::STATUS_SENDING) {
+            return;
+        }
+
+        $campaign->touch();
+
         try {
-            $campaign->update(['status' => EmailCampaign::STATUS_SENDING]);
-            $this->processPending($campaign);
+            $more = $this->processPending($campaign);
+            if ($more) {
+                self::dispatch($this->campaignId);
+
+                return;
+            }
             $this->finalize($campaign);
         } catch (\Throwable $e) {
             Log::error('Campaign job failed', [
                 'campaign_id' => $campaign->id,
                 'error' => $e->getMessage(),
             ]);
+            if ($this->isTimeout($e) && $this->hasPending($campaign)) {
+                self::dispatch($this->campaignId);
+
+                return;
+            }
             $this->markFailed($campaign);
         }
     }
@@ -55,10 +92,28 @@ class SendEmailCampaignJob implements ShouldQueue
             return;
         }
 
+        $campaign->refresh();
+        if (in_array($campaign->status, [EmailCampaign::STATUS_SENT, EmailCampaign::STATUS_FAILED], true)) {
+            return;
+        }
+
+        // A drain/worker timeout must not wipe the rest of the audience.
+        if ($campaign->status === EmailCampaign::STATUS_SENDING && $this->hasPending($campaign)) {
+            self::dispatch($this->campaignId);
+
+            return;
+        }
+
+        if ($campaign->status === EmailCampaign::STATUS_SENDING) {
+            $this->finalize($campaign);
+
+            return;
+        }
+
         $this->markFailed($campaign);
     }
 
-    protected function processPending(EmailCampaign $campaign): void
+    protected function processPending(EmailCampaign $campaign): bool
     {
         if (! EmailNotificationSetting::isEnabled('audience_campaign')) {
             EmailCampaignRecipient::query()
@@ -69,43 +124,47 @@ class SendEmailCampaignJob implements ShouldQueue
                     'skip_reason' => EmailCampaignRecipient::SKIP_DISABLED,
                 ]);
 
-            return;
+            return false;
         }
 
-        EmailCampaignRecipient::query()
+        $rows = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
             ->where('status', EmailCampaignRecipient::STATUS_PENDING)
             ->with('user')
             ->orderBy('id')
-            ->chunkById(100, function ($rows) use ($campaign) {
-                foreach ($rows as $row) {
-                    $this->deliverOne($campaign, $row);
-                }
-            });
+            ->limit(self::BATCH_SIZE)
+            ->get();
+
+        foreach ($rows as $row) {
+            $this->deliverOne($campaign, $row);
+        }
+
+        return $this->hasPending($campaign);
     }
 
     protected function deliverOne(EmailCampaign $campaign, EmailCampaignRecipient $row): void
     {
         $user = $row->user;
         if (! $user) {
-            $row->update([
-                'status' => EmailCampaignRecipient::STATUS_FAILED,
-                'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
-            ]);
+            $this->claimPending($row, EmailCampaignRecipient::STATUS_FAILED, EmailCampaignRecipient::SKIP_ERROR);
 
             return;
         }
 
         if ($campaign->respect_preferences && ! EmailNotificationPreference::allows($user, 'marketing_emails')) {
-            $row->update([
-                'status' => EmailCampaignRecipient::STATUS_SKIPPED,
-                'skip_reason' => EmailCampaignRecipient::SKIP_PREFERENCE,
-            ]);
+            $this->claimPending($row, EmailCampaignRecipient::STATUS_SKIPPED, EmailCampaignRecipient::SKIP_PREFERENCE);
 
             return;
         }
 
-        $row->update(['status' => EmailCampaignRecipient::STATUS_QUEUED]);
+        $claimed = EmailCampaignRecipient::query()
+            ->whereKey($row->id)
+            ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+            ->update(['status' => EmailCampaignRecipient::STATUS_QUEUED]);
+
+        if ($claimed === 0) {
+            return;
+        }
 
         try {
             $mailable = new AudienceCampaignMail($campaign, $user);
@@ -130,6 +189,33 @@ class SendEmailCampaignJob implements ShouldQueue
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    protected function claimPending(EmailCampaignRecipient $row, string $status, ?string $reason = null): bool
+    {
+        $payload = ['status' => $status];
+        if ($reason !== null) {
+            $payload['skip_reason'] = $reason;
+        }
+
+        return EmailCampaignRecipient::query()
+            ->whereKey($row->id)
+            ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+            ->update($payload) > 0;
+    }
+
+    protected function hasPending(EmailCampaign $campaign): bool
+    {
+        return EmailCampaignRecipient::query()
+            ->where('email_campaign_id', $campaign->id)
+            ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+            ->exists();
+    }
+
+    protected function isTimeout(\Throwable $e): bool
+    {
+        return $e instanceof TimeoutExceededException
+            || str_contains(strtolower($e->getMessage()), 'timed out');
     }
 
     protected function finalize(EmailCampaign $campaign): void

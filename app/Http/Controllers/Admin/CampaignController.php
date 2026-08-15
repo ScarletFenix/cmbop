@@ -10,6 +10,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
 use App\Support\CampaignHtml;
+use App\Support\EmailCatalog;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -19,6 +20,12 @@ class CampaignController extends Controller
 {
     public function index(AudienceInventoryService $inventory)
     {
+        try {
+            EmailCampaign::recoverStalled();
+        } catch (\Throwable $e) {
+            Log::warning('Campaign stall recovery failed', ['error' => $e->getMessage()]);
+        }
+
         $stats = $inventory->stats(includeUnverified: false);
         $campaigns = EmailCampaign::query()
             ->with('creator')
@@ -56,7 +63,7 @@ class CampaignController extends Controller
             'audience' => 'selected',
         ]);
 
-        $mailable = new AudienceCampaignMail($campaign, auth()->user());
+        $mailable = new AudienceCampaignMail($campaign, EmailCatalog::previewUser());
         $mailable->skipUserPreference = true;
 
         return response($mailable->render());
@@ -64,12 +71,7 @@ class CampaignController extends Controller
 
     public function recipientCount(Request $request, AudienceInventoryService $inventory)
     {
-        $data = $request->validate([
-            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
-            'user_ids' => ['nullable', 'array'],
-            'user_ids.*' => ['integer', 'exists:users,id'],
-            'include_unverified' => ['boolean'],
-        ]);
+        $data = $request->validate($this->audienceInputRules());
 
         $includeUnverified = $request->boolean('include_unverified');
         $ids = $data['user_ids'] ?? [];
@@ -88,25 +90,21 @@ class CampaignController extends Controller
 
     public function send(Request $request, AudienceInventoryService $inventory)
     {
-        $data = $request->validate([
+        $data = $request->validate(array_merge($this->audienceInputRules(), [
             'name' => ['nullable', 'string', 'max:120'],
             'subject' => ['required', 'string', 'max:180'],
             'body_html' => ['required', 'string', 'max:20000'],
-            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
-            'user_ids' => ['nullable', 'array'],
-            'user_ids.*' => ['integer', 'exists:users,id'],
             'cta_label' => ['nullable', 'string', 'max:80'],
             'cta_url' => $this->ctaUrlRules(),
             'respect_preferences' => ['boolean'],
-            'include_unverified' => ['boolean'],
-        ]);
+        ]));
 
         if ($data['audience'] === 'selected' && empty($data['user_ids'])) {
             return back()->withInput()->with('error', 'Select at least one user for a custom audience.');
         }
 
         $includeUnverified = $request->boolean('include_unverified');
-        $recipients = $inventory->collect($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
+        $recipients = $inventory->collectRecipientRows($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
             ->unique('id')
             ->values();
         if ($recipients->isEmpty()) {
@@ -122,7 +120,9 @@ class CampaignController extends Controller
                 'subject' => $data['subject'],
                 'body_html' => CampaignHtml::sanitize($data['body_html']),
                 'audience' => $data['audience'],
-                'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
+                'selected_user_ids' => $data['audience'] === 'selected'
+                    ? $recipients->pluck('id')->map(fn ($id) => (int) $id)->values()->all()
+                    : null,
                 'cta_label' => $data['cta_label'] ?? null,
                 'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
                 'recipients_count' => $count,
@@ -165,11 +165,45 @@ class CampaignController extends Controller
             ]);
         }
 
-        SendEmailCampaignJob::dispatch($campaign->id);
+        try {
+            SendEmailCampaignJob::dispatch($campaign->id);
+        } catch (\Throwable $e) {
+            Log::error('Campaign job dispatch failed', [
+                'campaign_id' => $campaign->id,
+                'error' => $e->getMessage(),
+            ]);
+            EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaign->id)
+                ->where('status', EmailCampaignRecipient::STATUS_PENDING)
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_FAILED,
+                    'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+                ]);
+            $campaign->refresh()->recountRecipientTotals();
+            $campaign->update([
+                'status' => EmailCampaign::STATUS_FAILED,
+                'sent_at' => now(),
+            ]);
+
+            return back()->withInput()->with('error', 'Campaign was saved but could not be queued. Try again.');
+        }
 
         return redirect()
             ->route('admin.campaigns.index')
             ->with('success', "Campaign queued for {$count} recipient(s).");
+    }
+
+    /**
+     * @return array<string, list<mixed>>
+     */
+    protected function audienceInputRules(): array
+    {
+        return [
+            'audience' => ['required', Rule::in(AudienceInventoryService::audienceKeys())],
+            'user_ids' => ['nullable', 'array', 'max:'.(AudienceInventoryService::PICKER_LIMIT * 2)],
+            'user_ids.*' => ['integer'],
+            'include_unverified' => ['boolean'],
+        ];
     }
 
     /**

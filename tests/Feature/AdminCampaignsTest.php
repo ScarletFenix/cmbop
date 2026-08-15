@@ -86,24 +86,44 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('name="respect_preferences" value="0"', false)
             ->assertSee('id="previewStatus"', false)
             ->assertSee('data-slb-confirm="Send this campaign', false)
+            ->assertSee('id="campaignConfirmFallback"', false)
+            ->assertSee('id="previewFrame"', false)
+            ->assertSee('sandbox', false)
             ->assertSee('requestSubmit() throws if the submitter is disabled', false)
+            ->assertSee("method: 'POST'", false)
             ->assertSee("Accept': 'application/json, text/html'", false)
             ->assertSee('name="include_unverified" value="0"', false)
             ->assertSee('Advertisers: never checked out', false)
             ->assertSee('value="advertisers_no_paid_orders"', false);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.campaigns.index'))
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression(
+            '/<button[^>]*id="campaignSendBtn"[^>]*>/',
+            $html
+        );
+        preg_match('/<button[^>]*id="campaignSendBtn"[^>]*>/', $html, $button);
+        $this->assertStringNotContainsString('data-slb-confirm', $button[0] ?? '');
     }
 
     public function test_preview_returns_html_for_valid_payload(): void
     {
         $admin = $this->makeUser('admin');
 
-        $this->actingAs($admin)
+        $html = $this->actingAs($admin)
             ->post(route('admin.campaigns.preview'), [
                 'subject' => 'Preview subject',
                 'body_html' => '<p>Preview body</p>',
             ])
             ->assertOk()
-            ->assertSee('Preview body', false);
+            ->assertSee('Preview body', false)
+            ->assertSee('/email/unsubscribe/preview-id', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString('/email/unsubscribe/'.$admin->id, $html);
+        $this->assertStringNotContainsString((string) $admin->email, $html);
     }
 
     public function test_preview_rejects_empty_body(): void
@@ -178,6 +198,28 @@ class AdminCampaignsTest extends TestCase
             ->getJson(route('admin.campaigns.recipient-count', ['audience' => 'not-a-segment']))
             ->assertStatus(422)
             ->assertJsonValidationErrors(['audience']);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.recipient-count'), [
+                'audience' => 'selected',
+                'user_ids' => [$advertiser->id, $publisher->id],
+            ])
+            ->assertOk()
+            ->assertJson([
+                'count' => 2,
+                'label' => 'Selected users',
+            ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.campaigns.recipient-count'), [
+                'audience' => 'selected',
+                'user_ids' => [$advertiser->id, 999999],
+            ])
+            ->assertOk()
+            ->assertJson([
+                'count' => 1,
+                'label' => 'Selected users',
+            ]);
     }
 
     public function test_hidden_zero_disables_preference_gate(): void
@@ -349,6 +391,31 @@ class AdminCampaignsTest extends TestCase
             ->assertSessionHas('error', 'No recipients found for that audience.');
 
         Mail::assertNothingQueued();
+    }
+
+    public function test_selected_audience_stores_marketplace_ids_only(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'audience' => 'selected',
+                'user_ids' => [$admin->id, $advertiser->id],
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'))
+            ->assertSessionHas('success');
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertEquals([$advertiser->id], array_map('intval', $campaign->selected_user_ids ?? []));
+        $this->assertEquals(
+            [$advertiser->id],
+            $campaign->recipients()->pluck('user_id')->map(fn ($id) => (int) $id)->all()
+        );
+        Mail::assertQueued(AudienceCampaignMail::class, 1);
     }
 
     public function test_no_paid_orders_excludes_paid_but_keeps_abandoned_checkout(): void
@@ -535,7 +602,7 @@ class AdminCampaignsTest extends TestCase
 
         $job = new class($campaign->id) extends SendEmailCampaignJob
         {
-            protected function processPending(EmailCampaign $campaign): void
+            protected function processPending(EmailCampaign $campaign): bool
             {
                 throw new \RuntimeException('boom');
             }
@@ -584,7 +651,7 @@ class AdminCampaignsTest extends TestCase
 
         $job = new class($campaign->id) extends SendEmailCampaignJob
         {
-            protected function processPending(EmailCampaign $campaign): void
+            protected function processPending(EmailCampaign $campaign): bool
             {
                 throw new \RuntimeException('boom');
             }
@@ -849,11 +916,51 @@ class AdminCampaignsTest extends TestCase
         $this->assertNotNull($fresh->email_log_id);
         $this->assertSame(0, $campaign->fresh()->sent_count);
         $this->assertSame(1, $campaign->fresh()->skipped_count);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
         $this->assertDatabaseHas('email_logs', [
             'id' => $fresh->email_log_id,
             'status' => EmailLog::STATUS_FAILED,
             'dedupe_key' => $mailable->dedupeKey,
         ]);
+    }
+
+    public function test_successful_send_after_failure_marks_recipient_delivered(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Retry after fail',
+            'subject' => 'Retry after fail',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+        ]);
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id;
+        $mailable->to($advertiser->email);
+        $this->assertNotNull($mailable->send(app('mailer')));
+
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $fresh->status);
+        $this->assertNull($fresh->skip_reason);
+        $this->assertSame(1, $campaign->fresh()->sent_count);
+        $this->assertSame(0, $campaign->fresh()->skipped_count);
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
     }
 
     public function test_job_skips_pending_when_campaign_type_is_disabled(): void
@@ -894,5 +1001,153 @@ class AdminCampaignsTest extends TestCase
             EmailCampaignRecipient::SKIP_DISABLED,
             $campaign->recipients()->where('user_id', $advertiser->id)->value('skip_reason')
         );
+    }
+
+    public function test_job_does_not_reprocess_a_finished_campaign(): void
+    {
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Already sent',
+            'subject' => 'Already sent',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        (new SendEmailCampaignJob($campaign->id))->handle();
+
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Mail::assertNothingQueued();
+    }
+
+    public function test_job_processes_one_batch_and_redispatches(): void
+    {
+        Queue::fake();
+        Mail::fake();
+
+        $admin = $this->makeUser('admin');
+        $users = [];
+        for ($i = 0; $i < SendEmailCampaignJob::BATCH_SIZE + 5; $i++) {
+            $users[] = $this->makeUser('advertiser');
+        }
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Batch',
+            'subject' => 'Batch',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => count($users),
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        foreach ($users as $user) {
+            EmailCampaignRecipient::create([
+                'email_campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => EmailCampaignRecipient::STATUS_PENDING,
+            ]);
+        }
+
+        (new SendEmailCampaignJob($campaign->id))->handle();
+
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $fresh->status);
+        $this->assertSame(
+            SendEmailCampaignJob::BATCH_SIZE,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_QUEUED)->count()
+        );
+        $this->assertSame(
+            5,
+            $campaign->recipients()->where('status', EmailCampaignRecipient::STATUS_PENDING)->count()
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+        Mail::assertQueued(AudienceCampaignMail::class, SendEmailCampaignJob::BATCH_SIZE);
+    }
+
+    public function test_job_timeout_redispatches_instead_of_wiping_pending(): void
+    {
+        Queue::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Timeout',
+            'subject' => 'Timeout',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        (new SendEmailCampaignJob($campaign->id))->failed(new \RuntimeException('Job timed out'));
+
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_PENDING,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+    }
+
+    public function test_index_redispatches_a_stale_queued_campaign(): void
+    {
+        Queue::fake();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Lost job',
+            'subject' => 'Lost job',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.campaigns.index'))
+            ->assertOk();
+
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
     }
 }

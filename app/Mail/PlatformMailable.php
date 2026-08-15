@@ -402,6 +402,14 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 'source' => $this->forceSend ? 'email_center_test' : 'queue',
                 'failed_job_uuid' => $this->failedJobUuid(),
             ]);
+            if (isset($this->campaign) && $this->campaign instanceof EmailCampaign && $this->campaign->id) {
+                $meta['campaign_id'] = (int) $this->campaign->id;
+            }
+            $logUser = $this->recipientUser
+                ?? ((isset($this->recipient) && $this->recipient instanceof User) ? $this->recipient : null);
+            if ($logUser?->id) {
+                $meta['user_id'] = (int) $logUser->id;
+            }
 
             $payload = [
                 'mailable' => static::class,

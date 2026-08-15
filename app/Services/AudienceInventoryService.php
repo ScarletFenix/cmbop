@@ -417,6 +417,32 @@ class AudienceInventoryService
     }
 
     /**
+     * id + email only, no role eager-loads — used by campaign send so a large
+     * audience cannot OOM the HTTP request before the job is dispatched.
+     *
+     * @param  array<int, int|string>|null  $selectedIds
+     * @return Collection<int, User>
+     */
+    public function collectRecipientRows(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
+    {
+        return match ($audience) {
+            self::AUDIENCE_ADVERTISERS => $this->recipientRowQuery($this->queryForRole('advertiser'), $includeUnverified)->get(),
+            self::AUDIENCE_PUBLISHERS => $this->recipientRowQuery($this->queryForRole('publisher'), $includeUnverified)->get(),
+            self::AUDIENCE_BOTH => $this->recipientRowQuery($this->queryForRole('advertiser'), $includeUnverified)
+                ->get()
+                ->merge($this->recipientRowQuery($this->queryForRole('publisher'), $includeUnverified)->get())
+                ->unique('id')
+                ->values(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->recipientRowQuery($this->queryAdvertisersNoOrders(), $includeUnverified)->get(),
+            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->recipientRowQuery($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->get(),
+            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->recipientRowQuery($this->queryPublishersNoSites(), $includeUnverified)->get(),
+            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->recipientRowQuery($this->queryAdvertisersNeverDeposited(), $includeUnverified)->get(),
+            self::AUDIENCE_SELECTED => $this->recipientRowQuery($this->querySelected($selectedIds, $includeUnverified), $includeUnverified, alreadyScoped: true)->get(),
+            default => collect(),
+        };
+    }
+
+    /**
      * Recipient count without hydrating User models.
      *
      * @param  array<int, int|string>|null  $selectedIds
@@ -489,6 +515,19 @@ class AudienceInventoryService
         }
 
         return $query;
+    }
+
+    protected function recipientRowQuery(Builder $query, bool $includeUnverified, bool $alreadyScoped = false): Builder
+    {
+        if (! $alreadyScoped) {
+            $query = $this->applyRecipientScope($query, $includeUnverified);
+        }
+
+        return $query
+            ->setEagerLoads([])
+            ->reorder()
+            ->orderBy('users.id')
+            ->select(['users.id', 'users.email']);
     }
 
     /**
