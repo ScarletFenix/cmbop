@@ -87,6 +87,17 @@ class CommunityInboxTest extends TestCase
         ]));
     }
 
+    public function test_plain_line_and_valid_email_reject_header_junk(): void
+    {
+        $this->assertSame('Evil Bcc: x@example.com', CommunityInbox::plainLine("Evil\r\nBcc: x@example.com"));
+        $this->assertSame('the website', CommunityInbox::plainLine(" \r\n ", 'the website'));
+        $this->assertSame('', CommunityInbox::plainLine(['injected']));
+        $this->assertSame('ada@example.com', CommunityInbox::validEmail('  ada@example.com  '));
+        $this->assertNull(CommunityInbox::validEmail('not-an-email'));
+        $this->assertNull(CommunityInbox::validEmail(['ada@example.com']));
+        $this->assertNull(CommunityInbox::validEmail(''));
+    }
+
     public function test_safe_http_url_rejects_non_http_schemes(): void
     {
         $this->assertSame('https://app.example/checkout', CommunityInbox::safeHttpUrl('https://app.example/checkout'));

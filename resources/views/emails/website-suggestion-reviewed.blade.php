@@ -6,7 +6,7 @@ Thanks for suggesting **{{ $siteName }}**. We accepted the request and will work
 @else
 # Update on {{ $siteName }}
 
-Thanks for suggesting **{{ $siteName }}**. We reviewed it and marked it as **{{ $suggestion->status }}**.
+Thanks for suggesting **{{ $siteName }}**. We reviewed it and marked it as **{{ $status }}**.
 @endif
 
 @if($notes !== '')

@@ -128,6 +128,27 @@ class CommunityInbox
 
     public const PAGE_URL_MAX = 255;
 
+    /**
+     * Single-line text for subjects, bells, and mail headers.
+     * Newlines in user-supplied names used to split SMTP subjects.
+     */
+    public static function plainLine(mixed $value, string $fallback = ''): string
+    {
+        $text = trim(preg_replace('/[\r\n]+/', ' ', search_text($value)) ?? '');
+
+        return $text !== '' ? $text : $fallback;
+    }
+
+    public static function validEmail(mixed $email): ?string
+    {
+        $email = search_text($email);
+        if ($email === '' || filter_var($email, FILTER_VALIDATE_EMAIL) === false) {
+            return null;
+        }
+
+        return $email;
+    }
+
     public static function safeHttpUrl(mixed $url): ?string
     {
         $url = search_text($url);

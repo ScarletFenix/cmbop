@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\CommunityFeedbackReviewed;
 use App\Mail\WebsiteSuggestionReviewed;
+use App\Models\ActivityLog;
 use App\Models\InAppNotification;
 use App\Models\ProblemReport;
 use App\Models\Role;
@@ -600,7 +601,8 @@ class CommunityFeedbackTest extends TestCase
             return $mail->hasTo($advertiser->email)
                 && $mail->kind === 'problem'
                 && (int) $mail->item->id === (int) $report->id
-                && $mail->item->status === 'resolved';
+                && $mail->status === 'resolved'
+                && $mail->notes === 'Fixed the mobile CTA.';
         });
         $this->assertDatabaseHas('in_app_notifications', [
             'user_id' => $advertiser->id,
@@ -695,7 +697,7 @@ class CommunityFeedbackTest extends TestCase
         $this->assertStringContainsString('Listing created: '.$site->domain, (string) $suggestion->admin_notes);
 
         Mail::assertQueued(WebsiteSuggestionReviewed::class, function (WebsiteSuggestionReviewed $mail) use ($advertiser) {
-            return $mail->hasTo($advertiser->email) && $mail->suggestion->status === 'accepted';
+            return $mail->hasTo($advertiser->email) && $mail->status === 'accepted';
         });
         $this->assertDatabaseHas('in_app_notifications', [
             'user_id' => $advertiser->id,
@@ -944,5 +946,155 @@ class CommunityFeedbackTest extends TestCase
             ->get(route('admin.emails.preview', 'website_suggestion_reviewed'))
             ->assertOk()
             ->assertSee('We will try to add', false);
+    }
+
+    public function test_guest_problem_still_saves_when_activity_log_fails(): void
+    {
+        ActivityLog::creating(function () {
+            throw new \RuntimeException('activity log down');
+        });
+
+        try {
+            $this->postJson(route('feedback.problem'), [
+                'name' => 'Guest User',
+                'email' => 'guest@example.com',
+                'subject' => 'Checkout broken',
+                'message' => 'The checkout button does nothing on mobile.',
+            ])->assertOk()->assertJson(['success' => true]);
+        } finally {
+            ActivityLog::flushEventListeners();
+        }
+
+        $this->assertDatabaseHas('problem_reports', [
+            'email' => 'guest@example.com',
+            'subject' => 'Checkout broken',
+            'status' => 'pending',
+        ]);
+    }
+
+    public function test_status_update_still_succeeds_when_activity_log_fails(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $report = ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'ada@example.com',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        ActivityLog::creating(function () {
+            throw new \RuntimeException('activity log down');
+        });
+
+        try {
+            $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+                'status' => 'resolved',
+            ])->assertOk()->assertJson(['success' => true]);
+        } finally {
+            ActivityLog::flushEventListeners();
+        }
+
+        $this->assertSame('resolved', $report->fresh()->status);
+    }
+
+    public function test_review_mail_keeps_the_status_from_queue_time(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $report = ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'resolved',
+            'admin_notes' => 'Fixed the mobile CTA.',
+        ]);
+
+        $mail = new CommunityFeedbackReviewed($report, 'problem');
+        $report->update([
+            'status' => 'rejected',
+            'admin_notes' => 'Reopened then rejected.',
+        ]);
+
+        $html = $mail->render();
+        $this->assertSame('resolved', $mail->status);
+        $this->assertStringContainsString('marked this report as resolved', $html);
+        $this->assertStringContainsString('Fixed the mobile CTA.', $html);
+        $this->assertStringNotContainsString('rejected', $html);
+        $this->assertStringNotContainsString('Reopened then rejected.', $html);
+    }
+
+    public function test_junk_report_email_falls_back_or_skips_mail(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->userWithRole('advertiser');
+        $withAccount = ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => 'not-an-email',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'resolved',
+        ]);
+        $guestJunk = ProblemReport::create([
+            'name' => 'Ada',
+            'email' => 'not-an-email',
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'resolved',
+        ]);
+
+        $notifier = app(CommunityInboxNotifier::class);
+        $notifier->notifySubmitterReviewed($withAccount, CommunityInbox::TAB_PROBLEMS);
+        $notifier->notifySubmitterReviewed($guestJunk, CommunityInbox::TAB_PROBLEMS);
+
+        Mail::assertQueued(CommunityFeedbackReviewed::class, 1);
+        Mail::assertQueued(CommunityFeedbackReviewed::class, function (CommunityFeedbackReviewed $mail) use ($advertiser) {
+            return $mail->hasTo($advertiser->email);
+        });
+    }
+
+    public function test_website_review_mail_strips_crlf_from_the_subject(): void
+    {
+        $suggestion = WebsiteSuggestion::create([
+            'website_name' => "Evil\r\nBcc: attacker@example.com",
+            'website_url' => 'https://fresh-tech.example',
+            'domain' => 'fresh-tech.example',
+            'status' => 'rejected',
+        ]);
+
+        $mail = (new WebsiteSuggestionReviewed($suggestion))->build();
+
+        $this->assertSame('Evil Bcc: attacker@example.com', $mail->siteName);
+        $this->assertStringNotContainsString("\r", (string) $mail->subject);
+        $this->assertStringNotContainsString("\n", (string) $mail->subject);
+        $this->assertStringContainsString('Evil Bcc: attacker@example.com', (string) $mail->subject);
+    }
+
+    public function test_accept_after_listing_ignores_a_missing_reviewer(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $suggestion = WebsiteSuggestion::create([
+            'user_id' => $advertiser->id,
+            'website_name' => 'Owned News Daily',
+            'website_url' => 'https://owned-news.example',
+            'domain' => 'owned-news.example',
+            'status' => 'pending',
+        ]);
+        $site = $this->siteFor($publisher);
+
+        app(CommunityInboxNotifier::class)->acceptWebsiteSuggestionAfterListing(
+            (int) $suggestion->id,
+            $site,
+            null
+        );
+
+        $this->assertSame('pending', $suggestion->fresh()->status);
+        Mail::assertNothingQueued();
     }
 }

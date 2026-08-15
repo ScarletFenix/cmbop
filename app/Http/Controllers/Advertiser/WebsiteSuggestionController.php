@@ -68,13 +68,19 @@ class WebsiteSuggestionController extends Controller
             'status' => 'pending',
         ]);
 
-        ActivityLogger::log(
-            'website.suggested',
-            auth()->user()->name.' suggested website '.$suggestion->website_name,
-            $suggestion,
-            ['domain' => $domain],
-            $suggestion->website_name
-        );
+        try {
+            ActivityLogger::log(
+                'website.suggested',
+                auth()->user()->name.' suggested website '.$suggestion->website_name,
+                $suggestion,
+                ['domain' => $domain],
+                $suggestion->website_name
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Failed to log website suggestion: '.$e->getMessage(), [
+                'suggestion_id' => $suggestion->id,
+            ]);
+        }
 
         try {
             app(CommunityInboxNotifier::class)->notifyAdminsNewWebsite($suggestion);
