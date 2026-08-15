@@ -259,9 +259,16 @@ class EmailCenterController extends Controller
         }
 
         try {
+            foreach ($uuids as $uuid) {
+                $this->refreshFailedJobQueuedAt($uuid);
+            }
             Artisan::call('queue:retry', ['id' => $uuids]);
         } catch (\Throwable $e) {
             return back()->with('error', UserFacingError::message($e, 'Could not retry mail jobs. Please try again.'));
+        }
+
+        if ($this->queueRetryMissedEveryJob(Artisan::output())) {
+            return back()->with('error', 'Could not retry mail jobs. Please try again.');
         }
 
         return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
@@ -281,9 +288,14 @@ class EmailCenterController extends Controller
         $uuid = $this->failedJobUuidForLog($log);
         if ($uuid) {
             try {
+                $this->refreshFailedJobQueuedAt($uuid);
                 Artisan::call('queue:retry', ['id' => [$uuid]]);
             } catch (\Throwable $e) {
                 return back()->with('error', UserFacingError::message($e, 'Could not retry the mail job. Please try again.'));
+            }
+
+            if ($this->queueRetryMissedJob(Artisan::output())) {
+                return back()->with('error', 'Cannot rebuild production payload — retry the queue job.');
             }
 
             $log->update([
@@ -343,8 +355,11 @@ class EmailCenterController extends Controller
         }
 
         $stored = data_get($log->meta, 'failed_job_uuid');
-        if (is_string($stored) && $stored !== '' && DB::table('failed_jobs')->where('uuid', $stored)->exists()) {
-            return $stored;
+        if (is_string($stored) && $stored !== '') {
+            $storedPayload = DB::table('failed_jobs')->where('uuid', $stored)->value('payload');
+            if (is_string($storedPayload) && $this->failedJobMatchesLog($storedPayload, $log)) {
+                return $stored;
+            }
         }
 
         $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
@@ -399,6 +414,52 @@ class EmailCenterController extends Controller
         }
 
         return (string) $candidates[0]->uuid;
+    }
+
+    protected function failedJobMatchesLog(string $payload, EmailLog $log): bool
+    {
+        if (! MailJobPayload::isQueuedMailable($payload)) {
+            return false;
+        }
+
+        $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
+        $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
+        if ($class !== '' && ! MailJobPayload::containsMailable($payload, $class)) {
+            return false;
+        }
+
+        if (MailJobPayload::containsToken($payload, (string) $log->to_email)
+            || MailJobPayload::containsToken($payload, (string) $log->dedupe_key)) {
+            return true;
+        }
+
+        return ! MailJobPayload::looksIdentified($payload);
+    }
+
+    protected function refreshFailedJobQueuedAt(string $uuid): void
+    {
+        $payload = DB::table('failed_jobs')->where('uuid', $uuid)->value('payload');
+        if (! is_string($payload) || ! str_contains($payload, 'queuedAt')) {
+            return;
+        }
+
+        $refreshed = MailJobPayload::refreshQueuedAt($payload);
+        if ($refreshed !== $payload) {
+            DB::table('failed_jobs')->where('uuid', $uuid)->update(['payload' => $refreshed]);
+        }
+    }
+
+    protected function queueRetryMissedJob(string $output): bool
+    {
+        return str_contains($output, 'Unable to find failed job')
+            || str_contains($output, 'No retryable jobs found.');
+    }
+
+    protected function queueRetryMissedEveryJob(string $output): bool
+    {
+        return str_contains($output, 'No retryable jobs found.')
+            || (str_contains($output, 'Unable to find failed job')
+                && ! str_contains($output, 'Pushing failed queue jobs'));
     }
 
     protected function queuedMailJobsCount(): int

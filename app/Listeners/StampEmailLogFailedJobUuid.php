@@ -27,11 +27,13 @@ class StampEmailLogFailedJobUuid
             return;
         }
 
+        $emails = MailJobPayload::emails($payload);
         $matches = EmailLog::query()
             ->whereIn('status', [EmailLog::STATUS_FAILED, EmailLog::STATUS_PENDING])
             ->where('updated_at', '>=', now()->subHour())
+            ->when($emails !== [], fn ($q) => $q->whereIn('to_email', $emails))
             ->latest('id')
-            ->limit(40)
+            ->limit(50)
             ->get()
             ->filter(fn (EmailLog $log) => $this->payloadMatchesLog($payload, $log));
 

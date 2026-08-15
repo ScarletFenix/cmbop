@@ -2,6 +2,8 @@
 
 namespace App\Support;
 
+use Carbon\Carbon;
+
 class MailJobPayload
 {
     public static function isQueuedMailable(string $payload): bool
@@ -42,7 +44,57 @@ class MailJobPayload
             return true;
         }
 
-        // Ignore Laravel's "Class@method" job targets; require a host with a dot.
-        return (bool) preg_match('/[^\s"\\\\]+@[^\s"\\\\]+\.[a-z]{2,}/i', $payload);
+        return self::emails($payload) !== [];
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function emails(string $payload): array
+    {
+        preg_match_all('/[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}/i', $payload, $matches);
+
+        return array_values(array_unique(array_map('strval', $matches[0] ?? [])));
+    }
+
+    public static function queuedAt(string $payload): ?Carbon
+    {
+        if (! preg_match('/s:8:\\\\?"queuedAt\\\\?";s:\d+:\\\\?"([^\\\\"]+)\\\\?"/', $payload, $matches)) {
+            return null;
+        }
+
+        try {
+            return Carbon::parse($matches[1]);
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
+    public static function refreshQueuedAt(string $payload, ?\DateTimeInterface $at = null): string
+    {
+        $fresh = Carbon::parse($at ?? now())->toIso8601String();
+        $replacement = 's:8:"queuedAt";s:'.strlen($fresh).':"'.$fresh.'"';
+
+        $decoded = json_decode($payload, true);
+        $command = is_array($decoded) ? ($decoded['data']['command'] ?? null) : null;
+        if (is_string($command) && str_contains($command, 'queuedAt')) {
+            $decoded['data']['command'] = preg_replace(
+                '/s:8:"queuedAt";(?:N|s:\d+:"[^"]*")/',
+                $replacement,
+                $command,
+                1
+            ) ?? $command;
+
+            return json_encode($decoded) ?: $payload;
+        }
+
+        $updated = preg_replace(
+            '/s:8:\\\\?"queuedAt\\\\?";(?:N|s:\d+:\\\\?"[^\\\\"]*\\\\?")/',
+            $replacement,
+            $payload,
+            1
+        );
+
+        return is_string($updated) ? $updated : $payload;
     }
 }

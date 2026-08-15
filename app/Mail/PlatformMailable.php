@@ -398,6 +398,11 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
 
             $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
             if ($existing) {
+                if (($payload['to_email'] ?? '') === 'unknown'
+                    && filled($existing->to_email)
+                    && $existing->to_email !== 'unknown') {
+                    unset($payload['to_email']);
+                }
                 $existing->fill($payload);
                 $existing->meta = array_filter(array_merge((array) $existing->meta, $meta));
                 $existing->attempts = max(1, (int) $existing->attempts) + 1;
