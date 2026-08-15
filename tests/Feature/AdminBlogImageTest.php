@@ -367,6 +367,47 @@ class AdminBlogImageTest extends TestCase
         Storage::disk('public')->assertMissing($path);
     }
 
+    public function test_update_deletes_legacy_asset_inline_image_after_save(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = 'blogs/content/custom-orphan.jpg';
+        Storage::disk('public')->put($path, 'orphan');
+
+        $blog = Blog::create([
+            'title' => 'Legacy Asset Cleanup',
+            'slug' => 'legacy-asset-cleanup',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/assets/img/blog/custom-orphan.jpg" alt="A"></p>',
+            'status' => 'draft',
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+        $blog->translations()->create([
+            'locale' => 'en',
+            'title' => 'Legacy Asset Cleanup',
+            'slug' => 'legacy-asset-cleanup',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/assets/img/blog/custom-orphan.jpg" alt="A"></p>',
+            'is_published' => true,
+        ]);
+
+        $this->actingAs($admin)
+            ->put(route('admin.blogs.update', $blog->id), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => 'Legacy Asset Cleanup',
+                        'slug' => 'legacy-asset-cleanup',
+                        'content' => '<p>Image removed from the body.</p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.index'));
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
     public function test_featured_image_url_rewrites_absolute_storage_urls(): void
     {
         $blog = new Blog([

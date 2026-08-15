@@ -85,6 +85,17 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertStringNotContainsString('/storage/blogs/content/b.png', $clean);
     }
 
+    public function test_protocol_relative_images_are_kept_as_https(): void
+    {
+        $clean = $this->sanitizer->sanitize(
+            '<p>Keep</p><img src="//cdn.example.com/hero.png" alt="Hero">'
+        );
+
+        $this->assertStringContainsString('Keep', $clean);
+        $this->assertStringContainsString('src="https://cdn.example.com/hero.png"', $clean);
+        $this->assertStringNotContainsString('src="//cdn.example.com/hero.png"', $clean);
+    }
+
     public function test_rewrite_storage_blog_urls_is_idempotent(): void
     {
         $html = '<img src="https://example.test/storage/blogs/content/x.jpg">';
