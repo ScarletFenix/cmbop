@@ -151,7 +151,7 @@ class EmailUnsubscribeTest extends TestCase
 
         $this->assertStringContainsString('/email/unsubscribe/'.$user->id, $html);
         $this->assertStringContainsString('Unsubscribe from marketing emails', $html);
-        $this->assertStringContainsString($url, $html);
+        $this->assertStringContainsString(e($url), $html);
 
         $headers = $mailable->headers();
         $this->assertSame('<'.$url.'>', $headers->text['List-Unsubscribe']);

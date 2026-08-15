@@ -604,6 +604,7 @@ class AdminCampaignsTest extends TestCase
         $mailable->skipUserPreference = true;
         $mailable->dedupeKey = 'fresh-campaign-test';
         $mailable->queuedAt = now()->subHours(30)->toIso8601String();
+        $mailable->to($advertiser->email);
         $this->assertNotNull($mailable->send(app('mailer')));
 
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
