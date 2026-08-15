@@ -423,15 +423,10 @@ class EmailCampaign extends Model
 
         $holdUserIds = $inFlight;
         try {
-            $prefix = 'audience_campaign:'.(int) $campaign->id.':user:';
-            foreach (EmailLog::query()
-                ->where('status', EmailLog::STATUS_PENDING)
-                ->where('dedupe_key', 'like', $prefix.'%')
-                ->pluck('dedupe_key') as $key) {
-                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
-                    $holdUserIds[] = (int) $matches[1];
-                }
-            }
+            $holdUserIds = array_merge(
+                $holdUserIds,
+                EmailLog::pendingUserIdsForCampaign((int) $campaign->id)
+            );
         } catch (\Throwable) {
             return 0;
         }
@@ -808,6 +803,10 @@ class EmailCampaign extends Model
             (int) $row->email_campaign_id,
             (int) $row->user_id
         ))->unique()->values()->all();
+        $neededPairs = [];
+        foreach ($rows as $row) {
+            $neededPairs[(int) $row->email_campaign_id.':'.(int) $row->user_id] = true;
+        }
 
         try {
             $logs = EmailLog::query()
@@ -818,11 +817,54 @@ class EmailCampaign extends Model
                     EmailLog::STATUS_FAILED,
                 ])
                 ->orderByDesc('id')
-                ->get()
-                ->groupBy('dedupe_key');
+                ->get();
         } catch (\Throwable) {
             return;
         }
+
+        try {
+            $campaignIds = $rows->pluck('email_campaign_id')->unique()->filter()
+                ->map(fn ($id) => (int) $id)->values()->all();
+            if ($campaignIds !== []) {
+                $extras = EmailLog::query()
+                    ->whereIn('status', [
+                        EmailLog::STATUS_PENDING,
+                        EmailLog::STATUS_DELIVERED,
+                        EmailLog::STATUS_FAILED,
+                    ])
+                    ->where(function ($query) use ($campaignIds) {
+                        foreach ($campaignIds as $campaignId) {
+                            $query->orWhere(function ($one) use ($campaignId) {
+                                $one->where('meta->campaign_id', $campaignId)
+                                    ->orWhere('dedupe_key', 'like', 'audience_campaign:'.$campaignId.':user:%');
+                            });
+                        }
+                    })
+                    ->orderByDesc('id')
+                    ->get();
+                $logs = $logs->concat($extras)->unique('id')->values();
+            }
+        } catch (\Throwable) {
+            // Canonical-key rows still attach when JSON meta cannot be queried.
+        }
+
+        $logs = $logs
+            ->filter(function (EmailLog $log) use ($neededPairs, $keys) {
+                [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+                if ($campaignId > 0 && $userId > 0) {
+                    return isset($neededPairs[$campaignId.':'.$userId]);
+                }
+
+                return in_array((string) $log->dedupe_key, $keys, true);
+            })
+            ->groupBy(function (EmailLog $log) {
+                [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+                if ($campaignId > 0 && $userId > 0) {
+                    return EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+                }
+
+                return (string) $log->dedupe_key;
+            });
 
         $campaignIds = array_fill_keys($attachedIds, true);
 

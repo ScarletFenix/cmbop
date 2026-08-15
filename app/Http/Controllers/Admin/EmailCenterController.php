@@ -563,6 +563,10 @@ class EmailCenterController extends Controller
 
         $delivered = EmailLog::latestDeliveredByDedupe((string) $log->dedupe_key);
         if (! $delivered || (int) $delivered->id === (int) $log->id) {
+            [$campaignId, $userId] = EmailLog::campaignUserIds($log);
+            $delivered = EmailLog::latestDeliveredForCampaignUser($campaignId, $userId);
+        }
+        if (! $delivered || (int) $delivered->id === (int) $log->id) {
             return false;
         }
 
@@ -591,7 +595,15 @@ class EmailCenterController extends Controller
             return false;
         }
 
-        return EmailLog::latestDeliveredByDedupe($dedupe) !== null;
+        if (EmailLog::latestDeliveredByDedupe($dedupe) !== null) {
+            return true;
+        }
+
+        if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', $dedupe, $matches)) {
+            return false;
+        }
+
+        return EmailLog::latestDeliveredForCampaignUser((int) $matches[1], (int) $matches[2]) !== null;
     }
 
     protected function isOneShotCampaignLog(EmailLog $log): bool

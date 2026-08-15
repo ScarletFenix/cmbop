@@ -18,6 +18,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
     }
@@ -90,6 +91,7 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             $root.'/app/Support/MailJobPayload.php',
             $root.'/app/Services/AudienceInventoryService.php',
             $root.'/app/Http/Controllers/Admin/EmailCenterController.php',
+            $root.'/app/Models/EmailLog.php',
             $root.'/tests/Unit/MailJobPayloadTest.php',
         ];
 
@@ -106,6 +108,11 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
+
+        $log = (string) file_get_contents($root.'/app/Models/EmailLog.php');
+        $this->assertSame(1, preg_match_all('/function latestDeliveredForCampaignUser\b/', $log));
+        $this->assertSame(1, preg_match_all('/function pendingUserIdsForCampaign\b/', $log));
+        $this->assertSame(1, preg_match_all('/function campaignUserIds\b/', $log));
 
         $model = (string) file_get_contents($files[0]);
         $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
