@@ -375,7 +375,7 @@
                                           rows="3"
                                           minlength="10"
                                           maxlength="1000"
-                                          placeholder="Tell the publisher why these sites were not added (10–1000 characters).">{{ old('rejection_note') }}</textarea>
+                                          placeholder="Tell the publisher why these sites were not added (10–1000 characters).">{{ old_text('rejection_note') }}</textarea>
                                 @error('rejection_note')
                                     <div class="invalid-feedback d-block">{{ $message }}</div>
                                 @enderror

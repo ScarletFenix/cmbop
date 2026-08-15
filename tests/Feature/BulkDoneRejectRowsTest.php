@@ -160,6 +160,7 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString('function markRowRejected', $blade);
         $this->assertStringContainsString('function doneFormReady', $blade);
         $this->assertStringContainsString('function noteCharCount', $blade);
+        $this->assertStringContainsString("old_text('rejection_note')", $blade);
         $this->assertStringContainsString('rejected.length === 0 || noteOk', $blade);
         $this->assertStringNotContainsString('route(\'admin.bulk-site-requests.done\'', $blade);
     }
@@ -519,6 +520,37 @@ class BulkDoneRejectRowsTest extends TestCase
 
         $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $items[0]->id]);
         Mail::assertQueued(BulkSiteItemsRejected::class, 1);
+    }
+
+    public function test_complete_wins_is_not_replayed_as_rejected_after_note_error(): void
+    {
+        foreach ($this->staffActors() as [$prefix, $user]) {
+            Mail::fake();
+            [$bulk, $items] = $this->makeBulkWithItems(2, $prefix.'-replay');
+            [$keep, $drop] = $items;
+
+            $this->actingAs($user)
+                ->from(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->post(route($prefix.'.bulk-site-requests.done', $bulk), [
+                    'items' => $this->completeRow($keep),
+                    'rejected_item_ids' => [$keep->id, $drop->id],
+                    'rejection_note' => '',
+                ])
+                ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertSessionHasErrors('rejection_note');
+
+            $html = $this->actingAs($user)
+                ->get(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertOk()
+                ->getContent();
+
+            $this->assertStringContainsString('name="items['.$keep->id.'][country]"', $html);
+            $this->assertStringContainsString('name="rejected_item_ids[]" value="'.$drop->id.'"', $html);
+            $this->assertStringNotContainsString('name="rejected_item_ids[]" value="'.$keep->id.'"', $html);
+            $this->assertDatabaseHas('bulk_site_request_items', ['id' => $keep->id]);
+            $this->assertDatabaseHas('bulk_site_request_items', ['id' => $drop->id]);
+            Mail::assertNothingQueued();
+        }
     }
 
     public function test_complete_row_wins_over_same_id_in_rejected_list(): void

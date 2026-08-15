@@ -221,7 +221,6 @@ class BulkSiteRequestController extends Controller
         }
 
         $rejectedItemIds = $this->pendingRejectedItemIds($request, $pendingIds);
-        $request->merge(['rejected_item_ids' => $rejectedItemIds]);
 
         // Only validate rows the marketer started or completed. Empty pending rows stay for later.
         $completeItemIds = [];
@@ -245,6 +244,10 @@ class BulkSiteRequestController extends Controller
         // A filled row is kept (seeded). Delete only applies to unfinished pending rows.
         $rejectedItemIds = array_values(array_diff($rejectedItemIds, $completeItemIds));
         $partialItemIds = array_values(array_diff($partialItemIds, $rejectedItemIds));
+        $request->merge([
+            'rejected_item_ids' => $rejectedItemIds,
+            'rejection_note' => trim((string) $request->input('rejection_note', '')),
+        ]);
 
         $maxSites = BulkSiteRequest::MAX_SITES_PER_REQUEST;
 
