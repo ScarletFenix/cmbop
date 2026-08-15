@@ -200,11 +200,15 @@ class OrderRefundService
         $reference = (string) ($order->reference_code ?? '');
         $siblingTotal = 0.0;
         if ($reference !== '') {
+            // Completed siblings already spent their share. Counting them
+            // again would leave leftover promo reserved after the last
+            // open line is approved or rejected.
             $siblingTotal = round((float) Order::query()
                 ->where('reference_code', $reference)
                 ->where('user_id', $order->user_id)
                 ->where('id', '!=', $order->id)
                 ->where('payment_status', 'paid')
+                ->whereNotIn('status', ['completed', 'cancelled'])
                 ->sum('total_amount'), 2);
         }
 
