@@ -30,8 +30,8 @@ use Illuminate\Support\Str;
  * strike reset the watermark advances so a second full wave is required.
  *
  * A table-cell copy often includes a trailing newline, and a multi-select
- * dump includes several hosts. Those still count (capped) — rejecting the
- * whole clipboard was a harvest bypass.
+ * or CSV dump includes several hosts. Those still count (capped) — rejecting
+ * the whole clipboard was a harvest bypass.
  */
 class CatalogCopyStrikeGuard
 {
@@ -209,7 +209,10 @@ class CatalogCopyStrikeGuard
             return [];
         }
 
-        $tokens = preg_split('/\s+/u', $raw) ?: [];
+        // Newlines, tabs, commas, semicolons, and pipes are all dump
+        // separators. Counting only whitespace let a CSV paste (or one
+        // POST of host1,host2,host3) collapse to a single event.
+        $tokens = preg_split('/[\s,;|]+/u', $raw) ?: [];
         $hosts = [];
 
         foreach ($tokens as $token) {

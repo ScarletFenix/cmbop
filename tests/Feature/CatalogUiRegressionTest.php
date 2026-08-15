@@ -142,6 +142,7 @@ class CatalogUiRegressionTest extends TestCase
         // Table-cell copies often include a trailing newline; multi-select dumps
         // include several hosts. Do not drop the whole clipboard.
         $this->assertStringContainsString('extractDomainish', $js);
+        $this->assertStringContainsString('.split(/[\\s,;|]+/)', $js);
         $this->assertDoesNotMatchRegularExpression(
             '/if \(!t \|\| t\.length > 500 \|\| \/\\\\r\|\\\\n\/\.test\(t\)\) return false;/',
             $js

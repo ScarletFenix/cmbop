@@ -391,6 +391,25 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
     }
 
+    public function test_comma_separated_dump_counts_each_host(): void
+    {
+        $user = $this->advertiser();
+        $guard = app(CatalogCopyStrikeGuard::class);
+        $dump = implode(',', [
+            'https://csv-1.example',
+            'https://csv-2.example',
+            'https://csv-3.example',
+            'https://csv-4.example',
+            'https://csv-5.example',
+        ]);
+
+        $result = $guard->record($user, null, $dump);
+
+        $this->assertSame(CatalogCopyStrikeGuard::STATUS_WARNING, $result['status']);
+        $this->assertSame(5, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(1, (int) $user->fresh()->catalog_copy_strike_count);
+    }
+
     public function test_whole_row_text_with_one_url_counts_once(): void
     {
         $user = $this->advertiser();

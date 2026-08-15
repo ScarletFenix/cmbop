@@ -4686,7 +4686,7 @@ document.addEventListener('click', async function (e) {
     let hideToastShown = false;
 
     function extractDomainish(text) {
-        const tokens = String(text || '').split(/\s+/);
+        const tokens = String(text || '').split(/[\s,;|]+/);
         const hits = [];
         const seen = {};
         for (let i = 0; i < tokens.length; i++) {
