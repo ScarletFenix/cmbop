@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class WelcomeBonusSetting extends Model
@@ -41,24 +42,37 @@ class WelcomeBonusSetting extends Model
 
     public static function config(): array
     {
-        $stored = static::getValue('config', []) ?: [];
+        $defaultOn = static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true);
+        $read = static::readConfig(false);
 
-        return array_merge([
-            'enabled' => static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true),
-        ], is_array($stored) ? $stored : []);
+        if ($read['state'] === 'missing') {
+            return ['enabled' => $defaultOn];
+        }
+
+        if ($read['state'] === 'unreadable' || ! is_array($read['value'])) {
+            return ['enabled' => false];
+        }
+
+        $stored = $read['value'];
+        if (! array_key_exists('enabled', $stored)) {
+            $stored['enabled'] = false;
+        }
+
+        return $stored;
     }
 
     public static function isEnabled(): bool
     {
-        $config = static::config();
-        if (! array_key_exists('enabled', $config)) {
-            return true;
-        }
+        return static::readEnabled(false);
+    }
 
-        // Unparseable / null stored flags fail closed so a corrupt row cannot
-        // keep granting after an admin Disable. Missing table still fail-opens
-        // via getValue() → enabled_default.
-        return static::parseEnabledFlag($config['enabled'], false);
+    /**
+     * Kill-switch read for the signup transaction. Locks the settings row so
+     * an admin Disable cannot commit underneath recordClaim().
+     */
+    public static function isEnabledForGrant(): bool
+    {
+        return static::readEnabled(true);
     }
 
     /**
@@ -80,22 +94,77 @@ class WelcomeBonusSetting extends Model
 
     public static function setEnabled(bool $enabled, ?int $updatedBy = null): void
     {
-        $current = static::getValue('config', []) ?: [];
-        if (! is_array($current)) {
-            $current = [];
+        if (! Schema::hasTable((new static)->getTable())) {
+            return;
         }
 
-        $current['enabled'] = $enabled;
-        $current['updated_at'] = now()->toIso8601String();
-        if ($updatedBy !== null) {
-            $current['updated_by'] = $updatedBy;
-        }
+        DB::transaction(function () use ($enabled, $updatedBy) {
+            $row = static::query()->where('key', 'config')->lockForUpdate()->first();
+            $current = is_array($row?->value) ? $row->value : [];
 
-        static::setValue('config', $current);
+            $current['enabled'] = $enabled;
+            $current['updated_at'] = now()->toIso8601String();
+            if ($updatedBy !== null) {
+                $current['updated_by'] = $updatedBy;
+            }
+
+            static::query()->updateOrCreate(['key' => 'config'], ['value' => $current]);
+            Cache::forget('welcome_bonus_setting:config');
+        });
     }
 
     public static function clearCache(): void
     {
         Cache::forget('welcome_bonus_setting:config');
+    }
+
+    private static function readEnabled(bool $lock): bool
+    {
+        $defaultOn = static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true);
+        $read = static::readConfig($lock);
+
+        // Missing table / never configured: fail-open so Hostinger drift
+        // cannot block the €20 grant. A present row that cannot be trusted
+        // fails closed so Disable cannot be undone by corrupt JSON.
+        if ($read['state'] === 'missing') {
+            return $defaultOn;
+        }
+
+        if ($read['state'] === 'unreadable') {
+            return false;
+        }
+
+        $stored = $read['value'];
+        if (! is_array($stored) || ! array_key_exists('enabled', $stored)) {
+            return false;
+        }
+
+        return static::parseEnabledFlag($stored['enabled'], false);
+    }
+
+    /**
+     * @return array{state: 'missing'|'unreadable'|'present', value: mixed}
+     */
+    private static function readConfig(bool $lock): array
+    {
+        if (! Schema::hasTable((new static)->getTable())) {
+            return ['state' => 'missing', 'value' => null];
+        }
+
+        try {
+            $query = static::query()->where('key', 'config');
+            if ($lock) {
+                $query->lockForUpdate();
+            }
+            $row = $query->first();
+        } catch (\Throwable) {
+            return ['state' => 'unreadable', 'value' => null];
+        }
+
+        if ($row === null) {
+            return ['state' => 'missing', 'value' => null];
+        }
+
+        return ['state' => 'present', 'value' => $row->value];
     }
 }

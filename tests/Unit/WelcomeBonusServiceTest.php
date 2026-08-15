@@ -140,6 +140,31 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertFalse(WelcomeBonusSetting::isEnabled());
     }
 
+    public function test_present_row_without_enabled_key_fails_closed(): void
+    {
+        WelcomeBonusSetting::setValue('config', ['updated_by' => 1]);
+
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+        $this->assertFalse(WelcomeBonusSetting::isEnabledForGrant());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('5.6.7.8'), 'advertiser'));
+    }
+
+    public function test_present_row_with_empty_or_null_value_fails_closed(): void
+    {
+        WelcomeBonusSetting::setValue('config', []);
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+
+        WelcomeBonusSetting::query()->updateOrCreate(['key' => 'config'], ['value' => null]);
+        $this->assertFalse(WelcomeBonusSetting::isEnabled());
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('7.7.7.7'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
     private function request(string $ip, array $cookies = []): Request
     {
         return Request::create('/register', 'POST', [], $cookies, [], [
