@@ -700,6 +700,17 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'Cannot delete a submission linked to an order.'], 422);
         }
 
+        $inFlight = OrderItem::query()
+            ->where('content_submission_id', $submission->id)
+            ->whereHas('order', function ($q) {
+                $q->where('status', '!=', 'cancelled')
+                    ->where('payment_status', '!=', 'refunded');
+            })
+            ->exists();
+        if ($inFlight) {
+            return response()->json(['success' => false, 'message' => 'Cannot delete a submission linked to an order.'], 422);
+        }
+
         $submission->deleteStoredFile();
         $submission->delete();
 

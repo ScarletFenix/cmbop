@@ -568,6 +568,33 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertDatabaseHas('content_submissions', ['id' => $submission->id]);
     }
 
+    public function test_cannot_delete_article_referenced_by_a_pending_order_item(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'pending-item');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $this->assertNull($submission->fresh()->order_id);
+
+        $this->actingAs($advertiser)
+            ->deleteJson(route('advertiser.content-submissions.destroy', $submission))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertDatabaseHas('content_submissions', ['id' => $submission->id]);
+    }
+
     public function test_library_availability_helper_on_model(): void
     {
         $advertiser = $this->advertiser();

@@ -548,6 +548,160 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         );
     }
 
+    public function test_mark_paid_refunds_when_library_article_was_deleted(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'legacy-deleted.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $ref = 'LEGACY-DELETED-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/a',
+            'anchor_text' => 'stale anchor',
+            'target_url' => 'https://stale.example/old',
+            'price' => 80,
+        ]);
+
+        $submission->delete();
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_legacy_deleted')
+        );
+
+        $this->assertCount(0, $paid);
+        $fresh = $order->fresh();
+        $this->assertSame('cancelled', $fresh->status);
+        $this->assertSame('refunded', $fresh->payment_status);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, app(OrderPaymentService::class)->refundedCardOrderAmount($ref), 0.01);
+    }
+
+    public function test_mark_paid_refreshes_stale_library_links_from_the_live_article(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'legacy-refresh.example', 80);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'anchor_text' => 'live anchor',
+            'target_url' => 'https://example.com/live',
+        ]);
+        $ref = 'LEGACY-REFRESH-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/a',
+            'anchor_text' => 'stale anchor',
+            'target_url' => 'https://stale.example/old',
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_legacy_refresh')
+        );
+
+        $this->assertCount(1, $paid);
+        $this->assertSame('paid', $order->fresh()->payment_status);
+        $item->refresh();
+        $this->assertSame('live anchor', $item->anchor_text);
+        $this->assertSame('https://example.com/live', $item->target_url);
+    }
+
+    public function test_mark_paid_refunds_when_linked_library_article_is_unready(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'legacy-unready.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $ref = 'LEGACY-UNREADY-1';
+
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => $ref,
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/a',
+            'anchor_text' => 'stale anchor',
+            'target_url' => 'https://stale.example/old',
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'target_url' => null,
+        ]);
+
+        $paid = app(OrderPaymentService::class)->markOrdersPaidFromStripeSession(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_legacy_unready')
+        );
+
+        $this->assertCount(0, $paid);
+        $fresh = $order->fresh();
+        $this->assertSame('cancelled', $fresh->status);
+        $this->assertSame('refunded', $fresh->payment_status);
+        $this->assertNull($submission->fresh()->order_id);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+    }
+
     public function test_taken_content_library_line_is_refunded_once_not_double_credited(): void
     {
         $advertiser = $this->makeUser('advertiser');

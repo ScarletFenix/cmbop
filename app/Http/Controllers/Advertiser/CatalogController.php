@@ -3626,7 +3626,25 @@ class CatalogController extends Controller
             && $order->payment_status === 'failed'
             && $order->status === 'pending'
             && $order->items->isNotEmpty()
-            && $order->hasCatalogVisibleFulfillment();
+            && $order->hasCatalogVisibleFulfillment()
+            && $this->orderLibraryContentReadyForPayment($order);
+    }
+
+    private function orderLibraryContentReadyForPayment(Order $order): bool
+    {
+        $order->loadMissing('items');
+        foreach ($order->items as $item) {
+            $id = (int) ($item->content_submission_id ?? 0);
+            if ($id <= 0) {
+                continue;
+            }
+            $submission = ContentSubmission::query()->whereKey($id)->first();
+            if (! $submission || ! $submission->isReadyToFulfill((int) $order->id)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
@@ -4656,15 +4674,7 @@ class CatalogController extends Controller
     private function attachSubmissionToOrder(ContentSubmission $submission, Order $order, OrderItem $item): void
     {
         $locked = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first();
-        if (! $locked || $locked->isClaimedByAnotherOrder((int) $order->id)) {
-            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
-        }
-
-        if ($locked->order_id === null && ! $locked->isReadyForCheckout()) {
-            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
-        }
-
-        if ($locked->order_id !== null && ! $locked->hasCheckoutReadyLinks()) {
+        if (! $locked || ! $locked->isReadyToFulfill((int) $order->id)) {
             throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
         }
 
@@ -4686,6 +4696,20 @@ class CatalogController extends Controller
 
         if ($filtered !== []) {
             $locked->update($filtered);
+        }
+
+        $itemFields = app(CheckoutSchemaService::class)->filterExistingColumns('order_items', [
+            'anchor_text' => $locked->anchor_text,
+            'target_url' => $locked->target_url,
+            'feature_image_url' => $locked->feature_image_url,
+            'content_disk' => $locked->disk,
+            'content_path' => $locked->path,
+            'content_original_name' => $locked->original_filename,
+            'content_mime' => $locked->mime,
+            'moderation_status' => $locked->moderation_status,
+        ]);
+        if ($itemFields !== []) {
+            $item->update($itemFields);
         }
 
         $submission->setRawAttributes($locked->fresh()->getAttributes(), true);
