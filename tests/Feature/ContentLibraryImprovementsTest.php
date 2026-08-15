@@ -2,8 +2,10 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ContentEvaluationResult;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
+use App\Models\InAppNotification;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\Role;
@@ -13,6 +15,7 @@ use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
 use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\InAppNotificationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\DB;
@@ -1313,6 +1316,54 @@ class ContentLibraryImprovementsTest extends TestCase
             ->getContent();
         $this->assertStringContainsString('1 unused article', $html);
         $this->assertStringNotContainsString('2 unused article', $html);
+    }
+
+    public function test_paid_item_only_leftover_shows_view_order_in_needs_corrections(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'paid-item-only-view');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Item Only Piece']);
+        $paid = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        OrderItem::create([
+            'order_id' => $paid->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertNull($fresh->order_id);
+        $this->assertTrue($fresh->isClaimedByAnotherOrder());
+        $this->assertTrue($fresh->isLockedByPaidOrder());
+        $this->assertFalse($fresh->canReplaceUnpaidLeftover());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertNotNull($fresh->libraryOrder());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Paid Item Only Piece', false)
+            ->assertSee('View order');
     }
 
     public function test_library_js_prefers_server_editor_notice_over_link_guess(): void

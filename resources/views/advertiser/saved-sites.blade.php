@@ -7,23 +7,6 @@
     $blacklist = $blacklist ?? collect();
     $favoritesCount = $favoritesCount ?? $favorites->count();
     $blacklistCount = $blacklistCount ?? $blacklist->count();
-
-    $maskHost = function (?string $url): array {
-        $rawHost = (string) \Illuminate\Support\Str::of((string) $url)
-            ->replaceMatches('/^(https?:\/\/)?(www\.)?/', '')
-            ->before('/');
-        $hostParts = explode('.', $rawHost);
-        if (count($hostParts) >= 2) {
-            $tld = array_pop($hostParts);
-            $namePart = implode('.', $hostParts);
-            $visibleLen = min(4, max(2, strlen($namePart)));
-            $maskedHost = substr($namePart, 0, $visibleLen).'***.'.$tld;
-        } else {
-            $maskedHost = substr($rawHost, 0, 3).'******';
-        }
-
-        return [$maskedHost, $rawHost];
-    };
 @endphp
 
 <style>
@@ -182,13 +165,12 @@
                             <tbody id="favoritesTableBody">
                                 @foreach($favorites as $site)
                                     @php
-                                        [$maskedHost, $rawHost] = $maskHost($site->site_url);
                                         $country = strtolower((string) ($site->country ?: 'us'));
                                     @endphp
                                     <tr class="saved-row" data-id="{{ $site->id }}" data-list="favorites">
                                         <td>
-                                            <div class="saved-site-url">{{ $maskedHost }}</div>
-                                            <div class="small text-muted text-truncate" style="max-width:220px;">{{ $site->site_name }}</div>
+                                            <div class="saved-site-url">{{ $site->display_host }}</div>
+                                            <div class="small text-muted text-truncate" style="max-width:220px;">{{ $site->display_name }}</div>
                                         </td>
                                         <td class="small">{{ $site->category ?: '—' }}</td>
                                         <td>{{ number_format((int) $site->traffic) }}</td>
@@ -214,13 +196,13 @@
                                                 <button type="button"
                                                         class="btn btn-sm btn-outline-secondary js-move-blacklist"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->site_name }}">
+                                                        data-name="{{ $site->display_name }}">
                                                     <i class="fa-solid fa-ban me-1"></i> Block
                                                 </button>
                                                 <button type="button"
                                                         class="btn btn-sm btn-cta-tertiary js-remove-favorite"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->site_name }}">
+                                                        data-name="{{ $site->display_name }}">
                                                     Remove
                                                 </button>
                                             </div>
@@ -235,14 +217,13 @@
                     <div class="p-3 saved-mobile-only" id="favoritesMobileList">
                         @foreach($favorites as $site)
                             @php
-                                [$maskedHost] = $maskHost($site->site_url);
                                 $country = strtolower((string) ($site->country ?: 'us'));
                             @endphp
                             <div class="saved-mobile-card saved-row" data-id="{{ $site->id }}" data-list="favorites">
                                 <div class="d-flex justify-content-between gap-2 mb-2">
                                     <div>
-                                        <div class="saved-site-url">{{ $maskedHost }}</div>
-                                        <div class="small text-muted">{{ $site->site_name }}</div>
+                                        <div class="saved-site-url">{{ $site->display_host }}</div>
+                                        <div class="small text-muted">{{ $site->display_name }}</div>
                                     </div>
                                     <div class="fw-semibold text-nowrap">€{{ number_format((float) $site->display_price, 2) }}</div>
                                 </div>
@@ -261,9 +242,9 @@
                                         <a href="{{ route('advertiser.catalog', ['site' => $site->id]) }}" class="btn btn-sm btn-primary">Order</a>
                                     @endif
                                     <button type="button" class="btn btn-sm btn-outline-secondary js-move-blacklist"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Block</button>
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Block</button>
                                     <button type="button" class="btn btn-sm btn-cta-tertiary js-remove-favorite"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Remove</button>
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Remove</button>
                                 </div>
                             </div>
                         @endforeach
@@ -297,13 +278,12 @@
                             <tbody id="blacklistTableBody">
                                 @foreach($blacklist as $site)
                                     @php
-                                        [$maskedHost] = $maskHost($site->site_url);
                                         $country = strtolower((string) ($site->country ?: 'us'));
                                     @endphp
                                     <tr class="saved-row" data-id="{{ $site->id }}" data-list="blacklist">
                                         <td>
-                                            <div class="saved-site-url">{{ $maskedHost }}</div>
-                                            <div class="small text-muted text-truncate" style="max-width:220px;">{{ $site->site_name }}</div>
+                                            <div class="saved-site-url">{{ $site->display_host }}</div>
+                                            <div class="small text-muted text-truncate" style="max-width:220px;">{{ $site->display_name }}</div>
                                         </td>
                                         <td class="small">{{ $site->category ?: '—' }}</td>
                                         <td>{{ number_format((int) $site->traffic) }}</td>
@@ -317,13 +297,13 @@
                                                 <button type="button"
                                                         class="btn btn-sm btn-primary js-move-favorite"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->site_name }}">
+                                                        data-name="{{ $site->display_name }}">
                                                     <i class="fa-regular fa-heart me-1"></i> Favorite
                                                 </button>
                                                 <button type="button"
                                                         class="btn btn-sm btn-outline-secondary js-remove-blacklist"
                                                         data-id="{{ $site->id }}"
-                                                        data-name="{{ $site->site_name }}">
+                                                        data-name="{{ $site->display_name }}">
                                                     Unblock
                                                 </button>
                                             </div>
@@ -337,14 +317,13 @@
                     <div class="p-3 saved-mobile-only" id="blacklistMobileList">
                         @foreach($blacklist as $site)
                             @php
-                                [$maskedHost] = $maskHost($site->site_url);
                                 $country = strtolower((string) ($site->country ?: 'us'));
                             @endphp
                             <div class="saved-mobile-card saved-row" data-id="{{ $site->id }}" data-list="blacklist">
                                 <div class="d-flex justify-content-between gap-2 mb-2">
                                     <div>
-                                        <div class="saved-site-url">{{ $maskedHost }}</div>
-                                        <div class="small text-muted">{{ $site->site_name }}</div>
+                                        <div class="saved-site-url">{{ $site->display_host }}</div>
+                                        <div class="small text-muted">{{ $site->display_name }}</div>
                                     </div>
                                     <div class="fw-semibold text-nowrap">€{{ number_format((float) $site->display_price, 2) }}</div>
                                 </div>
@@ -356,9 +335,9 @@
                                 </div>
                                 <div class="saved-actions justify-content-start">
                                     <button type="button" class="btn btn-sm btn-primary js-move-favorite"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Favorite</button>
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Favorite</button>
                                     <button type="button" class="btn btn-sm btn-outline-secondary js-remove-blacklist"
-                                            data-id="{{ $site->id }}" data-name="{{ $site->site_name }}">Unblock</button>
+                                            data-id="{{ $site->id }}" data-name="{{ $site->display_name }}">Unblock</button>
                                 </div>
                             </div>
                         @endforeach

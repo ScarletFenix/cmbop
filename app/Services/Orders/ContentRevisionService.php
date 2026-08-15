@@ -14,7 +14,6 @@ use App\Services\CheckoutSchemaService;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
-use App\Services\OrderPaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -283,12 +282,14 @@ class ContentRevisionService
                     ]);
                 }
 
-                if (! $sameAsCurrent) {
-                    app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-                        (int) $advertiser->id,
-                        [(int) $submission->id]
-                    );
-                    $submission = $submission->fresh() ?? $submission;
+                // Revision is not a new checkout. Do not cancel Pay again just
+                // to discover this leftover cannot be attached here.
+                if (! $sameAsCurrent && $submission->isClaimedByAnotherOrder((int) $lockedOrder->id)) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => $submission->isLockedByPaidOrder()
+                            ? 'That Content Library article is already used on another placement.'
+                            : ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE,
+                    ]);
                 }
 
                 $linkedElsewhere = $submission->isInUse()

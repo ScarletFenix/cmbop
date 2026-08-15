@@ -516,6 +516,7 @@ class ContentSubmission extends Model
             self::STATUS_PENDING,
             self::STATUS_PROCESSING,
         ])->withoutOpenOwnerOrder()
+            ->withoutActiveOrderClaim()
             ->where(function ($exp) {
                 $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
             });
@@ -702,8 +703,7 @@ class ContentSubmission extends Model
                                 });
                         });
                 })->orWhere(function ($leftover) {
-                    $leftover->where('moderation_status', self::STATUS_APPROVED)
-                        ->withoutOpenOwnerOrder()
+                    $leftover->withoutOpenOwnerOrder()
                         ->whereNull('archived_at')
                         ->withActiveOrderClaim()
                         ->withoutCurrentLivePlacement()
@@ -1118,8 +1118,10 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Catalog / wizard / cart may list this row. Replace runs on assign,
-     * checkout, or Order — not when the picker merely opens.
+     * Catalog / wizard / cart may list this row. Replace runs when a cart
+     * assign or add-to-cart actually attaches the article, or when checkout
+     * is about to charge — not when Order opens the catalog or the picker
+     * merely opens.
      */
     public function isAvailableForPicker(): bool
     {

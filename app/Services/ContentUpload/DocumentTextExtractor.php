@@ -23,8 +23,9 @@ class DocumentTextExtractor
      */
     /**
      * Policy-only read of the stored package. Includes headers, footers,
-     * notes, comments, and every external hyperlink. Does not store images
-     * or build preview HTML.
+     * notes, comments, document properties, custom XML, image descr/tooltips,
+     * media/embedding/SVG filenames, SVG text, and every external hyperlink.
+     * Does not store images or build preview HTML.
      *
      * @return array{ok:bool, text:string, links:list<string>}
      */
@@ -50,6 +51,20 @@ class DocumentTextExtractor
                 }
                 $name = str_replace('\\', '/', $name);
                 $lower = strtolower($name);
+                $base = pathinfo($name, PATHINFO_FILENAME);
+                $scorePackageName = (bool) preg_match('#/(media|embeddings|activex|oleobjects?)/#i', $lower)
+                    || str_ends_with($lower, '.svg');
+                if ($scorePackageName
+                    && $base !== ''
+                    && ! preg_match('/^(image|img|picture|pic|oleobject|object|embedding|embed|file|media)[\s_\-]?\d*$/i', $base)) {
+                    $texts[] = $base;
+                }
+                if (preg_match('/\.(png|jpe?g|gif|webp|bmp|emf|wmf|tiff?)$/i', $lower)
+                    || (! str_ends_with($lower, '.xml')
+                        && ! str_ends_with($lower, '.rels')
+                        && ! str_ends_with($lower, '.svg'))) {
+                    continue;
+                }
                 $xml = (string) $zip->getFromIndex($i);
                 if ($xml === '') {
                     continue;
@@ -59,7 +74,21 @@ class DocumentTextExtractor
 
                     continue;
                 }
-                if (! str_starts_with($lower, 'word/') || ! str_ends_with($lower, '.xml')) {
+                if (str_ends_with($lower, '.svg')) {
+                    $plain = $this->xmlToPolicyText($xml);
+                    if ($plain !== '') {
+                        $texts[] = $plain;
+                    }
+
+                    continue;
+                }
+                if (! str_ends_with($lower, '.xml')) {
+                    continue;
+                }
+                $inWord = str_starts_with($lower, 'word/');
+                $inProps = str_starts_with($lower, 'docprops/');
+                $inCustom = str_starts_with($lower, 'customxml/');
+                if (! $inWord && ! $inProps && ! $inCustom) {
                     continue;
                 }
                 $plain = $this->xmlToPolicyText($xml);
@@ -108,12 +137,24 @@ class DocumentTextExtractor
 
     protected function xmlToPolicyText(string $xml): string
     {
+        $attrs = [];
+        if (preg_match_all('/\b(?:descr|title|alt|tooltip)\s*=\s*(["\'])(.*?)\1/iu', $xml, $matches)) {
+            foreach ($matches[2] as $value) {
+                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($value !== '') {
+                    $attrs[] = $value;
+                }
+            }
+        }
+
         $withBreaks = preg_replace('/<\/w:p>/', "\n\n", $xml) ?? $xml;
         $text = html_entity_decode(strip_tags($withBreaks), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $text = preg_replace("/[ \t]+/", ' ', $text) ?? $text;
         $text = preg_replace("/\n{3,}/", "\n\n", $text) ?? $text;
+        $text = trim($text);
+        $attrText = trim(implode("\n", array_unique($attrs)));
 
-        return trim($text);
+        return trim($text.($attrText !== '' ? "\n".$attrText : ''));
     }
 
     public function extract(string $absolutePath, string $extension, ?callable $storeImage = null): array

@@ -61,8 +61,10 @@ or marketing, even if that staff account also has a marketplace role.
    recover reclaims them to `pending` and dispatches a send job. A
    queued row with a pending Email Center log is held — that is a
    just-retried mailable, and reclaiming it would dispatch a second send
-   if the jobs-table scan missed the retried job. A
-   Redis/SQS **mail** queue, a missing `payload` column on the **mail**
+   if the jobs-table scan missed the retried job. A matching
+   `failed_jobs` AudienceCampaignMail is also held — that row is still
+   retryable from Email Center. A
+   Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
    table, or a mailable whose user id cannot be parsed is fail-closed: the
    row stays queued so an in-flight send is not doubled. An unused redis
    `queue.default` or a broken unused database table must not block a
@@ -79,17 +81,22 @@ or marketing, even if that staff account also has a marketplace role.
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
    log are first reconciled against `email_logs` by
    `audience_campaign:{id}:user:{id}`; a delivered/failed log is attached
-   instead of counting as a fake send. Leftovers older than
+   instead of counting as a fake send. A delivered log still wins when a
+   pending Email Center row exists for the same key — skipping that attach
+   let expire mark a real send stale, and a later retry doubled it.
+   Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
-   mailable. Expire must **not** skip a recipient whose
+   mailable.    Expire must **not** skip a recipient whose
    `AudienceCampaignMail` is still on a readable mail queue (a 72h
-   backlog is not a lost job). A later SMTP success or a send suppressed as a duplicate
+   backlog is not a lost job; a second retry doubles the send). A matching row in `failed_jobs` still
+   blocks reclaim (Email Center retry would double) but must **not** block expire — that job already died, and treating it as in-flight
+   left the recipient `queued` past `MAIL_CAMPAIGN_MAX_AGE_HOURS`. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including
    when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
-   leftovers only.
+   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
@@ -145,7 +152,9 @@ Throttle: preview `20/min`, send `6/min`, recipient-count `30/min`.
   **emailable (verified)** so the compose count matches the subtitle.
 - `selected` accepts advertiser/publisher IDs only. Admin and marketing IDs
   are dropped, including dual-role staff (admin+advertiser still must not
-  receive “all advertisers” blasts). `queryForRole()` is unchanged so
+  receive “all advertisers” blasts). The send job and `AudienceCampaignMail`
+  re-check staff roles at send time so a promotion after compose cannot
+  sneak a staff inbox onto a queued blast. `queryForRole()` is unchanged so
   deposit / add-site / digest reminders can still reach those accounts.
 - Custom picker is capped at 200 users per role (`AudienceInventoryService::PICKER_LIMIT`).
 - `advertisers_no_orders` is an alias of `advertisers_never_checked_out` (no

@@ -47,11 +47,15 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
+        $this->assertStringContainsString('must **not** block expire', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);
+        $this->assertStringContainsString('re-check staff roles at send time', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
+        $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
+        $this->assertStringContainsString('delivered log still wins when a', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 
