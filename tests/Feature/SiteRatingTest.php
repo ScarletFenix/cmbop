@@ -93,6 +93,24 @@ class SiteRatingTest extends TestCase
         ])->assertStatus(422);
     }
 
+    public function test_rating_requires_paid_order(): void
+    {
+        $publisher = User::factory()->create();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+        $item = $this->completedOrderItem($advertiser, $site, 'completed');
+        $item->order->update(['payment_status' => 'pending']);
+
+        $this->actingAs($advertiser)->postJson(route('advertiser.ratings.store'), [
+            'order_item_id' => $item->id,
+            'rating' => 5,
+        ])->assertStatus(422);
+
+        $this->assertDatabaseMissing('site_ratings', [
+            'order_item_id' => $item->id,
+        ]);
+    }
+
     public function test_advertiser_can_rate_after_completed_order(): void
     {
         $publisher = User::factory()->create();

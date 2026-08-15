@@ -201,6 +201,63 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertOk();
     }
 
+    public function test_dual_role_publisher_cannot_download_unpaid_article_via_advertiser_route(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $publisher->roles()->syncWithoutDetaching([
+            Role::firstOrCreate(['name' => 'advertiser'])->id,
+        ]);
+        $site = $this->activeSite($publisher, 'dual-dl');
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+        $order = $this->makeOrder($advertiser);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 50,
+            'content_link' => 'https://example.com/unpaid.docx',
+            'content_submission_id' => $submission->id,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($publisher)
+            ->get(route('advertiser.content-submissions.download', $submission))
+            ->assertForbidden();
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $submission))
+            ->assertForbidden();
+
+        $order->update([
+            'payment_status' => 'paid',
+            'paid_at' => now(),
+        ]);
+
+        $this->actingAs($publisher)
+            ->get(route('advertiser.content-submissions.download', $submission))
+            ->assertOk();
+    }
+
+    public function test_site_id_alone_does_not_let_publisher_download_library_article(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $publisher->roles()->syncWithoutDetaching([
+            Role::firstOrCreate(['name' => 'advertiser'])->id,
+        ]);
+        $site = $this->activeSite($publisher, 'site-only-dl');
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+
+        $this->actingAs($publisher)
+            ->get(route('advertiser.content-submissions.download', $submission))
+            ->assertForbidden();
+    }
+
     public function test_completed_row_keeps_live_url_clickable_without_pointer_events_none(): void
     {
         $advertiser = $this->advertiser();
@@ -384,5 +441,27 @@ class ContentLibraryPhases36Test extends TestCase
             ->assertOk()
             ->assertSee('Low Score Still Ok')
             ->assertSee('Advisory — still orderable');
+    }
+
+    public function test_low_score_approved_row_does_not_say_orderable_when_rights_are_missing(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Low Score Needs Rights',
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'uniqueness_score' => 20,
+            'quality_score' => 30,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('Low Score Needs Rights')
+            ->assertDontSee('Advisory — still orderable');
     }
 }

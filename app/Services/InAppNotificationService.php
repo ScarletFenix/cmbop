@@ -599,7 +599,9 @@ class InAppNotificationService
         $labels = [
             'verified' => ['Site verified', 'Your site is verified and ready for marketplace listings.'],
             'unverified' => ['Site verification removed', 'Your site is no longer verified. Contact support if this looks wrong.'],
-            'activated' => ['Site activated', 'Your site is active and visible to advertisers.'],
+            'activated' => $site->isCatalogVisible()
+                ? ['Site activated', 'Your site is active and visible to advertisers.']
+                : ['Site activated', 'Your site was marked active, but it is not listed in the catalog (for example a cancelled bulk request).'],
             'deactivated' => ['Site deactivated', 'Your site was deactivated and is hidden from the catalog.'],
             'removed' => ['Site submission removed', 'Your site submission was removed and will not be listed.'],
             'archived' => ['Site archived', 'Your site was archived and is hidden from the catalog. Existing orders are unchanged.'],
@@ -725,7 +727,10 @@ class InAppNotificationService
                 'related' => $submission,
                 'audience' => InAppNotification::AUDIENCE_ADVERTISER,
                 'action_label' => 'Open Content Library',
-                'action_url' => route('advertiser.content-library', [], false),
+                'action_url' => route('advertiser.content-library', $approved ? [] : [
+                    'status' => 'all',
+                    'availability' => 'needs_fix',
+                ], false),
                 'meta' => [
                     'submission_id' => $submission->id ?? null,
                     'moderation_status' => $result['moderation_status'] ?? null,
@@ -1760,7 +1765,7 @@ class InAppNotificationService
         ];
 
         foreach ($this->usersWithRoles(['admin', 'marketing']) as $staff) {
-            $canVerify = $staff->hasRole('admin');
+            $canVerify = $staff->isAdmin();
             $this->notify(
                 $staff,
                 self::TYPE_SYSTEM,
@@ -1772,7 +1777,7 @@ class InAppNotificationService
                     : ($canVerify
                         ? "{$name} was submitted and needs verification."
                         : "{$name} was submitted and needs review."),
-                $options + ['action_url' => $canVerify ? $adminUrl : $marketingUrl]
+                $options + ['action_url' => staff_uses_marketing_workspace($staff) ? $marketingUrl : $adminUrl]
             );
         }
     }
@@ -1976,25 +1981,32 @@ class InAppNotificationService
         $who = $bulk->publisher?->name ?: ($bulk->publisher?->email ?: 'A publisher');
         $count = $bulk->items->count() ?: (int) ($bulk->estimated_count ?? 0);
 
-        $this->notifyAdmins(
-            self::TYPE_SYSTEM,
-            'New bulk sites request',
-            "{$who} submitted {$count} site URL(s) + price(s). Add them to Pending sites when ready.",
-            [
-                'category' => self::CATEGORY_SYSTEM,
-                'icon' => 'bell',
-                'priority' => InAppNotification::PRIORITY_HIGH,
-                'related' => $bulk,
-                'action_label' => 'Open bulk request',
-                // Admin route works for admins; RedirectMarketingFromAdmin remaps it for marketers.
-                'action_url' => route('admin.bulk-site-requests.show', $bulk->id, false),
-                'meta' => [
-                    'bulk_site_request_id' => $bulk->id,
-                    'publisher_id' => $bulk->publisher_id,
-                    'estimated_count' => $count,
-                ],
-            ]
-        );
+        foreach ($this->usersWithRoles(['admin', 'marketing']) as $staff) {
+            $this->notify(
+                $staff,
+                self::TYPE_SYSTEM,
+                'New bulk sites request',
+                "{$who} submitted {$count} site URL(s) + price(s). Add them to Pending sites when ready.",
+                [
+                    'audience' => InAppNotification::AUDIENCE_ADMIN,
+                    'category' => self::CATEGORY_SYSTEM,
+                    'icon' => 'bell',
+                    'priority' => InAppNotification::PRIORITY_HIGH,
+                    'related' => $bulk,
+                    'action_label' => 'Open bulk request',
+                    'action_url' => route(
+                        staff_route_prefix_for($staff).'bulk-site-requests.show',
+                        $bulk->id,
+                        false
+                    ),
+                    'meta' => [
+                        'bulk_site_request_id' => $bulk->id,
+                        'publisher_id' => $bulk->publisher_id,
+                        'estimated_count' => $count,
+                    ],
+                ]
+            );
+        }
     }
 
     /**
@@ -2035,6 +2047,53 @@ class InAppNotificationService
                 'meta' => [
                     'bulk_site_request_id' => $bulk->id,
                     'reason' => $reason,
+                ],
+            ]
+        );
+    }
+
+    /**
+     * @param  list<string>  $domains
+     */
+    public function notifyPublisherBulkItemsRejected(BulkSiteRequest $bulk, array $domains, string $note): void
+    {
+        $publisherId = (int) ($bulk->publisher_id ?? 0);
+        $domains = array_values(array_filter(array_map(
+            static fn ($domain) => trim((string) $domain),
+            $domains
+        )));
+        if ($publisherId <= 0 || $domains === []) {
+            return;
+        }
+
+        $count = count($domains);
+        $list = implode(', ', $domains);
+        $message = $count === 1
+            ? "We did not add {$list} from bulk request #{$bulk->id}."
+            : "We did not add these sites from bulk request #{$bulk->id}: {$list}.";
+        if (filled($note)) {
+            $message .= ' Note: '.trim($note);
+        }
+
+        $this->notify(
+            $publisherId,
+            self::TYPE_SITE_STATUS,
+            $count === 1
+                ? 'A site was not added from your bulk request'
+                : $count.' sites were not added from your bulk request',
+            $message,
+            [
+                'category' => self::CATEGORY_ACCOUNT,
+                'icon' => 'alert-triangle',
+                'priority' => InAppNotification::PRIORITY_HIGH,
+                'related' => $bulk,
+                'audience' => InAppNotification::AUDIENCE_PUBLISHER,
+                'action_label' => 'Open My Sites',
+                'action_url' => route('publisher.websites', [], false),
+                'meta' => [
+                    'bulk_site_request_id' => $bulk->id,
+                    'domains' => $domains,
+                    'note' => trim($note),
                 ],
             ]
         );
@@ -2297,8 +2356,8 @@ class InAppNotificationService
             $query->where('category', $filters['category']);
         }
 
-        if (! empty($filters['q'])) {
-            $q = trim((string) $filters['q']);
+        $q = search_text($filters['q'] ?? null);
+        if ($q !== '') {
             $query->where(function ($builder) use ($q) {
                 $builder->where('title', 'like', "%{$q}%")
                     ->orWhere('message', 'like', "%{$q}%");

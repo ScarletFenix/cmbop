@@ -148,10 +148,18 @@ class MarketingDashboardQueuesTest extends TestCase
             'estimated_count' => 3,
             'handled_by' => $this->marketer->id,
         ]);
+        $this->addPendingItem($requested, 'requested-waiting.example');
         $awaitingPublisher = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
             'status' => BulkSiteRequest::STATUS_AWAITING_PUBLISHER,
             'estimated_count' => 2,
+        ]);
+        $this->makeSite([
+            'site_name' => 'Awaiting Publisher Draft',
+            'site_url' => 'https://awaiting-publisher-draft.example',
+            'domain' => 'awaiting-publisher-draft.example',
+            'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            'bulk_site_request_id' => $awaitingPublisher->id,
         ]);
         $leftover = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
@@ -367,6 +375,7 @@ class MarketingDashboardQueuesTest extends TestCase
                 'status' => BulkSiteRequest::STATUS_REQUESTED,
                 'estimated_count' => $i,
             ]);
+            $this->addPendingItem($req, 'oldest-first-'.$i.'.example');
             $req->forceFill([
                 'created_at' => now()->subDays(7 - $i),
                 'updated_at' => now()->subDays(7 - $i),
@@ -396,11 +405,12 @@ class MarketingDashboardQueuesTest extends TestCase
             'domain' => 'count-ready.example',
             'onboarding_status' => Site::ONBOARDING_READY_FOR_REVIEW,
         ]);
-        BulkSiteRequest::create([
+        $waiting = BulkSiteRequest::create([
             'publisher_id' => $this->publisher->id,
             'status' => BulkSiteRequest::STATUS_REQUESTED,
             'estimated_count' => 2,
         ]);
+        $this->addPendingItem($waiting, 'count-waiting.example');
 
         $this->actingAs($this->marketer)
             ->getJson(route('marketing.dashboard.queue-counts'))
@@ -408,6 +418,41 @@ class MarketingDashboardQueuesTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('ready_sites', 1)
             ->assertJsonPath('bulk_waiting', 1);
+    }
+
+    public function test_legacy_sheet_batch_counts_as_waiting_on_marketer(): void
+    {
+        $legacy = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_SHEET_SENT,
+            'estimated_count' => 8,
+            'sheet_sent_at' => now(),
+        ]);
+
+        $this->assertTrue($legacy->canAddDraftSites());
+        $this->assertTrue(
+            BulkSiteRequest::query()->whereKey($legacy->id)->blockingPublisher()->exists()
+        );
+        $this->assertTrue(MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($legacy->id)->exists());
+        $this->assertSame(1, MarketingOpsQueues::bulkWaitingOnMarketer()->count());
+
+        $html = $this->actingAs($this->marketer)
+            ->get(route('marketing.dashboard'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertSame('1', $this->attrValue($html, 'data-stat', 'bulk-waiting-on-you', 'data-stat-value'));
+        $this->assertSame('1', $this->node($html, 'data-nav-badge', 'bulk')->attributes->getNamedItem('data-count')?->nodeValue);
+        $this->assertStringContainsString('#'.$legacy->id, $this->nodeText($html, 'data-queue', 'open-bulk'));
+
+        $index = $this->actingAs($this->marketer)
+            ->get(route('marketing.bulk-site-requests.index', [
+                'status' => MarketingOpsQueues::FILTER_NEEDS_MARKETER,
+            ]))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString(route('marketing.bulk-site-requests.show', $legacy), $index);
     }
 
     public function test_empty_dashboard_shows_queue_ctas(): void
@@ -445,6 +490,16 @@ class MarketingDashboardQueuesTest extends TestCase
     /**
      * @param  array<string, mixed>  $overrides
      */
+    private function addPendingItem(BulkSiteRequest $bulk, string $domain): BulkSiteRequestItem
+    {
+        return BulkSiteRequestItem::create([
+            'bulk_site_request_id' => $bulk->id,
+            'site_url' => 'https://'.$domain,
+            'domain' => $domain,
+            'price' => 40,
+        ]);
+    }
+
     private function makeSite(array $overrides = []): Site
     {
         return Site::create(array_merge([

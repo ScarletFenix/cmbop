@@ -283,11 +283,13 @@ class WalletOverviewService
 
     protected function collectActivity(int $userId, array $filters): Collection
     {
-        $search = trim((string) ($filters['search'] ?? ''));
-        $type = $filters['type'] ?? null;
-        $status = $filters['status'] ?? null;
-        $from = ! empty($filters['from']) ? Carbon::parse($filters['from'])->startOfDay() : null;
-        $to = ! empty($filters['to']) ? Carbon::parse($filters['to'])->endOfDay() : null;
+        $search = search_text($filters['search'] ?? null);
+        $type = search_text($filters['type'] ?? null);
+        $status = search_text($filters['status'] ?? null);
+        $fromRaw = search_text($filters['from'] ?? null);
+        $toRaw = search_text($filters['to'] ?? null);
+        $from = $fromRaw !== '' ? Carbon::parse($fromRaw)->startOfDay() : null;
+        $to = $toRaw !== '' ? Carbon::parse($toRaw)->endOfDay() : null;
 
         $rows = collect();
 

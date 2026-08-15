@@ -2,9 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Mail\ContentEvaluationResult;
 use App\Models\ContentSubmission;
 use App\Models\Role;
 use App\Models\User;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Mail;
@@ -12,6 +14,7 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Testing\TestResponse;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
+use ZipArchive;
 
 class ContentImageRightsTest extends TestCase
 {
@@ -252,8 +255,21 @@ class ContentImageRightsTest extends TestCase
             );
 
         $this->assertFalse($submission->fresh()->canBeOrdered());
+        $this->assertSame('needs_fix', $submission->fresh()->libraryAvailability());
         $this->assertFalse(
             ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $submission->update([
+            'evaluation_report' => [
+                'summary' => 'Your article was approved for publication. You can now select websites and place an order.',
+            ],
+        ]);
+        $this->assertSame(
+            'This article contains images. Confirm you own them, or add the source URL or copyright details.',
+            $submission->fresh()->libraryFixSummary()
         );
     }
 
@@ -336,8 +352,199 @@ class ContentImageRightsTest extends TestCase
         $submission->image_rights = ContentSubmission::IMAGE_RIGHTS_OWN;
         $this->assertTrue($submission->imageRightsCoverContent());
 
+        $submission->image_rights = ContentSubmission::IMAGE_RIGHTS_LICENSED;
+        $submission->image_rights_source = null;
+        $this->assertFalse($submission->imageRightsCoverContent());
+
+        $submission->image_rights_source = 'https://unsplash.com/photos/abc';
+        $this->assertTrue($submission->imageRightsCoverContent());
+
         $this->assertTrue(ContentSubmission::imageRightsNeedsSource(ContentSubmission::IMAGE_RIGHTS_LICENSED));
         $this->assertFalse(ContentSubmission::imageRightsNeedsSource(ContentSubmission::IMAGE_RIGHTS_OWN));
+    }
+
+    public function test_approval_mail_waits_until_image_rights_are_declared(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+            'approval_notified_at' => null,
+            'evaluation_report' => ['summary' => 'Your article was approved for publication.'],
+        ]);
+
+        $uploads = app(ContentUploadService::class);
+        $first = $uploads->reEvaluateSubmission($submission->fresh());
+
+        $this->assertFalse($first['approved']);
+        $this->assertSame('needs_image_rights', $first['notify_status'] ?? null);
+        $this->assertStringContainsString('Confirm you own them', (string) $first['message']);
+        $this->assertStringContainsString(
+            'Confirm you own them',
+            (string) ($first['report']['summary'] ?? $submission->fresh()->evaluation_report['summary'] ?? '')
+        );
+        $this->assertNotNull($submission->fresh()->approval_notified_at);
+        $this->assertSame('needs_image_rights', $submission->fresh()->evaluation_report['notified_status'] ?? null);
+        Mail::assertQueued(ContentEvaluationResult::class, 1);
+        Mail::assertQueued(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
+            return ($mail->result['notify_status'] ?? null) === 'needs_image_rights'
+                && ($mail->result['approved'] ?? true) === false;
+        });
+
+        $uploads->reEvaluateSubmission($submission->fresh());
+        Mail::assertQueued(ContentEvaluationResult::class, 1);
+
+        $submission->fresh()->update([
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $second = $uploads->reEvaluateSubmission($submission->fresh());
+        $this->assertTrue($second['approved']);
+        $this->assertSame('approved', $second['notify_status'] ?? null);
+        Mail::assertQueued(ContentEvaluationResult::class, 2);
+        Mail::assertQueued(ContentEvaluationResult::class, function (ContentEvaluationResult $mail) {
+            return ($mail->result['notify_status'] ?? null) === 'approved'
+                && ($mail->result['approved'] ?? false) === true;
+        });
+    }
+
+    public function test_upload_json_does_not_claim_the_article_is_orderable_without_rights(): void
+    {
+        Storage::fake('local');
+        Storage::fake('public');
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $path = sys_get_temp_dir().'/image-rights-img-'.uniqid('', true).'.docx';
+        $this->makeDocxFileWithImage($path);
+
+        $response = $this->actingAs($advertiser)->postJson(route('advertiser.content-library.upload'), [
+            'file' => new UploadedFile(
+                $path,
+                'article.docx',
+                'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                null,
+                true
+            ),
+            'title' => 'Illustrated article',
+            'country' => 'us',
+            'language' => 'en',
+        ]);
+        @unlink($path);
+
+        $response->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('approved', false)
+            ->assertJsonPath('submission.needs_image_rights', true)
+            ->assertJsonPath('submission.can_order', false)
+            ->assertJsonPath('submission.editor_notice_ok', false);
+        $this->assertStringContainsString('Confirm you own them', (string) $response->json('message'));
+        $this->assertStringContainsString('Confirm you own them', (string) $response->json('submission.editor_notice'));
+        $this->assertStringNotContainsString('place an order', strtolower((string) $response->json('message')));
+    }
+
+    public function test_save_payload_includes_editor_notice_when_rights_are_missing(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Body still has a picture.</p><img src="/storage/content-articles/1/x.png" alt="">',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('submission.editor_notice', '')
+            ->assertJsonPath('submission.needs_image_rights', false);
+    }
+
+    public function test_failed_empty_save_does_not_keep_a_new_rights_declaration(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => null,
+            'image_rights_declared_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p></p>',
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertStatus(422);
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->image_rights);
+        $this->assertNull($fresh->image_rights_declared_at);
+        $this->assertStringContainsString('<img', (string) $fresh->preview_html);
+    }
+
+    public function test_editor_save_clears_stale_checkout_links_when_none_remain(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $this->assertSame('best software tools', $submission->anchor_text);
+        $this->assertSame('https://example.com/tools', $submission->target_url);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Updated article body with no outbound links for digital teams worldwide.</p>',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('has_link', false)
+            ->assertJsonPath('submission.detected_links', []);
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->anchor_text);
+        $this->assertNull($fresh->target_url);
+        $this->assertSame([], $fresh->detectedLinks());
+        $this->assertFalse($fresh->hasLink());
+    }
+
+    public function test_licensed_without_a_source_is_not_orderable(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'preview_html' => '<p>Body</p><img src="/storage/content-articles/1/x.png" alt="">',
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_LICENSED,
+            'image_rights_source' => null,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $this->assertFalse($submission->fresh()->canBeOrdered());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertSame('needs_fix', $submission->fresh()->libraryAvailability());
     }
 
     public function test_library_upload_modal_defers_rights_until_the_editor(): void
@@ -386,9 +593,40 @@ class ContentImageRightsTest extends TestCase
         $this->assertStringContainsString('window.deleteLibraryArticle = deleteLibraryArticle', $js);
         $this->assertStringContainsString('window.restoreLibraryArticle = restoreLibraryArticle', $js);
         $this->assertStringNotContainsString('readImageRights(this)', $js);
+        $this->assertStringContainsString('data.submission.editor_notice', $js);
+        $this->assertStringNotContainsString(
+            "editor_notice: data.submission.needs_image_rights\n                    ? ''",
+            $js
+        );
 
         $declaration = file_get_contents(resource_path('views/advertiser/partials/image-rights-declaration.blade.php'));
         $this->assertStringContainsString('image_rights', $declaration);
         $this->assertStringContainsString('image_rights_source', $declaration);
+    }
+
+    private function makeDocxFileWithImage(string $absolutePath): void
+    {
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+        $text = str_repeat('Useful editorial content about productivity software for busy teams. ', 60);
+        $zip = new ZipArchive;
+        $zip->open($absolutePath, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('[Content_Types].xml', '<?xml version="1.0"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"></Types>');
+        $zip->addFromString('word/_rels/document.xml.rels', '<?xml version="1.0"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rIdImg1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
+            .'Target="media/image1.png"/>'
+            .'</Relationships>');
+        $zip->addFromString('word/media/image1.png', $png);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?>'
+            .'<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main" '
+            .'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+            .'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+            .'xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing">'
+            .'<w:body><w:p><w:r><w:t>'.htmlspecialchars($text, ENT_XML1).'</w:t></w:r></w:p>'
+            .'<w:p><w:r><w:drawing><wp:inline><a:graphic><a:graphicData>'
+            .'<a:blip r:embed="rIdImg1"/>'
+            .'</a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>'
+            .'</w:body></w:document>');
+        $zip->close();
     }
 }

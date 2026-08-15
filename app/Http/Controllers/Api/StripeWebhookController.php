@@ -164,8 +164,13 @@ class StripeWebhookController extends Controller
         }
 
         if (isset($metadata['reference_code'])) {
-            Log::info('Detected order payment by reference_code field');
-            $this->handleOrderPaymentSession($session);
+            // Wallet deposits also carry reference_code. Without an explicit
+            // order type, guessing here could settle catalog orders from a
+            // top-up. Typed order_payment / order sessions are routed above.
+            Log::warning('Ignoring untyped checkout session with reference_code', [
+                'session_id' => $session->id ?? null,
+                'type' => $metadata['type'] ?? null,
+            ]);
 
             return;
         }
@@ -188,7 +193,15 @@ class StripeWebhookController extends Controller
             return;
         }
 
-        if ($paymentType && ! in_array($paymentType, ['order_payment', 'order'], true)) {
+        // Same rule as completed-session routing: wallet deposits also carry
+        // reference_code. An untyped expiry must not fail colliding card
+        // checkouts or refund their reserved bonus.
+        if (! in_array($paymentType, ['order_payment', 'order'], true)) {
+            Log::warning('Ignoring checkout.session.expired without explicit order type', [
+                'session_id' => $session->id ?? null,
+                'type' => $paymentType,
+            ]);
+
             return;
         }
 
@@ -244,6 +257,17 @@ class StripeWebhookController extends Controller
             $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $session);
 
             if ($newlyPaid->isEmpty()) {
+                $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
+                if ($credited > 0) {
+                    Log::warning('Stripe webhook settled without catalog-visible lines', [
+                        'reference_code' => $referenceCode,
+                        'session_id' => $session->id ?? null,
+                        'wallet_credit' => $credited,
+                    ]);
+
+                    return;
+                }
+
                 throw new \RuntimeException('No pending card orders or checkout package found for webhook ref '.$referenceCode);
             }
         }
@@ -291,6 +315,16 @@ class StripeWebhookController extends Controller
             $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $intent);
 
             if ($newlyPaid->isEmpty()) {
+                $credited = $paymentService->walletCreditForUnfulfillableCardCheckout($referenceCode);
+                if ($credited > 0) {
+                    Log::warning('PaymentIntent webhook settled without catalog-visible lines', [
+                        'reference_code' => $referenceCode,
+                        'wallet_credit' => $credited,
+                    ]);
+
+                    return;
+                }
+
                 throw new \RuntimeException('No pending card orders or checkout package found for PaymentIntent ref '.$referenceCode);
             }
         }
@@ -325,16 +359,38 @@ class StripeWebhookController extends Controller
             throw new \RuntimeException('site_feature site/user not found');
         }
 
-        if ((int) $site->publisher_id !== (int) $user->id) {
-            throw new \RuntimeException('site_feature publisher mismatch');
-        }
-
         $promotions = app(SitePromotionService::class);
         $promotions->assertStripeChargeMatchesFeaturePrice($session);
+
+        if ((int) $site->publisher_id !== (int) $user->id) {
+            $result = $promotions->creditPayerWhenFeatureCannotApply($site, $user, $sessionId);
+            if (! ($result['success'] ?? false)) {
+                throw new \RuntimeException($result['message'] ?? 'site_feature publisher mismatch');
+            }
+
+            Log::warning('site_feature publisher mismatch; credited payer wallet', [
+                'site_id' => $siteId,
+                'payer_id' => $userId,
+                'owner_id' => $site->publisher_id,
+                'session_id' => $sessionId,
+                'already' => $result['already'] ?? false,
+            ]);
+
+            return;
+        }
 
         $result = $promotions->featureFromStripePayment($site, $user, $sessionId);
         if (! ($result['success'] ?? false)) {
             throw new \RuntimeException($result['message'] ?? 'Failed to apply site feature from webhook');
+        }
+
+        if ($result['credited'] ?? false) {
+            Log::warning('site_feature listing not catalog-visible; credited payer wallet', [
+                'site_id' => $siteId,
+                'session_id' => $sessionId,
+            ]);
+
+            return;
         }
 
         Log::info('Site feature applied via webhook', [

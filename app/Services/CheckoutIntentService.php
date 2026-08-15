@@ -109,6 +109,34 @@ class CheckoutIntentService
         return $bonus > 0 ? $bonus : 0.0;
     }
 
+    /**
+     * Reduce leftover checkout bonus without clearing the rest of the reference.
+     */
+    public function decrementBonus(int $userId, string $referenceCode, float $amount): void
+    {
+        $amount = round($amount, 2);
+        if ($amount <= 0 || $userId <= 0 || $referenceCode === '') {
+            return;
+        }
+
+        $intent = $this->findIntent($referenceCode);
+        $fromRow = $intent ? round((float) $intent->bonus_applied, 2) : 0.0;
+        $fromCache = round((float) Cache::get(self::bonusCacheKey($userId, $referenceCode), 0), 2);
+        $current = max($fromRow, $fromCache);
+        $left = max(0, round($current - $amount, 2));
+
+        if ($intent) {
+            $intent->update(['bonus_applied' => $left]);
+        }
+
+        $key = self::bonusCacheKey($userId, $referenceCode);
+        if ($left > 0) {
+            Cache::put($key, $left, now()->addHours(720));
+        } else {
+            Cache::forget($key);
+        }
+    }
+
     public function forgetBonus(int $userId, string $referenceCode): void
     {
         Cache::forget(self::bonusCacheKey($userId, $referenceCode));

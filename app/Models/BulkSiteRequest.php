@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -83,6 +84,7 @@ class BulkSiteRequest extends Model
     public function pendingPublisherCount(): int
     {
         return $this->sites()
+            ->notArchived()
             ->whereIn('onboarding_status', [
                 Site::ONBOARDING_AWAITING_DETAILS,
                 Site::ONBOARDING_DETAILS_COMPLETE,
@@ -92,17 +94,53 @@ class BulkSiteRequest extends Model
 
     public function refreshProgressStatus(): void
     {
-        if (in_array($this->status, [self::STATUS_CANCELLED, self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)) {
+        if ($this->status === self::STATUS_CANCELLED) {
             return;
         }
 
-        $total = $this->sites()->count();
+        $total = $this->sites()->notArchived()->count();
+        $pendingItems = $this->pendingItemsCount();
+
+        // Brand-new requested batches stay put. Sheet-sent with no leftover
+        // URL+price rows stays sheet-sent (legacy). Sheet-sent + pending rows
+        // and no drafts must become "Waiting on marketer" so heal/index match.
+        if ($this->status === self::STATUS_REQUESTED && $total === 0) {
+            return;
+        }
+        if ($this->status === self::STATUS_SHEET_SENT && $total === 0 && $pendingItems === 0) {
+            return;
+        }
+
+        // Last/only draft deleted: the URL+price row is pending again (site_id nullOnDelete).
         if ($total === 0) {
+            if ($pendingItems > 0) {
+                $this->forceFill([
+                    'status' => self::STATUS_REQUESTED,
+                    'completed_at' => null,
+                ])->save();
+
+                return;
+            }
+
+            // Legacy sheet: count set, no item rows — keep the batch open so staff can re-seed.
+            if ($this->items()->doesntExist() && (int) $this->estimated_count > 0) {
+                $this->forceFill([
+                    'status' => self::STATUS_REQUESTED,
+                    'completed_at' => null,
+                ])->save();
+
+                return;
+            }
+
+            $this->forceFill([
+                'status' => self::STATUS_COMPLETED,
+                'completed_at' => $this->completed_at ?? now(),
+            ])->save();
+
             return;
         }
 
         $pendingPublisher = $this->pendingPublisherCount();
-        $pendingItems = $this->pendingItemsCount();
 
         // Publisher still filling/reviewing seeded drafts.
         if ($pendingPublisher > 0) {
@@ -164,8 +202,45 @@ class BulkSiteRequest extends Model
             return true;
         }
 
-        // Legacy requests without item rows still use the paste-seed box while open.
-        return $this->isOpen();
+        // Legacy sheet workflow: open request, no item rows yet, a count was set.
+        // Reject-all deletes items and sets estimated_count to 0 — not legacy.
+        return $this->isOpen()
+            && $this->sites()->notArchived()->doesntExist()
+            && $this->items()->doesntExist()
+            && (int) $this->estimated_count > 0;
+    }
+
+    public function canCancel(): bool
+    {
+        return ! $this->isCancelled();
+    }
+
+    /**
+     * Publisher cannot start a new bulk while this one still has work.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeBlockingPublisher($query)
+    {
+        return $query->where(function ($outer) {
+            $outer->where(function ($open) {
+                $open->whereNotIn('status', [self::STATUS_COMPLETED, self::STATUS_CANCELLED])
+                    ->where(function ($inner) {
+                        $inner->whereHas('items', fn ($items) => $items->whereNull('site_id'))
+                            ->orWhereHas('sites', fn ($sites) => $sites->notArchived())
+                            // Legacy sheet workflow: count set, no item rows yet.
+                            ->orWhere(function ($legacy) {
+                                $legacy->where('estimated_count', '>', 0)
+                                    ->whereDoesntHave('items')
+                                    ->whereDoesntHave('sites', fn ($sites) => $sites->notArchived());
+                            });
+                    });
+            })->orWhere(function ($completedPending) {
+                $completedPending->where('status', self::STATUS_COMPLETED)
+                    ->whereHas('items', fn ($items) => $items->whereNull('site_id'));
+            });
+        });
     }
 
     public function isCancelled(): bool
@@ -178,12 +253,11 @@ class BulkSiteRequest extends Model
      */
     public function canMarkSheetSent(): bool
     {
-        if ($this->status === self::STATUS_REQUESTED) {
-            return true;
+        if (! in_array($this->status, [self::STATUS_REQUESTED, self::STATUS_SHEET_SENT], true)) {
+            return false;
         }
 
-        return $this->status === self::STATUS_SHEET_SENT
-            && $this->sites()->doesntExist();
+        return $this->sites()->notArchived()->doesntExist();
     }
 
     /**
@@ -191,6 +265,12 @@ class BulkSiteRequest extends Model
      */
     public function statusLabel(): string
     {
+        if ($this->status === self::STATUS_COMPLETED
+            && $this->sites()->doesntExist()
+            && ! $this->hasPendingItems()) {
+            return 'Finished';
+        }
+
         return self::statusLabelFor($this->status);
     }
 

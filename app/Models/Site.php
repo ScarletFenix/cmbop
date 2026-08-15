@@ -318,7 +318,7 @@ class Site extends Model
             });
         }
 
-        return $query;
+        return $query->notFromCancelledBulk();
     }
 
     public function enrichmentRuns()
@@ -786,6 +786,187 @@ class Site extends Model
         return $this->belongsTo(BulkSiteRequest::class);
     }
 
+    /**
+     * Strip www, trailing dots, ports, and case so example.com:443 matches example.com.
+     */
+    public static function normalizeMarketplaceDomain(string $host): string
+    {
+        $domain = strtolower(trim($host));
+        $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && ! str_starts_with($domain, '[') && str_contains($domain, ':')) {
+            $domain = explode(':', $domain, 2)[0];
+        }
+
+        $domain = rtrim($domain, '.');
+        if ($domain !== '' && function_exists('idn_to_ascii') && ! filter_var($domain, FILTER_VALIDATE_IP) && ! str_starts_with($domain, '[')) {
+            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $domain = strtolower($ascii);
+            }
+        }
+
+        return $domain;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public static function domainLookupCandidates(string $host): array
+    {
+        $normalized = static::normalizeMarketplaceDomain($host);
+        if ($normalized === '') {
+            return [];
+        }
+
+        $candidates = [
+            $normalized,
+            'www.'.$normalized,
+            $normalized.'.',
+            'www.'.$normalized.'.',
+            $normalized.':80',
+            $normalized.':443',
+            'www.'.$normalized.':80',
+            'www.'.$normalized.':443',
+        ];
+        if (function_exists('idn_to_utf8')) {
+            $utf8 = idn_to_utf8($normalized, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($utf8) && $utf8 !== '' && strtolower($utf8) !== $normalized) {
+                $utf8 = strtolower($utf8);
+                $candidates[] = $utf8;
+                $candidates[] = 'www.'.$utf8;
+            }
+        }
+
+        return array_values(array_unique($candidates));
+    }
+
+    /**
+     * Prefer a live listing when legacy duplicates exist so the restore copy
+     * is not shown while a non-archived row already occupies the domain.
+     * Cancelled-bulk leftovers can never return to the catalog, so they do
+     * not occupy the marketplace domain.
+     */
+    public static function findOccupyingDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?self
+    {
+        $candidates = static::domainLookupCandidates($domain);
+        if ($candidates === []) {
+            return null;
+        }
+
+        $normalized = static::normalizeMarketplaceDomain($domain);
+        $query = static::query()->where(function ($q) use ($candidates, $normalized) {
+            $q->whereIn('domain', $candidates);
+            if ($normalized !== '') {
+                $escaped = addcslashes($normalized, '%_\\');
+                $q->orWhere('domain', 'like', $escaped.':%')
+                    ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+            }
+        });
+        if ($exceptId !== null) {
+            $query->where('id', '!=', $exceptId);
+        }
+        if (static::hasSitesColumn('bulk_site_request_id')) {
+            $query->notFromCancelledBulk();
+        }
+        if (static::hasSitesColumn('archived_at')) {
+            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
+        }
+        $query->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->first();
+    }
+
+    /**
+     * Same publisher still has unique(publisher_id, domain) on leftovers.
+     * Delete unused cancelled rows; tombstone leftovers that keep order history.
+     */
+    public static function releaseCancelledBulkDomain(string $domain, int $publisherId): int
+    {
+        if ($publisherId <= 0 || ! static::hasSitesColumn('bulk_site_request_id')) {
+            return 0;
+        }
+
+        $candidates = static::domainLookupCandidates($domain);
+        if ($candidates === []) {
+            return 0;
+        }
+
+        $normalized = static::normalizeMarketplaceDomain($domain);
+        $leftovers = static::query()
+            ->where('publisher_id', $publisherId)
+            ->where(function ($q) use ($candidates, $normalized) {
+                $q->whereIn('domain', $candidates);
+                if ($normalized !== '') {
+                    $escaped = addcslashes($normalized, '%_\\');
+                    $q->orWhere('domain', 'like', $escaped.':%')
+                        ->orWhere('domain', 'like', 'www.'.$escaped.':%');
+                }
+            })
+            ->whereHas('bulkSiteRequest', function ($bulk) {
+                $bulk->where('status', BulkSiteRequest::STATUS_CANCELLED);
+            })
+            ->get();
+
+        $released = 0;
+        foreach ($leftovers as $site) {
+            if ($site->releaseCancelledBulkOccupancy()) {
+                $released++;
+            }
+        }
+
+        return $released;
+    }
+
+    public function releaseCancelledBulkOccupancy(): bool
+    {
+        if (! $this->isFromCancelledBulk()) {
+            return false;
+        }
+
+        if ($this->orderItemsCount() === 0) {
+            $this->delete();
+
+            return true;
+        }
+
+        $tombstone = 'cancelled-'.$this->id.'.invalid';
+        if ($this->domain === $tombstone) {
+            return false;
+        }
+
+        $this->domain = $tombstone;
+        $this->save();
+
+        return true;
+    }
+
+    public function occupyingDomainMessage(): string
+    {
+        return $this->isArchived()
+            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
+            : 'This website domain is already registered.';
+    }
+
+    /**
+     * Hide leftover drafts from a cancelled bulk (older cancels did not delete them).
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeNotFromCancelledBulk(Builder $query): Builder
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('bulk_site_request_id')
+                ->orWhereHas('bulkSiteRequest', function ($bulk) {
+                    $bulk->where('status', '!=', BulkSiteRequest::STATUS_CANCELLED);
+                });
+        });
+    }
+
     public function isFromAgencyCsvImport(): bool
     {
         if (! static::hasSitesColumn('agency_site_import_id')) {
@@ -1059,7 +1240,8 @@ class Site extends Model
         return ! (bool) $this->verified
             && ! (bool) $this->active
             && $this->isReadyForAdminReview()
-            && $this->isAcceptedByPublisher();
+            && $this->isAcceptedByPublisher()
+            && ! $this->isFromCancelledBulk();
     }
 
     /**
@@ -1149,14 +1331,28 @@ class Site extends Model
      */
     public function scopeCatalogVisible(Builder $query): Builder
     {
-        return $query->active()->verified()->notArchived();
+        return $query->active()->verified()->notArchived()->notFromCancelledBulk();
     }
 
     public function isCatalogVisible(): bool
     {
         return (bool) $this->active
             && (bool) $this->verified
-            && ! $this->isArchived();
+            && ! $this->isArchived()
+            && ! $this->isFromCancelledBulk();
+    }
+
+    public function isFromCancelledBulk(): bool
+    {
+        if (! $this->bulk_site_request_id) {
+            return false;
+        }
+
+        $bulk = $this->relationLoaded('bulkSiteRequest')
+            ? $this->bulkSiteRequest
+            : $this->bulkSiteRequest()->first();
+
+        return (bool) $bulk?->isCancelled();
     }
 
     public function canBeActivated(): bool
@@ -1164,10 +1360,14 @@ class Site extends Model
         return $this->activationBlockReason() === null;
     }
 
-    public function activationBlockReason(): ?string
+    public function activationBlockReason(bool $requireVerified = true): ?string
     {
         if ($this->isArchived()) {
             return 'This site is archived and cannot be activated.';
+        }
+
+        if ($this->isFromCancelledBulk()) {
+            return 'This listing is from a cancelled bulk request and cannot be activated.';
         }
 
         if ($this->awaitsPublisherDetails()) {
@@ -1178,7 +1378,7 @@ class Site extends Model
             return 'This site is waiting for the publisher to accept it into My Sites.';
         }
 
-        if (! (bool) $this->verified) {
+        if ($requireVerified && ! (bool) $this->verified) {
             return 'Verify this site before activating it.';
         }
 
@@ -1637,7 +1837,7 @@ class Site extends Model
      */
     public function marketingCanActivate(): bool
     {
-        if ((bool) $this->active || $this->isArchived()) {
+        if ((bool) $this->active || $this->isArchived() || $this->isFromCancelledBulk()) {
             return false;
         }
         if ($this->isPendingPublisherAcceptance() || $this->isPendingPublisherBulkSubmit()) {

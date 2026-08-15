@@ -51,6 +51,17 @@ class ArticleDetectedLinksTest extends TestCase
         $this->assertStringContainsString('href="https://example.com/keep"', $updated);
     }
 
+    public function test_apply_to_html_unwraps_anchors_when_the_link_list_is_empty(): void
+    {
+        $html = '<p>Try <a href="https://example.com/one">one</a> and '
+            .'<a href="https://example.com/two">two tools</a> today.</p>';
+
+        $updated = ArticleDetectedLinks::applyToHtml($html, []);
+
+        $this->assertStringNotContainsString('<a ', $updated);
+        $this->assertStringContainsString('Try one and two tools today.', $updated);
+    }
+
     public function test_preview_html_strips_legacy_detected_link_footer(): void
     {
         $html = '<p>Body copy.</p><p class="article-detected-link">Detected link: <a href="https://x.com">x</a></p>';

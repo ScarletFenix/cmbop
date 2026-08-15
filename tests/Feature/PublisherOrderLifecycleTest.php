@@ -234,8 +234,8 @@ class PublisherOrderLifecycleTest extends TestCase
             ->postJson(route('publisher.orders.reject', $item->id), [
                 'reason' => 'We cannot publish this content right now, sorry.',
             ])
-            ->assertOk()
-            ->assertJsonPath('success', true);
+            ->assertStatus(400)
+            ->assertJsonPath('success', false);
 
         $wallet->refresh();
         $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
@@ -243,7 +243,7 @@ class PublisherOrderLifecycleTest extends TestCase
         $this->assertSame(0.0, $wallet->withdrawableBalance());
 
         $order = $item->order->fresh();
-        $this->assertSame('cancelled', $order->status);
+        $this->assertSame('pending', $order->status);
         $this->assertSame('pending', $order->payment_status);
     }
 

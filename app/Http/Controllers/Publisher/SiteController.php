@@ -26,6 +26,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\Validator;
+use Illuminate\Validation\ValidationException;
 
 class SiteController extends Controller
 {
@@ -51,20 +52,19 @@ class SiteController extends Controller
 
         $openBulkRequest = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
-            ->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
-            ])
+            ->blockingPublisher()
             ->latest()
             ->first();
 
         $awaitingDetailsCount = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
             ->count();
 
         $detailsCompleteCount = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
             ->count();
 
@@ -116,7 +116,10 @@ class SiteController extends Controller
             return back()->withErrors(['siteUrl' => 'Invalid URL'])->withInput();
         }
 
-        $domain = preg_replace('/^www\./', '', strtolower($host));
+        $domain = Site::normalizeMarketplaceDomain($host);
+        if ($domain === '') {
+            return back()->withErrors(['siteUrl' => 'Invalid URL'])->withInput();
+        }
 
         // Handle categories - get as array from multi-select
         $categories = $this->parseCategoryList($request->input('categories', $request->input('category')));
@@ -202,15 +205,24 @@ class SiteController extends Controller
         });
 
         $validator->after(function ($validator) use ($domain) {
-            if (Site::where('publisher_id', auth()->id())->where('domain', $domain)->exists()) {
+            $existing = Site::findOccupyingDomain($domain);
+            if (! $existing) {
+                return;
+            }
+
+            if ($existing->isArchived()) {
+                $validator->errors()->add('siteUrl', $existing->occupyingDomainMessage());
+
+                return;
+            }
+
+            if ((int) $existing->publisher_id === (int) auth()->id()) {
                 $validator->errors()->add('siteUrl', 'You have already added this website.');
 
                 return;
             }
 
-            if (Site::where('domain', $domain)->where('publisher_id', '!=', auth()->id())->exists()) {
-                $validator->errors()->add('siteUrl', 'This website domain is already registered by another publisher. If you own it, use “Claim a website” on this page so we can verify the listing name and transfer ownership.');
-            }
+            $validator->errors()->add('siteUrl', 'This website domain is already registered by another publisher. If you own it, use “Claim a website” on this page so we can verify the listing name and transfer ownership.');
         });
 
         $validator->after(function ($validator) use ($request) {
@@ -231,6 +243,14 @@ class SiteController extends Controller
 
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, &$site) {
+                Site::releaseCancelledBulkDomain($domain, (int) auth()->id());
+                $existing = Site::findOccupyingDomain($domain, lock: true);
+                if ($existing) {
+                    throw ValidationException::withMessages([
+                        'siteUrl' => [$existing->occupyingDomainMessage()],
+                    ]);
+                }
+
                 $site = new Site;
 
                 $sensitivePrices = $this->collectSensitivePrices($request);
@@ -279,6 +299,8 @@ class SiteController extends Controller
 
                 $site->save();
             });
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Throwable $e) {
             Log::error('Publisher site store failed', [
                 'user_id' => auth()->id(),
@@ -339,10 +361,7 @@ class SiteController extends Controller
 
             $openBulkRequest = BulkSiteRequest::query()
                 ->where('publisher_id', auth()->id())
-                ->whereNotIn('status', [
-                    BulkSiteRequest::STATUS_COMPLETED,
-                    BulkSiteRequest::STATUS_CANCELLED,
-                ])
+                ->blockingPublisher()
                 ->latest()
                 ->first();
 
@@ -350,20 +369,17 @@ class SiteController extends Controller
                 ->whereNull('site_id')
                 ->whereHas('bulkRequest', function ($q) {
                     $q->where('publisher_id', auth()->id())
-                        ->whereNotIn('status', [
-                            BulkSiteRequest::STATUS_COMPLETED,
-                            BulkSiteRequest::STATUS_CANCELLED,
-                        ]);
+                        ->where('status', '!=', BulkSiteRequest::STATUS_CANCELLED);
                 });
 
             $waitingItemsCount = (clone $waitingItemsQuery)->count();
             // Match list filters: Active/Pending badges exclude archived sites.
-            $sitePendingCount = (clone $acceptedBase)->notArchived()
+            $sitePendingCount = (clone $acceptedBase)->notArchived()->notFromCancelledBulk()
                 ->where('active', 0)->where('verified', 0)->count();
             $pendingCount = $sitePendingCount + $waitingItemsCount;
             $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
 
-            $activeQuery = (clone $acceptedBase)->notArchived()->where(function ($q) {
+            $activeQuery = (clone $acceptedBase)->notArchived()->notFromCancelledBulk()->where(function ($q) {
                 $q->where('active', 1)->orWhere('verified', 1);
             });
             $activeCount = (clone $activeQuery)->count();
@@ -387,16 +403,18 @@ class SiteController extends Controller
             } elseif ($status === 'archived') {
                 $sitesQuery = (clone $acceptedBase)->archived();
             } elseif ($status === 'all') {
-                $sitesQuery = (clone $acceptedBase)->notArchived();
+                $sitesQuery = (clone $acceptedBase)->notArchived()->notFromCancelledBulk();
             } else {
                 $sitesQuery = (clone $acceptedBase)->notArchived()
                     ->when($status === 'pending', function ($q) {
-                        $q->where('active', 0)->where('verified', 0);
+                        $q->notFromCancelledBulk()
+                            ->where('active', 0)->where('verified', 0);
                     })
                     ->when($status === 'active', function ($q) {
-                        $q->where(function ($inner) {
-                            $inner->where('active', 1)->orWhere('verified', 1);
-                        });
+                        $q->notFromCancelledBulk()
+                            ->where(function ($inner) {
+                                $inner->where('active', 1)->orWhere('verified', 1);
+                            });
                     });
             }
 
@@ -596,6 +614,13 @@ class SiteController extends Controller
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
 
+        if ($site->isFromCancelledBulk()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This listing is from a cancelled bulk request and cannot be edited.',
+            ], 422);
+        }
+
         if ($site->isPendingPublisherAcceptance()) {
             return response()->json([
                 'success' => false,
@@ -645,6 +670,10 @@ class SiteController extends Controller
     public function update(Request $request, $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+
+        if ($site->isFromCancelledBulk()) {
+            return redirect()->back()->with('error', 'This listing is from a cancelled bulk request and cannot be edited.');
+        }
 
         if ($site->isPendingPublisherAcceptance()) {
             return redirect()
@@ -969,12 +998,18 @@ class SiteController extends Controller
 
         $site->archived_at = null;
         $site->save();
+        $site->refresh();
+
+        $message = 'Site restored. It remains inactive until it is active again.';
+        if ($site->isCatalogVisible()) {
+            $message = 'Site restored to the catalog.';
+        } elseif ($site->isFromCancelledBulk()) {
+            $message = 'Site restored. It stays off the catalog because its bulk request was cancelled.';
+        }
 
         return response()->json([
             'success' => true,
-            'message' => $site->active
-                ? 'Site restored to the catalog.'
-                : 'Site restored. It remains inactive until it is active again.',
+            'message' => $message,
         ]);
     }
 

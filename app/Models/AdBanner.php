@@ -84,15 +84,18 @@ class AdBanner extends Model
 
     public function sizeLabel(): string
     {
-        $meta = config("promotions.banner_sizes.{$this->size_key}");
-        $label = $meta['label'] ?? ucfirst(str_replace('_', ' ', $this->size_key));
+        $sizeKey = scalar_text($this->size_key);
+        $meta = config("promotions.banner_sizes.{$sizeKey}");
+        $label = scalar_text($meta['label'] ?? ucfirst(str_replace('_', ' ', $sizeKey)));
 
         return "{$label} ({$this->width}×{$this->height})";
     }
 
     public function placementLabel(): string
     {
-        return config("promotions.banner_placements.{$this->placement}", $this->placement);
+        $placement = scalar_text($this->placement);
+
+        return scalar_text(config("promotions.banner_placements.{$placement}", $placement));
     }
 
     public function isCurrentlyLive(): bool

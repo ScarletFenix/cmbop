@@ -126,14 +126,7 @@ class ContentLibraryController extends Controller
             $query->whereNull('archived_at');
 
             if ($availability === 'available') {
-                $query->where('moderation_status', ContentSubmission::STATUS_APPROVED)
-                    ->whereNull('order_id')
-                    ->whereNotNull('path')->where('path', '!=', '')
-                    ->whereNotNull('country')->where('country', '!=', '')
-                    ->whereNotNull('language')->where('language', '!=', '')
-                    ->where(function ($exp) {
-                        $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                    });
+                $query->orderable();
             } elseif ($availability === 'evaluating') {
                 $query->whereIn('moderation_status', [
                     ContentSubmission::STATUS_PENDING,
@@ -160,13 +153,7 @@ class ContentLibraryController extends Controller
                     ->whereNotNull('expires_at')
                     ->where('expires_at', '<=', now());
             } elseif ($availability === 'needs_fix') {
-                $query->whereIn('moderation_status', [
-                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
-                    ContentSubmission::STATUS_REJECTED,
-                    ContentSubmission::STATUS_ERROR,
-                ])->where(function ($exp) {
-                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                });
+                $query->needsLibraryFix();
             } elseif ($availability === 'published') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
                 $query->whereNotNull('order_id')
@@ -283,16 +270,7 @@ class ContentLibraryController extends Controller
                 ->whereNotNull('expires_at')
                 ->where('expires_at', '<=', now())
                 ->count(),
-            'needs_fix' => (int) (clone $countScope)
-                ->whereIn('moderation_status', [
-                    ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
-                    ContentSubmission::STATUS_REJECTED,
-                    ContentSubmission::STATUS_ERROR,
-                ])
-                ->where(function ($exp) {
-                    $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-                })
-                ->count(),
+            'needs_fix' => (int) (clone $countScope)->needsLibraryFix()->count(),
         ];
 
         $archivedCountScope = ContentSubmission::query()
@@ -475,13 +453,19 @@ class ContentLibraryController extends Controller
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
                 ->whereNull('order_id')
-                ->whereNull('archived_at')
                 ->first();
             if ($replace?->isExpired()) {
                 return response()->json([
                     'success' => false,
                     'title' => 'Expired',
                     'message' => 'Expired articles are preview only. Upload a new article instead of replacing this one.',
+                ], 422);
+            }
+            if ($replace?->isArchived()) {
+                return response()->json([
+                    'success' => false,
+                    'title' => 'Archived',
+                    'message' => 'Restore this article before replacing it.',
                 ], 422);
             }
         }
@@ -536,6 +520,9 @@ class ContentLibraryController extends Controller
                 'moderation_status' => $result['submission']->moderation_status ?? null,
                 'can_order' => false,
                 'editable' => true,
+                'needs_image_rights' => (bool) ($result['submission']?->hasImages() && ! $result['submission']->imageRightsCoverContent()),
+                'editor_notice' => $result['message'] ?? null,
+                'editor_notice_ok' => false,
             ];
         }
 
@@ -571,7 +558,9 @@ class ContentLibraryController extends Controller
         if (! $submission->canBeOrdered()) {
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
-                : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.';
+                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
+                    ? ContentUploadService::imageRightsRequiredMessage()
+                    : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
 
             return redirect()
                 ->route('advertiser.content-library')
@@ -605,14 +594,7 @@ class ContentLibraryController extends Controller
             ->where('user_id', auth()->id())
             ->whereNull('order_id')
             ->whereNull('archived_at')
-            ->where(function ($exp) {
-                $exp->whereNull('expires_at')->orWhere('expires_at', '>', now());
-            })
-            ->whereIn('moderation_status', [
-                ContentSubmission::STATUS_NEEDS_IMPROVEMENT,
-                ContentSubmission::STATUS_REJECTED,
-                ContentSubmission::STATUS_ERROR,
-            ])
+            ->needsLibraryFix()
             ->first();
     }
 
@@ -639,6 +621,8 @@ class ContentLibraryController extends Controller
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
             'image_rights_covers' => $s->imageRightsCoverContent(),
+            'editor_notice' => $s->editorNotice(),
+            'editor_notice_ok' => false,
         ];
     }
 
@@ -671,6 +655,8 @@ class ContentLibraryController extends Controller
             'has_images' => $s->hasImages(),
             'needs_image_rights' => $s->hasImages() && ! $s->imageRightsCoverContent(),
             'image_rights_covers' => $s->imageRightsCoverContent(),
+            'editor_notice' => $s->editorNotice(),
+            'editor_notice_ok' => false,
             'archived' => $s->isArchived(),
             'availability' => $s->libraryAvailability(),
             'live_url' => $s->liveUrl(),

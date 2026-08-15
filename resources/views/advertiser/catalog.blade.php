@@ -201,10 +201,14 @@
     // Range filters span two inputs, so one chip clears both ends.
     // Category: one named chip per niche (clear removes that niche only).
     $activeFilterChips = [];
+    $catalogSearchText = search_text(request('search'));
+    $catalogCategoryText = search_text(request('category'));
+    $catalogCountryText = search_text(request('country'));
+    $catalogLanguageText = search_text(request('language'));
     if (request('site')) $activeFilterChips[] = ['label' => 'Recommended site', 'key' => 'site', 'params' => ['site']];
-    if (request('search')) $activeFilterChips[] = ['label' => 'Search: '.request('search'), 'key' => 'search', 'params' => ['search']];
-    if (request('category')) {
-        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category'));
+    if ($catalogSearchText !== '') $activeFilterChips[] = ['label' => 'Search: '.$catalogSearchText, 'key' => 'search', 'params' => ['search']];
+    if ($catalogCategoryText !== '') {
+        $categoryCanonical = \App\Models\Category::canonicalizeCatalogCategoryParam($catalogCategoryText);
         foreach (\App\Models\Category::parseCatalogCategoryParam($categoryCanonical) as $niche) {
             $activeFilterChips[] = [
                 'label' => $niche,
@@ -214,9 +218,9 @@
             ];
         }
     }
-    if (request('country')) $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
+    if ($catalogCountryText !== '') $activeFilterChips[] = ['label' => 'Country', 'key' => 'country', 'params' => ['country']];
     if (request('price_min') || request('price_max')) $activeFilterChips[] = ['label' => 'Price', 'key' => 'price', 'params' => ['price_min', 'price_max']];
-    if (request('language')) $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
+    if ($catalogLanguageText !== '') $activeFilterChips[] = ['label' => 'Language', 'key' => 'language', 'params' => ['language']];
     if (request('sponsored') == '1') $activeFilterChips[] = ['label' => 'Sponsored', 'key' => 'sponsored', 'params' => ['sponsored']];
     if (request('favorites_filter') == '1') $activeFilterChips[] = ['label' => 'Favorites', 'key' => 'favorites_filter', 'params' => ['favorites_filter']];
     if (request('blacklist_filter') == '1') $activeFilterChips[] = ['label' => 'Blacklist', 'key' => 'blacklist_filter', 'params' => ['blacklist_filter']];
@@ -227,7 +231,8 @@
     if (request('new_badge') == '1') $activeFilterChips[] = ['label' => 'New sites', 'key' => 'new_badge', 'params' => ['new_badge']];
     if (request('on_sale') == '1') $activeFilterChips[] = ['label' => 'On sale', 'key' => 'on_sale', 'params' => ['on_sale']];
     if (request('quality') == '1') $activeFilterChips[] = ['label' => 'Quality bar (DA/DR/traffic)', 'key' => 'quality', 'params' => ['quality']];
-    if (request()->filled('rating_min')) $activeFilterChips[] = ['label' => 'Min rating '.request('rating_min').'+', 'key' => 'rating_min', 'params' => ['rating_min']];
+    $catalogRatingMin = filter_number(request('rating_min'));
+    if ($catalogRatingMin !== null && $catalogRatingMin > 0) $activeFilterChips[] = ['label' => 'Min rating '.$catalogRatingMin.'+', 'key' => 'rating_min', 'params' => ['rating_min']];
     if (request('has_completions') == '1') $activeFilterChips[] = ['label' => 'Has completions', 'key' => 'has_completions', 'params' => ['has_completions']];
     $catalogPerPage = \App\Services\Catalog\CatalogUrlQuery::perPage(request());
     if ($catalogPerPage !== \App\Services\Catalog\CatalogUrlQuery::DEFAULT_PER_PAGE) {
@@ -262,7 +267,7 @@
             @php
                 $resultTotal = $sites->total();
                 $hasActiveFilters = count($activeFilterChips) > 0;
-                $sortValue = request('sort', 'dr_desc');
+                $sortValue = search_text(request('sort')) ?: 'dr_desc';
                 $catalogFilterStatus = app(\App\Services\Catalog\CatalogFilterStatus::class);
                 $catalogResultsCopy = $catalogFilterStatus->summarize(
                     request(),
@@ -296,13 +301,13 @@
                                        title="{{ $inCatalogHideMode
                                            ? 'Results update as you type. Matching rows stay masked until you use the eye.'
                                            : 'Results update as you type in the catalog table. Metric tokens (da>40, price<100) apply on search.' }}"
-                                       value="{{ request('search') }}"
+                                       value="{{ $catalogSearchText }}"
                                        autocomplete="off"
                                        enterkeyhint="search"
                                        aria-describedby="catalogSearchStatus">
                                 <button type="button"
                                         id="catalogSearchClear"
-                                        class="btn btn-sm btn-link slb-search-clear{{ request('search') ? '' : ' d-none' }}"
+                                        class="btn btn-sm btn-link slb-search-clear{{ $catalogSearchText !== '' ? '' : ' d-none' }}"
                                         aria-label="Clear search">
                                     <i class="fa-solid fa-xmark" aria-hidden="true"></i>
                                 </button>
@@ -336,7 +341,7 @@
                                     <div class="multi-select-empty d-none">No categories found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', '')) }}">
+                            <input type="hidden" name="category" id="selectedCategory" value="{{ \App\Models\Category::canonicalizeCatalogCategoryParam($catalogCategoryText) }}">
                         </div>
 
                         <!-- Primary: Country (searchable dropdown) -->
@@ -394,7 +399,7 @@
                                     <div class="multi-select-empty d-none">No countries found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="country" id="selectedCountry" value="{{ request('country') }}">
+                            <input type="hidden" name="country" id="selectedCountry" value="{{ $catalogCountryText }}">
                         </div>
 
                         <!-- Primary: Language (searchable dropdown) -->
@@ -423,7 +428,7 @@
                                     <div class="multi-select-empty d-none">No languages found</div>
                                 </div>
                             </div>
-                            <input type="hidden" name="language" id="selectedLanguage" value="{{ request('language') }}">
+                            <input type="hidden" name="language" id="selectedLanguage" value="{{ $catalogLanguageText }}">
                         </div>
 
                         <!-- Primary: Price -->
@@ -436,14 +441,14 @@
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Min"
                                        min="0" step="0.01"
-                                       value="{{ request('price_min') }}">
+                                       value="{{ search_text(request('price_min')) }}">
                                 <input type="number"
                                        name="price_max"
                                        id="priceMaxInput" aria-label="Maximum price in euros"
                                        class="form-control form-control-sm no-spinner"
                                        placeholder="Max"
                                        min="0" step="0.01"
-                                       value="{{ request('price_max') }}">
+                                       value="{{ search_text(request('price_max')) }}">
                             </div>
                             <div class="filter-presets" data-preset-group="price">
                                 <button type="button" class="filter-preset" data-min="" data-max="50" data-target-min="priceMinInput" data-target-max="priceMaxInput">Under €50</button>
@@ -507,8 +512,8 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Moz Domain Authority — site strength score from 0–100">DA</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="da_min" id="daMinInput" aria-label="Minimum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('da_min') }}">
-                                    <input type="number" name="da_max" id="daMaxInput" aria-label="Maximum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('da_max') }}">
+                                    <input type="number" name="da_min" id="daMinInput" aria-label="Minimum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ search_text(request('da_min')) }}">
+                                    <input type="number" name="da_max" id="daMaxInput" aria-label="Maximum Domain Authority" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ search_text(request('da_max')) }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="da">
                                     <button type="button" class="filter-preset" data-min="20" data-max="" data-target-min="daMinInput" data-target-max="daMaxInput">DA 20+</button>
@@ -521,8 +526,8 @@
                                     <abbr class="metric-abbr text-decoration-none" title="Ahrefs Domain Rating — backlink strength score from 0–100">DR</abbr>
                                 </label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="dr_min" id="drMinInput" aria-label="Minimum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ request('dr_min') }}">
-                                    <input type="number" name="dr_max" id="drMaxInput" aria-label="Maximum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ request('dr_max') }}">
+                                    <input type="number" name="dr_min" id="drMinInput" aria-label="Minimum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" step="1" value="{{ search_text(request('dr_min')) }}">
+                                    <input type="number" name="dr_max" id="drMaxInput" aria-label="Maximum Domain Rating" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" step="1" value="{{ search_text(request('dr_max')) }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="dr">
                                     <button type="button" class="filter-preset" data-min="30" data-max="" data-target-min="drMinInput" data-target-max="drMaxInput">DR 30+</button>
@@ -533,8 +538,8 @@
                             <div class="col-6 col-md-4 col-lg-3">
                                 <label class="form-label fw-semibold small text-muted mb-1">Monthly Traffic</label>
                                 <div class="d-flex gap-2">
-                                    <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_min') }}">
-                                    <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ request('traffic_max') }}">
+                                    <input type="number" name="traffic_min" id="trafficMinInput" aria-label="Minimum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Min" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ search_text(request('traffic_min')) }}">
+                                    <input type="number" name="traffic_max" id="trafficMaxInput" aria-label="Maximum monthly traffic" class="form-control form-control-sm no-spinner" placeholder="Max" min="0" max="4294967295" step="1" inputmode="numeric" value="{{ search_text(request('traffic_max')) }}">
                                 </div>
                                 <div class="filter-presets" data-preset-group="traffic">
                                     <button type="button" class="filter-preset" data-min="10000" data-max="" data-target-min="trafficMinInput" data-target-max="trafficMaxInput">10k+</button>
@@ -684,7 +689,7 @@
                     Searching for a site that isn’t listed yet?
                 </p>
                 <button type="button" class="btn btn-sm btn-outline-success btn-suggest-website"
-                        data-search="{{ request('search') }}">
+                        data-search="{{ $catalogSearchText }}">
                     <i class="fa-solid fa-lightbulb me-1" aria-hidden="true"></i> Suggest a website
                 </button>
             </div>
@@ -704,10 +709,10 @@
 window.CatalogConfig = {
     favorites: @json($favorites ?? []),
     blacklist: @json($blacklist ?? []),
-    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam((string) request('category', ''))),
+    categoryParam: @json(\App\Models\Category::canonicalizeCatalogCategoryParam($catalogCategoryText)),
     categoryNames: @json(array_values($siteCategories ?? [])),
-    countryParam: @json((string) request('country', '')),
-    languageParam: @json((string) request('language', '')),
+    countryParam: @json($catalogCountryText),
+    languageParam: @json($catalogLanguageText),
     countryLanguageMap: @json(app(\App\Services\Marketplace\CountryLanguagePairs::class)->mapWithNames()),
     countryGroups: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['codes']])->all()),
     countryGroupLabels: @json(collect($countryPickerGroups ?? [])->mapWithKeys(fn ($g) => [$g['key'] => $g['label']])->all()),

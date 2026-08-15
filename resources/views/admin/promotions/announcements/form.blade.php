@@ -13,8 +13,8 @@
 
     @if(!empty($presetMeta))
         <div class="alert alert-light border mb-4">
-            <strong>{{ $presetMeta['emoji'] ?? '' }} {{ $presetMeta['label'] }}</strong>
-            <div class="small text-muted mb-0">{{ $presetMeta['description'] }} Prefill is ready — edit and publish.</div>
+            <strong>{{ scalar_text($presetMeta['emoji'] ?? '') }} {{ scalar_text($presetMeta['label'] ?? '') }}</strong>
+            <div class="small text-muted mb-0">{{ scalar_text($presetMeta['description'] ?? '') }} Prefill is ready — edit and publish.</div>
         </div>
     @endif
 

@@ -16,7 +16,7 @@ class ContentEvaluationResult extends PlatformMailable
         parent::__construct();
         $this->notificationType = 'content_evaluation_result';
         $this->recipientUser = $submission->user;
-        $this->dedupeKey = 'content_eval:'.$submission->id.':'.($result['moderation_status'] ?? 'unknown');
+        $this->dedupeKey = 'content_eval:'.$submission->id.':'.($result['notify_status'] ?? $result['moderation_status'] ?? 'unknown');
     }
 
     public function build()
@@ -25,6 +25,9 @@ class ContentEvaluationResult extends PlatformMailable
         $subject = $approved
             ? 'Your article was approved for publication'
             : 'Article evaluation update: action needed';
+        $libraryParams = $approved
+            ? []
+            : ['status' => 'all', 'availability' => 'needs_fix'];
 
         return $this->subject($subject)
             ->markdown('emails.content-evaluation-result')
@@ -33,7 +36,7 @@ class ContentEvaluationResult extends PlatformMailable
                 'result' => $this->result,
                 'approved' => $approved,
                 'firstName' => $this->firstName($this->submission->user),
-                'libraryUrl' => $this->publicRoute('advertiser.content-library'),
+                'libraryUrl' => $this->publicRoute('advertiser.content-library', $libraryParams),
                 'brand' => $this->brand(),
             ]);
     }

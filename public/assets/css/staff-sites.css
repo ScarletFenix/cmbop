@@ -510,3 +510,7 @@
   gap: 0.5rem;
   margin-top: 1rem;
 }
+
+.bulk-done-grid .bulk-done-reject {
+  display: inline-block;
+}

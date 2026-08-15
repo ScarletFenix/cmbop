@@ -31,9 +31,9 @@ class AnnouncementController extends Controller
 
     public function create(Request $request)
     {
-        $presetKey = $request->query('preset');
+        $presetKey = scalar_text($request->query('preset'));
         $presets = config('promotions.featured_notices', []);
-        $preset = $presets[$presetKey] ?? null;
+        $preset = $presetKey !== '' ? ($presets[$presetKey] ?? null) : null;
 
         $defaults = [
             'type' => 'limited_offer',

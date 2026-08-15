@@ -421,18 +421,33 @@ if (! function_exists('google_oauth_configured')) {
     }
 }
 
+if (! function_exists('staff_uses_marketing_workspace')) {
+    /**
+     * True when this user should see /marketing links (active marketing, not admin).
+     */
+    function staff_uses_marketing_workspace(?User $user): bool
+    {
+        return $user && $user->isMarketing() && ! $user->isAdmin();
+    }
+}
+
+if (! function_exists('staff_route_prefix_for')) {
+    /**
+     * Route name prefix for a staff user's active workspace.
+     */
+    function staff_route_prefix_for(?User $user): string
+    {
+        return staff_uses_marketing_workspace($user) ? 'marketing.' : 'admin.';
+    }
+}
+
 if (! function_exists('staff_route_prefix')) {
     /**
      * Route name prefix for the current staff workspace (marketing.* vs admin.*).
      */
     function staff_route_prefix(): string
     {
-        $user = auth()->user();
-        if ($user && $user->isMarketing() && ! $user->isAdmin()) {
-            return 'marketing.';
-        }
-
-        return 'admin.';
+        return staff_route_prefix_for(auth()->user());
     }
 }
 
@@ -442,12 +457,7 @@ if (! function_exists('staff_base_path')) {
      */
     function staff_base_path(): string
     {
-        $user = auth()->user();
-        if ($user && $user->isMarketing() && ! $user->isAdmin()) {
-            return '/marketing';
-        }
-
-        return '/admin';
+        return staff_uses_marketing_workspace(auth()->user()) ? '/marketing' : '/admin';
     }
 }
 
@@ -467,12 +477,9 @@ if (! function_exists('staff_layout')) {
      */
     function staff_layout(): string
     {
-        $user = auth()->user();
-        if ($user && $user->isMarketing() && ! $user->isAdmin()) {
-            return 'marketing.layouts.app';
-        }
-
-        return 'admin.layouts.app';
+        return staff_uses_marketing_workspace(auth()->user())
+            ? 'marketing.layouts.app'
+            : 'admin.layouts.app';
     }
 }
 
@@ -489,6 +496,7 @@ if (! function_exists('marketing_task_labels')) {
             'bulk_request.seeded' => 'Seed',
             'bulk_request.sheet_sent' => 'Marked sheet sent',
             'bulk_request.cancelled' => 'Cancelled bulk request',
+            'bulk_request.items_rejected' => 'Removed bulk sites',
             'bulk_request.notes_updated' => 'Updated bulk notes',
             'site.deleted_by_marketing' => 'Deleted pending site',
             'site.updated' => 'Edited site',

@@ -65,7 +65,7 @@ class SiteClaimController extends Controller
 
         $site = null;
         if (! empty($data['site_id'])) {
-            $site = Site::find($data['site_id']);
+            $site = Site::query()->catalogVisible()->find($data['site_id']);
         } else {
             $domain = $this->extractDomain((string) ($data['website_url'] ?? ''));
             if (! $domain) {
@@ -74,7 +74,7 @@ class SiteClaimController extends Controller
                     'message' => 'Please enter a valid website URL.',
                 ], 422);
             }
-            $site = Site::where('domain', $domain)->first();
+            $site = Site::findOccupyingDomain($domain);
         }
 
         if (! $site) {
@@ -176,7 +176,9 @@ class SiteClaimController extends Controller
             return null;
         }
 
-        return preg_replace('/^www\./', '', strtolower($host));
+        $normalized = Site::normalizeMarketplaceDomain($host);
+
+        return $normalized !== '' ? $normalized : null;
     }
 
     private function namesMatch(string $provided, string $listed): bool

@@ -7,6 +7,8 @@ use App\Jobs\CaptureSiteScreenshotJob;
 use App\Jobs\EnrichSiteJob;
 use App\Mail\AdminAssignedSiteNotification;
 use App\Mail\SiteStatusNotification;
+use App\Models\BulkSiteRequest;
+use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
 use App\Models\Country;
 use App\Models\Language;
@@ -476,8 +478,8 @@ class SiteController extends Controller
                 : null,
             'csv_metrics_spot_check' => $site->isFromAgencyCsvImport() && (bool) $site->metrics_manual,
             'archived' => $site->isArchived(),
-            'can_activate' => $site->canBeActivated(),
-            'activate_block_reason' => $site->activationBlockReason(),
+            'can_activate' => $this->staffCanActivateSite($site),
+            'activate_block_reason' => $this->staffActivateBlockReason($site),
             'orders_count' => $site->orderItemsCount(),
             'preview_thumb_url' => $preview['thumb'],
             'preview_full_url' => $preview['full'],
@@ -849,6 +851,7 @@ class SiteController extends Controller
 
         try {
             DB::transaction(function () use ($request, $domain, $cleanDescription, $categoriesArray, $primaryCategory, $countryCodes, $languageCodes, $publisherId, &$storedImagePath, &$site) {
+                Site::releaseCancelledBulkDomain($domain, $publisherId);
                 $existing = $this->findSiteByDomain($domain, lock: true);
                 if ($existing) {
                     throw ValidationException::withMessages([
@@ -1584,6 +1587,7 @@ class SiteController extends Controller
                 if (! $this->isMarketplaceHost($domain)) {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
+                    Site::releaseCancelledBulkDomain($domain, (int) $site->publisher_id);
                     $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
@@ -1900,6 +1904,7 @@ class SiteController extends Controller
                 if ($domain === '' || ! $this->isMarketplaceHost($domain)) {
                     $validator->errors()->add('site_url', 'Invalid URL');
                 } else {
+                    Site::releaseCancelledBulkDomain($domain, (int) $site->publisher_id);
                     $existing = $this->findSiteByDomain($domain, exceptId: $site->id);
                     if ($existing) {
                         $validator->errors()->add('site_url', $this->domainAlreadyRegisteredMessage($existing));
@@ -2036,9 +2041,7 @@ class SiteController extends Controller
 
     private function domainAlreadyRegisteredMessage(Site $existing): string
     {
-        return $existing->isArchived()
-            ? 'This domain is already registered (including archived). Ask an admin to restore or hard-delete.'
-            : 'This website domain is already registered.';
+        return $existing->occupyingDomainMessage();
     }
 
     /**
@@ -2047,32 +2050,7 @@ class SiteController extends Controller
      */
     private function findSiteByDomain(string $domain, ?int $exceptId = null, bool $lock = false): ?Site
     {
-        $candidates = $this->domainLookupCandidates($domain);
-        if ($candidates === []) {
-            return null;
-        }
-
-        $normalized = $this->normalizeDomain($domain);
-        $query = Site::query()->where(function ($q) use ($candidates, $normalized) {
-            $q->whereIn('domain', $candidates);
-            if ($normalized !== '') {
-                $escaped = addcslashes($normalized, '%_\\');
-                $q->orWhere('domain', 'like', $escaped.':%')
-                    ->orWhere('domain', 'like', 'www.'.$escaped.':%');
-            }
-        });
-        if ($exceptId !== null) {
-            $query->where('id', '!=', $exceptId);
-        }
-        if (Site::hasSitesColumn('archived_at')) {
-            $query->orderByRaw('case when archived_at is null then 0 else 1 end');
-        }
-        $query->orderBy('id');
-        if ($lock) {
-            $query->lockForUpdate();
-        }
-
-        return $query->first();
+        return Site::findOccupyingDomain($domain, $exceptId, $lock);
     }
 
     private function isDomainUniqueConstraintFailure(\Throwable $e): bool
@@ -2364,22 +2342,7 @@ class SiteController extends Controller
      */
     private function normalizeDomain(string $host): string
     {
-        $domain = strtolower(trim($host));
-        $domain = preg_replace('/^www\./i', '', $domain) ?? $domain;
-        $domain = rtrim($domain, '.');
-        if ($domain !== '' && ! str_starts_with($domain, '[') && str_contains($domain, ':')) {
-            $domain = explode(':', $domain, 2)[0];
-        }
-
-        $domain = rtrim($domain, '.');
-        if ($domain !== '' && function_exists('idn_to_ascii') && ! filter_var($domain, FILTER_VALIDATE_IP) && ! str_starts_with($domain, '[')) {
-            $ascii = idn_to_ascii($domain, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if (is_string($ascii) && $ascii !== '') {
-                $domain = strtolower($ascii);
-            }
-        }
-
-        return $domain;
+        return Site::normalizeMarketplaceDomain($host);
     }
 
     private function isMarketplaceHost(string $host): bool
@@ -2440,38 +2403,6 @@ class SiteController extends Controller
         $exampleHost = $this->urlHost($exampleUrl);
 
         return $siteHost !== '' && $exampleHost !== '' && $siteHost !== $exampleHost;
-    }
-
-    /**
-     * @return list<string>
-     */
-    private function domainLookupCandidates(string $host): array
-    {
-        $normalized = $this->normalizeDomain($host);
-        if ($normalized === '') {
-            return [];
-        }
-
-        $candidates = [
-            $normalized,
-            'www.'.$normalized,
-            $normalized.'.',
-            'www.'.$normalized.'.',
-            $normalized.':80',
-            $normalized.':443',
-            'www.'.$normalized.':80',
-            'www.'.$normalized.':443',
-        ];
-        if (function_exists('idn_to_utf8')) {
-            $utf8 = idn_to_utf8($normalized, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
-            if (is_string($utf8) && $utf8 !== '' && strtolower($utf8) !== $normalized) {
-                $utf8 = strtolower($utf8);
-                $candidates[] = $utf8;
-                $candidates[] = 'www.'.$utf8;
-            }
-        }
-
-        return array_values(array_unique($candidates));
     }
 
     /**
@@ -2855,6 +2786,36 @@ class SiteController extends Controller
         }
     }
 
+    private function isMarketingActor(?User $actor = null): bool
+    {
+        $actor ??= auth()->user();
+
+        return (bool) ($actor?->isMarketing() && ! $actor?->isAdmin());
+    }
+
+    private function marketingMaySkipVerify(bool $isMarketingActor, Site $site): bool
+    {
+        return $isMarketingActor && ($site->marketingCanActivate() || $site->needsAdminReview());
+    }
+
+    private function staffCanActivateSite(Site $site): bool
+    {
+        if ($this->isMarketingActor()) {
+            return $site->marketingCanActivate();
+        }
+
+        return $site->canBeActivated();
+    }
+
+    private function staffActivateBlockReason(Site $site): ?string
+    {
+        if ($this->staffCanActivateSite($site)) {
+            return null;
+        }
+
+        return $site->activationBlockReason(! $this->marketingMaySkipVerify($this->isMarketingActor(), $site));
+    }
+
     // TOGGLE ACTIVE STATUS — admin and marketing (shared Sites Management)
     public function toggleActive(Request $request, $id)
     {
@@ -2884,7 +2845,7 @@ class SiteController extends Controller
                     ], 422);
                 }
 
-                $block = $site->activationBlockReason();
+                $block = $site->activationBlockReason(! $this->marketingMaySkipVerify($isMarketingActor, $site));
                 if ($block !== null) {
                     return response()->json([
                         'success' => false,
@@ -2903,8 +2864,21 @@ class SiteController extends Controller
             }
 
             $oldStatus = (int) $site->active;
+            $verifyOnActivate = $activating
+                && $isMarketingActor
+                && ! (bool) $site->verified
+                && $site->needsAdminReview();
             $site->active = $activating ? 1 : 0;
             if ($activating) {
+                // Marketing has no verify route; Activate is the go-live action
+                // and the catalog requires verified + active.
+                if ($verifyOnActivate) {
+                    $site->verified = 1;
+                    $site->verified_at = now();
+                    $site->verify_method = 'manual';
+                    $site->verify_token = null;
+                    $site->verify_token_created_at = null;
+                }
                 // Leave the review/onboarding queue once live.
                 $site->onboarding_status = null;
             } else {
@@ -3155,6 +3129,8 @@ class SiteController extends Controller
                 $siteName
             );
 
+            $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId);
+
             return response()->json([
                 'success' => true,
                 'archived' => true,
@@ -3182,7 +3158,11 @@ class SiteController extends Controller
             (int) ($outcome['mediaSiteId'] ?? 0)
         );
 
-        $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
+        // Deleting a seeded draft re-pends the URL+price row (site_id nullOnDelete).
+        // That is a staff correction, not a rejection — Done-reject notifies instead.
+        if (! $this->bulkItemWasRepended($bulkRequestId, $domain)) {
+            $this->notifyPublisherSiteRemoved($notifySnapshot, $publisher, $rejectionReason, 'removed');
+        }
 
         ActivityLogger::log(
             $isMarketingPendingDelete && ! $isAdmin ? 'site.deleted_by_marketing' : 'site.deleted',
@@ -3201,11 +3181,40 @@ class SiteController extends Controller
             $siteName
         );
 
+        $this->syncLinkedBulkAfterSiteRemoved($bulkRequestId);
+
         return response()->json([
             'success' => true,
             'archived' => false,
             'message' => 'Site deleted successfully',
         ]);
+    }
+
+    private function syncLinkedBulkAfterSiteRemoved(?int $bulkRequestId): void
+    {
+        if (! $bulkRequestId) {
+            return;
+        }
+
+        $bulk = BulkSiteRequest::query()->find($bulkRequestId);
+        if (! $bulk) {
+            return;
+        }
+
+        $bulk->refreshProgressStatus();
+    }
+
+    private function bulkItemWasRepended(?int $bulkRequestId, ?string $domain): bool
+    {
+        if (! $bulkRequestId || ! filled($domain)) {
+            return false;
+        }
+
+        return BulkSiteRequestItem::query()
+            ->where('bulk_site_request_id', $bulkRequestId)
+            ->where('domain', $domain)
+            ->whereNull('site_id')
+            ->exists();
     }
 
     private function notifyPublisherSiteRemoved(

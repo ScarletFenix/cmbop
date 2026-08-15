@@ -36,7 +36,7 @@
                             <tr>
                                 <td>
                                     @if($banner->imageSrc())
-                                        <img src="{{ $banner->imageSrc() }}" alt="{{ $banner->alt_text ?: $banner->name }}"
+                                        <img src="{{ $banner->imageSrc() }}" alt="{{ scalar_text($banner->alt_text ?: $banner->name) }}"
                                              class="rounded border" style="width:72px;height:48px;object-fit:cover;">
                                     @else
                                         <div class="bg-light rounded border d-flex align-items-center justify-content-center" style="width:72px;height:48px;">
@@ -45,8 +45,8 @@
                                     @endif
                                 </td>
                                 <td>
-                                    <div class="fw-semibold">{{ $banner->name }}</div>
-                                    <div class="small text-muted">{{ config('promotions.audiences.'.$banner->audience, $banner->audience) }}</div>
+                                    <div class="fw-semibold">{{ scalar_text($banner->name) }}</div>
+                                    <div class="small text-muted">{{ scalar_text(config('promotions.audiences.'.scalar_text($banner->audience), $banner->audience)) }}</div>
                                 </td>
                                 <td class="small">{{ $banner->sizeLabel() }}</td>
                                 <td class="small">{{ $banner->placementLabel() }}</td>

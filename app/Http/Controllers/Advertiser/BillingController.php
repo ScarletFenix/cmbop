@@ -23,8 +23,8 @@ class BillingController extends Controller
             ])
             ->with('order:id,order_number,reference_code');
 
-        if ($request->filled('search')) {
-            $search = trim((string) $request->search);
+        $search = search_text($request->input('search'));
+        if ($search !== '') {
             $query->where(function ($q) use ($search) {
                 $q->where('invoice_number', 'like', "%{$search}%")
                     ->orWhere('order_number', 'like', "%{$search}%")
@@ -41,12 +41,14 @@ class BillingController extends Controller
             $query->where('type', $request->type);
         }
 
-        if ($request->filled('from')) {
-            $query->whereDate('invoice_date', '>=', $request->from);
+        $from = search_text($request->input('from'));
+        if ($from !== '') {
+            $query->whereDate('invoice_date', '>=', $from);
         }
 
-        if ($request->filled('to')) {
-            $query->whereDate('invoice_date', '<=', $request->to);
+        $to = search_text($request->input('to'));
+        if ($to !== '') {
+            $query->whereDate('invoice_date', '<=', $to);
         }
 
         $invoices = $query->latest('invoice_date')->latest('id')->paginate(20)->withQueryString();

@@ -175,7 +175,7 @@ class DashboardController extends Controller
     }
 
     /**
-     * Orders visible to publishers (excludes unpaid card checkouts).
+     * Orders visible to publishers (paid placements only).
      *
      * @param  array<int>  $siteIds
      * @return array<int>
@@ -188,10 +188,7 @@ class DashboardController extends Controller
 
         return OrderItem::whereIn('site_id', $siteIds)
             ->whereHas('order', function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('payment_status', 'paid')
-                        ->orWhere('payment_method', '!=', 'card');
-                });
+                $q->where('payment_status', 'paid');
             })
             ->pluck('order_id')
             ->unique()
@@ -210,10 +207,8 @@ class DashboardController extends Controller
 
         return OrderItem::whereIn('site_id', $siteIds)
             ->whereHas('order', function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('payment_status', 'paid')
-                        ->orWhere('payment_method', '!=', 'card');
-                })->whereIn('status', ['pending', 'processing', 'review'])
+                $q->where('payment_status', 'paid')
+                    ->whereIn('status', ['pending', 'processing', 'review'])
                     ->notAwaitingScheduledRelease();
             })
             ->count();
@@ -320,10 +315,7 @@ class DashboardController extends Controller
 
         $items = OrderItem::whereIn('site_id', $siteIds)
             ->whereHas('order', function ($q) {
-                $q->where(function ($inner) {
-                    $inner->where('payment_status', 'paid')
-                        ->orWhere('payment_method', '!=', 'card');
-                });
+                $q->where('payment_status', 'paid');
             })
             ->with(['order', 'site'])
             ->orderByDesc('created_at')

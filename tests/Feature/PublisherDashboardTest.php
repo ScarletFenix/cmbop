@@ -169,6 +169,39 @@ class PublisherDashboardTest extends TestCase
             ->assertJsonPath('data.labels.2', 'In Review');
     }
 
+    public function test_unpaid_manual_payment_orders_are_excluded_from_stats_and_recent(): void
+    {
+        $publisher = $this->publisherWithWallet();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+
+        $this->createOrderItem($advertiser, $site, [
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'paid_at' => null,
+            'total_amount' => 115,
+        ]);
+
+        $this->createOrderItem($advertiser, $site, [
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'total_amount' => 115,
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.statistics'))
+            ->assertOk()
+            ->assertJsonPath('data.total_orders', 1)
+            ->assertJsonPath('data.pending_orders', 1);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.dashboard.recent'))
+            ->assertOk()
+            ->assertJsonCount(1, 'orders');
+    }
+
     public function test_success_rate_uses_completed_over_resolved_not_total(): void
     {
         $publisher = $this->publisherWithWallet();

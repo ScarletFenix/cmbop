@@ -28,6 +28,23 @@ class FinanceController extends Controller
      */
     public function index(Request $request)
     {
+        $userQuery = search_text($request->input('q'));
+        $userMatches = collect();
+
+        if ($userQuery !== '') {
+            $redirect = $this->redirectToDossierIfUnique($userQuery);
+            if ($redirect) {
+                return $redirect;
+            }
+
+            if (strlen($userQuery) >= 2) {
+                $userMatches = $this->searchUsers($userQuery);
+                if ($userMatches->count() === 1) {
+                    return redirect()->route('admin.finance.user', $userMatches->first());
+                }
+            }
+        }
+
         $input = $this->validatedPeriodInput($request);
         $period = $this->finance->resolvePeriod(
             $input['period'] ?? null,
@@ -42,6 +59,8 @@ class FinanceController extends Controller
             'periodKey' => $period['key'],
             'dateFrom' => $input['date_from'] ?? null,
             'dateTo' => $input['date_to'] ?? null,
+            'userQuery' => $userQuery,
+            'userMatches' => $userMatches,
         ]);
     }
 
@@ -50,43 +69,17 @@ class FinanceController extends Controller
      */
     public function ledger(Request $request)
     {
-        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        $search = search_text($request->input('search'));
         $userId = (int) $request->input('user_id');
         $ledgerUser = $userId > 0
             ? User::query()->whereKey($userId)->first(['id', 'name', 'email'])
             : null;
 
-        if ($request->filled('type')) {
-            $query->where('type', $request->type);
-        }
-        if ($request->filled('direction')) {
-            $query->where('direction', $request->direction);
-        }
-        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
-        if ($search !== '') {
-            $query->where(function ($q) use ($search) {
-                $q->where('reference', 'like', "%{$search}%")
-                    ->orWhere('description', 'like', "%{$search}%")
-                    ->orWhere('id', $search)
-                    ->orWhereHas('user', function ($sub) use ($search) {
-                        $sub->where('name', 'like', "%{$search}%")
-                            ->orWhere('email', 'like', "%{$search}%");
-                    });
-            });
-        }
-        if ($request->filled('user_id')) {
-            $query->where('user_id', (int) $request->user_id);
-        }
-        $dates = $request->validate([
-            'date_from' => 'nullable|date',
-            'date_to' => 'nullable|date|after_or_equal:date_from',
-        ]);
-        if (! empty($dates['date_from'])) {
-            $query->whereDate('created_at', '>=', $dates['date_from']);
-        }
-        if (! empty($dates['date_to'])) {
-            $query->whereDate('created_at', '<=', $dates['date_to']);
-        }
+        $transactions = $this->ledgerQuery($request)
+            ->with(['user:id,name,email', 'wallet:id,role_id'])
+            ->latest()
+            ->paginate(40)
+            ->withQueryString();
 
         $types = $this->ledgerTypes();
 
@@ -231,14 +224,118 @@ class FinanceController extends Controller
     }
 
     /**
-     * @return array{period?: string|null, date_from?: string|null, date_to?: string|null}
+     * @return list<string>
+     */
+    private function ledgerTypes(): array
+    {
+        return [
+            WalletTransaction::TYPE_DEPOSIT,
+            WalletTransaction::TYPE_BONUS_CREDIT,
+            WalletTransaction::TYPE_PURCHASE,
+            WalletTransaction::TYPE_REFUND,
+            WalletTransaction::TYPE_WITHDRAWAL,
+            WalletTransaction::TYPE_ADJUSTMENT,
+            WalletTransaction::TYPE_TRANSFER_OUT,
+            WalletTransaction::TYPE_TRANSFER_IN,
+            WalletTransaction::TYPE_ROLE_MOVE_OUT,
+            WalletTransaction::TYPE_ROLE_MOVE_IN,
+        ];
+    }
+
+    private function ledgerQuery(Request $request): Builder
+    {
+        $query = WalletTransaction::query();
+
+        $type = is_string($request->input('type')) ? $request->input('type') : '';
+        if ($type !== '' && in_array($type, $this->ledgerTypes(), true)) {
+            $query->where('type', $type);
+        }
+
+        $direction = is_string($request->input('direction')) ? $request->input('direction') : '';
+        if (in_array($direction, ['credit', 'debit'], true)) {
+            $query->where('direction', $direction);
+        }
+
+        $search = search_text($request->input('search'));
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('id', $search)
+                    ->orWhereHas('user', function ($sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+
+        $userId = (int) $request->input('user_id');
+        if ($userId > 0) {
+            $query->where('user_id', $userId);
+        }
+
+        $dates = validator(
+            [
+                'date_from' => is_string($request->input('date_from')) ? $request->input('date_from') : null,
+                'date_to' => is_string($request->input('date_to')) ? $request->input('date_to') : null,
+            ],
+            [
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+            ]
+        )->valid();
+        if (! empty($dates['date_from'])) {
+            $query->whereDate('created_at', '>=', $dates['date_from']);
+        }
+        if (! empty($dates['date_to'])) {
+            $query->whereDate('created_at', '<=', $dates['date_to']);
+        }
+
+        return $query;
+    }
+
+    private function redirectToDossierIfUnique(string $userQuery): ?RedirectResponse
+    {
+        if (! ctype_digit($userQuery)) {
+            return null;
+        }
+
+        $user = User::query()->whereKey((int) $userQuery)->first();
+
+        return $user ? redirect()->route('admin.finance.user', $user) : null;
+    }
+
+    /**
+     * @return Collection<int, User>
+     */
+    private function searchUsers(string $userQuery)
+    {
+        return User::query()
+            ->where(function ($query) use ($userQuery) {
+                $query->where('name', 'like', '%'.$userQuery.'%')
+                    ->orWhere('email', 'like', '%'.$userQuery.'%');
+            })
+            ->orderBy('name')
+            ->limit(8)
+            ->get(['id', 'name', 'email']);
+    }
+
+    /**
+     * @return array{period: ?string, date_from: ?string, date_to: ?string}
      */
     private function validatedPeriodInput(Request $request): array
     {
-        return $request->validate([
-            'period' => 'nullable|in:week,month,all',
-            'date_from' => 'nullable|date',
-            'date_to' => 'nullable|date|after_or_equal:date_from',
-        ]);
+        return validator(
+            [
+                'period' => search_text($request->input('period')) ?: null,
+                'date_from' => search_text($request->input('date_from')) ?: null,
+                'date_to' => search_text($request->input('date_to')) ?: null,
+            ],
+            [
+                'period' => 'nullable|in:week,month,all',
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+            ]
+        )->validate();
     }
 }

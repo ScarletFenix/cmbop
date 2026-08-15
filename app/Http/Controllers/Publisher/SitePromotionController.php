@@ -29,6 +29,13 @@ class SitePromotionController extends Controller
             ], 422);
         }
 
+        if (! $site->isCatalogVisible()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This listing is not in the catalog and cannot be promoted.',
+            ], 422);
+        }
+
         if (! $site->active && ! $site->verified) {
             return response()->json([
                 'success' => false,
@@ -131,7 +138,7 @@ class SitePromotionController extends Controller
 
     public function featureSuccess(Request $request, int $id)
     {
-        $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $site = Site::findOrFail($id);
         $sessionId = (string) $request->query('session_id', '');
 
         if ($sessionId === '' || ! config('services.stripe.secret')) {
@@ -157,9 +164,25 @@ class SitePromotionController extends Controller
 
             $this->promotions->assertStripeChargeMatchesFeaturePrice($session);
 
+            if ((int) $site->publisher_id !== (int) auth()->id()) {
+                $credit = $this->promotions->creditPayerWhenFeatureCannotApply(
+                    $site,
+                    auth()->user(),
+                    $sessionId
+                );
+
+                return redirect()->route('publisher.websites')
+                    ->with($credit['success'] ? 'success' : 'error', $credit['message'] ?? 'Could not apply featured placement.');
+            }
+
             // Apply after payment is confirmed — even if the site was archived meantime —
             // so the publisher is not charged without receiving the feature.
             $result = $this->promotions->featureFromStripePayment($site, auth()->user(), $sessionId);
+
+            if ($result['credited'] ?? false) {
+                return redirect()->route('publisher.websites')
+                    ->with('success', $result['message'] ?? 'Payment credited to your publisher wallet.');
+            }
 
             if ($result['success'] ?? false) {
                 ActivityLogger::log(

@@ -404,7 +404,11 @@ class PublisherSiteStoreTest extends TestCase
         Mail::assertQueued(NewSiteNotification::class, function (NewSiteNotification $mail) use ($admin, $site) {
             return $mail->hasTo($admin->email)
                 && (int) $mail->site->id === (int) $site->id
-                && $mail->action === 'create';
+                && $mail->action === 'create'
+                && is_string($mail->openUrl)
+                && str_contains($mail->openUrl, '/marketing/sites')
+                && str_contains($mail->openUrl, 'needs_review=1')
+                && ! str_contains($mail->openUrl, '/admin/sites');
         });
 
         $note = InAppNotification::query()
@@ -415,7 +419,9 @@ class PublisherSiteStoreTest extends TestCase
             ->first();
 
         $this->assertNotNull($note);
-        $this->assertSame('New site to verify', $note->title);
+        $this->assertSame('New site to review', $note->title);
+        $this->assertStringContainsString('/marketing/sites', (string) $note->action_url);
+        $this->assertStringNotContainsString('/admin/sites', (string) $note->action_url);
         $this->assertStringContainsString('needs_review=1', (string) $note->action_url);
         $this->assertStringContainsString('publisher='.$this->publisher->id, (string) $note->action_url);
         $this->assertStringContainsString('site='.$site->id, (string) $note->action_url);
