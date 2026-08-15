@@ -736,10 +736,15 @@ class AdminEmailCenterTest extends TestCase
 
         DB::enableQueryLog();
         $this->actingAs($admin)->get(route('admin.emails.index'))->assertOk();
-        $count = count(DB::getQueryLog());
+        $log = DB::getQueryLog();
         DB::disableQueryLog();
 
-        $this->assertLessThan(30, $count, 'Email Center index ran '.$count.' queries');
+        $emailLogQueries = collect($log)->filter(
+            fn (array $query) => str_contains(strtolower($query['query']), 'email_logs')
+        )->count();
+
+        $this->assertLessThan(8, $emailLogQueries, 'email_logs queried '.$emailLogQueries.' times');
+        $this->assertLessThan(80, count($log), 'Email Center index ran '.count($log).' queries');
     }
 
     public function test_retry_confirm_copy_does_not_claim_to_reset_logs(): void

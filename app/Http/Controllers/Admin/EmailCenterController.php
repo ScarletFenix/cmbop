@@ -312,8 +312,12 @@ class EmailCenterController extends Controller
             return null;
         }
 
+        $class = (string) $log->mailable;
+        $jsonClass = str_replace('\\', '\\\\', $class);
+
         foreach (DB::table('failed_jobs')->where($this->mailJobPayloadConstraint())->get(['uuid', 'payload']) as $job) {
-            if (str_contains((string) $job->payload, (string) $log->mailable)) {
+            $payload = (string) $job->payload;
+            if (str_contains($payload, $class) || str_contains($payload, $jsonClass)) {
                 return (string) $job->uuid;
             }
         }
