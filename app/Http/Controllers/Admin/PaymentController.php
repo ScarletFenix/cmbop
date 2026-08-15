@@ -246,6 +246,24 @@ class PaymentController extends Controller
                 }
 
                 $payments = app(OrderPaymentService::class);
+                // Late card capture credits the wallet and leaves the leftover
+                // failed when promo cannot be re-reserved. Mark-paid would
+                // hand them the placement on top of that credit.
+                if ($order->payment_method === 'card') {
+                    $alreadyCredited = $payments->unfulfilledCardCreditAmount(
+                        (string) ($order->reference_code ?? '')
+                    );
+                    if ($alreadyCredited > 0.009) {
+                        return $this->abortPaymentUpdate(
+                            (int) $id,
+                            $sendNotification,
+                            sprintf(
+                                'This leftover already credited €%s to the advertiser wallet after the card charge could not settle. Marking it paid would give them the placement on top of that credit. Ask them to finish leftover checkout (wallet can use the credit), or adjust the wallet first.',
+                                number_format($alreadyCredited, 2, '.', '')
+                            )
+                        );
+                    }
+                }
                 $libraryState = $payments->libraryContentStateForSettlement($order);
                 if ($libraryState !== 'ok') {
                     return $this->abortPaymentUpdate(
