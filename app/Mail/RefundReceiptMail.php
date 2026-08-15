@@ -3,7 +3,6 @@
 namespace App\Mail;
 
 use App\Models\Invoice;
-use App\Services\Billing\InvoicePdfGenerator;
 
 class RefundReceiptMail extends PlatformMailable
 {
@@ -30,19 +29,13 @@ class RefundReceiptMail extends PlatformMailable
                 'originalInvoice' => $this->refund->parentInvoice,
                 'reason' => $reason,
                 'symbol' => $symbol,
-                'downloadUrl' => route('advertiser.billing.download', $this->refund),
+                'downloadUrl' => $this->advertiserBillingDownloadUrl($this->refund),
                 'ordersUrl' => $this->advertiserOrdersUrl(
                     $this->refund->order_id ? (int) $this->refund->order_id : null
                 ),
             ]);
 
-        $path = app(InvoicePdfGenerator::class)->absolutePath($this->refund);
-        if ($path && is_readable($path)) {
-            $mail->attach($path, [
-                'as' => $this->refund->invoice_number.'.pdf',
-                'mime' => 'application/pdf',
-            ]);
-        }
+        $this->attachInvoicePdfIfLive($mail, $this->refund, $this->refund->invoice_number.'.pdf');
 
         return $mail;
     }

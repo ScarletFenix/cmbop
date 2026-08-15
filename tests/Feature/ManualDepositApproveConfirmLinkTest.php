@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Wallet\ManualDepositApproveLink;
+use App\Support\EmailCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
@@ -98,6 +99,15 @@ class ManualDepositApproveConfirmLinkTest extends TestCase
         $this->assertStringContainsString('signature=', $url);
         $this->assertStringContainsString('expires=', $url);
         $this->assertSame('127.0.0.1', parse_url($url, PHP_URL_HOST));
+    }
+
+    public function test_preview_deposit_id_is_not_a_signed_approve_url(): void
+    {
+        $url = ManualDepositApproveLink::url(EmailCatalog::PREVIEW_ID);
+
+        $this->assertSame(ManualDepositApproveLink::previewUrl(), $url);
+        $this->assertStringNotContainsString('signature=', $url);
+        $this->assertStringContainsString('/admin/deposits/approve-confirm/preview', $url);
     }
 
     public function test_signed_get_shows_confirm_ui_without_crediting(): void

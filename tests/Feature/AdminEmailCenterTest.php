@@ -1388,7 +1388,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
         $this->assertSame(1, $campaign->fresh()->sent_count);
         $this->assertSame(0, $campaign->fresh()->skipped_count);
-        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
     public function test_bulk_retry_marks_linked_campaign_log_pending(): void
@@ -1467,7 +1467,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
         $this->assertSame(EmailLog::STATUS_FAILED, $unlinked->fresh()->status);
         $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
-        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
     public function test_bulk_retry_does_not_mark_logs_when_jobs_remain_failed(): void
@@ -1816,5 +1816,38 @@ class AdminEmailCenterTest extends TestCase
             ->get(route('admin.emails.preview', ['key' => 'order_status_changed', 'audience' => 'admin']))
             ->assertOk()
             ->assertSee('admin copy', false);
+    }
+
+    public function test_wallet_ops_previews_do_not_embed_signed_live_urls(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $deposit = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'deposit_submitted'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $deposit);
+        $this->assertStringContainsString('/admin/deposits/approve-confirm/preview', $deposit);
+
+        $paid = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'deposit_marked_paid'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $paid);
+        $this->assertStringContainsString('/admin/deposits/approve-confirm/preview', $paid);
+
+        $withdrawal = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'withdrawal_request'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $withdrawal);
+        $this->assertStringContainsString('/admin/withdrawals/mark-paid-confirm/preview', $withdrawal);
+
+        $invoice = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'payment_successful_invoice'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $invoice);
+        $this->assertStringContainsString('/advertiser/billing/preview', $invoice);
     }
 }

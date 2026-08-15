@@ -3,7 +3,6 @@
 namespace App\Mail;
 
 use App\Models\Invoice;
-use App\Services\Billing\InvoicePdfGenerator;
 
 class PaymentFailedMail extends PlatformMailable
 {
@@ -38,13 +37,7 @@ class PaymentFailedMail extends PlatformMailable
                 'retryUrl' => $retryUrl,
             ]);
 
-        $path = app(InvoicePdfGenerator::class)->absolutePath($this->document);
-        if ($path && is_readable($path)) {
-            $mail->attach($path, [
-                'as' => $this->document->invoice_number.'-payment-failed.pdf',
-                'mime' => 'application/pdf',
-            ]);
-        }
+        $this->attachInvoicePdfIfLive($mail, $this->document, $this->document->invoice_number.'-payment-failed.pdf');
 
         return $mail;
     }

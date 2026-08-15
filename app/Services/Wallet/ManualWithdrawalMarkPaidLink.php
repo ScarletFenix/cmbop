@@ -3,6 +3,7 @@
 namespace App\Services\Wallet;
 
 use App\Models\Withdrawal;
+use App\Support\EmailCatalog;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\URL;
 
@@ -23,9 +24,17 @@ class ManualWithdrawalMarkPaidLink
         return ($from ?? now())->copy()->addMinutes(self::expireMinutes());
     }
 
+    public static function previewUrl(): string
+    {
+        return rtrim(app_public_url(), '/').'/admin/withdrawals/mark-paid-confirm/preview';
+    }
+
     public static function url(Withdrawal|int $withdrawal): string
     {
         $id = $withdrawal instanceof Withdrawal ? (int) $withdrawal->id : (int) $withdrawal;
+        if ($id === EmailCatalog::PREVIEW_ID) {
+            return self::previewUrl();
+        }
 
         $relative = URL::temporarySignedRoute(
             'admin.withdrawals.mark-paid-confirm.show',

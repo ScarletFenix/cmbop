@@ -80,10 +80,22 @@ class EmailCampaign extends Model
             'skipped_count' => $skipped,
         ];
 
-        // Finalize treats queued mail as sent. After a retry or a late
-        // failure, keep the terminal status honest against those totals.
+        // queued counts toward progress, but a terminal campaign is only
+        // "sent" after at least one real delivery. Otherwise a retry or a
+        // lost mail job would flip failed → sent while nothing went out.
         if (in_array($this->status, [self::STATUS_SENT, self::STATUS_FAILED], true)) {
-            $payload['status'] = $sent > 0 ? self::STATUS_SENT : self::STATUS_FAILED;
+            $delivered = $this->recipients()
+                ->where('status', EmailCampaignRecipient::STATUS_DELIVERED)
+                ->count();
+            $queued = $this->recipients()
+                ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                ->count();
+
+            if ($delivered > 0) {
+                $payload['status'] = self::STATUS_SENT;
+            } elseif ($queued === 0) {
+                $payload['status'] = self::STATUS_FAILED;
+            }
         }
 
         $this->update($payload);
@@ -163,6 +175,14 @@ class EmailCampaign extends Model
                 && ! $campaign->recipients()
                     ->where('status', EmailCampaignRecipient::STATUS_PENDING)
                     ->exists()) {
+                if ($campaign->recipients()
+                    ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+                    ->exists()) {
+                    // Mail is still in flight (or the job was lost). Do not
+                    // pretend the campaign sent.
+                    continue;
+                }
+
                 $campaign->recountRecipientTotals();
                 $campaign->refresh();
                 $campaign->update([
