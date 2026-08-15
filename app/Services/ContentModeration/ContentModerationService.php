@@ -793,6 +793,51 @@ class ContentModerationService
     }
 
     /**
+     * Checkout re-scans unless this fingerprint is on the linked override log.
+     * Library force-approve must stamp it or the next order undoes the decision.
+     */
+    public function stampStaffApprovalOverride(ContentSubmission $submission, User $admin, string $notes): ContentModerationLog
+    {
+        $fingerprint = $this->contentFingerprint($submission);
+        $log = $submission->moderation_log_id
+            ? ContentModerationLog::query()->whereKey($submission->moderation_log_id)->first()
+            : null;
+
+        $signals = is_array($log?->signals) ? $log->signals : [];
+        $signals['override_fingerprint'] = $fingerprint;
+
+        $payload = [
+            'user_id' => $submission->user_id,
+            'content_submission_id' => $submission->id,
+            'document_url' => $log?->document_url ?: 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'admin_override' => true,
+            'overridden_by' => $admin->id,
+            'overridden_at' => now(),
+            'admin_notes' => $notes,
+            'scan_token' => $submission->scan_token ?: $log?->scan_token,
+            'word_count' => $submission->word_count,
+            'signals' => $signals,
+        ];
+
+        if ($log) {
+            $log->update($payload);
+        } else {
+            $log = ContentModerationLog::create($payload);
+        }
+
+        if ((int) $submission->moderation_log_id !== (int) $log->id) {
+            $submission->forceFill([
+                'moderation_log_id' => $log->id,
+                'scan_token' => $log->scan_token ?: $submission->scan_token,
+            ])->save();
+        }
+
+        return $log->fresh();
+    }
+
+    /**
      * @return array{ok:bool, submission:?ContentSubmission, message:string}
      */
     public function applyAdminOverride(ContentModerationLog $log, User $admin, string $notes): array

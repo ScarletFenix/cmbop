@@ -658,6 +658,15 @@ class ContentSubmission extends Model
                             $unready->withoutCheckoutReadyLinks()
                                 ->orWhere(function ($rights) {
                                     $rights->withoutImageRightsCover();
+                                })
+                                ->orWhere(function ($file) {
+                                    $file->whereNull('path')->orWhere('path', '');
+                                })
+                                ->orWhere(function ($country) {
+                                    $country->whereNull('country')->orWhere('country', '');
+                                })
+                                ->orWhere(function ($language) {
+                                    $language->whereNull('language')->orWhere('language', '');
                                 });
                         });
                 })->orWhere(function ($leftover) {

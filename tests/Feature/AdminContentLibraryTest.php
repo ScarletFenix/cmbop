@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ContentModerationLog;
+use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\InAppNotification;
 use App\Models\Order;
@@ -10,6 +11,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentModeration\ContentModerationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\CreatesContentSubmissions;
@@ -226,6 +228,40 @@ class AdminContentLibraryTest extends TestCase
             ->get(route('admin.content-library.index', ['availability' => 'expired']))
             ->assertOk()
             ->assertDontSee('Expired Rejected Leftover');
+    }
+
+    public function test_owned_leftover_missing_file_is_needs_fix_not_in_progress(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Purged Leftover File',
+            'path' => '',
+        ]);
+        $order = $this->orderFor($advertiser);
+        $this->attachToOrder($submission, $order, $site);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Purged Leftover File');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertDontSee('Purged Leftover File');
     }
 
     public function test_legacy_status_approved_maps_to_available_chip(): void
@@ -477,6 +513,7 @@ class AdminContentLibraryTest extends TestCase
         $this->assertTrue((bool) $log->fresh()->admin_override);
         $this->assertTrue((bool) $log->fresh()->passed);
         $this->assertTrue($submission->fresh()->isReadyForCheckout());
+        $this->assertTrue(app(ContentModerationService::class)->usableAdminOverride($submission->fresh()->load('moderationLog')));
     }
 
     public function test_reject_while_paid_is_forbidden(): void
@@ -686,6 +723,96 @@ class AdminContentLibraryTest extends TestCase
         $this->assertNotNull($bell);
         $this->assertStringContainsString('availability=expired', (string) $bell->action_url);
         $this->assertStringNotContainsString('availability=needs_fix', (string) $bell->action_url);
+    }
+
+    public function test_library_override_approve_is_honored_at_checkout_until_edit(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $body = 'Play at the best online casino and claim your no deposit bonus for slots and roulette today.';
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $submission->update([
+            'title' => 'Casino guide',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+        ]);
+
+        $scan = app(ContentModerationService::class)->scanExtractedContent(
+            text: $body,
+            html: '<p>'.$body.'</p>',
+            sourceLabel: 'upload:'.$submission->id,
+            user: $advertiser,
+            title: 'Casino guide',
+            links: [],
+            contentSubmissionId: (int) $submission->id,
+        );
+        $submission->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'moderation_log_id' => $scan['log']?->id,
+            'scan_token' => $scan['scan_token'],
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'News piece about regulation, not a promo.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $fresh = $submission->fresh()->load('moderationLog');
+        $moderation = app(ContentModerationService::class);
+        $this->assertTrue($moderation->usableAdminOverride($fresh));
+        $check = $moderation->assertSubmissionsApproved([$fresh], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
+
+        $fresh->update([
+            'extracted_text' => $body.' Extra casino bonus codes.',
+        ]);
+        $afterEdit = $moderation->assertSubmissionsApproved([$fresh->fresh()], $advertiser);
+        $this->assertFalse($afterEdit['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $fresh->fresh()->moderation_status);
+    }
+
+    public function test_library_override_approve_without_scan_log_still_honors_checkout(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $body = 'Play at the best online casino and claim your no deposit bonus for slots and roulette today.';
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $submission->update([
+            'title' => 'Casino guide no log',
+            'extracted_text' => $body,
+            'preview_html' => '<p>'.$body.'</p>',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'moderation_log_id' => null,
+            'scan_token' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Allow this wording for this advertiser.',
+            ])
+            ->assertRedirect();
+
+        $fresh = $submission->fresh()->load('moderationLog');
+        $this->assertNotNull($fresh->moderation_log_id);
+        $moderation = app(ContentModerationService::class);
+        $this->assertTrue($moderation->usableAdminOverride($fresh));
+        $check = $moderation->assertSubmissionsApproved([$fresh], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
     }
 
     public function test_moderation_override_does_not_flip_log_when_article_is_archived(): void

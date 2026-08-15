@@ -6,6 +6,7 @@ use App\Models\ContentModerationLog;
 use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +16,7 @@ class AdminLibraryStaffActions
     public function __construct(
         private ContentUploadService $uploads,
         private InAppNotificationService $notifications,
+        private ContentModerationService $moderation,
     ) {}
 
     public function fileOnDisk(ContentSubmission $submission): bool
@@ -111,14 +113,14 @@ class AdminLibraryStaffActions
             'evaluation_report' => $report,
         ])->save();
 
-        if ($submission->moderation_log_id) {
+        if ($decision === ContentSubmission::STATUS_APPROVED) {
+            $this->moderation->stampStaffApprovalOverride($submission, $admin, $notes);
+        } elseif ($submission->moderation_log_id) {
             ContentModerationLog::query()
                 ->whereKey($submission->moderation_log_id)
                 ->update([
-                    'passed' => $decision === ContentSubmission::STATUS_APPROVED,
-                    'status' => $decision === ContentSubmission::STATUS_APPROVED
-                        ? ContentModerationLog::STATUS_APPROVED
-                        : ContentModerationLog::STATUS_REJECTED,
+                    'passed' => false,
+                    'status' => ContentModerationLog::STATUS_REJECTED,
                     'admin_override' => true,
                     'overridden_by' => $admin->id,
                     'overridden_at' => now(),
@@ -154,9 +156,7 @@ class AdminLibraryStaffActions
                     'moderation_status' => $decision,
                     'action_url' => route(
                         'advertiser.content-library',
-                        $decision === ContentSubmission::STATUS_APPROVED
-                            ? $fresh->staffApprovalLibraryParams()
-                            : ['status' => 'all', 'availability' => 'needs_fix'],
+                        $fresh->staffApprovalLibraryParams(),
                         false
                     ),
                 ]);
