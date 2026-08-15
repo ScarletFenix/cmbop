@@ -57,11 +57,13 @@ class SiteController extends Controller
 
         $awaitingDetailsCount = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
             ->count();
 
         $detailsCompleteCount = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
             ->count();
 
@@ -349,7 +351,7 @@ class SiteController extends Controller
 
             $waitingItemsCount = (clone $waitingItemsQuery)->count();
             // Match list filters: Active/Pending badges exclude archived sites.
-            $sitePendingCount = (clone $acceptedBase)->notArchived()
+            $sitePendingCount = (clone $acceptedBase)->notArchived()->notFromCancelledBulk()
                 ->where('active', 0)->where('verified', 0)->count();
             $pendingCount = $sitePendingCount + $waitingItemsCount;
             $inviteCount = (clone $base)->pendingPublisherAcceptance()->count();
@@ -382,7 +384,8 @@ class SiteController extends Controller
             } else {
                 $sitesQuery = (clone $acceptedBase)->notArchived()
                     ->when($status === 'pending', function ($q) {
-                        $q->where('active', 0)->where('verified', 0);
+                        $q->notFromCancelledBulk()
+                            ->where('active', 0)->where('verified', 0);
                     })
                     ->when($status === 'active', function ($q) {
                         $q->where(function ($inner) {

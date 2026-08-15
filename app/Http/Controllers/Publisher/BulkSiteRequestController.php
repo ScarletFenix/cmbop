@@ -190,6 +190,7 @@ class BulkSiteRequestController extends Controller
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->whereIn('onboarding_status', [
                 Site::ONBOARDING_AWAITING_DETAILS,
                 Site::ONBOARDING_DETAILS_COMPLETE,
@@ -372,12 +373,14 @@ class BulkSiteRequestController extends Controller
     {
         $sites = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE)
             ->orderByDesc('id')
             ->get();
 
         $awaitingCount = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_AWAITING_DETAILS)
             ->count();
 
@@ -406,6 +409,7 @@ class BulkSiteRequestController extends Controller
 
         $query = Site::query()
             ->where('publisher_id', auth()->id())
+            ->notFromCancelledBulk()
             ->where('onboarding_status', Site::ONBOARDING_DETAILS_COMPLETE);
 
         if (! ($validated['submit_all'] ?? false)) {

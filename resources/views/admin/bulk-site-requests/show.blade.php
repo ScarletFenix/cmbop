@@ -421,6 +421,9 @@
                     <p class="small text-muted mb-3">
                         Optional. Paste custom rows when metrics differ per site.
                         Columns: <code>url,price,da,dr,traffic,country,language[,site_name]</code>
+                        @if($pendingItems->isNotEmpty())
+                            Only pending URL + price domains from this request can be seeded here.
+                        @endif
                     </p>
                     @php
                         $seedStarter = $pendingItems->map(function ($item) {
@@ -946,7 +949,16 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     form.querySelectorAll('[data-bulk-reject-row]').forEach(function (btn) {
         btn.addEventListener('click', function () {
             const row = btn.closest('[data-bulk-done-row]');
-            if (row) markRowRejected(row);
+            if (!row || row.getAttribute('data-bulk-rejected') === '1') return;
+            const go = window.slbConfirm({
+                title: 'Remove this site?',
+                text: 'It will be deleted when you click Done, and the publisher will get your note.',
+                confirmText: 'Remove row',
+                danger: true,
+            });
+            go.then(function (ok) {
+                if (ok) markRowRejected(row);
+            });
         });
     });
 

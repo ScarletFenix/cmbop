@@ -536,6 +536,41 @@ class BulkSiteRequestController extends Controller
                 ->withInput();
         }
 
+        $pendingDomains = $bulkRequest->items()
+            ->whereNull('site_id')
+            ->pluck('domain')
+            ->map(fn ($domain) => strtolower(trim((string) $domain)))
+            ->filter()
+            ->values()
+            ->all();
+
+        if ($pendingDomains !== []) {
+            $allowed = [];
+            foreach ($parsed['rows'] as $row) {
+                $domain = strtolower(trim((string) ($row['domain'] ?? '')));
+                if (! in_array($domain, $pendingDomains, true)) {
+                    $parsed['failures'][] = [
+                        'line' => $row['line'] ?? 0,
+                        'url' => $row['site_url'] ?? $domain,
+                        'errors' => ['Not in this request’s pending URL + price list: '.$domain],
+                    ];
+
+                    continue;
+                }
+                $allowed[] = $row;
+            }
+            $parsed['rows'] = $allowed;
+        }
+
+        if ($parsed['rows'] === []) {
+            return back()
+                ->with('error', $parsed['failures'] === []
+                    ? 'No rows found. Paste one site per line: url,price,da,dr,traffic,country,language'
+                    : 'All rows failed validation.')
+                ->with('seed_failures', $parsed['failures'])
+                ->withInput();
+        }
+
         return $this->createDraftSitesAndNotify($bulkRequest, $parsed['rows'], $parsed['failures'], 'bulk_request.seeded');
     }
 

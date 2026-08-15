@@ -668,6 +668,22 @@ class Site extends Model
         return $this->belongsTo(BulkSiteRequest::class);
     }
 
+    /**
+     * Hide leftover drafts from a cancelled bulk (older cancels did not delete them).
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeNotFromCancelledBulk(Builder $query): Builder
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('bulk_site_request_id')
+                ->orWhereHas('bulkSiteRequest', function ($bulk) {
+                    $bulk->where('status', '!=', BulkSiteRequest::STATUS_CANCELLED);
+                });
+        });
+    }
+
     public function isFromAgencyCsvImport(): bool
     {
         if (! static::hasSitesColumn('agency_site_import_id')) {

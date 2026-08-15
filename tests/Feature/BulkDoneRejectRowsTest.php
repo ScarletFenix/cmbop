@@ -176,6 +176,8 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString("staff_route('bulk-site-requests.cancel'", $blade);
         $this->assertStringContainsString('Cancel bulk request?', $blade);
         $this->assertStringContainsString('canCancel()', $blade);
+        $this->assertStringContainsString("title: 'Remove this site?'", $blade);
+        $this->assertStringContainsString('Only pending URL + price domains from this request can be seeded here.', $blade);
     }
 
     public function test_done_two_complete_and_reject_one_notifies_once_for_both_roles(): void
@@ -1170,5 +1172,61 @@ class BulkDoneRejectRowsTest extends TestCase
             ])
             ->assertRedirect(route('publisher.websites'))
             ->assertSessionHas('error');
+    }
+
+    public function test_seed_rejects_domain_not_on_pending_list(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'seed-only');
+        [$country, $language] = $this->marketplaceCodes();
+        $keep = $items[0]->domain;
+
+        $rows = implode("\n", [
+            "https://{$keep},80,30,35,5000,{$language},{$country},Keep Pending",
+            "https://off-list.example,90,40,45,8000,{$language},{$country},Off List",
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), ['rows' => $rows])
+            ->assertRedirect()
+            ->assertSessionHas('success')
+            ->assertSessionHas('seed_failures', function ($failures) {
+                return is_array($failures)
+                    && collect($failures)->contains(fn ($row) => str_contains((string) ($row['url'] ?? ''), 'off-list.example'));
+            });
+
+        $this->assertDatabaseHas('sites', ['domain' => $keep, 'bulk_site_request_id' => $bulk->id]);
+        $this->assertDatabaseMissing('sites', ['domain' => 'off-list.example']);
+        $this->assertNotNull($items[0]->fresh()->site_id);
+    }
+
+    public function test_complete_details_hides_cancelled_bulk_leftover(): void
+    {
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'cancel-left');
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => $this->completeRow($items[0]),
+            ])
+            ->assertRedirect();
+
+        $site = Site::query()->where('domain', $items[0]->domain)->firstOrFail();
+        $bulk->forceFill(['status' => BulkSiteRequest::STATUS_CANCELLED])->save();
+
+        $this->actingAs($this->publisher)
+            ->get(route('publisher.bulk-sites.complete'))
+            ->assertOk()
+            ->assertDontSee($site->domain, false);
+
+        $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->assertDontSee('Complete details (', false);
+
+        $html = $this->actingAs($this->publisher)
+            ->get(route('publisher.sites.ajax', ['status' => 'pending']))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString($site->domain, $html);
     }
 }
