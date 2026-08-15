@@ -1252,7 +1252,6 @@ $(document).ready(function() {
             var awaitingSchedule = !!(item.order && item.order.is_awaiting_scheduled_release);
             if (orderStatus === 'pending' && awaitingSchedule) {
                 actions = '<div class="action-buttons">' +
-                    '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Reject order"><i class="fa fa-times"></i> Reject</button>' +
                     viewBtn + chatBtn +
                     '</div>';
             } else if (orderStatus === 'pending') {

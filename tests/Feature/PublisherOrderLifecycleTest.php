@@ -403,4 +403,66 @@ class PublisherOrderLifecycleTest extends TestCase
         $this->assertSame('pending', $item->order->fresh()->status);
         $this->assertTrue($item->order->fresh()->isAwaitingScheduledRelease());
     }
+
+    public function test_publisher_cannot_reject_an_upcoming_scheduled_order(): void
+    {
+        $item = $this->makeOrder();
+        $item->order->update([
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDays(5),
+            'schedule_timezone' => 'UTC',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.reject', $item->id), [
+                'reason' => 'We cannot wait for the scheduled publication date.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $order = $item->order->fresh();
+        $this->assertSame('pending', $order->status);
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertTrue($order->isAwaitingScheduledRelease());
+    }
+
+    public function test_publisher_cannot_submit_live_url_when_payment_is_not_paid(): void
+    {
+        $item = $this->makeOrder('card', 'failed');
+        $item->order->update(['status' => 'processing']);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.complete', $item->id), [
+                'live_url' => 'https://lifecycle.example/unpaid-live',
+            ])
+            ->assertStatus(400)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($item->fresh()->live_url);
+        $this->assertSame('processing', $item->order->fresh()->status);
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+    }
+
+    public function test_publisher_cannot_resubmit_live_url_on_a_cancelled_order(): void
+    {
+        $item = $this->makeOrder();
+        $item->order->update(['status' => 'cancelled', 'payment_status' => 'paid']);
+        $item->update([
+            'live_url' => 'https://lifecycle.example/original',
+            'live_url_submitted_at' => now()->subDay(),
+            'modification_requested' => 'yes',
+        ]);
+
+        $this->actingAs($this->publisher)
+            ->postJson(route('publisher.orders.resubmit', $item->id), [
+                'live_url' => 'https://lifecycle.example/after-cancel',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('https://lifecycle.example/original', $item->fresh()->live_url);
+        $this->assertSame('yes', $item->fresh()->modification_requested);
+        $this->assertSame('cancelled', $item->order->fresh()->status);
+    }
 }

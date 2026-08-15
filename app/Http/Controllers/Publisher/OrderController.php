@@ -607,6 +607,15 @@ class OrderController extends Controller
                 ], 400);
             }
 
+            if ($order->isAwaitingScheduledRelease()) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order is scheduled for later. You can reject it after the publication date.',
+                ], 422);
+            }
+
             // Reject only before publisher payout (completed already credited publisher wallet).
             if (! in_array($order->status, ['pending', 'processing'], true)) {
                 DB::rollBack();
@@ -810,6 +819,32 @@ class OrderController extends Controller
 
             $orderItem = OrderItem::query()->whereKey($orderItem->id)->lockForUpdate()->firstOrFail();
             $order = Order::query()->whereKey($orderItem->order_id)->lockForUpdate()->firstOrFail();
+
+            if ($order->payment_status !== 'paid') {
+                DB::rollBack();
+                if ($suppressedOrderId) {
+                    $suppressor->forget($suppressedOrderId);
+                    $suppressedOrderId = null;
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order payment is not confirmed yet',
+                ], 400);
+            }
+
+            if ($order->status === 'cancelled' || $order->payment_status === 'refunded') {
+                DB::rollBack();
+                if ($suppressedOrderId) {
+                    $suppressor->forget($suppressedOrderId);
+                    $suppressedOrderId = null;
+                }
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order is no longer open for a live URL update.',
+                ], 422);
+            }
 
             if ($orderItem->isPayoutComplete()) {
                 DB::rollBack();
@@ -1015,6 +1050,18 @@ class OrderController extends Controller
                 return response()->json([
                     'success' => false,
                     'message' => 'Wait for the advertiser to send the revised article before resubmitting a live URL.',
+                ], 422);
+            }
+
+            $order = $orderItem->order;
+            if (! $order || $order->payment_status !== 'paid'
+                || $order->status === 'cancelled'
+                || $order->payment_status === 'refunded') {
+                return response()->json([
+                    'success' => false,
+                    'message' => $order && $order->payment_status !== 'paid'
+                        ? 'Order payment is not confirmed yet'
+                        : 'This order is no longer open for a live URL update.',
                 ], 422);
             }
 

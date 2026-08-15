@@ -147,6 +147,19 @@ class PublisherTasksNeedsActionTest extends TestCase
         $this->assertStringContainsString('value="scheduled"', $blade);
         $this->assertStringContainsString('awaitingSchedule', $blade);
         $this->assertStringContainsString('is_awaiting_scheduled_release', $blade);
+        $this->assertMatchesRegularExpression(
+            "/orderStatus === 'pending' && awaitingSchedule\\) \\{[\\s\\S]*?viewBtn \\+ chatBtn/",
+            $blade
+        );
+        if (preg_match(
+            "/if \\(orderStatus === 'pending' && awaitingSchedule\\) \\{([\\s\\S]*?)\\} else if \\(orderStatus === 'pending'\\)/",
+            $blade,
+            $scheduledBranch
+        )) {
+            $this->assertStringNotContainsString('reject-task', $scheduledBranch[1]);
+        } else {
+            $this->fail('Scheduled pending task actions branch is missing.');
+        }
         $this->assertFileExists(public_path('assets/css/publisher-tasks.css'));
         $css = file_get_contents(public_path('assets/css/publisher-tasks.css'));
         $this->assertStringContainsString('@media (max-width: 768px)', $css);

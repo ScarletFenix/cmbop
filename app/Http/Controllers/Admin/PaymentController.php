@@ -181,8 +181,18 @@ class PaymentController extends Controller
                 ContentSubmission::releaseAllForOrder((int) $order->id);
             }
 
-            if ($request->payment_status === 'failed' && $oldStatus === 'paid' && $order->payment_method === 'wallet') {
-                $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
+            if ($request->payment_status === 'failed' && $oldStatus === 'paid') {
+                if ($order->payment_method === 'wallet') {
+                    $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
+                } elseif (! in_array((string) $order->status, ['cancelled', 'completed'], true)) {
+                    // Card / bank / wise: no reserved hold to release, but the
+                    // order must not stay processing/review as a failed payment.
+                    $order->status = 'cancelled';
+                }
+
+                if ($order->status === 'cancelled') {
+                    ContentSubmission::releaseAllForOrder((int) $order->id);
+                }
             }
 
             $order->save();
