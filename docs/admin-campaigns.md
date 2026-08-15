@@ -64,7 +64,7 @@ or marketing, even if that staff account also has a marketplace role.
    if the jobs-table scan missed the retried job. A matching
    `failed_jobs` AudienceCampaignMail is also held — that row is still
    retryable from Email Center. A
-   Redis/SQS **mail** queue, a missing `payload` column on the **mail**
+   Redis/SQS **mail** queue, inline SMTP (`sync` mail), a missing `payload` column on the **mail**
    table, or a mailable whose user id cannot be parsed is fail-closed: the
    row stays queued so an in-flight send is not doubled. An unused redis
    `queue.default` or a broken unused database table must not block a
@@ -81,7 +81,10 @@ or marketing, even if that staff account also has a marketplace role.
    when no pending or queued rows remain and at least one delivery landed. `queued` rows with no email
    log are first reconciled against `email_logs` by
    `audience_campaign:{id}:user:{id}`; a delivered/failed log is attached
-   instead of counting as a fake send. Leftovers older than
+   instead of counting as a fake send. A delivered log still wins when a
+   pending Email Center row exists for the same key — skipping that attach
+   let expire mark a real send stale, and a later retry doubled it.
+   Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
    mailable.    Expire must **not** skip a recipient whose
@@ -93,7 +96,7 @@ or marketing, even if that staff account also has a marketplace role.
    when expire already flipped the row to skipped stale. Preference, disabled, and unverified skips stay skipped — a stray `MessageSent`
    or duplicate suppress must not hide an opt-out as a successful send.
    Recover also attaches a delivered `email_logs` row to those stale
-   leftovers only.
+   leftovers only. A leftover pending Email Center log for a skipped-stale recipient is failed so retry can see it — but not while that user's `AudienceCampaignMail` is still on the queue, or a second retry doubles the send.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`

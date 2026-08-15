@@ -388,8 +388,9 @@ class EmailCampaign extends Model
 
     /**
      * Reset queued rows that have no email log and no matching mailable
-     * in the jobs table. A missing/unreadable jobs table must not look
-     * empty — that would double-send mail that is already in flight.
+     * in the jobs table. A missing/unreadable jobs table, inline SMTP,
+     * or Redis/SQS mail must not look empty — that would double-send
+     * mail that is already in flight.
      *
      * Email Center retry pending-marks the log and leaves the recipient
      * queued. A missed jobs-table scan must not reclaim that row and
@@ -397,6 +398,14 @@ class EmailCampaign extends Model
      */
     protected static function reclaimOrphanedQueuedRecipients(self $campaign): int
     {
+        if (self::mailConnectionIsInline()) {
+            // Inline SMTP never writes an AudienceCampaignMail jobs row.
+            // A send-job timeout after pending → queued, during Mail::send(),
+            // would look like an orphan and reclaim → double-send.
+            // Expire at 72h is still the backstop (inFlight stays []).
+            return 0;
+        }
+
         $inFlight = self::inFlightCampaignMailUserIds((int) $campaign->id);
         if ($inFlight === null) {
             return 0;
@@ -672,6 +681,18 @@ class EmailCampaign extends Model
     }
 
     /**
+     * True when campaign mail is delivered inline (no jobs-table mailable).
+     * Reclaim must not treat that empty scan as "nothing in flight".
+     */
+    protected static function mailConnectionIsInline(): bool
+    {
+        $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
+        $driver = (string) config("queue.connections.{$mail}.driver");
+
+        return $mail === '' || $mail === 'sync' || $driver === '' || $driver === 'sync';
+    }
+
+    /**
      * The send job pins onConnection() to preferredSendJobConnection()
      * (mail first, otherwise queue.default). Check both so a sync side
      * cannot hide a database-queued send job on the other connection.
@@ -805,13 +826,20 @@ class EmailCampaign extends Model
                 (int) $row->email_campaign_id,
                 (int) $row->user_id
             ));
-            if (! $group || $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
+            if (! $group) {
                 continue;
             }
 
             $deliveredLog = $group->first(
                 fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
             );
+            // A pending log means a retry may be in flight — do not attach
+            // a failed log over that. A delivered log still wins: expire
+            // would otherwise skip-stale someone who already received the
+            // mail, and a later retry doubles the send.
+            if (! $deliveredLog && $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
+                continue;
+            }
             $failedLog = $group->first(
                 fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
             );

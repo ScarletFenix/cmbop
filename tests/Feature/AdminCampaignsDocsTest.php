@@ -54,6 +54,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('re-check staff roles at send time', $body);
         $this->assertStringContainsString('payment_status=completed', $body);
         $this->assertStringContainsString('Preference, disabled, and unverified skips stay skipped', $body);
+        $this->assertStringContainsString('inline SMTP (`sync` mail)', $body);
+        $this->assertStringContainsString('delivered log still wins when a', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 
