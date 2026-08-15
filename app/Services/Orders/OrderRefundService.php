@@ -253,6 +253,10 @@ class OrderRefundService
 
         if ($bonusShare > 0) {
             $wallet->consumeReserved($bonusShare, $bonusShare);
+            // Pair leftover consume with the leftover hold. Leaving the peek
+            // after approve made otherLiveCheckoutBonusExists stay true, so a
+            // later card leftover with no hold capped at 0 and minted cash.
+            $this->syncCheckoutBonusAfterLeftoverRestore($order, $bonusShare);
         }
     }
 
