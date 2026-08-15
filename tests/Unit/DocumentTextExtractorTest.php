@@ -96,6 +96,23 @@ class DocumentTextExtractorTest extends TestCase
         $this->assertContains('https://www.bet365.com/en/sports', $result['links']);
     }
 
+    public function test_policy_signals_include_document_properties(): void
+    {
+        $path = sys_get_temp_dir().'/cmbop-core-policy.docx';
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Clean body about software tools for teams.</w:t></w:r></w:p></w:body></w:document>');
+        $zip->addFromString('docProps/core.xml', '<?xml version="1.0"?><cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties" xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Best online casino bonus</dc:title></cp:coreProperties>');
+        $zip->close();
+
+        $result = (new DocumentTextExtractor)->extractPolicySignals($path);
+        @unlink($path);
+
+        $this->assertTrue($result['ok']);
+        $this->assertStringContainsString('Clean body about software tools', $result['text']);
+        $this->assertStringContainsString('Best online casino bonus', $result['text']);
+    }
+
     public function test_extracts_plain_https_url_when_no_hyperlink_part(): void
     {
         $extractor = new DocumentTextExtractor;

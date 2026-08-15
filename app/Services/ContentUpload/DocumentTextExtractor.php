@@ -23,8 +23,8 @@ class DocumentTextExtractor
      */
     /**
      * Policy-only read of the stored package. Includes headers, footers,
-     * notes, comments, and every external hyperlink. Does not store images
-     * or build preview HTML.
+     * notes, comments, document properties, custom XML, and every external
+     * hyperlink. Does not store images or build preview HTML.
      *
      * @return array{ok:bool, text:string, links:list<string>}
      */
@@ -59,7 +59,13 @@ class DocumentTextExtractor
 
                     continue;
                 }
-                if (! str_starts_with($lower, 'word/') || ! str_ends_with($lower, '.xml')) {
+                if (! str_ends_with($lower, '.xml')) {
+                    continue;
+                }
+                $inWord = str_starts_with($lower, 'word/');
+                $inProps = str_starts_with($lower, 'docprops/');
+                $inCustom = str_starts_with($lower, 'customxml/');
+                if (! $inWord && ! $inProps && ! $inCustom) {
                     continue;
                 }
                 $plain = $this->xmlToPolicyText($xml);

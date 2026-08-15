@@ -42,11 +42,14 @@ class ContentModerationEngine
 
         $rawHaystack = mb_strtolower($title."\n".$text);
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
-        $tightHaystack = $this->tightenHaystack($haystack);
         $urlStrings = $this->normalizeLinkList($links);
         $urlStrings = $this->enrichLinksFromContent($urlStrings, $haystack, $categories);
         $linkHosts = array_map(fn (string $u) => $this->hostForMatch($u), $urlStrings);
         $linkBlob = mb_strtolower(implode(' ', array_merge($urlStrings, $linkHosts)));
+        if ($linkBlob !== '') {
+            $haystack = trim($haystack."\n".$this->deobfuscate($linkBlob));
+        }
+        $tightHaystack = $this->tightenHaystack($haystack);
 
         $scores = [];
         $signals = ['hits' => []];
@@ -233,6 +236,12 @@ class ContentModerationEngine
         }
 
         $host = mb_strtolower($host);
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $host = mb_strtolower($ascii);
+            }
+        }
         if (str_starts_with($host, 'www.')) {
             $host = substr($host, 4);
         }
@@ -387,7 +396,33 @@ class ContentModerationEngine
             $text
         ) ?? $text;
 
-        return $text;
+        if (class_exists(\Normalizer::class)) {
+            $normalized = \Normalizer::normalize($text, \Normalizer::FORM_KC);
+            if (is_string($normalized) && $normalized !== '') {
+                $text = $normalized;
+            }
+        }
+
+        $text = strtr($text, self::latinConfusables());
+
+        return mb_strtolower($text);
+    }
+
+    /**
+     * Cyrillic / Greek / other lookalikes used to hide Latin keywords ("caѕino").
+     *
+     * @return array<string, string>
+     */
+    protected static function latinConfusables(): array
+    {
+        return [
+            'а' => 'a', 'е' => 'e', 'о' => 'o', 'р' => 'p', 'с' => 'c',
+            'у' => 'y', 'х' => 'x', 'і' => 'i', 'ј' => 'j', 'ѕ' => 's',
+            'ԁ' => 'd', 'ɡ' => 'g', 'ԛ' => 'q', 'ԝ' => 'w',
+            'α' => 'a', 'ο' => 'o', 'ρ' => 'p', 'τ' => 't', 'υ' => 'y',
+            'χ' => 'x', 'ι' => 'i', 'ν' => 'v', 'η' => 'n', 'κ' => 'k',
+            'ϲ' => 'c', 'ᴄ' => 'c', 'ꜱ' => 's',
+        ];
     }
 
     /**

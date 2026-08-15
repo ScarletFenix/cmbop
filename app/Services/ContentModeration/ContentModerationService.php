@@ -707,7 +707,7 @@ class ContentModerationService
     ): array {
         $urls = [];
 
-        if ($html !== '' && preg_match_all('/\bhref\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+        if ($html !== '' && preg_match_all('/\b(?:href|src)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
             foreach ($matches[2] as $href) {
                 $href = trim(html_entity_decode((string) $href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
                 if ($href === '') {
@@ -763,7 +763,10 @@ class ContentModerationService
             html: (string) ($submission->preview_html ?? ''),
             targetUrl: $submission->target_url ? (string) $submission->target_url : null,
             plainText: (string) ($submission->extracted_text ?? ''),
-            extraLinks: $submission->detectedLinks(),
+            extraLinks: array_merge(
+                $submission->detectedLinks(),
+                array_filter([(string) ($submission->feature_image_url ?? '')]),
+            ),
         );
         $fromFile = $this->storedFilePolicySignals($submission)['links'];
 
@@ -869,8 +872,35 @@ class ContentModerationService
     }
 
     /**
-     * Restricted-term haystack: body + stored anchors + HTML attributes +
-     * the Word package the publisher downloads.
+     * href/src values strip_tags drops, including local /storage image paths.
+     *
+     * @return list<string>
+     */
+    public function htmlResourceTexts(string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (preg_match_all('/\b(?:href|src)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            foreach ($matches[2] as $value) {
+                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($value !== '') {
+                    $texts[] = $value;
+                }
+            }
+        }
+
+        $texts = array_values(array_unique($texts));
+        sort($texts);
+
+        return $texts;
+    }
+
+    /**
+     * Restricted-term haystack: body + stored anchors + HTML attributes/src +
+     * filename + the Word package the publisher downloads.
      * Keep language / uniqueness on scanTextFromSubmission() so a short
      * English backlink does not false-fail a non-English article.
      */
@@ -880,6 +910,8 @@ class ContentModerationService
             $this->scanTextFromSubmission($submission),
             implode("\n", $this->anchorTextsFromSubmission($submission)),
             implode("\n", $this->htmlAttributeTexts((string) ($submission->preview_html ?? ''))),
+            implode("\n", $this->htmlResourceTexts((string) ($submission->preview_html ?? ''))),
+            trim((string) ($submission->original_filename ?? '')),
             $this->storedFilePolicySignals($submission)['text'],
         ];
 
@@ -971,6 +1003,8 @@ class ContentModerationService
             (string) $submission->target_url,
             implode("\n", $links),
             implode("\n", $this->anchorTextsFromSubmission($submission)),
+            (string) $submission->feature_image_url,
+            (string) $submission->original_filename,
             $this->storedFilePolicySignals($submission)['hash'],
         ]));
     }

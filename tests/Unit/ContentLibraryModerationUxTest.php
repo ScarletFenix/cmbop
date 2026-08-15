@@ -161,6 +161,44 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertStringContainsString('bet365', implode(' ', $result['matched_terms']));
     }
 
+    public function test_engine_rejects_casino_only_in_url_path(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        $result = $engine->score(
+            title: 'Marketing tips',
+            text: 'This article shares helpful SEO strategies for growing organic traffic with useful content.',
+            links: ['https://example.com/best-online-casino-bonus'],
+            categories: $categories,
+        );
+
+        $this->assertSame('gambling', $result['detected_category']);
+        $this->assertGreaterThanOrEqual(70, $result['max_confidence']);
+    }
+
+    public function test_engine_rejects_fullwidth_and_homoglyph_casino(): void
+    {
+        $engine = new ContentModerationEngine;
+        $cfg = require dirname(__DIR__, 2).'/config/content_moderation.php';
+        $categories = $cfg['categories'];
+
+        foreach ([
+            'Play at the best online ｃａｓｉｎｏ tonight.',
+            'Play at the best online ca'."\u{0455}".'ino tonight.',
+        ] as $text) {
+            $result = $engine->score(
+                title: 'Marketing tips',
+                text: $text,
+                links: [],
+                categories: $categories,
+            );
+            $this->assertSame('gambling', $result['detected_category'], $text);
+            $this->assertGreaterThanOrEqual(70, $result['max_confidence'], $text);
+        }
+    }
+
     public function test_engine_rejects_zero_width_and_split_casino(): void
     {
         $engine = new ContentModerationEngine;
