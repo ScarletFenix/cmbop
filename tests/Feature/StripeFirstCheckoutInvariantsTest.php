@@ -14,10 +14,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class StripeFirstCheckoutInvariantsTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private string $webhookSecret = 'whsec_test_stripe_first_invariants';
@@ -431,5 +433,51 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_second_paid_checkout_does_not_reuse_the_same_library_article(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $firstSite = $this->makeSite($publisher, 'lib-one.example', 40);
+        $secondSite = $this->makeSite($publisher, 'lib-two.example', 40);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+
+        $firstLine = $this->lineFor($firstSite, 40);
+        $firstLine['content_submission_id'] = $submission->id;
+        $secondLine = $this->lineFor($secondSite, 40);
+        $secondLine['content_submission_id'] = $submission->id;
+
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('LIB-A', $this->package($advertiser, [$firstLine], 40));
+        $payments->storePendingCheckout('LIB-B', $this->package($advertiser, [$secondLine], 40));
+
+        $firstOrders = $payments->finalizeStripeFirstCheckout('LIB-A', $this->paidSession('LIB-A', 40, 'cs_lib_a'));
+        $secondOrders = $payments->finalizeStripeFirstCheckout('LIB-B', $this->paidSession('LIB-B', 40, 'cs_lib_b'));
+
+        $this->assertCount(1, $firstOrders);
+        $this->assertSame('paid', $firstOrders->first()->payment_status);
+        $this->assertCount(0, $secondOrders);
+
+        $winner = Order::query()->where('reference_code', 'LIB-A')->first();
+        $duplicate = Order::query()->where('reference_code', 'LIB-B')->first();
+        $this->assertNotNull($winner);
+        $this->assertNotNull($duplicate);
+        $this->assertSame('paid', $winner->payment_status);
+        $this->assertSame('pending', $winner->status);
+        $this->assertSame('refunded', $duplicate->payment_status);
+        $this->assertSame('cancelled', $duplicate->status);
+
+        $submission->refresh();
+        $this->assertSame($winner->id, (int) $submission->order_id);
+        $this->assertSame(
+            $submission->id,
+            (int) $winner->items()->value('content_submission_id')
+        );
+        $this->assertNull($duplicate->items()->value('content_submission_id'));
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(40.0, (float) $wallet->balance, 0.01);
     }
 }

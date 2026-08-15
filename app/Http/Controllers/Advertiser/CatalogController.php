@@ -2725,7 +2725,9 @@ class CatalogController extends Controller
 
             $message = $e->getMessage() === 'Insufficient balance to reserve'
                 ? 'Insufficient wallet balance for this order.'
-                : 'Unable to process wallet payment. Please try again.';
+                : ($e->getMessage() === ContentSubmission::UNAVAILABLE_MESSAGE
+                    ? 'That Content Library article was already purchased. Please choose another article.'
+                    : 'Unable to process wallet payment. Please try again.');
 
             return response()->json([
                 'success' => false,
@@ -3127,6 +3129,13 @@ class CatalogController extends Controller
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 403);
+            }
+
+            if ($order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be changed because payment is not complete.',
+                ], 422);
             }
 
             if ($order->status !== 'review') {
@@ -4564,25 +4573,32 @@ class CatalogController extends Controller
 
     private function attachSubmissionToOrder(ContentSubmission $submission, Order $order, OrderItem $item): void
     {
+        $locked = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first();
+        if (! $locked || $locked->isClaimedByAnotherOrder((int) $order->id)) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+
         // Each article is published on one site only. Keep the first order/item linkage on the
         // submission row; every OrderItem still stores its own content_submission_id.
         $payload = [
             'publication_mode' => $order->publication_mode,
             'scheduled_publish_at' => $order->scheduled_publish_at,
-            'timezone' => $order->schedule_timezone ?: $submission->timezone,
+            'timezone' => $order->schedule_timezone ?: $locked->timezone,
         ];
 
-        if (! $submission->order_id) {
+        if (! $locked->order_id) {
             $payload['order_id'] = $order->id;
             $payload['order_item_id'] = $item->id;
         }
 
         $filtered = app(CheckoutSchemaService::class)
-            ->filterExistingColumns($submission->getTable(), $payload);
+            ->filterExistingColumns($locked->getTable(), $payload);
 
         if ($filtered !== []) {
-            $submission->update($filtered);
+            $locked->update($filtered);
         }
+
+        $submission->setRawAttributes($locked->fresh()->getAttributes(), true);
     }
 
     /**

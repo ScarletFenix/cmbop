@@ -157,6 +157,15 @@ class PaymentController extends Controller
                 }
             }
 
+            if ($oldStatus === 'paid' && $newStatus === 'pending') {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'A paid payment cannot be moved back to pending. Mark it failed or refunded instead.',
+                ], 422);
+            }
+
             $order->payment_status = $newStatus;
 
             if ($request->payment_status === 'paid' && ! $order->paid_at) {

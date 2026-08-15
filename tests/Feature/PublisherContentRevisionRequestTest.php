@@ -405,6 +405,30 @@ class PublisherContentRevisionRequestTest extends TestCase
         );
     }
 
+    public function test_advertiser_cannot_fulfill_content_revision_when_unpaid(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please send a cleaner draft with correct links.',
+        ]);
+        $item->order->update([
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_link' => 'https://docs.example/unpaid-article',
+            ])
+            ->assertStatus(422);
+
+        $item->refresh();
+        $this->assertTrue($item->isContentRevisionRequested());
+        $this->assertSame('https://docs.example/old-article', $item->content_link);
+    }
+
     public function test_publisher_can_cancel_after_accept_and_refunds_advertiser(): void
     {
         $wallet = Wallet::firstOrCreate(

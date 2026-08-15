@@ -39,6 +39,8 @@ class ContentSubmission extends Model
     /** The article carries no images at all. */
     public const IMAGE_RIGHTS_NONE = 'none';
 
+    public const UNAVAILABLE_MESSAGE = 'Content Library article is no longer available';
+
     /** The advertiser owns or created every image. */
     public const IMAGE_RIGHTS_OWN = 'own';
 
@@ -213,6 +215,32 @@ class ContentSubmission extends Model
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
             && filled($this->language);
+    }
+
+    /**
+     * True when another checkout already owns this article (direct order_id
+     * or a paid, non-cancelled placement). Callers must lock the row first.
+     */
+    public function isClaimedByAnotherOrder(?int $orderId = null): bool
+    {
+        if ($this->order_id !== null && ($orderId === null || (int) $this->order_id !== $orderId)) {
+            return true;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        return OrderItem::query()
+            ->where('content_submission_id', $this->id)
+            ->whereHas('order', function ($q) use ($orderId) {
+                $q->where('payment_status', 'paid')
+                    ->where('status', '!=', 'cancelled');
+                if ($orderId !== null) {
+                    $q->where('orders.id', '!=', $orderId);
+                }
+            })
+            ->exists();
     }
 
     /**

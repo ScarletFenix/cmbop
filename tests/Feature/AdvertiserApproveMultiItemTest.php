@@ -121,6 +121,28 @@ class AdvertiserApproveMultiItemTest extends TestCase
         $this->assertEquals(70.0, (float) Wallet::where('user_id', $firstPublisher->id)->value('balance'));
     }
 
+    public function test_request_modification_is_blocked_when_payment_is_not_paid(): void
+    {
+        [$advertiser, , , $order] = $this->multiItemReviewOrder(
+            firstLive: true,
+            secondLive: true,
+        );
+        $order->update([
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.order.modification', $order->id), [
+                'reason' => 'Please fix the heading even though this checkout is unpaid.',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('review', $order->fresh()->status);
+        $this->assertFalse($order->items->contains(fn ($line) => $line->fresh()->modification_requested === 'yes'));
+    }
+
     public function test_request_modification_emails_every_unpaid_publisher(): void
     {
         [$advertiser, $firstPublisher, $secondPublisher, $order] = $this->multiItemReviewOrder(

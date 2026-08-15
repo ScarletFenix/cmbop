@@ -1157,7 +1157,21 @@ class OrderController extends Controller
             }
 
             $order = $orderItem->order;
-            if (! $order || ! in_array($order->status, ['processing', 'review'], true)) {
+            if (! $order || $order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Order payment is not confirmed yet',
+                ], 400);
+            }
+
+            if ($order->status === 'cancelled' || $order->payment_status === 'refunded') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order is no longer open for social post updates.',
+                ], 422);
+            }
+
+            if (! in_array($order->status, ['processing', 'review'], true)) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Social post links can only be updated while the order is in progress or under review.',

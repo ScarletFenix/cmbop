@@ -165,6 +165,12 @@ class ContentRevisionService
         return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note, $orderItemId, $confirmExisting) {
             $lockedOrder = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
+            if ($lockedOrder->payment_status !== 'paid') {
+                throw ValidationException::withMessages([
+                    'order' => 'This order cannot be updated because payment is not complete.',
+                ]);
+            }
+
             $openItems = OrderItem::query()
                 ->where('order_id', $lockedOrder->id)
                 ->where('content_revision_requested', 'yes')
