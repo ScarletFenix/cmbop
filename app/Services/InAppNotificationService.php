@@ -1854,7 +1854,7 @@ class InAppNotificationService
         try {
             $notes = InAppNotification::query()
                 ->where('audience', InAppNotification::AUDIENCE_ADMIN)
-                ->whereNull('archived_at')
+                ->notArchivedClock()
                 ->where(function ($q) {
                     $q->whereNull('status')
                         ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
@@ -1913,7 +1913,7 @@ class InAppNotificationService
                 ->where('user_id', $publisherId)
                 ->where('audience', InAppNotification::AUDIENCE_PUBLISHER)
                 ->where('title', 'Please accept a website we added for you')
-                ->whereNull('archived_at')
+                ->notArchivedClock()
                 ->where(function ($q) {
                     $q->whereNull('status')
                         ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
@@ -2372,7 +2372,7 @@ class InAppNotificationService
         return InAppNotification::forUser($userId)
             ->forAudience($audience)
             ->unread()
-            ->whereNull('archived_at')
+            ->notArchivedClock()
             ->count();
     }
 
@@ -2389,18 +2389,20 @@ class InAppNotificationService
 
         $status = $filters['status'] ?? 'active';
         if ($status === 'unread') {
-            $query->unread()->whereNull('archived_at');
+            $query->unread()->notArchivedClock();
         } elseif ($status === 'archived') {
             $query->where(function ($q) {
                 $q->where('status', InAppNotification::STATUS_ARCHIVED)
-                    ->orWhereNotNull('archived_at');
+                    ->orWhere(function ($clock) {
+                        $clock->whereArchivedClockIsRecorded();
+                    });
             });
         } elseif ($status === 'inbox') {
             // Show-all history: include archived, exclude only soft-deleted.
         } else {
             // active = not archived / not soft-deleted (soft deletes automatic)
             $query->where(function ($q) {
-                $q->whereNull('archived_at')
+                $q->notArchivedClock()
                     ->where(function ($inner) {
                         $inner->whereNull('status')
                             ->orWhere('status', '!=', InAppNotification::STATUS_ARCHIVED);
@@ -2433,7 +2435,7 @@ class InAppNotificationService
         return InAppNotification::forUser($userId)
             ->forAudience($audience)
             ->unread()
-            ->whereNull('archived_at')
+            ->notArchivedClock()
             ->update([
                 'status' => InAppNotification::STATUS_READ,
                 'read_at' => now(),

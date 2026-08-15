@@ -13,6 +13,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -158,6 +159,65 @@ class AdminContentLibraryTest extends TestCase
             ->assertOk()
             ->assertSee('Expired Unused Piece')
             ->assertDontSee('Fresh Approved Piece');
+    }
+
+    public function test_leftover_expires_at_does_not_500_or_fake_expiry(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $leftover = $this->createApprovedSubmission($advertiser);
+        $leftover->update(['title' => 'Leftover Expiry Piece', 'expires_at' => now()->addDays(3)]);
+        DB::table('content_submissions')->where('id', $leftover->id)->update([
+            'expires_at' => 'not-a-date',
+        ]);
+
+        $fresh = $leftover->fresh();
+        $this->assertNull($fresh->expires_at);
+        $this->assertFalse($fresh->isExpired());
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($leftover->id)->expiredUnused()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index'))
+            ->assertOk()
+            ->assertSee('Leftover Expiry Piece', false)
+            ->assertDontSee('Something went wrong');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'expired']))
+            ->assertOk()
+            ->assertDontSee('Leftover Expiry Piece', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.show', $leftover))
+            ->assertOk()
+            ->assertSee('Leftover Expiry Piece', false)
+            ->assertDontSee('Something went wrong');
+    }
+
+    public function test_leftover_archived_at_stays_on_active_library(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $leftover = $this->createApprovedSubmission($advertiser);
+        $leftover->update(['title' => 'Leftover Archived Piece']);
+        DB::table('content_submissions')->where('id', $leftover->id)->update([
+            'archived_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($leftover->fresh()->isArchived());
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index'))
+            ->assertOk()
+            ->assertSee('Leftover Archived Piece', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'archived']))
+            ->assertOk()
+            ->assertDontSee('Leftover Archived Piece', false);
     }
 
     public function test_expired_article_on_open_order_is_not_in_expired_chip(): void

@@ -105,7 +105,7 @@ class SendPublisherAddSiteReminders extends Command
             ->where('created_at', '<=', $newest);
 
         if (Schema::hasColumn('users', $sentColumn)) {
-            $query->whereNull($sentColumn);
+            $query->whereOnboardingReminderUnsent($sentColumn);
         }
 
         return $query;

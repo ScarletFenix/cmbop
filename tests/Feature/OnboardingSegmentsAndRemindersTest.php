@@ -18,6 +18,7 @@ use App\Services\InAppNotificationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Artisan;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Tests\TestCase;
 
@@ -235,6 +236,24 @@ class OnboardingSegmentsAndRemindersTest extends TestCase
                 && $mail->step === PublisherAddSiteReminderMail::STEP_DAY7;
         });
         Mail::assertNotQueued(PublisherAddSiteReminderMail::class, fn (PublisherAddSiteReminderMail $m) => $m->hasTo($withSite->email));
+    }
+
+    public function test_leftover_sent_at_does_not_silence_publisher_reminder(): void
+    {
+        Mail::fake();
+
+        $day3 = $this->makeUser('publisher', [
+            'created_at' => now()->subDays(3)->setTime(11, 0),
+            'updated_at' => now()->subDays(3)->setTime(11, 0),
+        ]);
+        DB::table('users')->where('id', $day3->id)->update([
+            'add_site_reminder_day3_sent_at' => 'not-a-date',
+        ]);
+        $this->assertNull($day3->fresh()->add_site_reminder_day3_sent_at);
+
+        Artisan::call('emails:send-publisher-add-site-reminders', ['--step' => 'day3']);
+
+        Mail::assertQueued(PublisherAddSiteReminderMail::class, fn (PublisherAddSiteReminderMail $m) => $m->hasTo($day3->email));
     }
 
     public function test_publisher_reminder_skips_unverified_wrong_age_and_opt_out(): void

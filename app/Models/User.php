@@ -5,6 +5,7 @@ namespace App\Models;
 use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Notifications\VerifyEmail;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
@@ -182,6 +183,32 @@ class User extends Authenticatable implements MustVerifyEmail
         }
 
         return ! is_null($this->email_verified_at);
+    }
+
+    /**
+     * Leftover Hostinger reminder clocks are not a real send. whereNull
+     * misses them, so deposit / add-site nudges stay silenced forever.
+     *
+     * @param  Builder<User>  $query
+     * @return Builder<User>
+     */
+    public function scopeWhereOnboardingReminderUnsent($query, string $column)
+    {
+        $allowed = [
+            'deposit_reminder_day7_sent_at',
+            'deposit_reminder_day14_sent_at',
+            'add_site_reminder_day3_sent_at',
+            'add_site_reminder_day7_sent_at',
+        ];
+        if (! in_array($column, $allowed, true)) {
+            return $query->whereRaw('0 = 1');
+        }
+
+        return $query->where(function ($inner) use ($column) {
+            $inner->whereNull($column)
+                ->orWhere($column, '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere($column, '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
     }
 
     /**

@@ -2,6 +2,8 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\SoftDeletes;
@@ -12,6 +14,7 @@ use Illuminate\Support\Facades\Schema;
 class InAppNotification extends Model
 {
     use SoftDeletes;
+    use ToleratesUnparseableDates;
 
     public const STATUS_UNREAD = 'unread';
 
@@ -232,7 +235,7 @@ class InAppNotification extends Model
                 $q->whereNull('status')
                     ->orWhere('status', '!=', self::STATUS_ARCHIVED);
             })
-            ->whereNull('archived_at');
+            ->notArchivedClock();
     }
 
     public function scopeUnread($query)
@@ -240,9 +243,46 @@ class InAppNotification extends Model
         return $query->where('status', self::STATUS_UNREAD);
     }
 
+    /**
+     * Leftover Hostinger archived_at is not a real archive. whereNull
+     * hid those bells from the inbox and badge.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeNotArchivedClock($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('archived_at')
+                ->orWhere('archived_at', '>', static::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->orWhere('archived_at', '<', static::PLAUSIBLE_SQL_DATETIME_FLOOR);
+        });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWhereArchivedClockIsRecorded($query)
+    {
+        return $query->whereNotNull('archived_at')
+            ->where('archived_at', '>=', static::PLAUSIBLE_SQL_DATETIME_FLOOR)
+            ->where('archived_at', '<=', static::PLAUSIBLE_SQL_DATETIME_CEIL);
+    }
+
     public function isArchived(): bool
     {
-        return $this->status === self::STATUS_ARCHIVED || $this->archived_at !== null;
+        if ($this->status === self::STATUS_ARCHIVED) {
+            return true;
+        }
+
+        try {
+            $at = $this->archived_at;
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return $at instanceof \DateTimeInterface;
     }
 
     public function markRead(): self
