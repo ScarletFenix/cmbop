@@ -249,6 +249,7 @@ class CuratedBlogSync
         Cache::remember('curated_blogs_inline_storage_v1', now()->addMinutes(30), function () {
             self::ensureSchema();
             BlogInlineImages::publishAllFromPublicAssets();
+            BlogInlineImages::publishAllFeaturedFromCatalog();
 
             $needsRewrite = Blog::query()
                 ->whereIn('slug', self::curatedSlugs())

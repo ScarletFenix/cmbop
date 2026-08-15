@@ -237,7 +237,6 @@
                     throw new Error((result.data && result.data.error) || 'Image upload failed.');
                 }
                 self.replaceInlineSrc(target.locale, target.src, result.data.url);
-                self.maybeDeleteStoredFile(target.src);
                 self.render();
             })
             .catch(function (error) {
@@ -333,7 +332,6 @@
                 img.remove();
             }
         });
-        this.maybeDeleteStoredFile(src);
     };
 
     AdminBlogImages.prototype.isStoredBlogImageSrc = function (src) {

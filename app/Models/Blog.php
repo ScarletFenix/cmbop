@@ -190,7 +190,15 @@ class Blog extends Model
      */
     public function featuredImageUrl(): ?string
     {
-        return Site::publicDiskUrl($this->featured_image);
+        $path = $this->featured_image;
+        if (is_string($path) && preg_match('#^(https?:)?//#i', $path) === 1) {
+            $urlPath = parse_url($path, PHP_URL_PATH);
+            if (is_string($urlPath) && preg_match('#/(?:storage|media)/(blogs/(?:content|featured)/.+)$#i', $urlPath, $matches)) {
+                $path = $matches[1];
+            }
+        }
+
+        return Site::publicDiskUrl($path);
     }
 
     /**

@@ -321,6 +321,59 @@ class AdminBlogImageTest extends TestCase
         $this->assertStringContainsString('/media/blogs/', $js);
         $this->assertStringContainsString('/storage/blogs/', $js);
         $this->assertStringContainsString('isStoredBlogImageSrc', $js);
+        $this->assertStringNotContainsString('maybeDeleteStoredFile(target.src)', $js);
+        $this->assertStringNotContainsString('maybeDeleteStoredFile(src)', $js);
+    }
+
+    public function test_update_deletes_removed_inline_image_only_after_save(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = UploadedFile::fake()->image('will-remove.jpg')->store('blogs/content', 'public');
+
+        $blog = Blog::create([
+            'title' => 'Inline Cleanup On Save',
+            'slug' => 'inline-cleanup-on-save',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/media/'.$path.'"></p>',
+            'status' => 'draft',
+            'created_by' => $admin->id,
+            'updated_by' => $admin->id,
+        ]);
+        $blog->translations()->create([
+            'locale' => 'en',
+            'title' => 'Inline Cleanup On Save',
+            'slug' => 'inline-cleanup-on-save',
+            'excerpt' => 'Excerpt',
+            'content' => '<p><img src="/media/'.$path.'"></p>',
+            'is_published' => true,
+        ]);
+
+        Storage::disk('public')->assertExists($path);
+
+        $this->actingAs($admin)
+            ->put(route('admin.blogs.update', $blog->id), [
+                'status' => 'draft',
+                'translations' => [
+                    'en' => [
+                        'title' => 'Inline Cleanup On Save',
+                        'slug' => 'inline-cleanup-on-save',
+                        'content' => '<p>Image removed from the body.</p>',
+                    ],
+                ],
+            ])
+            ->assertRedirect(route('admin.blogs.index'));
+
+        Storage::disk('public')->assertMissing($path);
+    }
+
+    public function test_featured_image_url_rewrites_absolute_storage_urls(): void
+    {
+        $blog = new Blog([
+            'featured_image' => 'https://example.test/storage/blogs/featured/hero.jpg?cache=1',
+        ]);
+
+        $this->assertSame('/media/blogs/featured/hero.jpg', $blog->featuredImageUrl());
     }
 
     public function test_store_converts_featured_jpeg_to_webp(): void

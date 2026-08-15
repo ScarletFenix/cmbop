@@ -122,6 +122,33 @@ class BlogInlineImages
     }
 
     /**
+     * Copy catalog featured JPGs onto the public disk.
+     * Content heal (publishAllFromPublicAssets) only writes blogs/content/;
+     * /media/blogs/featured/... still 404s after a fresh MEDIA_PATH unless this runs.
+     */
+    public static function publishAllFeaturedFromCatalog(): int
+    {
+        $count = 0;
+
+        foreach (CuratedBlogCatalog::postClasses() as $class) {
+            try {
+                if (! class_exists($class) || ! defined($class.'::FEATURED_STORAGE')) {
+                    continue;
+                }
+
+                $asset = defined($class.'::FEATURED_ASSET') ? $class::FEATURED_ASSET : null;
+                if (self::publishFeatured($class::FEATURED_STORAGE, is_string($asset) ? $asset : null)) {
+                    $count++;
+                }
+            } catch (\Throwable) {
+                continue;
+            }
+        }
+
+        return $count;
+    }
+
+    /**
      * Rewrite legacy /assets/img/blog/... (and absolute variants) to /storage/blogs/content/...
      * and ensure the target file is published when the public asset exists.
      */

@@ -31,6 +31,14 @@ class BlogInlineImagesTest extends TestCase
         $this->assertFalse(BlogInlineImages::isBundledAsset('blogs/content/unique-upload-xyz.webp'));
     }
 
+    public function test_publish_all_featured_from_catalog_writes_public_disk(): void
+    {
+        Storage::fake('public');
+
+        $this->assertGreaterThan(0, BlogInlineImages::publishAllFeaturedFromCatalog());
+        Storage::disk('public')->assertExists(GastbeitraegeEuropaBlogPost::FEATURED_STORAGE);
+    }
+
     public function test_rewrite_legacy_asset_urls(): void
     {
         $html = '<img src="/assets/img/blog/gastbeitraege-europa-checkliste.jpg" alt="x">';
