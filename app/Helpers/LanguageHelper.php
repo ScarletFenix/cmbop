@@ -499,6 +499,7 @@ if (! function_exists('marketing_task_labels')) {
             'site.metrics_refreshed' => 'Refreshed metrics',
             'site.screenshot_refreshed' => 'Refreshed screenshot',
             'site.metrics_manual' => 'Saved manual metrics',
+            'site.metrics_api_unlocked' => 'Allowed API overwrite',
         ];
     }
 }

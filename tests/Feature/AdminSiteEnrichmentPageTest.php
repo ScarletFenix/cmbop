@@ -257,6 +257,12 @@ class AdminSiteEnrichmentPageTest extends TestCase
             'domain' => 'fresh-catalog.example',
             'site_url' => 'https://fresh-catalog.example',
         ]);
+        $blankShot = $this->makeSite([
+            'site_name' => 'Blank Screenshot Path',
+            'domain' => 'blank-shot.example',
+            'site_url' => 'https://blank-shot.example',
+            'screenshot_path' => '',
+        ]);
         $this->makeSite([
             'site_name' => 'Inactive Missing',
             'domain' => 'inactive-missing.example',
@@ -266,7 +272,8 @@ class AdminSiteEnrichmentPageTest extends TestCase
         ]);
 
         $expected = Site::query()->where('active', 1)->staleForEnrichment()->count();
-        $this->assertSame(1, $expected);
+        $this->assertSame(2, $expected);
+        $this->assertTrue(Site::query()->whereKey($blankShot->id)->staleForEnrichment()->exists());
 
         $html = $this->actingAs($this->admin)
             ->get(route('admin.site-enrichment.index'))
@@ -274,13 +281,16 @@ class AdminSiteEnrichmentPageTest extends TestCase
             ->assertSee('Stale sites', false)
             ->assertSee('No Metrics Yet', false)
             ->assertSee('No metrics', false)
+            ->assertSee('Blank Screenshot Path', false)
+            ->assertSee('No screenshot', false)
             ->assertSee('href="#stale-sites"', false)
-            ->assertSee('Queue stale (1)', false)
+            ->assertSee('Queue stale (2)', false)
             ->assertDontSee('Fresh Catalog Site', false)
             ->assertDontSee('Inactive Missing', false)
             ->getContent();
 
         $this->assertSame(1, substr_count($html, 'data-stale-site-id="'.$missingMetrics->id.'"'));
+        $this->assertSame(1, substr_count($html, 'data-stale-site-id="'.$blankShot->id.'"'));
         $this->assertSame($expected, substr_count($html, 'data-stale-site-id='));
         $this->assertStringContainsString(route('admin.sites.edit', $missingMetrics->id), $html);
     }
@@ -349,7 +359,7 @@ class AdminSiteEnrichmentPageTest extends TestCase
             'site_url' => 'https://stale-two.example',
             'screenshot_path' => null,
         ]);
-        $this->makeSite([
+        $third = $this->makeSite([
             'site_name' => 'Stale Three Over Limit',
             'domain' => 'stale-three.example',
             'site_url' => 'https://stale-three.example',
@@ -374,12 +384,68 @@ class AdminSiteEnrichmentPageTest extends TestCase
                 && $job->metrics
                 && $job->screenshot;
         });
-        Queue::assertPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($second) {
+        Queue::assertPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($third) {
+            return $job->siteId === $third->id;
+        });
+        Queue::assertNotPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($second) {
             return $job->siteId === $second->id;
         });
         Queue::assertNotPushed(EnrichSiteJob::class, function (EnrichSiteJob $job) use ($fresh) {
             return $job->siteId === $fresh->id;
         });
+    }
+
+    public function test_config_cards_show_when_apis_are_missing(): void
+    {
+        config([
+            'site_enrichment.default_provider' => 'manual',
+            'site_enrichment.providers.ahrefs.api_token' => '',
+            'site_enrichment.providers.moz.access_token' => '',
+            'site_enrichment.providers.moz.access_id' => '',
+            'site_enrichment.providers.moz.secret_key' => '',
+            'site_enrichment.providers.semrush.api_key' => '',
+            'site_enrichment.screenshots.provider' => 'thum_io',
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('no API keys', false)
+            ->assertSee('thum_io (unauthenticated)', false)
+            ->assertSee('manual lock skips API providers', false);
+
+        config([
+            'site_enrichment.screenshots.provider' => 'url_api',
+            'site_enrichment.screenshots.api_url' => '',
+        ]);
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('url_api (no url)', false);
+    }
+
+    public function test_stale_row_can_unlock_manual_metrics(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Locked Stale',
+            'domain' => 'locked-stale.example',
+            'site_url' => 'https://locked-stale.example',
+            'metrics_manual' => true,
+            'metrics_fetched_at' => null,
+        ]);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('Allow API overwrite', false)
+            ->assertSee('Locked Stale', false);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.sites.allow-api-metrics', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertFalse((bool) $site->fresh()->metrics_manual);
     }
 
     public function test_sites_enrich_stale_uses_the_shared_scope(): void

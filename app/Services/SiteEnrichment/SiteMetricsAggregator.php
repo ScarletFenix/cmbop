@@ -29,6 +29,20 @@ class SiteMetricsAggregator
     }
 
     /**
+     * True when at least one live SEO vendor has credentials.
+     */
+    public function anyApiProviderConfigured(): bool
+    {
+        foreach (['ahrefs', 'moz', 'semrush'] as $key) {
+            if ($this->resolve($key)->isConfigured()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * Fetch metrics using configured primary + fallbacks.
      * Never fabricates values — only returns what providers give.
      *
@@ -55,6 +69,7 @@ class SiteMetricsAggregator
         $traffic = null;
         $errors = [];
         $used = [];
+        $contributors = [];
         $raw = [];
 
         foreach ($order as $key) {
@@ -82,16 +97,23 @@ class SiteMetricsAggregator
                 continue;
             }
 
+            $contributed = false;
             if ($result->domainRating !== null && $dr === null) {
                 $dr = $result->domainRating;
+                $contributed = true;
             }
             if ($result->domainAuthority !== null && $da === null) {
                 $da = $result->domainAuthority;
+                $contributed = true;
             }
             if ($result->monthlyOrganicTraffic !== null && $traffic === null) {
                 $traffic = $result->monthlyOrganicTraffic;
+                $contributed = true;
             }
             $raw[$key] = $result->raw;
+            if ($contributed) {
+                $contributors[] = $key;
+            }
 
             if ($dr !== null && $da !== null && $traffic !== null) {
                 break;
@@ -107,7 +129,9 @@ class SiteMetricsAggregator
             domainRating: $dr,
             domainAuthority: $da,
             monthlyOrganicTraffic: $traffic,
-            provider: $primary,
+            provider: $contributors !== []
+                ? implode(',', array_values(array_unique($contributors)))
+                : 'manual',
             raw: $raw,
             success: $dr !== null || $da !== null || $traffic !== null || empty($errors),
             error: $errors ? implode('; ', $errors) : null,

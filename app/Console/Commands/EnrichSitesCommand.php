@@ -64,8 +64,7 @@ class EnrichSitesCommand extends Command
             $query->staleForEnrichment();
         }
 
-        $sites = $query->orderByRaw('metrics_fetched_at IS NULL DESC')
-            ->orderBy('metrics_fetched_at')
+        $sites = $query->orderForStaleEnrichment()
             ->limit(max(1, $limit))
             ->get();
 

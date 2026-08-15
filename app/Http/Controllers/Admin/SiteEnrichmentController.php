@@ -10,6 +10,8 @@ use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
 use App\Services\ActivityLogger;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
+use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
@@ -42,13 +44,15 @@ class SiteEnrichmentController extends Controller
             $attention->withPath($request->url())->appends($request->only(['status', 'type']));
         }
 
+        $aggregator = app(SiteMetricsAggregator::class);
         $config = [
             'enabled' => (bool) config('site_enrichment.enabled'),
             'default_provider' => (string) config('site_enrichment.default_provider'),
             'fallback_providers' => config('site_enrichment.fallback_providers'),
+            'has_api_keys' => $aggregator->anyApiProviderConfigured(),
             'refresh_frequency' => (string) config('site_enrichment.refresh_frequency'),
             'max_age_days' => (int) config('site_enrichment.max_age_days'),
-            'screenshot_provider' => (string) config('site_enrichment.screenshots.provider'),
+            'screenshot_provider' => $this->screenshotProviderLabel(),
         ];
 
         $staleSites = new LengthAwarePaginator([], 0, 40);
@@ -56,18 +60,14 @@ class SiteEnrichmentController extends Controller
         $staleCount = 0;
         $placeholderSiteIds = [];
         $batchLimit = max(1, (int) config('site_enrichment.batch_limit', 40));
+        $marketingEditor = $this->isMarketingEditor($request);
 
         try {
             $staleQuery = Site::query()
                 ->where('active', 1)
-                ->staleForEnrichment();
-
-            if (Site::hasSitesColumn('metrics_fetched_at')) {
-                $staleQuery->orderByRaw('metrics_fetched_at IS NULL DESC')
-                    ->orderBy('metrics_fetched_at');
-            } else {
-                $staleQuery->orderBy('id');
-            }
+                ->staleForEnrichment()
+                ->orderForStaleEnrichment();
+            $this->restrictToMarketingEditable($staleQuery, $request);
 
             if (Schema::hasTable('site_enrichment_runs')) {
                 $staleQuery->with('latestEnrichmentRun');
@@ -97,7 +97,8 @@ class SiteEnrichmentController extends Controller
             'placeholderSiteIds',
             'batchLimit',
             'status',
-            'type'
+            'type',
+            'marketingEditor'
         ));
     }
 
@@ -250,6 +251,49 @@ class SiteEnrichmentController extends Controller
         ]);
     }
 
+    public function allowApiOverwrite(Request $request, int $id)
+    {
+        if (! Site::hasSitesColumn('metrics_manual')) {
+            return $request->wantsJson()
+                ? response()->json([
+                    'success' => false,
+                    'message' => 'Manual metrics lock is unavailable until the database migration has been run.',
+                ], 422)
+                : back()->withErrors(['metrics_manual' => 'Manual metrics lock is unavailable until the database migration has been run.']);
+        }
+
+        $site = Site::findOrFail($id);
+        if ($denied = $this->denyMarketingLockedListing($request, $site)) {
+            if ($request->wantsJson()) {
+                return $denied;
+            }
+
+            return back()->withErrors(['metrics_manual' => (string) data_get($denied->getData(true), 'message', 'Not allowed.')]);
+        }
+
+        $site->forceFill(['metrics_manual' => false])->save();
+
+        ActivityLogger::log(
+            'site.metrics_api_unlocked',
+            auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
+            $site,
+            [],
+            $site->site_name
+        );
+
+        $message = 'API overwrite allowed. Queue Enrich to fetch live metrics.';
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'site' => $site->fresh(),
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
     public function queueStale(Request $request)
     {
         if ($denied = $this->denyIfEnrichmentDisabled()) {
@@ -263,9 +307,9 @@ class SiteEnrichmentController extends Controller
             $ids = Site::query()
                 ->where('active', 1)
                 ->staleForEnrichment()
-                ->orderBy('id')
-                ->limit($limit)
-                ->pluck('id');
+                ->orderForStaleEnrichment();
+            $this->restrictToMarketingEditable($ids, $request);
+            $ids = $ids->limit($limit)->pluck('id');
 
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
@@ -314,6 +358,13 @@ class SiteEnrichmentController extends Controller
                 ->unique()
                 ->filter();
 
+            if ($this->isMarketingEditor($request) && $ids->isNotEmpty()) {
+                $ids = Site::query()
+                    ->whereIn('id', $ids)
+                    ->editableByMarketing()
+                    ->pluck('id');
+            }
+
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
             }
@@ -351,6 +402,46 @@ class SiteEnrichmentController extends Controller
         }
 
         return $columns;
+    }
+
+    private function screenshotProviderLabel(): string
+    {
+        $provider = (string) config('site_enrichment.screenshots.provider', 'thum_io');
+
+        if ($provider === 'thum_io') {
+            return 'thum_io (unauthenticated)';
+        }
+
+        if ($provider === 'screenshotone') {
+            return filled(config('site_enrichment.screenshots.screenshotone_access_key'))
+                ? 'screenshotone'
+                : 'screenshotone (no key)';
+        }
+
+        if ($provider === 'url_api') {
+            return filled(config('site_enrichment.screenshots.api_url'))
+                ? 'url_api'
+                : 'url_api (no url)';
+        }
+
+        return $provider;
+    }
+
+    private function isMarketingEditor(Request $request): bool
+    {
+        $user = $request->user();
+
+        return (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function restrictToMarketingEditable($query, Request $request): void
+    {
+        if ($this->isMarketingEditor($request)) {
+            $query->editableByMarketing();
+        }
     }
 
     private function denyIfEnrichmentDisabled()
