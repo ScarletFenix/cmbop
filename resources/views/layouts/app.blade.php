@@ -25,7 +25,27 @@
             ? null
             : array_values(array_filter(array_map('trim', explode(',', $hreflangLocalesRaw))));
         $hreflangPath = trim($__env->yieldContent('hreflang_path')) ?: null;
-        $hreflangTags = \App\Support\PublicI18n::hreflangTags(request(), $hreflangXDefault, $hreflangLocales, $hreflangPath);
+        $hreflangPathMapRaw = html_entity_decode(
+            trim($__env->yieldContent('hreflang_path_map')),
+            ENT_QUOTES | ENT_HTML5,
+            'UTF-8'
+        );
+        $hreflangPathByLocale = [];
+        if ($hreflangPathMapRaw !== '') {
+            foreach (explode(',', $hreflangPathMapRaw) as $pair) {
+                [$mapLocale, $mapPath] = array_pad(explode('=', $pair, 2), 2, '');
+                if ($mapLocale !== '' && $mapPath !== '') {
+                    $hreflangPathByLocale[$mapLocale] = $mapPath;
+                }
+            }
+        }
+        $hreflangTags = \App\Support\PublicI18n::hreflangTags(
+            request(),
+            $hreflangXDefault,
+            $hreflangLocales,
+            $hreflangPath,
+            $hreflangPathByLocale !== [] ? $hreflangPathByLocale : null
+        );
     @endphp
     @include('components.favicon')
     <title>{{ $pageTitle }}</title>

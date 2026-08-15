@@ -116,4 +116,13 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertSame('', $this->sanitizer->sanitize(''));
         $this->assertSame('', $this->sanitizer->sanitize(null));
     }
+
+    public function test_blank_quill_html_is_detected(): void
+    {
+        $this->assertTrue(BlogHtmlSanitizer::isBlank('<p><br></p>'));
+        $this->assertTrue(BlogHtmlSanitizer::isBlank('<p></p>'));
+        $this->assertTrue(BlogHtmlSanitizer::isBlank('<p><br></p><p><br></p>'));
+        $this->assertTrue(BlogHtmlSanitizer::isBlank('   '));
+        $this->assertFalse(BlogHtmlSanitizer::isBlank('<p>Hello</p>'));
+    }
 }

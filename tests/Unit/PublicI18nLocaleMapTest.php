@@ -43,4 +43,11 @@ class PublicI18nLocaleMapTest extends TestCase
         $this->assertNull(PublicI18n::fromBrowserTag(''));
         $this->assertNull(PublicI18n::fromBrowserTag('ja-JP'));
     }
+
+    public function test_short_label_uses_uk_for_default_english(): void
+    {
+        $this->assertSame('UK', PublicI18n::shortLabel('en'));
+        $this->assertSame('US', PublicI18n::shortLabel('us'));
+        $this->assertSame('ES', PublicI18n::shortLabel('es'));
+    }
 }

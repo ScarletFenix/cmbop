@@ -139,6 +139,18 @@ class PublicI18nTest extends TestCase
             ->assertSee('Come funziona', false);
     }
 
+    public function test_us_and_uk_schema_use_bcp47_language_tags(): void
+    {
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee('"inLanguage":"en-GB"', false);
+
+        $this->get('/us/about')
+            ->assertOk()
+            ->assertSee('"inLanguage":"en-US"', false)
+            ->assertDontSee('"inLanguage":"us"', false);
+    }
+
     public function test_us_english_browser_language_suggests_us_locale(): void
     {
         $this->withHeader('Accept-Language', 'en-US,en;q=0.8')
