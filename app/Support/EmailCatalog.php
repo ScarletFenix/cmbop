@@ -671,7 +671,7 @@ class EmailCatalog
         return null;
     }
 
-    public static function makeMailable(string $key): ?Mailable
+    public static function makeMailable(string $key, array $options = []): ?Mailable
     {
         $meta = self::get($key);
         if (! $meta || empty($meta['mailable'])) {
@@ -684,6 +684,9 @@ class EmailCatalog
         $item = self::sampleOrderItem();
         $site = self::sampleSite();
         $user = self::sampleUser();
+        $audience = in_array($options['audience'] ?? '', ['advertiser', 'publisher', 'admin'], true)
+            ? $options['audience']
+            : 'advertiser';
 
         return match ($key) {
             'welcome' => new WelcomeEmail($user),
@@ -691,11 +694,15 @@ class EmailCatalog
             'order_status_changed' => new OrderStatusChanged(
                 order: $order,
                 recipient: $user,
-                audience: 'advertiser',
+                audience: $audience,
                 changeKind: 'status',
                 previousValue: 'pending',
                 newValue: 'processing',
-                description: 'Great news — the publisher accepted this order and work can begin.',
+                description: match ($audience) {
+                    'publisher' => 'This order is now processing — please continue the placement.',
+                    'admin' => 'Order status changed to processing (admin copy).',
+                    default => 'Great news — the publisher accepted this order and work can begin.',
+                },
             ),
             'order_payment_confirmed' => new OrderPaymentConfirmed($order),
             'payment_successful_invoice' => new PaymentSuccessfulInvoiceMail(self::sampleTaxInvoice()),

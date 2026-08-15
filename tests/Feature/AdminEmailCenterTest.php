@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Mail\WelcomeEmail;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\Invoice;
@@ -846,5 +847,167 @@ class AdminEmailCenterTest extends TestCase
             ->assertOk()
             ->assertSee('Retry failed mail jobs', false)
             ->assertDontSee('reset failed email logs', false);
+    }
+
+    public function test_settings_can_enable_all_editable_types(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $enabled = [];
+        foreach (config('email_notifications.types') as $type => $meta) {
+            if (! empty($meta['framework'])) {
+                continue;
+            }
+            $enabled[$type] = '1';
+        }
+
+        $this->actingAs($admin)
+            ->post(route('admin.emails.settings'), ['enabled' => $enabled])
+            ->assertSessionHas('success');
+
+        EmailNotificationSetting::flushCache();
+        $this->assertTrue(EmailNotificationSetting::isEnabled('welcome'));
+        $this->assertTrue(EmailNotificationSetting::isEnabled('order_status_changed'));
+    }
+
+    public function test_email_center_ui_exposes_ops_links_queue_health_and_failed_empty_state(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->assertSee(route('admin.campaigns.index'), false)
+            ->assertSee(route('admin.audiences.index'), false)
+            ->assertSee('Campaigns', false)
+            ->assertSee('Audiences', false)
+            ->assertSee('Queue health', false)
+            ->assertSee('Mail queue:', false)
+            ->assertSee('Auto-drain:', false)
+            ->assertSee('queue:work --queue=default,emails', false)
+            ->assertSee('Encryption', false)
+            ->assertSee('SMTP delivered ≠ inbox', false)
+            ->assertSee('No failed sends in the log', false)
+            ->assertSee('Send test to me', false)
+            ->assertSee('data-ec-critical="welcome,order_status_changed,publisher_new_order,deposit_approved,admin_stalled_order"', false)
+            ->assertSee('data-ec-was-enabled', false)
+            ->assertSee('audience=publisher', false)
+            ->assertSee('audience=admin', false)
+            ->assertSee('Managed by Laravel auth', false)
+            ->assertSee('Open Campaigns', false);
+    }
+
+    public function test_recent_logs_can_be_filtered_and_opened(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $keep = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => 'keep@example.com',
+            'subject' => 'Welcome keep',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'dedupe_key' => 'welcome-keep',
+            'audience' => 'user',
+            'meta' => ['source' => 'queue'],
+            'sent_at' => now(),
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'order_accepted',
+            'to_email' => 'other@example.com',
+            'subject' => 'Order accepted',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'sent_at' => now(),
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index', ['status' => 'delivered', 'template_key' => 'welcome', 'to_email' => 'keep@']))
+            ->assertOk()
+            ->assertSee('keep@example.com', false)
+            ->assertDontSee('other@example.com', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.log', $keep))
+            ->assertOk()
+            ->assertSee('welcome-keep', false)
+            ->assertSee('keep@example.com', false)
+            ->assertSee('Welcome keep', false);
+
+        $this->actingAs($this->userWithRole('advertiser'))
+            ->get(route('admin.emails.log', $keep))
+            ->assertForbidden();
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index', ['status' => 'not-a-status', 'date_from' => 'nope']))
+            ->assertOk()
+            ->assertSee('keep@example.com', false)
+            ->assertSee('other@example.com', false);
+    }
+
+    public function test_recent_logs_are_paginated(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $rows = [];
+        for ($i = 0; $i < 51; $i++) {
+            $rows[] = [
+                'uuid' => (string) Str::uuid(),
+                'template_key' => 'welcome',
+                'to_email' => 'page-user-'.$i.'@example.com',
+                'subject' => 'Welcome '.$i,
+                'status' => EmailLog::STATUS_DELIVERED,
+                'sent_at' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ];
+        }
+        EmailLog::query()->insert($rows);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->assertSee('page-user-50@example.com', false)
+            ->assertDontSee('page-user-0@example.com', false)
+            ->assertSee('50 per page', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index', ['page' => 2]))
+            ->assertOk()
+            ->assertSee('page-user-0@example.com', false);
+    }
+
+    public function test_campaign_snapshot_lists_recent_campaigns(): void
+    {
+        $admin = $this->userWithRole('admin');
+        EmailCampaign::create([
+            'name' => 'Spring outreach',
+            'subject' => 'Hello advertisers',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'status' => EmailCampaign::STATUS_SENT,
+            'sent_count' => 12,
+            'created_by' => $admin->id,
+        ]);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index'))
+            ->assertOk()
+            ->assertSee('Spring outreach', false)
+            ->assertSee('12 sent', false)
+            ->assertSee('Advertisers', false);
+    }
+
+    public function test_order_status_preview_accepts_audience_query(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.preview', ['key' => 'order_status_changed', 'audience' => 'publisher']))
+            ->assertOk()
+            ->assertSee('please continue the placement', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.preview', ['key' => 'order_status_changed', 'audience' => 'admin']))
+            ->assertOk()
+            ->assertSee('admin copy', false);
     }
 }

@@ -4,8 +4,10 @@ namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
 use App\Mail\PlatformMailable;
+use App\Models\EmailCampaign;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
+use App\Models\User;
 use App\Support\EmailCatalog;
 use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
@@ -23,11 +25,17 @@ class EmailCenterController extends Controller
     public function index(Request $request)
     {
         $stats = EmailLog::dashboardKpis();
+        $filters = $this->recentLogFilters($request);
 
         $recentLogs = EmailLog::query()
+            ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
+            ->when($filters['template_key'] ?? null, fn ($q, $key) => $q->where('template_key', $key))
+            ->when($filters['to_email'] ?? null, fn ($q, $email) => $q->where('to_email', 'like', '%'.$this->escapeLike($email).'%'))
+            ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereDate('created_at', '>=', $from))
+            ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereDate('created_at', '<=', $to))
             ->latest('id')
-            ->limit(25)
-            ->get();
+            ->paginate(50)
+            ->withQueryString();
 
         $templateStats = EmailLog::query()
             ->selectRaw('template_key, COUNT(*) as sent_count, MAX(sent_at) as last_sent_at')
@@ -37,13 +45,36 @@ class EmailCenterController extends Controller
             ->get()
             ->keyBy('template_key');
 
-        $templates = collect(EmailCatalog::templates())->map(function (array $meta) use ($templateStats) {
+        $settingRows = EmailNotificationSetting::query()->pluck('enabled', 'type');
+        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows) {
+            $default = (bool) ($meta['default_enabled'] ?? true);
+
+            return [
+                'type' => $type,
+                'name' => $meta['name'] ?? $type,
+                'audience' => $meta['audience'] ?? 'user',
+                'enabled' => $settingRows->has($type) ? (bool) $settingRows->get($type) : $default,
+                'preference' => $meta['preference'] ?? null,
+                'framework' => (bool) ($meta['framework'] ?? false),
+            ];
+        })->values();
+
+        $enabledByType = $settings->pluck('enabled', 'type');
+
+        $templates = collect(EmailCatalog::templates())->map(function (array $meta) use ($templateStats, $enabledByType) {
             $row = $templateStats->get($meta['key']);
             $meta['last_sent_at'] = $row?->last_sent_at;
             $meta['sent_count'] = (int) ($row?->sent_count ?? 0);
+            $meta['enabled'] = (bool) ($enabledByType[$meta['key']] ?? true);
 
             return $meta;
         })->values();
+
+        $categoryOrder = ['Users', 'Auth', 'Orders', 'Billing', 'Publishers', 'Advertisers', 'Admin', 'Growth', 'Reports', 'Other'];
+        $templatesByCategory = $templates->groupBy(fn (array $tpl) => $tpl['category'] ?: 'Other')
+            ->sortBy(fn ($group, $category) => array_search($category, $categoryOrder, true) !== false
+                ? array_search($category, $categoryOrder, true)
+                : 99);
 
         $smtp = [
             'mailer' => config('mail.default'),
@@ -60,6 +91,9 @@ class EmailCenterController extends Controller
 
         $queue = [
             'connection' => config('queue.default'),
+            'mail_connection' => config('email_notifications.queue_connection', config('queue.default')),
+            'mail_queue' => config('email_notifications.queue', 'emails'),
+            'auto_drain' => (bool) config('email_notifications.auto_drain'),
             'pending_jobs' => Schema::hasTable('jobs') ? DB::table('jobs')->count() : 0,
             'failed_jobs' => Schema::hasTable('failed_jobs') ? DB::table('failed_jobs')->count() : 0,
             'mail_pending_jobs' => $this->queuedMailJobsCount(),
@@ -68,31 +102,27 @@ class EmailCenterController extends Controller
 
         $failedLogs = EmailLog::failed()->latest('id')->limit(20)->get();
 
-        $settingRows = EmailNotificationSetting::query()->pluck('enabled', 'type');
-        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows) {
-            $default = (bool) ($meta['default_enabled'] ?? true);
-
-            return [
-                'type' => $type,
-                'name' => $meta['name'] ?? $type,
-                'audience' => $meta['audience'] ?? 'user',
-                'enabled' => $settingRows->has($type) ? (bool) $settingRows->get($type) : $default,
-                'preference' => $meta['preference'] ?? null,
-                'framework' => (bool) ($meta['framework'] ?? false),
-            ];
-        })->values();
+        $recentCampaigns = Schema::hasTable('email_campaigns')
+            ? EmailCampaign::query()->latest('id')->limit(3)->get()
+            : collect();
 
         $brand = config('email_notifications.brand', []);
+        $criticalTypes = ['welcome', 'order_status_changed', 'publisher_new_order', 'deposit_approved', 'admin_stalled_order'];
+        $logFilters = $filters;
 
         return view('admin.emails.index', compact(
             'stats',
             'recentLogs',
             'templates',
+            'templatesByCategory',
             'smtp',
             'queue',
             'failedLogs',
             'settings',
-            'brand'
+            'brand',
+            'recentCampaigns',
+            'criticalTypes',
+            'logFilters'
         ));
     }
 
@@ -123,7 +153,7 @@ class EmailCenterController extends Controller
         return back()->with('success', 'Email notification settings saved.');
     }
 
-    public function preview(string $key)
+    public function preview(Request $request, string $key)
     {
         $template = EmailCatalog::get($key);
         abort_unless($template, 404);
@@ -132,10 +162,23 @@ class EmailCenterController extends Controller
             return response($html);
         }
 
-        $mailable = EmailCatalog::makeMailable($key);
+        $audience = $request->query('audience');
+        $mailable = EmailCatalog::makeMailable($key, array_filter([
+            'audience' => is_string($audience) ? $audience : null,
+        ]));
         abort_unless($mailable, 404);
 
         return response($mailable->render());
+    }
+
+    public function showLog(EmailLog $emailLog)
+    {
+        $relatedUser = User::query()->where('email', $emailLog->to_email)->first();
+
+        return view('admin.emails.log', [
+            'log' => $emailLog,
+            'relatedUser' => $relatedUser,
+        ]);
     }
 
     public function sendTest(Request $request)
@@ -356,6 +399,49 @@ class EmailCenterController extends Controller
                 ->orWhere('payload', 'like', '%App\\\\Mail\\\\%')
                 ->orWhere('payload', 'like', '%Illuminate\\\\Mail\\\\%');
         };
+    }
+
+    /**
+     * @return array{status: ?string, template_key: ?string, to_email: ?string, date_from: ?string, date_to: ?string}
+     */
+    protected function recentLogFilters(Request $request): array
+    {
+        $status = $request->query('status');
+        $template = $request->query('template_key');
+        $email = $request->query('to_email');
+
+        return [
+            'status' => is_string($status) && in_array($status, ['pending', 'delivered', 'failed'], true)
+                ? $status
+                : null,
+            'template_key' => is_string($template) && $template !== ''
+                ? substr($template, 0, 80)
+                : null,
+            'to_email' => is_string($email) && $email !== ''
+                ? substr($email, 0, 190)
+                : null,
+            'date_from' => $this->validFilterDate($request->query('date_from')),
+            'date_to' => $this->validFilterDate($request->query('date_to')),
+        ];
+    }
+
+    protected function validFilterDate(mixed $value): ?string
+    {
+        if (! is_string($value) || $value === '') {
+            return null;
+        }
+
+        $date = \DateTimeImmutable::createFromFormat('!Y-m-d', $value);
+        if (! $date instanceof \DateTimeImmutable) {
+            return null;
+        }
+
+        return $date->format('Y-m-d') === $value ? $value : null;
+    }
+
+    protected function escapeLike(string $value): string
+    {
+        return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
     }
 
     protected function isFrameworkTemplate(string $key): bool

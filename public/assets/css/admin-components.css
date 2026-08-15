@@ -239,6 +239,33 @@
 .ec-pill.ok { background: #d1fae5; color: #047857; }
 .ec-pill.warn { background: #fef3c7; color: #b45309; }
 
+.ec-kpi-note {
+  margin-top: 0.4rem;
+  font-size: 0.72rem;
+  color: var(--brand-ink-muted);
+}
+
+.ec-group-title {
+  margin: 1.25rem 0 0.6rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--brand-ink-muted);
+}
+
+.ec-search { min-width: 14rem; }
+
+.ec-log-row { cursor: pointer; }
+.ec-log-row:hover { background: var(--surface-2, #f8fafc); }
+
+.ec-error-expand {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
 /* ——— Blogs ——— */
 
 /* Sync is a <form><button>, Create is an <a>. Without a shared flex
