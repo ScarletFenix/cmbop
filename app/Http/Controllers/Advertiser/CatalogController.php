@@ -215,7 +215,7 @@ class CatalogController extends Controller
         try {
             $orderableScope = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->orderable();
+                ->checkoutReady();
 
             // Count must not reuse a limited list — same exists-style gate as the dashboard.
             $approvedArticleCount = (clone $orderableScope)->count();
@@ -766,7 +766,7 @@ class CatalogController extends Controller
             ->forArticlePicker()
             ->where('id', $id)
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->first();
 
         if (! $submission || ! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
@@ -1084,7 +1084,7 @@ class CatalogController extends Controller
         $approved = ContentSubmission::query()
             ->forArticlePicker()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->latest('id')
             ->limit(100)
             ->get();
@@ -1110,10 +1110,10 @@ class CatalogController extends Controller
                         ->forArticlePicker()
                         ->where('id', $submissionId)
                         ->where('user_id', auth()->id())
-                        ->orderable()
+                        ->checkoutReady()
                         ->first();
                 }
-                if (! $submission || ! $submission->canBeOrdered()) {
+                if (! $submission || ! $submission->isReadyForCheckout()) {
                     $cleaned[$copyIndex] = 0;
                     $lineDirty = true;
                 } elseif ($site && ! $submission->matchesSite($site, $requireSame)) {
@@ -1483,7 +1483,7 @@ class CatalogController extends Controller
         if (! $submission->isReadyForCheckout()) {
             return response()->json([
                 'success' => false,
-                'error' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
+                'error' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
             ], 422);
         }
 
@@ -1589,7 +1589,7 @@ class CatalogController extends Controller
                     ->forArticlePicker()
                     ->where('id', (int) session('checkout_content_submission_id'))
                     ->where('user_id', auth()->id())
-                    ->orderable()
+                    ->checkoutReady()
                     ->first();
 
                 if (! $librarySubmission || ! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
@@ -3386,12 +3386,10 @@ class CatalogController extends Controller
 
         $articles = ContentSubmission::query()
             ->where('user_id', auth()->id())
-            ->orderable()
+            ->checkoutReady()
             ->latest('id')
-            ->limit(80)
+            ->limit(50)
             ->get(['id', 'title', 'original_filename', 'language', 'country', 'anchor_text', 'target_url'])
-            ->filter(fn (ContentSubmission $s) => $s->hasCheckoutReadyLinks())
-            ->take(50)
             ->map(fn (ContentSubmission $s) => [
                 'id' => $s->id,
                 'label' => $s->title ?: $s->original_filename ?: ('Article #'.$s->id),
@@ -4418,7 +4416,7 @@ class CatalogController extends Controller
             if (! $submission->isReadyForCheckout()) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Add anchor text and a valid HTTPS target URL, or confirm continuing without a link.',
+                    'message' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                 ], 422);
             }
 
@@ -4670,6 +4668,10 @@ class CatalogController extends Controller
     {
         $locked = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first();
         if (! $locked || $locked->isClaimedByAnotherOrder((int) $order->id)) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+
+        if ($locked->order_id === null && ! $locked->isReadyForCheckout()) {
             throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
         }
 

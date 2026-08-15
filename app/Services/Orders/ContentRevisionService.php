@@ -235,7 +235,7 @@ class ContentRevisionService
 
                 if (! $existing->hasCheckoutReadyLinks()) {
                     throw ValidationException::withMessages([
-                        'confirm_existing' => 'Add a valid HTTPS target URL, or clear the link, before sending this article back.',
+                        'confirm_existing' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 
@@ -256,6 +256,12 @@ class ContentRevisionService
                 if (! $submission->isApproved()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'Only approved Content Library articles can be attached.',
+                    ]);
+                }
+
+                if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'Confirm image rights on this article before sending it back.',
                     ]);
                 }
 
@@ -286,7 +292,7 @@ class ContentRevisionService
 
                 if (! $submission->hasCheckoutReadyLinks()) {
                     throw ValidationException::withMessages([
-                        'content_submission_id' => 'Add a valid HTTPS target URL, or clear the link, before attaching this article.',
+                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 

@@ -644,6 +644,41 @@ class PublisherContentRevisionRequestTest extends TestCase
         Mail::assertNotQueued(ContentRevisionFulfilled::class);
     }
 
+    public function test_library_item_cannot_reattach_current_article_without_image_rights(): void
+    {
+        $submission = $this->createApprovedSubmission($this->advertiser);
+        $submission->update([
+            'preview_html' => '<p>Updated piece with a photo.</p><p><img src="/storage/content-articles/demo.png" alt=""></p>',
+            'image_rights' => null,
+        ]);
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_original_name' => $submission->original_filename,
+            'content_disk' => $submission->disk,
+            'content_path' => $submission->path,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please replace the hero image.',
+        ]);
+        $submission->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_submission_id' => $submission->id,
+                'note' => 'Kept the existing library article.',
+                'order_item_id' => $item->id,
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['content_submission_id']);
+
+        $this->assertTrue($item->fresh()->isContentRevisionRequested());
+        Mail::assertNotQueued(ContentRevisionFulfilled::class);
+    }
+
     public function test_library_item_can_reattach_another_approved_article(): void
     {
         $current = $this->createApprovedSubmission($this->advertiser);

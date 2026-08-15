@@ -702,6 +702,42 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(120.0, $payments->walletCreditForUnfulfillableCardCheckout($ref), 0.01);
     }
 
+    public function test_unready_content_library_line_is_refunded_on_finalize(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'unready-article.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $ref = 'UNREADY-ARTICLE-1';
+        $payments = app(OrderPaymentService::class);
+        $line = $this->lineFor($site, 80);
+        $line['content_submission_id'] = $submission->id;
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [$line], 80));
+
+        $submission->update(['target_url' => null]);
+        $this->assertFalse($submission->fresh()->isReadyForCheckout());
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 80, 'cs_unready_article')
+        );
+
+        $this->assertCount(0, $created);
+        $refunded = Order::query()
+            ->where('reference_code', $ref)
+            ->where('payment_status', 'refunded')
+            ->get();
+        $this->assertCount(1, $refunded);
+        $this->assertSame('cancelled', $refunded->first()->status);
+        $this->assertNull($submission->fresh()->order_id);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->refundedCardOrderAmount($ref), 0.01);
+    }
+
     public function test_wallet_deposit_session_cannot_materialize_orders(): void
     {
         $advertiser = $this->makeUser('advertiser');
