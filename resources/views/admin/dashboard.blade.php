@@ -158,9 +158,9 @@
         <div class="col-6 col-xl-3">
             <div class="card border-0 shadow-sm h-100 cursor-pointer js-kpi-link" role="link" tabindex="0" data-href="{{ route('admin.finance') }}">
                 <div class="card-body py-3">
-                    <div class="text-muted small">Margin (this month)</div>
+                    <div class="text-muted small">Fee margin (this month)</div>
                     <div class="fs-4 fw-semibold" id="financeMargin">—</div>
-                    <div class="small text-muted">Fees − refunds − bonuses</div>
+                    <div class="small text-muted">Fees − fee reversals − bonuses</div>
                 </div>
             </div>
         </div>

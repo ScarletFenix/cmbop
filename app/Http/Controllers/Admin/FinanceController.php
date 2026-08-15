@@ -46,9 +46,9 @@ class FinanceController extends Controller
         }
 
         $period = $this->finance->resolvePeriod(
-            $request->get('period'),
-            $request->get('date_from'),
-            $request->get('date_to')
+            $input['period'] ?? null,
+            $input['date_from'] ?? null,
+            $input['date_to'] ?? null
         );
 
         $data = $this->finance->overview($period);
@@ -56,10 +56,8 @@ class FinanceController extends Controller
         return view('admin.finance', [
             'data' => $data,
             'periodKey' => $period['key'],
-            'dateFrom' => $request->get('date_from'),
-            'dateTo' => $request->get('date_to'),
-            'userQuery' => $userQuery,
-            'userMatches' => $userMatches,
+            'dateFrom' => $input['date_from'] ?? null,
+            'dateTo' => $input['date_to'] ?? null,
         ]);
     }
 
@@ -74,11 +72,37 @@ class FinanceController extends Controller
             ? User::query()->whereKey($userId)->first(['id', 'name', 'email'])
             : null;
 
-        $transactions = $this->ledgerQuery($request)
-            ->with(['user:id,name,email', 'wallet:id,role_id'])
-            ->latest()
-            ->paginate(40)
-            ->withQueryString();
+        if ($request->filled('type')) {
+            $query->where('type', $request->type);
+        }
+        if ($request->filled('direction')) {
+            $query->where('direction', $request->direction);
+        }
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        if ($search !== '') {
+            $query->where(function ($q) use ($search) {
+                $q->where('reference', 'like', "%{$search}%")
+                    ->orWhere('description', 'like', "%{$search}%")
+                    ->orWhere('id', $search)
+                    ->orWhereHas('user', function ($sub) use ($search) {
+                        $sub->where('name', 'like', "%{$search}%")
+                            ->orWhere('email', 'like', "%{$search}%");
+                    });
+            });
+        }
+        if ($request->filled('user_id')) {
+            $query->where('user_id', (int) $request->user_id);
+        }
+        $dates = $request->validate([
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+        ]);
+        if (! empty($dates['date_from'])) {
+            $query->whereDate('created_at', '>=', $dates['date_from']);
+        }
+        if (! empty($dates['date_to'])) {
+            $query->whereDate('created_at', '<=', $dates['date_to']);
+        }
 
         $types = $this->ledgerTypes();
 
@@ -196,10 +220,11 @@ class FinanceController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
+        $input = $this->validatedPeriodInput($request);
         $period = $this->finance->resolvePeriod(
-            $request->get('period'),
-            $request->get('date_from'),
-            $request->get('date_to')
+            $input['period'] ?? null,
+            $input['date_from'] ?? null,
+            $input['date_to'] ?? null
         );
         $rows = $this->finance->exportRows($period);
         $filename = 'finance-'.$period['key'].'-'.now()->format('Y-m-d-His').'.csv';
@@ -306,15 +331,12 @@ class FinanceController extends Controller
     /**
      * @return Collection<int, User>
      */
-    private function searchUsers(string $userQuery)
+    private function validatedPeriodInput(Request $request): array
     {
-        return User::query()
-            ->where(function ($query) use ($userQuery) {
-                $query->where('name', 'like', '%'.$userQuery.'%')
-                    ->orWhere('email', 'like', '%'.$userQuery.'%');
-            })
-            ->orderBy('name')
-            ->limit(8)
-            ->get(['id', 'name', 'email']);
+        return $request->validate([
+            'period' => 'nullable|in:week,month,all',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
+        ]);
     }
 }
