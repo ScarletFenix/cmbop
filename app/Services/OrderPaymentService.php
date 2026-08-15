@@ -414,6 +414,22 @@ class OrderPaymentService
             return;
         }
 
+        // Do not cancel Pay again just to discover the article cannot start a
+        // new catalog order (expired, rejected, missing file/links).
+        $submissionIds = ContentSubmission::query()
+            ->where('user_id', $userId)
+            ->whereIn('id', $submissionIds)
+            ->with(['order', 'orderItems.order'])
+            ->get()
+            ->filter(fn (ContentSubmission $submission) => $submission->isAvailableForPicker())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+        if ($submissionIds === []) {
+            return;
+        }
+
         if (! Schema::hasColumn('order_items', 'content_submission_id')) {
             Log::warning('Skipping unpaid leftover replace: order_items.content_submission_id missing');
 

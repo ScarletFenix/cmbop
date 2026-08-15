@@ -1110,6 +1110,55 @@ class ContentLibraryImprovementsTest extends TestCase
         @unlink($path);
     }
 
+    public function test_order_from_library_does_not_cancel_an_expired_leftover(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'expired-order-cta');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Leftover Order Cta',
+            'expires_at' => now()->subDay(),
+        ]);
+        $leftover = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse($fresh->isAvailableForPicker());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $leftover->id));
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Expired Leftover Order Cta')
+            ->assertSee('View order')
+            ->assertDontSee(route('advertiser.content-library.order', $submission, false), false);
+
+        $this->actingAs($advertiser)
+            ->from(route('advertiser.content-library'))
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.orders'))
+            ->assertSessionHas('error', function ($message) {
+                return is_string($message) && str_contains($message, 'Pay again');
+            });
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertTrue($submission->fresh()->load('orderItems.order')->isReadyToFulfill((int) $leftover->id));
+    }
+
     public function test_owned_leftover_missing_image_rights_is_needs_fix_not_in_progress(): void
     {
         $advertiser = $this->advertiser();

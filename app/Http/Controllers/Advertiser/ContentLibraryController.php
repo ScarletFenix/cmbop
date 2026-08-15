@@ -508,22 +508,26 @@ class ContentLibraryController extends Controller
         );
         $submission = $submission->fresh() ?? $submission;
 
-        if (! $submission->canBeOrdered()) {
+        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
+            if ($submission->canReplaceUnpaidLeftover() || $submission->activeClaimOrderId()) {
+                $message = $submission->isExpired()
+                    ? 'This article is still on an open order. Use Pay again there. Expired articles cannot start a new catalog order.'
+                    : ($submission->libraryFixSummary() ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE);
+
+                return redirect()
+                    ->route('advertiser.orders')
+                    ->with('error', $message);
+            }
+
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
                 : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
                     ? ContentUploadService::imageRightsRequiredMessage()
-                    : 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+                    : ($submission->libraryFixSummary() ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.'));
 
             return redirect()
                 ->route('advertiser.content-library')
                 ->with('error', $message);
-        }
-
-        if (! $submission->isReadyForCheckout()) {
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE);
         }
 
         // Keep existing cart sites and any publication date already chosen at checkout.
