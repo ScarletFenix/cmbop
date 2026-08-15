@@ -58,6 +58,8 @@ class AdminUsersManageActionsTest extends TestCase
             ->assertSee('Manage', false)
             ->assertSee('action-view', false)
             ->assertSee('action-roles', false)
+            ->assertSee('Articles', false)
+            ->assertSee(route('admin.content-library.index', ['user_id' => $member->id]), false)
             ->assertSee('admin-components.css', false)
             ->assertSee('function escapeHtml', false)
             ->assertSee('escapeHtml(name)', false)

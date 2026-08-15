@@ -475,23 +475,48 @@ class EmailCampaign extends Model
 
         $logs = EmailLog::query()
             ->whereIn('dedupe_key', $keys)
-            ->whereIn('status', [EmailLog::STATUS_DELIVERED, EmailLog::STATUS_FAILED])
+            ->whereIn('status', [
+                EmailLog::STATUS_PENDING,
+                EmailLog::STATUS_DELIVERED,
+                EmailLog::STATUS_FAILED,
+            ])
             ->orderByDesc('id')
             ->get()
-            ->unique('dedupe_key');
+            ->groupBy('dedupe_key');
 
         if ($logs->isEmpty()) {
             return;
         }
 
-        $logsByKey = $logs->keyBy('dedupe_key');
         $campaignIds = [];
 
         foreach ($rows as $row) {
-            $log = $logsByKey->get(EmailCampaignRecipient::dedupeKey(
+            $group = $logs->get(EmailCampaignRecipient::dedupeKey(
                 (int) $row->email_campaign_id,
                 (int) $row->user_id
             ));
+            if (! $group || $group->contains(fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING)) {
+                continue;
+            }
+
+            $deliveredLog = $group->first(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_DELIVERED
+            );
+            $failedLog = $group->first(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
+            );
+
+            $log = $deliveredLog;
+            if (! $log && $failedLog) {
+                // An older failed log must not kill a newer in-flight retry.
+                if ($failedLog->updated_at
+                    && $row->updated_at
+                    && ! $failedLog->updated_at->greaterThan($row->updated_at)) {
+                    continue;
+                }
+                $log = $failedLog;
+            }
+
             if (! $log) {
                 continue;
             }
