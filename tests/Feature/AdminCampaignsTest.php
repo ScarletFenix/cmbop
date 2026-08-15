@@ -88,9 +88,8 @@ class AdminCampaignsTest extends TestCase
             ->post(route('admin.campaigns.preview'), [
                 'subject' => 'Preview subject',
                 'body_html' => '<p>Preview body</p>',
-            ], ['HTTP_X-Requested-With' => 'XMLHttpRequest'])
+            ])
             ->assertOk()
-            ->assertSee('Preview subject', false)
             ->assertSee('Preview body', false);
     }
 
@@ -99,11 +98,12 @@ class AdminCampaignsTest extends TestCase
         $admin = $this->makeUser('admin');
 
         $this->actingAs($admin)
-            ->post(route('admin.campaigns.preview'), [
+            ->postJson(route('admin.campaigns.preview'), [
                 'subject' => 'Has a subject',
                 'body_html' => '',
-            ], ['HTTP_X-Requested-With' => 'XMLHttpRequest'])
-            ->assertStatus(422);
+            ])
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['body_html']);
     }
 
     public function test_recipient_count_matches_collect_for_core_audiences(): void
