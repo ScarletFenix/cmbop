@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Role;
 use App\Models\Site;
@@ -126,6 +127,8 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertNotNull($user->catalog_copy_warned_at);
         $this->assertNull($user->catalog_hide_until);
         $this->assertFalse($user->inCatalogHideMode());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'catalog_copy_warned')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'catalog_hide_applied')->count());
     }
 
     public function test_second_threshold_after_warning_sets_hide_mode_24h(): void
@@ -159,6 +162,8 @@ class CatalogCopyStrikeTest extends TestCase
         $this->assertTrue($user->catalog_hide_until->lessThanOrEqualTo(now()->addHours(24)->addMinute()));
         $this->assertStringContainsString('24 hours', $last['message']);
         $this->assertSame(10, CatalogCopyEvent::where('user_id', $user->id)->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'catalog_copy_warned')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'catalog_hide_applied')->count());
     }
 
     public function test_second_wave_of_the_same_sites_still_reaches_hide_mode(): void

@@ -177,15 +177,39 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        [$model, $hideUntilWas, $strikesWere] = $this->mutateLockedUser($user, function (User $model) {
+        $result = $this->mutateLockedUser($user, function (User $model) {
+            $wasHidden = $model->inCatalogHideMode();
             $hideUntilWas = $model->catalog_hide_until;
             $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+
+            if (! $wasHidden) {
+                if ($model->catalog_hide_until !== null) {
+                    $model->catalog_hide_until = null;
+                    $model->save();
+                }
+
+                return ['noop' => true, 'model' => $model];
+            }
+
             $model->catalog_hide_until = null;
             CatalogCopyStrikeGuard::watermarkEvents($model);
             $model->save();
 
-            return [$model, $hideUntilWas, $strikesWere];
+            return [
+                'noop' => false,
+                'model' => $model,
+                'hide_until_was' => $hideUntilWas,
+                'strikes_were' => $strikesWere,
+            ];
         });
+
+        $model = $result['model'];
+        if ($result['noop']) {
+            return back()->with(
+                'success',
+                $model->email.' is already out of catalog hide mode.'
+            );
+        }
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -193,8 +217,8 @@ class CatalogActivityController extends Controller
             $model->email.' is out of catalog hide mode. Strike ladder is unchanged.',
             $model,
             [
-                'hide_until_was' => $hideUntilWas?->toIso8601String(),
-                'strikes_were' => $strikesWere,
+                'hide_until_was' => $result['hide_until_was']?->toIso8601String(),
+                'strikes_were' => $result['strikes_were'],
             ]
         );
 
@@ -213,17 +237,36 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        [$model, $strikesWere, $warnedAtWas, $inHide] = $this->mutateLockedUser($user, function (User $model) {
+        $result = $this->mutateLockedUser($user, function (User $model) {
             $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
             $warnedAtWas = $model->catalog_copy_warned_at;
             $inHide = $model->inCatalogHideMode();
+
+            if ($strikesWere === 0 && $warnedAtWas === null) {
+                return ['noop' => true, 'model' => $model];
+            }
+
             $model->catalog_copy_strike_count = 0;
             $model->catalog_copy_warned_at = null;
             CatalogCopyStrikeGuard::watermarkEvents($model);
             $model->save();
 
-            return [$model, $strikesWere, $warnedAtWas, $inHide];
+            return [
+                'noop' => false,
+                'model' => $model,
+                'strikes_were' => $strikesWere,
+                'warned_at_was' => $warnedAtWas,
+                'in_hide' => $inHide,
+            ];
         });
+
+        $model = $result['model'];
+        if ($result['noop']) {
+            return back()->with(
+                'success',
+                $model->email.' copy strikes are already at zero.'
+            );
+        }
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -231,13 +274,13 @@ class CatalogActivityController extends Controller
             $model->email.' copy-strike ladder was reset.',
             $model,
             [
-                'strikes_were' => $strikesWere,
-                'warned_at_was' => $warnedAtWas?->toIso8601String(),
-                'still_in_hide' => $inHide,
+                'strikes_were' => $result['strikes_were'],
+                'warned_at_was' => $result['warned_at_was']?->toIso8601String(),
+                'still_in_hide' => $result['in_hide'],
             ]
         );
 
-        $tail = $inHide
+        $tail = $result['in_hide']
             ? ' Hide mode is still on until you lift it.'
             : '';
 
@@ -258,17 +301,42 @@ class CatalogActivityController extends Controller
             return back()->with('error', 'Copy-strike columns are not available yet — run migrations.');
         }
 
-        [$model, $hideUntilWas, $strikesWere] = $this->mutateLockedUser($user, function (User $model) {
+        $result = $this->mutateLockedUser($user, function (User $model) {
+            $wasHidden = $model->inCatalogHideMode();
             $hideUntilWas = $model->catalog_hide_until;
             $strikesWere = (int) ($model->catalog_copy_strike_count ?? 0);
+            $warnedAtWas = $model->catalog_copy_warned_at;
+
+            if (! $wasHidden && $strikesWere === 0 && $warnedAtWas === null) {
+                if ($model->catalog_hide_until !== null) {
+                    $model->catalog_hide_until = null;
+                    $model->save();
+                }
+
+                return ['noop' => true, 'model' => $model];
+            }
+
             $model->catalog_hide_until = null;
             $model->catalog_copy_strike_count = 0;
             $model->catalog_copy_warned_at = null;
             CatalogCopyStrikeGuard::watermarkEvents($model);
             $model->save();
 
-            return [$model, $hideUntilWas, $strikesWere];
+            return [
+                'noop' => false,
+                'model' => $model,
+                'hide_until_was' => $hideUntilWas,
+                'strikes_were' => $strikesWere,
+            ];
         });
+
+        $model = $result['model'];
+        if ($result['noop']) {
+            return back()->with(
+                'success',
+                $model->email.' is already out of catalog hide mode, with no strikes to reset. Copy history is kept.'
+            );
+        }
 
         CatalogCopyStrikeGuard::forgetNotices((int) $model->id);
         $this->logActivity(
@@ -276,8 +344,8 @@ class CatalogActivityController extends Controller
             $model->email.' hide mode lifted and strikes reset. Copy history is kept.',
             $model,
             [
-                'hide_until_was' => $hideUntilWas?->toIso8601String(),
-                'strikes_were' => $strikesWere,
+                'hide_until_was' => $result['hide_until_was']?->toIso8601String(),
+                'strikes_were' => $result['strikes_were'] ?? 0,
             ]
         );
 
@@ -294,14 +362,31 @@ class CatalogActivityController extends Controller
      */
     public function toggleExempt(int $user): RedirectResponse
     {
-        $model = User::findOrFail($user);
         $minutes = max(1, (int) config('catalog.url_reveal.pace.exemption_minutes', 60));
+        $result = $this->mutateLockedUser($user, function (User $model) use ($minutes) {
+            if ($model->catalog_reveal_exempt_until && $model->catalog_reveal_exempt_until->isFuture()) {
+                $model->catalog_reveal_exempt = false;
+                $model->catalog_reveal_exempt_until = null;
+                $model->save();
 
-        if ($model->catalog_reveal_exempt_until && $model->catalog_reveal_exempt_until->isFuture()) {
-            $model->catalog_reveal_exempt = false;
-            $model->catalog_reveal_exempt_until = null;
+                return ['grant' => false, 'model' => $model];
+            }
+
+            $until = now()->addMinutes($minutes);
+            $model->catalog_reveal_exempt = true;
+            $model->catalog_reveal_exempt_until = $until;
             $model->save();
 
+            return [
+                'grant' => true,
+                'model' => $model,
+                'until' => $until,
+                'minutes' => $minutes,
+            ];
+        });
+
+        $model = $result['model'];
+        if (! $result['grant']) {
             $this->logActivity(
                 'catalog_activity.exempt_toggled',
                 $model->email.' is back under the usual pace checks.',
@@ -315,25 +400,20 @@ class CatalogActivityController extends Controller
             );
         }
 
-        $until = now()->addMinutes($minutes);
-        $model->catalog_reveal_exempt = true;
-        $model->catalog_reveal_exempt_until = $until;
-        $model->save();
-
         $this->logActivity(
             'catalog_activity.exempt_toggled',
-            $model->email.' is trusted for '.$minutes.' minutes.',
+            $model->email.' is trusted for '.$result['minutes'].' minutes.',
             $model,
             [
                 'exempt' => true,
-                'exempt_until' => $until->toIso8601String(),
-                'minutes' => $minutes,
+                'exempt_until' => $result['until']->toIso8601String(),
+                'minutes' => $result['minutes'],
             ]
         );
 
         return back()->with(
             'success',
-            $model->email.' is trusted until '.$until->timezone(config('app.timezone'))->format('H:i').' ('.$minutes.' minutes).'
+            $model->email.' is trusted until '.$result['until']->timezone(config('app.timezone'))->format('H:i').' ('.$result['minutes'].' minutes).'
         );
     }
 

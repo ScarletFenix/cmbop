@@ -508,11 +508,14 @@ if (! function_exists('marketing_task_labels')) {
             'site.deleted_by_marketing' => 'Deleted pending site',
             'site.updated' => 'Edited site',
             'site.activated' => 'Activated site',
+            'site.approved' => 'Approved site',
             'site.deactivated' => 'Deactivated site',
             'site.assigned_for_acceptance' => 'Assigned site to publisher',
             'site.image_uploaded' => 'Uploaded site image',
             'site.metrics_refreshed' => 'Refreshed metrics',
+            'site.metrics_refresh_queued' => 'Queued metrics refresh',
             'site.screenshot_refreshed' => 'Refreshed screenshot',
+            'site.screenshot_refresh_queued' => 'Queued screenshot refresh',
             'site.metrics_manual' => 'Saved manual metrics',
             'site.metrics_api_unlocked' => 'Allowed API overwrite',
         ];
@@ -553,7 +556,12 @@ if (! function_exists('activity_action_labels')) {
             'site.assignment_accepted' => 'Accepted site assignment',
             'site.featured' => 'Featured site',
             'site.featured_stripe' => 'Featured site (Stripe)',
+            'site.feature_stripe_credited' => 'Credited Stripe feature payment',
             'site.discount_set' => 'Set site discount',
+            'site.discount_cleared' => 'Cleared site discount',
+            'site.bulk_discount_joined' => 'Joined bulk discount',
+            'site.bulk_discount_updated' => 'Updated bulk discount',
+            'site.bulk_discount_left' => 'Left bulk discount',
             'site.bulk_imported' => 'Bulk-imported site',
             'site.rating_saved' => 'Saved site rating',
             'site.rating_updated' => 'Updated site rating',
@@ -568,6 +576,9 @@ if (! function_exists('activity_action_labels')) {
             'deposit.approved' => 'Approved deposit',
             'deposit.rejected' => 'Rejected deposit',
             'withdrawal.status_updated' => 'Updated withdrawal',
+            'withdrawal.batch_processing' => 'Batch marked withdrawals processing',
+            'withdrawal.batch_completed' => 'Batch marked withdrawals paid',
+            'withdrawal.batch_cancelled' => 'Batch cancelled withdrawals',
             'payment.status_updated' => 'Updated payment',
             'order.status_overridden' => 'Overrode order status',
             'order.publisher_reminded' => 'Reminded publisher',
@@ -582,13 +593,17 @@ if (! function_exists('activity_action_labels')) {
             'moderation.overridden' => 'Overrode moderation',
             'moderation.override_reverted' => 'Reverted moderation override',
             'moderation.settings_updated' => 'Updated moderation settings',
-            'content_library.override' => 'Overrode content library',
             'feedback.problem' => 'Reported a problem',
             'feedback.suggestion' => 'Sent a suggestion',
             'website.suggested' => 'Suggested a website',
+            'problem.report_updated' => 'Updated problem report',
+            'suggestion.updated' => 'Updated suggestion',
+            'website.suggestion_updated' => 'Updated website suggestion',
             'catalog_activity.exempt_toggled' => 'Toggled catalog pace exemption',
             'catalog_activity.copy_hide_cleared' => 'Cleared catalog copy hide',
             'catalog_hide_lifted' => 'Lifted catalog hide mode',
+            'catalog_hide_applied' => 'Applied catalog hide',
+            'catalog_copy_warned' => 'Warned for catalog copy harvesting',
             'catalog_strikes_reset' => 'Reset catalog copy strikes',
             'blog.published' => 'Published blog',
             'blog.unpublished' => 'Unpublished blog',
@@ -610,13 +625,58 @@ if (! function_exists('activity_action_labels')) {
     }
 }
 
+if (! function_exists('activity_action_aliases')) {
+    /**
+     * Retired writer codes that must still filter and label with the live code.
+     *
+     * @return array<string, string>
+     */
+    function activity_action_aliases(): array
+    {
+        return [
+            'catalog_pace_exempted' => 'catalog_activity.exempt_toggled',
+        ];
+    }
+}
+
+if (! function_exists('activity_action_canonical')) {
+    function activity_action_canonical(?string $action): string
+    {
+        $action = (string) $action;
+
+        return activity_action_aliases()[$action] ?? $action;
+    }
+}
+
+if (! function_exists('activity_action_equivalent_codes')) {
+    /**
+     * @return list<string>
+     */
+    function activity_action_equivalent_codes(?string $action): array
+    {
+        $canonical = activity_action_canonical($action);
+        if ($canonical === '') {
+            return [];
+        }
+
+        $codes = [$canonical];
+        foreach (activity_action_aliases() as $alias => $target) {
+            if ($target === $canonical) {
+                $codes[] = $alias;
+            }
+        }
+
+        return array_values(array_unique($codes));
+    }
+}
+
 if (! function_exists('activity_action_label')) {
     /**
      * Human-readable title for an admin activity action code.
      */
     function activity_action_label(?string $action): string
     {
-        $action = (string) $action;
+        $action = activity_action_canonical($action);
         $labels = activity_action_labels();
         if (isset($labels[$action])) {
             return $labels[$action];
@@ -656,11 +716,23 @@ if (! function_exists('activity_action_actions_matching')) {
                 || preg_match($pattern, $codeRaw)
                 || preg_match($pattern, $codeWords)
             ) {
-                $matched[] = $code;
+                foreach (activity_action_equivalent_codes($code) as $equiv) {
+                    $matched[] = $equiv;
+                }
             }
         }
 
-        return $matched;
+        foreach (activity_action_aliases() as $alias => $canonical) {
+            $aliasRaw = strtolower((string) $alias);
+            $aliasWords = str_replace(['.', '_'], ' ', $aliasRaw);
+            if (preg_match($pattern, $aliasRaw) || preg_match($pattern, $aliasWords)) {
+                foreach (activity_action_equivalent_codes($canonical) as $equiv) {
+                    $matched[] = $equiv;
+                }
+            }
+        }
+
+        return array_values(array_unique($matched));
     }
 }
 

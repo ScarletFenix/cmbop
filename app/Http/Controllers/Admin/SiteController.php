@@ -1405,13 +1405,15 @@ class SiteController extends Controller
         }
 
         try {
-            ActivityLogger::log(
-                'site.updated',
-                (auth()->user()->name ?? 'Staff').' modified site "'.$site->site_name.'"',
-                $site,
-                ['changes' => $changes],
-                $site->site_name
-            );
+            if ($changes !== []) {
+                ActivityLogger::log(
+                    'site.updated',
+                    (auth()->user()->name ?? 'Staff').' modified site "'.$site->site_name.'"',
+                    $site,
+                    ['changes' => $changes],
+                    $site->site_name
+                );
+            }
         } catch (\Throwable $e) {
             Log::warning('Failed to log staff site update: '.$e->getMessage());
         }
@@ -2751,18 +2753,20 @@ class SiteController extends Controller
             $action = $site->verified ? 'site.approved' : 'site.rejected';
             $label = $site->verified ? 'approved' : 'rejected';
 
-            ActivityLogger::log(
-                $action,
-                auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
-                $site,
-                [
-                    'from' => $oldStatus,
-                    'to' => (int) $site->verified,
-                    'bulk_site_request_id' => $site->bulk_site_request_id,
-                    'reason' => $reason,
-                ],
-                $site->site_name
-            );
+            if ($oldStatus !== (int) $site->verified) {
+                ActivityLogger::log(
+                    $action,
+                    auth()->user()->name.' '.$label.' site "'.$site->site_name.'"',
+                    $site,
+                    [
+                        'from' => $oldStatus,
+                        'to' => (int) $site->verified,
+                        'bulk_site_request_id' => $site->bulk_site_request_id,
+                        'reason' => $reason,
+                    ],
+                    $site->site_name
+                );
+            }
 
             // After verification: always refresh homepage screenshot.
             // Skip automated metrics when the publisher entered DA/DR/traffic manually.
@@ -2927,22 +2931,40 @@ class SiteController extends Controller
             $site->save();
             $this->syncLinkedBulkAfterSiteRemoved($site->bulk_site_request_id);
 
-            $action = $site->active ? 'site.activated' : 'site.deactivated';
-            $label = $site->active ? 'activated' : 'deactivated';
+            if ($oldStatus !== (int) $site->active) {
+                $action = $site->active ? 'site.activated' : 'site.deactivated';
+                $label = $site->active ? 'activated' : 'deactivated';
 
-            ActivityLogger::log(
-                $action,
-                ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
-                $site,
-                [
-                    'from' => $oldStatus,
-                    'to' => (int) $site->active,
-                    'bulk_site_request_id' => $site->bulk_site_request_id,
-                    'by_role' => $actor->activeRole(),
-                    'reason' => $reason,
-                ],
-                $site->site_name
-            );
+                ActivityLogger::log(
+                    $action,
+                    ($actor->name ?? 'Staff').' '.$label.' site "'.$site->site_name.'"',
+                    $site,
+                    [
+                        'from' => $oldStatus,
+                        'to' => (int) $site->active,
+                        'bulk_site_request_id' => $site->bulk_site_request_id,
+                        'by_role' => $actor->activeRole(),
+                        'reason' => $reason,
+                    ],
+                    $site->site_name
+                );
+            }
+
+            if ($verifyOnActivate && (int) $site->verified === 1) {
+                ActivityLogger::log(
+                    'site.approved',
+                    ($actor->name ?? 'Staff').' approved site "'.$site->site_name.'" (verified on activate)',
+                    $site,
+                    [
+                        'from' => 0,
+                        'to' => 1,
+                        'bulk_site_request_id' => $site->bulk_site_request_id,
+                        'by_role' => $actor->activeRole(),
+                        'via' => 'marketing_activate',
+                    ],
+                    $site->site_name
+                );
+            }
 
             // Activate / deactivate counts as an admin decision for the open review task.
             try {

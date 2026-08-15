@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Jobs\SendEmailCampaignJob;
+use App\Mail\AudienceCampaignMail;
 use App\Services\AudienceInventoryService;
 use App\Support\MailJobPayload;
 use Illuminate\Contracts\Cache\LockProvider;
@@ -234,6 +235,7 @@ class EmailCampaign extends Model
             static::query()->find($id)?->recountRecipientTotals();
         }
         self::expireOrphanedQueuedRecipients();
+        self::expireOrphanedPendingLogs();
 
         $stale = now()->subMinutes(max(1, $staleMinutes));
         $dispatched = 0;
@@ -765,8 +767,7 @@ class EmailCampaign extends Model
     protected static function reconcileQueuedRecipientsFromLogs(int $staleMinutes = 2): void
     {
         try {
-            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())
-                || ! Schema::hasTable((new EmailLog)->getTable())) {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
                 return;
             }
         } catch (\Throwable) {
@@ -800,16 +801,20 @@ class EmailCampaign extends Model
             (int) $row->user_id
         ))->unique()->values()->all();
 
-        $logs = EmailLog::query()
-            ->whereIn('dedupe_key', $keys)
-            ->whereIn('status', [
-                EmailLog::STATUS_PENDING,
-                EmailLog::STATUS_DELIVERED,
-                EmailLog::STATUS_FAILED,
-            ])
-            ->orderByDesc('id')
-            ->get()
-            ->groupBy('dedupe_key');
+        try {
+            $logs = EmailLog::query()
+                ->whereIn('dedupe_key', $keys)
+                ->whereIn('status', [
+                    EmailLog::STATUS_PENDING,
+                    EmailLog::STATUS_DELIVERED,
+                    EmailLog::STATUS_FAILED,
+                ])
+                ->orderByDesc('id')
+                ->get()
+                ->groupBy('dedupe_key');
+        } catch (\Throwable) {
+            return;
+        }
 
         $campaignIds = array_fill_keys($attachedIds, true);
 
@@ -843,6 +848,30 @@ class EmailCampaign extends Model
             $failedLog = $group->first(
                 fn (EmailLog $log) => $log->status === EmailLog::STATUS_FAILED
             );
+            $pendingLogs = $group->filter(
+                fn (EmailLog $log) => $log->status === EmailLog::STATUS_PENDING
+            );
+
+            // A leftover pending row must not block a real delivery. Only a
+            // newer pending (retry after that delivery) stays in-flight.
+            if ($pendingLogs->isNotEmpty()) {
+                $freshPending = $pendingLogs->first(function (EmailLog $pending) use ($deliveredLog) {
+                    return ! $deliveredLog
+                        || ($pending->updated_at
+                            && $deliveredLog->updated_at
+                            && $pending->updated_at->greaterThan($deliveredLog->updated_at));
+                });
+                if ($freshPending) {
+                    continue;
+                }
+
+                foreach ($pendingLogs as $pending) {
+                    $pending->update([
+                        'status' => EmailLog::STATUS_FAILED,
+                        'error' => 'Closed: duplicate open log for the same send',
+                    ]);
+                }
+            }
 
             $staleSkip = $row->status === EmailCampaignRecipient::STATUS_SKIPPED;
             // Expire already parked the row. Only a delivered log proves the
@@ -908,7 +937,7 @@ class EmailCampaign extends Model
     {
         try {
             if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
-                return [];
+                return;
             }
         } catch (\Throwable) {
             return [];
@@ -925,15 +954,15 @@ class EmailCampaign extends Model
 
         try {
             $logs = EmailLog::query()
-                ->whereIn('id', $rows->pluck('email_log_id')->filter()->unique()->all())
+                ->whereIn('id', $rows->pluck('email_log_id')->unique()->filter()->all())
                 ->whereIn('status', [
                     EmailLog::STATUS_DELIVERED,
                     EmailLog::STATUS_FAILED,
                 ])
-                ->get(['id', 'status'])
+                ->get()
                 ->keyBy('id');
         } catch (\Throwable) {
-            return [];
+            return;
         }
 
         if ($logs->isEmpty()) {
@@ -1102,5 +1131,152 @@ class EmailCampaign extends Model
         } catch (\Throwable) {
             // Missing email_logs table must not break recover.
         }
+    }
+
+    /**
+     * Email Center retry pending-marks a log. If that job then vanishes
+     * (deleted jobs row, botched deploy), transactional mail has no
+     * campaign recipient for expire to close — the row stays pending and
+     * retry only accepts failed. Fail old pending logs that are not still
+     * sitting on a database queue.
+     */
+    protected static function expireOrphanedPendingLogs(): void
+    {
+        $transactionalHours = (int) config('email_notifications.max_age_hours', 24);
+        $campaignHours = (int) config('email_notifications.campaign_max_age_hours', 72);
+        if ($transactionalHours <= 0 && $campaignHours <= 0) {
+            return;
+        }
+
+        $transactionalCutoff = $transactionalHours > 0
+            ? now()->subHours($transactionalHours)
+            : null;
+        $campaignCutoff = $campaignHours > 0
+            ? now()->subHours($campaignHours)
+            : null;
+        $fetchCutoff = $transactionalCutoff && $campaignCutoff
+            ? ($transactionalCutoff->greaterThan($campaignCutoff) ? $transactionalCutoff : $campaignCutoff)
+            : ($transactionalCutoff ?? $campaignCutoff);
+        if (! $fetchCutoff) {
+            return;
+        }
+
+        try {
+            $pending = EmailLog::query()
+                ->where('status', EmailLog::STATUS_PENDING)
+                ->where('updated_at', '<=', $fetchCutoff)
+                ->get();
+        } catch (\Throwable) {
+            return;
+        }
+
+        if ($pending->isEmpty()) {
+            return;
+        }
+
+        $payloads = self::queuedMailablePayloads();
+        if ($payloads === null) {
+            return;
+        }
+
+        $now = now();
+
+        foreach ($pending as $log) {
+            if (self::isCampaignEmailLog($log)) {
+                if (! $campaignCutoff || ($log->updated_at && $log->updated_at->greaterThan($campaignCutoff))) {
+                    continue;
+                }
+            } elseif (! $transactionalCutoff) {
+                continue;
+            }
+
+            $inFlight = false;
+            foreach ($payloads as $payload) {
+                if (MailJobPayload::matchesEmailLog($payload, $log, requireToken: true)) {
+                    $inFlight = true;
+                    break;
+                }
+            }
+            if ($inFlight) {
+                continue;
+            }
+
+            try {
+                EmailLog::query()
+                    ->whereKey($log->id)
+                    ->where('status', EmailLog::STATUS_PENDING)
+                    ->update([
+                        'status' => EmailLog::STATUS_FAILED,
+                        'error' => 'Expired: mail job was not confirmed',
+                        'updated_at' => $now,
+                    ]);
+            } catch (\Throwable) {
+            }
+        }
+    }
+
+    protected static function isCampaignEmailLog(EmailLog $log): bool
+    {
+        if ((string) $log->template_key === 'audience_campaign') {
+            return true;
+        }
+
+        if ((string) $log->mailable === AudienceCampaignMail::class) {
+            return true;
+        }
+
+        return str_starts_with((string) $log->dedupe_key, 'audience_campaign:');
+    }
+
+    /**
+     * SendQueuedMailable payloads still on a database queue. Null means the
+     * mail connection could not be read — callers must not expire pending
+     * logs that might still be in flight.
+     *
+     * @return list<string>|null
+     */
+    protected static function queuedMailablePayloads(): ?array
+    {
+        $mail = (string) config('email_notifications.queue_connection', config('queue.default'));
+        $mailDriver = (string) config("queue.connections.{$mail}.driver");
+        if ($mail !== '' && $mail !== 'sync' && $mailDriver !== 'sync' && $mailDriver !== '' && $mailDriver !== 'database') {
+            return null;
+        }
+
+        $payloads = [];
+
+        foreach (self::sendJobQueueConnections() as $connection) {
+            try {
+                $driver = (string) config("queue.connections.{$connection}.driver");
+                if ($connection === 'sync' || $driver === 'sync' || $driver === '' || $driver !== 'database') {
+                    continue;
+                }
+
+                $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                if (! Schema::hasTable($table)) {
+                    continue;
+                }
+
+                if (! Schema::hasColumn($table, 'payload')) {
+                    return null;
+                }
+
+                DB::table($table)
+                    ->orderBy('id')
+                    ->select(['id', 'payload'])
+                    ->chunkById(100, function ($rows) use (&$payloads) {
+                        foreach ($rows as $row) {
+                            $payload = (string) $row->payload;
+                            if (MailJobPayload::isQueuedMailable($payload)) {
+                                $payloads[] = $payload;
+                            }
+                        }
+                    });
+            } catch (\Throwable) {
+                return null;
+            }
+        }
+
+        return $payloads;
     }
 }
