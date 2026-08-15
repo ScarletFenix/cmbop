@@ -1355,4 +1355,103 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertEqualsWithDelta($balanceAfterWallet + 160.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(160.0, $payments->unfulfilledCardCreditAmount('REF-STRIPE-FIRST-AB'), 0.01);
     }
+
+    public function test_late_webhook_with_package_and_leftover_marks_leftover_once(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'package-and-leftover.example');
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $submission = $this->createApprovedSubmission(
+            $advertiser,
+            $site->id,
+            0,
+            'package leftover article',
+            'https://example.com/target'
+        );
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PACKAGE-AND-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-PACKAGE-AND-LEFTOVER', [
+            'user_id' => $advertiser->id,
+            'order_total' => 80,
+            'amount_due' => 80,
+            'bonus_applied' => 0,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [[
+                'site_id' => $site->id,
+                'site_name' => $site->site_name,
+                'site_url' => $site->site_url,
+                'price' => 80,
+                'content_submission_id' => $submission->id,
+                'content_link' => 'https://example.com/article',
+            ]],
+        ]);
+
+        $wallet = Wallet::where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $balanceBefore = (float) $wallet->balance;
+
+        $session = (object) [
+            'id' => 'cs_package_and_leftover',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_package_and_leftover',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PACKAGE-AND-LEFTOVER',
+                'expected_amount' => '80',
+                'user_id' => (string) $advertiser->id,
+                'bonus_applied' => '0',
+            ],
+        ];
+
+        $created = $payments->finalizeStripeFirstCheckout('REF-PACKAGE-AND-LEFTOVER', $session);
+
+        $this->assertCount(1, $created);
+        $this->assertSame($leftover->id, (int) $created->first()->id);
+        $this->assertSame('paid', $leftover->fresh()->payment_status);
+        $this->assertSame(1, Order::query()->where('reference_code', 'REF-PACKAGE-AND-LEFTOVER')->count());
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertNull($payments->getPendingCheckout('REF-PACKAGE-AND-LEFTOVER'));
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta($balanceBefore, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount('REF-PACKAGE-AND-LEFTOVER'), 0.01);
+    }
 }

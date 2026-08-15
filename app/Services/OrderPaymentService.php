@@ -516,14 +516,30 @@ class OrderPaymentService
 
         if (Schema::hasTable((new CheckoutIntent)->getTable())) {
             $intents = CheckoutIntent::query()
-                ->where('user_id', $userId)
+                ->where(function ($q) use ($userId) {
+                    $q->where('user_id', $userId)->orWhereNull('user_id');
+                })
                 ->whereNotNull('package')
-                ->get(['reference_code', 'package']);
+                ->get(['reference_code', 'package', 'user_id']);
             foreach ($intents as $intent) {
                 $package = is_array($intent->package) ? $intent->package : [];
+                $packageUserId = (int) ($package['user_id'] ?? $intent->user_id ?? 0);
+                if ($packageUserId > 0 && $packageUserId !== $userId) {
+                    continue;
+                }
                 if ($this->pendingCheckoutPackageListsSubmission($package, $wanted)) {
                     $refs[] = (string) $intent->reference_code;
                 }
+            }
+        }
+
+        $sessionRef = search_text((string) session('pending_card_reference', ''));
+        if ($sessionRef !== '') {
+            $sessionPackage = $this->getPendingCheckout($sessionRef);
+            if (is_array($sessionPackage)
+                && (int) ($sessionPackage['user_id'] ?? 0) === $userId
+                && $this->pendingCheckoutPackageListsSubmission($sessionPackage, $wanted)) {
+                $refs[] = $sessionRef;
             }
         }
 
@@ -1092,6 +1108,23 @@ class OrderPaymentService
                 'user_id' => $userId,
                 'wallet_credit' => $expected,
             ]);
+
+            return collect();
+        }
+
+        // Leftover rows on this ref already own the placement. Rematerializing
+        // the package first minted a second paid order (or refunded it as
+        // "taken") and then marked the leftover paid — double settlement.
+        if ($hasMarkableLeftover) {
+            $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+            if ($marked->isNotEmpty()) {
+                $this->forgetPendingCheckoutKeepLeftoverHold(
+                    $referenceCode,
+                    (int) ($marked->first()->user_id ?? $userId)
+                );
+
+                return $marked;
+            }
 
             return collect();
         }
