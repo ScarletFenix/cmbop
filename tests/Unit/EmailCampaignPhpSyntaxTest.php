@@ -106,6 +106,18 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));
 
+        $model = (string) file_get_contents($files[0]);
+        $this->assertSame(1, preg_match_all('/function reclaimOrphanedQueuedRecipients\b/', $model));
+        $this->assertSame(1, preg_match_all('/function inFlightCampaignMailUserIds\b/', $model));
+        $this->assertSame(1, preg_match_all('/function syncQueuedRecipientsWithAttachedLogs\b/', $model));
+        $this->assertSame(1, preg_match_all('/function failPendingLogsForStaleRecipients\b/', $model));
+        $this->assertTrue((bool) preg_match(
+            '/protected static function failPendingLogsForStaleRecipients\(\): void\s*\{(.*)\n\}\n/s',
+            $model,
+            $failPending
+        ));
+        $this->assertStringContainsString('inFlightCampaignMailUserIds', $failPending[1]);
+
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
         $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));

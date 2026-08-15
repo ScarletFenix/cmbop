@@ -80,7 +80,11 @@ or marketing, even if that staff account also has a marketplace role.
    mailable. A later SMTP success or a send suppressed as a duplicate
    still marks the recipient `delivered` (it already went out), including
    when expire already flipped the row to skipped stale. Recover also
-   attaches a delivered `email_logs` row to those leftovers.
+   attaches a delivered `email_logs` row to those leftovers. A leftover
+   pending Email Center log for a skipped-stale recipient is failed so
+   retry can see it — but not while that user's `AudienceCampaignMail` is
+   still on the queue, or a second retry doubles the send. A Redis/SQS
+   mail queue (unreadable) must leave those pending logs alone.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`

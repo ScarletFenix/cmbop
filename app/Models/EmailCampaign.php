@@ -874,34 +874,59 @@ class EmailCampaign extends Model
      * Do not Schema::hasTable('email_logs') here: recoverStalled() runs on
      * Email Center page views, and that probe is counted as an email_logs
      * query. Skip the table entirely when there are no stale-skip keys.
+     *
+     * Do not close a pending log while that user's mailable is still on
+     * the queue. Expire can skip a 72h queued row whose job is only
+     * backlogged, and a blind close made the log look failed again —
+     * a second retry then doubles the send. Redis/SQS mail (unreadable)
+     * must leave those pending logs alone.
      */
     protected static function failPendingLogsForStaleRecipients(): void
     {
         try {
-            $keys = EmailCampaignRecipient::query()
+            $rows = EmailCampaignRecipient::query()
                 ->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
                 ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE)
-                ->get(['email_campaign_id', 'user_id'])
-                ->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
-                    (int) $row->email_campaign_id,
-                    (int) $row->user_id
-                ))
-                ->unique()
-                ->values();
+                ->get(['email_campaign_id', 'user_id']);
         } catch (\Throwable) {
             return;
         }
 
-        if ($keys->isEmpty()) {
+        if ($rows->isEmpty()) {
+            return;
+        }
+
+        $keys = [];
+
+        foreach ($rows->groupBy('email_campaign_id') as $campaignId => $group) {
+            $campaignId = (int) $campaignId;
+            $inFlight = self::inFlightCampaignMailUserIds($campaignId);
+            if ($inFlight === null) {
+                continue;
+            }
+
+            $blocked = array_fill_keys($inFlight, true);
+            foreach ($group as $row) {
+                $userId = (int) $row->user_id;
+                if (isset($blocked[$userId])) {
+                    continue;
+                }
+
+                $keys[] = EmailCampaignRecipient::dedupeKey($campaignId, $userId);
+            }
+        }
+
+        $keys = array_values(array_unique($keys));
+        if ($keys === []) {
             return;
         }
 
         $now = now();
 
         try {
-            foreach ($keys->chunk(500) as $chunk) {
+            foreach (array_chunk($keys, 500) as $chunk) {
                 EmailLog::query()
-                    ->whereIn('dedupe_key', $chunk->all())
+                    ->whereIn('dedupe_key', $chunk)
                     ->where('status', EmailLog::STATUS_PENDING)
                     ->update([
                         'status' => EmailLog::STATUS_FAILED,
