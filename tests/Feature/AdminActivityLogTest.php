@@ -3,10 +3,12 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\DepositRequest;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -257,6 +259,25 @@ class AdminActivityLogTest extends TestCase
             ->assertSessionHas('error', 'Use a valid From date.');
     }
 
+    public function test_export_refuses_when_more_rows_match_than_the_cap(): void
+    {
+        config(['activity_logs.export_limit' => 2]);
+        $this->makeLog(['description' => 'Export cap one']);
+        $this->makeLog(['description' => 'Export cap two']);
+        $this->makeLog(['description' => 'Export cap three']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('More than 2 events match', false)
+            ->assertDontSee('Export CSV', false);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export'))
+            ->assertRedirect(route('admin.activity-logs.index'))
+            ->assertSessionHas('error');
+    }
+
     public function test_company_update_is_logged(): void
     {
         $user = User::factory()->create([
@@ -276,6 +297,61 @@ class AdminActivityLogTest extends TestCase
             'user_id' => $this->admin->id,
             'subject_id' => $user->id,
         ]);
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.users.updateCompany', $user->id), [
+                'company_name' => 'New Co',
+            ])
+            ->assertOk();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'user.company_updated')->count());
+    }
+
+    public function test_deposit_and_withdrawal_rows_link_to_finance_not_json_show(): void
+    {
+        $customer = User::factory()->create(['email_verified_at' => now()]);
+        $deposit = DepositRequest::create([
+            'user_id' => $customer->id,
+            'reference_code' => 'DEP-AUDIT-1',
+            'amount' => 40,
+            'payment_method' => 'bank',
+            'status' => 'completed',
+        ]);
+        $withdrawal = Withdrawal::create([
+            'user_id' => $customer->id,
+            'amount' => 20,
+            'fee' => 0,
+            'net_amount' => 20,
+            'payment_method' => 'wise',
+            'status' => 'completed',
+        ]);
+
+        $this->makeLog([
+            'action' => 'deposit.approved',
+            'description' => 'Approved a deposit',
+            'subject_type' => DepositRequest::class,
+            'subject_id' => $deposit->id,
+            'subject_label' => 'Deposit #'.$deposit->id,
+            'properties' => ['user_id' => $customer->id],
+        ]);
+        $this->makeLog([
+            'action' => 'withdrawal.status_updated',
+            'description' => 'Paid a withdrawal',
+            'subject_type' => Withdrawal::class,
+            'subject_id' => $withdrawal->id,
+            'subject_label' => 'Withdrawal #'.$withdrawal->id,
+            'properties' => ['from' => 'processing', 'to' => 'completed'],
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->getContent();
+
+        $dossier = route('admin.finance.user', $customer->id);
+        $this->assertStringContainsString($dossier, $html);
+        $this->assertStringNotContainsString(route('admin.deposits.show', $deposit->id), $html);
+        $this->assertStringNotContainsString(route('admin.withdrawals.show', $withdrawal->id), $html);
     }
 
     public function test_search_activate_does_not_match_deactivated(): void

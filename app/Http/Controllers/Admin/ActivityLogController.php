@@ -50,12 +50,16 @@ class ActivityLogController extends Controller
         sort($actions);
 
         $exportQuery = $this->filterQueryParams($request);
+        $exportLimit = $this->exportLimit();
+        $exportCapped = $logs->total() > $exportLimit;
 
         return view('admin.activity-logs', array_merge($meta, compact(
             'logs',
             'actions',
             'actionCounts',
-            'exportQuery'
+            'exportQuery',
+            'exportCapped',
+            'exportLimit'
         )));
     }
 
@@ -73,7 +77,14 @@ class ActivityLogController extends Controller
             $query->where('action', $meta['selectedAction']);
         }
 
-        $rows = $query->latest('id')->limit(self::EXPORT_LIMIT)->get();
+        $limit = $this->exportLimit();
+        if ((clone $query)->count() > $limit) {
+            return redirect()
+                ->route('admin.activity-logs.index', $this->filterQueryParams($request))
+                ->with('error', 'More than '.number_format($limit).' events match. Narrow the filters before exporting — a partial CSV would look complete.');
+        }
+
+        $rows = $query->latest('id')->limit($limit)->get();
         $filename = 'activity-logs-'.now()->format('Y-m-d-His').'.csv';
 
         return response()->streamDownload(function () use ($rows) {
@@ -189,6 +200,13 @@ class ActivityLogController extends Controller
                 'selectedRole' => $selectedRole,
             ],
         ];
+    }
+
+    private function exportLimit(): int
+    {
+        $configured = (int) config('activity_logs.export_limit', self::EXPORT_LIMIT);
+
+        return $configured > 0 ? $configured : self::EXPORT_LIMIT;
     }
 
     /**
