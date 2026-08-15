@@ -134,6 +134,53 @@ class FinanceOverviewService
                 'amount' => (float) (clone $pendingPayments)->sum('total_amount'),
                 'url' => route('admin.payments', ['payment_status' => 'unpaid']),
             ],
+            'publisher_debt' => $this->publisherDebt(),
+        ];
+    }
+
+    /**
+     * Outstanding publisher clawback debt (blocks their withdrawals).
+     *
+     * @return array{count: int, amount: float, rows: list<array<string, mixed>>, url: string}
+     */
+    public function publisherDebt(): array
+    {
+        $empty = [
+            'count' => 0,
+            'amount' => 0.0,
+            'rows' => [],
+            'url' => route('admin.finance').'#finance-debt',
+        ];
+
+        if (! Schema::hasColumn('wallets', 'debt_balance')) {
+            return $empty;
+        }
+
+        $query = Wallet::query()->where('debt_balance', '>', 0);
+        $publisherRoleId = Wallet::publisherRoleId();
+        if ($publisherRoleId) {
+            $query->where('role_id', $publisherRoleId);
+        }
+
+        $rows = (clone $query)
+            ->with('user:id,name,email')
+            ->orderByDesc('debt_balance')
+            ->limit(8)
+            ->get()
+            ->map(fn (Wallet $wallet) => [
+                'user_id' => $wallet->user_id,
+                'name' => $wallet->user?->name ?? 'User #'.$wallet->user_id,
+                'email' => $wallet->user?->email,
+                'debt' => round((float) $wallet->debt_balance, 2),
+                'url' => route('admin.finance.user', $wallet->user_id),
+            ])
+            ->all();
+
+        return [
+            'count' => (clone $query)->count(),
+            'amount' => round((float) (clone $query)->sum('debt_balance'), 2),
+            'rows' => $rows,
+            'url' => route('admin.finance').'#finance-debt',
         ];
     }
 
@@ -230,7 +277,7 @@ class FinanceOverviewService
             'email' => $w->user?->email,
             'net_amount' => (float) $w->net_amount,
             'status' => $w->status,
-            'url' => route('admin.withdrawals'),
+            'url' => route('admin.withdrawals', ['search' => (string) $w->id, 'queue' => 'open']),
         ])->all();
 
         // What admin must send outside the app today (payout queue).
@@ -567,6 +614,7 @@ class FinanceOverviewService
             ['section' => 'ops', 'metric' => 'user_marked_paid_deposits', 'value' => $data['ops']['pending_deposits']['user_marked_paid_amount']],
             ['section' => 'ops', 'metric' => 'open_withdrawals', 'value' => $data['ops']['open_withdrawals']['amount']],
             ['section' => 'ops', 'metric' => 'unpaid_orders', 'value' => $data['ops']['unpaid_orders']['amount']],
+            ['section' => 'ops', 'metric' => 'publisher_debt', 'value' => $data['ops']['publisher_debt']['amount']],
         ];
     }
 

@@ -11,6 +11,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\UploadedFile;
@@ -836,6 +837,25 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotEmpty($fresh->articleHistory());
     }
 
+    public function test_editor_rejects_embedded_data_images_instead_of_saving_them(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $response = $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Updated body</p><p><img src="data:image/png;base64,iVBORw0KGgo=" alt=""></p>',
+                'title' => $submission->title,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ]);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $this->assertStringContainsString('image button', (string) $response->json('message'));
+        $this->assertSame($original, (string) $submission->fresh()->preview_html);
+    }
+
     public function test_editor_media_image_src_is_persisted_as_storage_path(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -890,11 +910,14 @@ class ContentLibraryImprovementsTest extends TestCase
     {
         Storage::fake('public');
         $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
         $file = UploadedFile::fake()->image('figure.png', 40, 40);
 
         $response = $this->actingAs($advertiser)
             ->postJson(route('advertiser.content-submissions.editor-image'), [
                 'image' => $file,
+                'content_submission_id' => $submission->id,
+                'current_image_count' => 9,
             ])
             ->assertOk()
             ->assertJsonPath('success', true)
@@ -902,6 +925,173 @@ class ContentLibraryImprovementsTest extends TestCase
 
         $url = (string) $response->json('url');
         $this->assertStringStartsWith('/storage/content-articles/', $url);
+    }
+
+    public function test_editor_image_upload_is_rejected_at_the_ten_image_cap(): void
+    {
+        Storage::fake('public');
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $file = UploadedFile::fake()->image('figure.png', 40, 40);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.editor-image'), [
+                'image' => $file,
+                'content_submission_id' => $submission->id,
+                'current_image_count' => ContentUploadService::IMAGE_MAX_PER_ARTICLE,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $this->assertSame([], Storage::disk('public')->allFiles());
+    }
+
+    public function test_editor_save_accepts_ten_images_and_rejects_eleven(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $this->articleHtmlWithImages(ContentUploadService::IMAGE_MAX_PER_ARTICLE),
+                'title' => $submission->title,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame(
+            ContentUploadService::IMAGE_MAX_PER_ARTICLE,
+            (new ArticleHtmlSanitizer)->countImages((string) $submission->fresh()->preview_html)
+        );
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $this->articleHtmlWithImages(ContentUploadService::IMAGE_MAX_PER_ARTICLE + 1),
+                'title' => $submission->title,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $this->assertSame(
+            ContentUploadService::IMAGE_MAX_PER_ARTICLE,
+            (new ArticleHtmlSanitizer)->countImages((string) $submission->fresh()->preview_html)
+        );
+        $this->assertNotSame($original, (string) $submission->fresh()->preview_html);
+    }
+
+    public function test_evaluation_rejects_articles_that_already_have_more_than_ten_images(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $html = $this->articleHtmlWithImages(11);
+        $submission->update([
+            'preview_html' => $html,
+            'extracted_text' => (new ArticleHtmlSanitizer)->htmlToPlainText($html),
+            'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            'image_rights_declared_at' => now(),
+        ]);
+
+        $result = app(ContentUploadService::class)->reEvaluateSubmission($submission->fresh(), false);
+
+        $this->assertFalse($result['approved']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $result['submission']->moderation_status);
+        $this->assertSame(ContentUploadService::tooManyImagesMessage(), $result['message']);
+        $this->assertSame(
+            11,
+            (new ArticleHtmlSanitizer)->countImages((string) $result['submission']->preview_html)
+        );
+        $this->assertSame(ContentUploadService::tooManyImagesMessage(), $result['submission']->editorNotice());
+    }
+
+    public function test_preview_link_save_rejects_eleven_images_and_keeps_approval(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'tool A', 'url' => 'https://example.com/a'],
+                ],
+                'preview_html' => $this->articleHtmlWithImages(11),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $fresh = $submission->fresh();
+        $this->assertSame($original, (string) $fresh->preview_html);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertSame('https://example.com/tools', $fresh->target_url);
+    }
+
+    public function test_preview_html_patch_does_not_leave_approved_article_processing(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'preview_html' => $this->articleHtmlWithImages(11),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_preview_link_save_requires_image_rights_when_adding_pictures(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'helpful guide', 'url' => 'https://example.com/new-guide'],
+                ],
+                'preview_html' => $this->articleHtmlWithImages(1),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('needs_image_rights', true);
+
+        $fresh = $submission->fresh();
+        $this->assertSame($original, (string) $fresh->preview_html);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+    }
+
+    public function test_editor_save_does_not_keep_a_rights_declaration_when_eleven_images_are_rejected(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $this->assertNull($submission->image_rights);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $this->articleHtmlWithImages(11),
+                'title' => $submission->title,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->image_rights);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
     }
 
     public function test_editor_image_php_reject_does_not_blame_article_docx_cap(): void
@@ -921,7 +1111,22 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('image could not be uploaded', $message);
         $this->assertStringNotContainsString('.docx', $message);
         $this->assertStringNotContainsString('over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('under 5 MB', $message);
         $this->assertStringNotContainsString('upload_max_filesize', $message);
+    }
+
+    public function test_editor_image_over_five_mb_is_blamed_on_the_image_cap(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.editor-image').'?client_bytes='.(6 * 1024 * 1024), [])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath(
+                'message',
+                'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
+            );
     }
 
     public function test_content_library_preview_modal_exposes_external_link_rows(): void
@@ -953,6 +1158,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->getContent();
 
         $this->assertStringContainsString('id="articlePreviewEditBtn"', $library);
+        $this->assertStringContainsString('id="articleEditorImageCount"', $library);
         $this->assertStringContainsString('id="articleImageRemoveBtn"', $library);
         $this->assertStringContainsString('article-img-remove', $library);
         $this->assertStringContainsString('aria-label="Remove image"', $library);
@@ -1322,6 +1528,17 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Your session expired', $js);
         $this->assertStringContainsString('Too many upload attempts', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);
+        $this->assertStringContainsString('LIBRARY_IMAGE_MAX_BYTES = 5120 * 1024', $js);
+        $this->assertStringContainsString('LIBRARY_IMAGE_MAX_PER_ARTICLE = 10', $js);
+        $this->assertStringContainsString('function libraryTooManyImagesMessage', $js);
+        $this->assertStringContainsString('function editorImageCount', $js);
+        $this->assertStringContainsString('content_submission_id', $js);
+        $this->assertStringContainsString('current_image_count', $js);
+        $this->assertSame(10, ContentUploadService::IMAGE_MAX_PER_ARTICLE);
+        $this->assertStringContainsString('function librarySizeAwareImageMessage', $js);
+        $this->assertStringContainsString('function uploadEditorImageFile', $js);
+        $this->assertStringContainsString('function bindEditorImagePasteAndDrop', $js);
+        $this->assertStringNotContainsString("? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'", $js);
         $this->assertStringContainsString('The article editor failed to load', $js);
         $this->assertStringContainsString('editor_notice', $js);
         $this->assertStringContainsString('function submissionForEditor', $js);
@@ -1860,6 +2077,16 @@ class ContentLibraryImprovementsTest extends TestCase
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
+    }
+
+    private function articleHtmlWithImages(int $count): string
+    {
+        $html = '<p>This is a compliant marketing article about software tools and productivity tips for teams working on digital projects worldwide.</p>';
+        for ($i = 1; $i <= $count; $i++) {
+            $html .= '<p><img src="/storage/content-articles/demo-'.$i.'.png" alt="Fig '.$i.'"></p>';
+        }
+
+        return $html;
     }
 
     private function extractHtmlBetween(string $html, string $startNeedle, string $endNeedle): string

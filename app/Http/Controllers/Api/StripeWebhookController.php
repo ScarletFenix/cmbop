@@ -216,6 +216,11 @@ class StripeWebhookController extends Controller
             throw new \RuntimeException('No reference_code found for order payment session');
         }
 
+        $paymentStatus = $session->payment_status ?? null;
+        if ($paymentStatus !== 'paid') {
+            throw new \RuntimeException('order_payment session not paid: '.($paymentStatus ?? 'missing'));
+        }
+
         $paymentService = app(OrderPaymentService::class);
         $newlyPaid = $paymentService->markOrdersPaidFromStripeSession($referenceCode, $session);
 
@@ -259,6 +264,11 @@ class StripeWebhookController extends Controller
         $referenceCode = $metadata['reference_code'] ?? null;
         if (! $referenceCode) {
             throw new \RuntimeException('No reference_code on order_payment PaymentIntent');
+        }
+
+        $intentStatus = $intent->status ?? null;
+        if ($intentStatus !== 'succeeded') {
+            throw new \RuntimeException('order_payment PaymentIntent not succeeded: '.($intentStatus ?? 'missing'));
         }
 
         $paymentService = app(OrderPaymentService::class);

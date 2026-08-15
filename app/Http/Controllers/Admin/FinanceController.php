@@ -8,12 +8,17 @@ use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Admin\FinanceOverviewService;
 use App\Services\Orders\OrderClawbackService;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class FinanceController extends Controller
 {
+    public const LEDGER_EXPORT_LIMIT = 10000;
+
     public function __construct(
         private FinanceOverviewService $finance,
     ) {}
@@ -45,8 +50,11 @@ class FinanceController extends Controller
      */
     public function ledger(Request $request)
     {
-        $query = WalletTransaction::with(['user:id,name,email', 'wallet:id,role_id'])
-            ->latest();
+        $search = is_string($request->input('search')) ? trim($request->input('search')) : '';
+        $userId = (int) $request->input('user_id');
+        $ledgerUser = $userId > 0
+            ? User::query()->whereKey($userId)->first(['id', 'name', 'email'])
+            : null;
 
         if ($request->filled('type')) {
             $query->where('type', $request->type);
@@ -80,22 +88,71 @@ class FinanceController extends Controller
             $query->whereDate('created_at', '<=', $dates['date_to']);
         }
 
-        $transactions = $query->paginate(40)->withQueryString();
+        $types = $this->ledgerTypes();
 
-        $types = [
-            WalletTransaction::TYPE_DEPOSIT,
-            WalletTransaction::TYPE_BONUS_CREDIT,
-            WalletTransaction::TYPE_PURCHASE,
-            WalletTransaction::TYPE_REFUND,
-            WalletTransaction::TYPE_WITHDRAWAL,
-            WalletTransaction::TYPE_ADJUSTMENT,
-            WalletTransaction::TYPE_TRANSFER_OUT,
-            WalletTransaction::TYPE_TRANSFER_IN,
-            WalletTransaction::TYPE_ROLE_MOVE_OUT,
-            WalletTransaction::TYPE_ROLE_MOVE_IN,
-        ];
+        return view('admin.finance-ledger', compact(
+            'transactions',
+            'types',
+            'search',
+            'ledgerUser'
+        ));
+    }
 
-        return view('admin.finance-ledger', compact('transactions', 'types'));
+    /**
+     * CSV of the current ledger filters (not the period summary).
+     */
+    public function ledgerExport(Request $request): StreamedResponse
+    {
+        $query = $this->ledgerQuery($request)->with(['user:id,name,email']);
+        $filename = 'wallet-ledger-'.now()->format('Y-m-d-His').'.csv';
+
+        return response()->streamDownload(function () use ($query) {
+            $out = fopen('php://output', 'w');
+            fputcsv($out, [
+                'id',
+                'created_at',
+                'user_id',
+                'user_name',
+                'user_email',
+                'type',
+                'direction',
+                'amount',
+                'bonus_amount',
+                'balance_after',
+                'reference',
+                'description',
+            ]);
+
+            $exported = 0;
+            $query->chunkById(500, function ($rows) use ($out, &$exported) {
+                foreach ($rows as $tx) {
+                    if ($exported >= self::LEDGER_EXPORT_LIMIT) {
+                        return false;
+                    }
+                    fputcsv($out, [
+                        $tx->id,
+                        optional($tx->created_at)?->toDateTimeString(),
+                        $tx->user_id,
+                        $tx->user?->name,
+                        $tx->user?->email,
+                        $tx->type,
+                        $tx->direction,
+                        $tx->amount,
+                        $tx->bonus_amount,
+                        $tx->balance_after,
+                        $tx->reference,
+                        $tx->description,
+                    ]);
+                    $exported++;
+                }
+
+                return $exported < self::LEDGER_EXPORT_LIMIT;
+            });
+
+            fclose($out);
+        }, $filename, [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     /**

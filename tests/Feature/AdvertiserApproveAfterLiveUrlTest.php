@@ -8,7 +8,9 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutSchemaService;
 use App\Services\LiveUrlHealthChecker;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
@@ -161,7 +163,7 @@ class AdvertiserApproveAfterLiveUrlTest extends TestCase
 
         // Stub the healer so it cannot re-add the column mid-request — we want the
         // refreshCompletedOrdersCount guard path, not silent schema repair.
-        $this->mock(\App\Services\CheckoutSchemaService::class, function ($mock) {
+        $this->mock(CheckoutSchemaService::class, function ($mock) {
             $mock->shouldReceive('ensureCheckoutTables')->andReturnNull();
             $mock->shouldReceive('filterExistingColumns')
                 ->andReturnUsing(function (string $table, array $payload) {
@@ -299,7 +301,7 @@ class AdvertiserApproveAfterLiveUrlTest extends TestCase
         $this->assertNotEmpty($item->fresh()->live_url);
 
         // Exact Hostinger failure mode from production: counter column never migrated.
-        $this->mock(\App\Services\CheckoutSchemaService::class, function ($mock) {
+        $this->mock(CheckoutSchemaService::class, function ($mock) {
             $mock->shouldReceive('ensureCheckoutTables')->andReturnNull();
             $mock->shouldReceive('filterExistingColumns')
                 ->andReturnUsing(function (string $table, array $payload) {
@@ -376,7 +378,7 @@ class AdvertiserApproveAfterLiveUrlTest extends TestCase
             try {
                 Site::query()->where('id', $site->id)->update(['completed_orders_count' => 1]);
                 $this->fail('Expected QueryException when updating missing completed_orders_count');
-            } catch (\Illuminate\Database\QueryException $e) {
+            } catch (QueryException $e) {
                 $this->assertStringContainsString('completed_orders_count', $e->getMessage());
             }
 
@@ -400,7 +402,7 @@ class AdvertiserApproveAfterLiveUrlTest extends TestCase
         // Force a 500 by approving while processing (not the happy path message gate —
         // simulate an unexpected throw via a bogus order id after auth).
         // Instead: break filterExistingColumns to throw inside the transaction.
-        $this->mock(\App\Services\CheckoutSchemaService::class, function ($mock) {
+        $this->mock(CheckoutSchemaService::class, function ($mock) {
             $mock->shouldReceive('ensureCheckoutTables')->andReturnNull();
             $mock->shouldReceive('filterExistingColumns')
                 ->andThrow(new \RuntimeException('simulated approve failure for debug payload'));
@@ -418,5 +420,62 @@ class AdvertiserApproveAfterLiveUrlTest extends TestCase
             ->assertJsonPath('success', false)
             ->assertJsonPath('message', 'simulated approve failure for debug payload')
             ->assertJsonPath('debug', 'RuntimeException: simulated approve failure for debug payload');
+    }
+
+    public function test_recheck_live_url_updates_the_only_placement(): void
+    {
+        [$advertiser, , , $order, $item] = $this->paidProcessingOrder();
+        $item->update([
+            'live_url' => 'https://approve-after-live.example/published-post',
+            'live_url_submitted_at' => now(),
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.recheck-live-url', $order->id))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('live_url_check.ok', true);
+
+        if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
+            $this->assertTrue((bool) $item->fresh()->live_url_check_ok);
+        }
+    }
+
+    public function test_recheck_live_url_requires_a_line_on_multi_item_orders(): void
+    {
+        [$advertiser, , $site, $order, $first] = $this->paidProcessingOrder();
+        $first->update([
+            'live_url' => 'https://approve-after-live.example/first',
+            'live_url_submitted_at' => now(),
+        ]);
+        $second = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 80,
+            'content_link' => 'https://example.com/second.docx',
+            'live_url' => 'https://approve-after-live.example/second',
+            'live_url_submitted_at' => now(),
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.recheck-live-url', $order->id))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.recheck-live-url', $order->id), [
+                'order_item_id' => $second->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        if (Schema::hasColumn('order_items', 'live_url_check_ok')) {
+            $this->assertTrue((bool) $second->fresh()->live_url_check_ok);
+            $this->assertNotTrue((bool) $first->fresh()->live_url_check_ok);
+        }
     }
 }

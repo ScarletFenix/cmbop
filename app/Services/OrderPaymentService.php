@@ -10,6 +10,7 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Services\Advertiser\SpendBudgetService;
+use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Collection;
@@ -434,7 +435,6 @@ class OrderPaymentService
             $schedule = is_array($package['schedule'] ?? null) ? $package['schedule'] : ['mode' => 'immediate', 'timezone' => 'UTC'];
             $lines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
             $orders = collect();
-            $takenSiteIds = $this->cardOrderSiteIdsForReference($referenceCode);
 
             $sessionId = (string) ($session->id ?? '');
             $isPaymentIntent = ($session->object ?? null) === 'payment_intent'
@@ -450,11 +450,14 @@ class OrderPaymentService
                 }
 
                 $siteId = isset($line['site_id']) ? (int) $line['site_id'] : 0;
-                if ($siteId > 0 && isset($takenSiteIds[$siteId])) {
-                    continue;
-                }
-
                 $lineKey = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
+
+                $submissionId = (int) ($line['content_submission_id'] ?? 0);
+                $submission = $submissionId > 0
+                    ? ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first()
+                    : null;
+                $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
+
                 $order = $this->createPaidCardOrderRow($schema, [
                     'user_id' => $userId,
                     'reference_code' => $referenceCode,
@@ -482,11 +485,9 @@ class OrderPaymentService
                     continue;
                 }
 
-                $submissionId = (int) ($line['content_submission_id'] ?? 0);
-                $submission = $submissionId > 0 ? ContentSubmission::query()->find($submissionId) : null;
-
                 $siteId = isset($line['site_id']) ? (int) $line['site_id'] : 0;
                 $site = $siteId > 0 ? Site::query()->find($siteId) : null;
+                $attachSubmission = $submission && ! $articleTaken;
 
                 $itemPayload = [
                     'order_id' => $order->id,
@@ -495,15 +496,15 @@ class OrderPaymentService
                     'site_url' => $line['site_url'] ?? $site?->site_url,
                     'price' => $line['price'] ?? 0,
                     'content_link' => $line['content_link'] ?? null,
-                    'content_submission_id' => $submission?->id,
-                    'content_disk' => $submission?->disk ?? ($line['content_disk'] ?? null),
-                    'content_path' => $submission?->path ?? ($line['content_path'] ?? null),
-                    'content_original_name' => $submission?->original_filename ?? ($line['content_original_name'] ?? null),
-                    'content_mime' => $submission?->mime ?? ($line['content_mime'] ?? null),
-                    'anchor_text' => $submission?->anchor_text ?? ($line['anchor_text'] ?? null),
-                    'target_url' => $submission?->target_url ?? ($line['target_url'] ?? null),
-                    'feature_image_url' => $submission?->feature_image_url ?? ($line['feature_image_url'] ?? null),
-                    'moderation_status' => $submission?->moderation_status ?? ($line['moderation_status'] ?? null),
+                    'content_submission_id' => $attachSubmission ? $submission->id : null,
+                    'content_disk' => $attachSubmission ? $submission->disk : ($line['content_disk'] ?? null),
+                    'content_path' => $attachSubmission ? $submission->path : ($line['content_path'] ?? null),
+                    'content_original_name' => $attachSubmission ? $submission->original_filename : ($line['content_original_name'] ?? null),
+                    'content_mime' => $attachSubmission ? $submission->mime : ($line['content_mime'] ?? null),
+                    'anchor_text' => $attachSubmission ? $submission->anchor_text : ($line['anchor_text'] ?? null),
+                    'target_url' => $attachSubmission ? $submission->target_url : ($line['target_url'] ?? null),
+                    'feature_image_url' => $attachSubmission ? $submission->feature_image_url : ($line['feature_image_url'] ?? null),
+                    'moderation_status' => $attachSubmission ? $submission->moderation_status : ($line['moderation_status'] ?? null),
                     'sensitive_type' => $line['sensitive_type'] ?? null,
                     'additional_price' => $line['additional_price'] ?? 0,
                     'homepage_days' => $line['homepage_days'] ?? null,
@@ -516,6 +517,20 @@ class OrderPaymentService
                 ];
 
                 $item = OrderItem::create($schema->filterExistingColumns('order_items', $itemPayload));
+
+                if ($articleTaken) {
+                    app(OrderRefundService::class)->cancelAndRefund(
+                        $order,
+                        'Content Library article was already purchased on another checkout'
+                    );
+                    Log::warning('Refunded duplicate Content Library Stripe checkout', [
+                        'reference_code' => $referenceCode,
+                        'order_id' => $order->id,
+                        'content_submission_id' => $submission?->id,
+                    ]);
+
+                    continue;
+                }
 
                 if ($submission) {
                     $subPayload = [
@@ -534,9 +549,6 @@ class OrderPaymentService
                 }
 
                 $orders->push($order->fresh('items'));
-                if ($siteId > 0) {
-                    $takenSiteIds[$siteId] = true;
-                }
             }
 
             return $orders;
@@ -546,6 +558,7 @@ class OrderPaymentService
             $existing = Order::query()
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
+                ->where('status', '!=', 'cancelled')
                 ->get();
             if ($existing->isNotEmpty()) {
                 return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
@@ -620,24 +633,6 @@ class OrderPaymentService
     }
 
     /**
-     * @return array<int, true>
-     */
-    private function cardOrderSiteIdsForReference(string $referenceCode): array
-    {
-        $ids = OrderItem::query()
-            ->whereHas('order', function ($query) use ($referenceCode) {
-                $query->where('reference_code', $referenceCode)
-                    ->where('payment_method', 'card');
-            })
-            ->pluck('site_id')
-            ->filter()
-            ->map(fn ($id) => (int) $id)
-            ->all();
-
-        return array_fill_keys($ids, true);
-    }
-
-    /**
      * Insert a paid card order, retrying order_number collisions.
      * Returns null only when this checkout line was already inserted (line-key race).
      *
@@ -675,8 +670,10 @@ class OrderPaymentService
 
     private function checkoutLineKey(string $referenceCode, int $siteId, int $index): string
     {
+        // Qty>1 on one site is a real cart (two articles, two placements).
+        // Deduping by site_id dropped the extra copies after Stripe charged them.
         return $siteId > 0
-            ? $referenceCode.':site:'.$siteId
+            ? $referenceCode.':site:'.$siteId.':line:'.$index
             : $referenceCode.':line:'.$index;
     }
 

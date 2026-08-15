@@ -271,4 +271,57 @@ class AutoApproveMultiItemTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
         $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
+
+    public function test_admin_restart_review_does_not_double_pay_an_already_approved_item(): void
+    {
+        $fx = $this->twoItemWalletOrder(false);
+        $adminRole = Role::firstOrCreate(['name' => 'admin']);
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        Artisan::call('orders:auto-approve');
+
+        $firstPayout = (float) Wallet::query()
+            ->where('user_id', $fx['pubOne']->id)
+            ->where('role_id', Wallet::publisherRoleId())
+            ->value('balance');
+        $this->assertGreaterThan(0, $firstPayout);
+        $this->assertTrue((bool) $fx['first']->fresh()->auto_approve_triggered);
+
+        $this->actingAs($admin)->post(
+            route('admin.orders.status', $fx['order']->id),
+            ['status' => 'processing', 'reason' => 'Move off review so the window can be restarted.']
+        )->assertRedirect();
+
+        $this->actingAs($admin)->post(
+            route('admin.orders.status', $fx['order']->id),
+            ['status' => 'review', 'reason' => 'Advertiser never got the review prompt.']
+        )->assertRedirect();
+
+        $first = $fx['first']->fresh();
+        $this->assertTrue($first->isPayoutComplete());
+        $this->assertTrue((bool) $first->auto_approve_triggered);
+
+        Artisan::call('orders:auto-approve');
+
+        $this->assertEqualsWithDelta(
+            $firstPayout,
+            (float) Wallet::query()
+                ->where('user_id', $fx['pubOne']->id)
+                ->where('role_id', Wallet::publisherRoleId())
+                ->value('balance'),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            0.0,
+            (float) Wallet::query()
+                ->where('user_id', $fx['pubTwo']->id)
+                ->where('role_id', Wallet::publisherRoleId())
+                ->value('balance'),
+            0.01
+        );
+    }
 }

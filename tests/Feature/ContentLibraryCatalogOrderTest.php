@@ -157,4 +157,35 @@ class ContentLibraryCatalogOrderTest extends TestCase
         $this->assertNotNull($article->fresh()->order_id);
         $this->assertNotNull($usSite);
     }
+
+    public function test_catalog_array_content_submission_id_attaches_the_named_article(): void
+    {
+        $advertiser = $this->advertiser();
+        $first = $this->createApprovedSubmission($advertiser);
+        $second = $this->createApprovedSubmission($advertiser);
+        $this->assertSame(1, (int) [$second->id], 'PHP casts a non-empty array to 1.');
+        $this->assertNotSame($first->id, $second->id);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', [
+                'content_submission_id' => [$second->id],
+            ]))
+            ->assertOk();
+
+        $this->assertSame($second->id, session('checkout_content_submission_id'));
+    }
+
+    public function test_catalog_garbage_array_content_submission_id_does_not_attach_article_one(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog', [
+                'content_submission_id' => ['nope'],
+            ]))
+            ->assertOk();
+
+        $this->assertNull(session('checkout_content_submission_id'));
+    }
 }

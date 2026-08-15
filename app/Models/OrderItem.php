@@ -649,7 +649,14 @@ class OrderItem extends Model
             ->where('order_id', $orderId)
             ->whereNotNull('live_url')
             ->where('live_url', '!=', '')
-            ->update($payload);
+            ->get()
+            ->each(function (self $item) use ($payload) {
+                if ($item->isPayoutComplete()) {
+                    return;
+                }
+
+                $item->update($payload);
+            });
     }
 
     /**
@@ -704,8 +711,8 @@ class OrderItem extends Model
             return false;
         }
 
-        // Must not already be auto-approved
-        if ($this->isAutoApproved()) {
+        // Must not already be auto-approved or otherwise paid out
+        if ($this->isAutoApproved() || $this->isPayoutComplete()) {
             return false;
         }
 
@@ -758,7 +765,8 @@ class OrderItem extends Model
 
         if ($this->isModificationRequested()
             || $this->isContentRevisionRequested()
-            || $this->isAutoApproved()) {
+            || $this->isAutoApproved()
+            || $this->isPayoutComplete()) {
             return false;
         }
 

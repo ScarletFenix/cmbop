@@ -122,22 +122,7 @@ class AdminOrderStatusOverride
      */
     private function restartReviewWindow(Order $order): void
     {
-        OrderItem::where('order_id', $order->id)
-            ->whereNotNull('live_url')
-            ->where('live_url', '!=', '')
-            ->get()
-            ->each(function (OrderItem $item) {
-                $payload = [
-                    'live_url_submitted_at' => now(),
-                    'auto_approve_triggered' => false,
-                ];
-
-                if (array_key_exists('auto_approve_reminder_sent_at', $item->getAttributes())) {
-                    $payload['auto_approve_reminder_sent_at'] = null;
-                }
-
-                $item->update($payload);
-            });
+        OrderItem::restartAutoApproveClocksForOrder((int) $order->id);
     }
 
     private function announce(Order $order, string $from, string $target, string $reason): void

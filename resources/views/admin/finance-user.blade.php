@@ -157,7 +157,9 @@
                         <tbody>
                             @forelse($dossier['deposits'] as $dep)
                                 <tr>
-                                    <td class="small">{{ $dep->reference_code }}</td>
+                                    <td class="small">
+                                        <a href="{{ route('admin.deposits', ['search' => $dep->reference_code]) }}">{{ $dep->reference_code }}</a>
+                                    </td>
                                     <td>{{ $euro($dep->amount) }}</td>
                                     <td class="small">{{ $dep->payment_method }}</td>
                                     <td class="small">{{ $dep->status }}</td>
@@ -177,7 +179,9 @@
                         <tbody>
                             @forelse($dossier['orders'] as $order)
                                 <tr>
-                                    <td class="small">{{ $order->order_number ?? '#'.$order->id }}</td>
+                                    <td class="small">
+                                        <a href="{{ route('admin.orders.show', $order->id) }}">{{ $order->order_number ?? '#'.$order->id }}</a>
+                                    </td>
                                     <td>{{ $euro($order->total_amount) }}</td>
                                     <td class="small">{{ $order->payment_method }} / {{ $order->payment_status }}</td>
                                     <td class="small">{{ $order->status }}</td>
@@ -199,7 +203,12 @@
                         <tbody>
                             @forelse($dossier['withdrawals'] as $w)
                                 <tr>
-                                    <td class="small">WD-{{ $w->id }}</td>
+                                    <td class="small">
+                                        <a href="{{ route('admin.withdrawals', array_filter([
+                                            'search' => (string) $w->id,
+                                            'queue' => in_array($w->status, ['completed', 'cancelled'], true) ? 'history' : 'open',
+                                        ])) }}">WD-{{ $w->id }}</a>
+                                    </td>
                                     <td>{{ $euro($w->net_amount) }}</td>
                                     <td class="small">{{ $w->payment_method }}</td>
                                     <td class="small">{{ $w->publisher_status_label }}</td>

@@ -1157,11 +1157,14 @@ document.addEventListener('click', function(e){
 document.addEventListener('click', async function(e){
     const enrichBtn = e.target.closest('.enrich-site');
     const shotBtn = e.target.closest('.refresh-screenshot');
-    if(!enrichBtn && !shotBtn) return;
+    const unlockBtn = e.target.closest('.allow-api-overwrite');
+    if(!enrichBtn && !shotBtn && !unlockBtn) return;
 
-    const btn = enrichBtn || shotBtn;
+    const btn = enrichBtn || shotBtn || unlockBtn;
     const id = btn.dataset.id;
-    const url = enrichBtn ? `${STAFF_BASE}/sites/${id}/enrich` : `${STAFF_BASE}/sites/${id}/refresh-screenshot`;
+    const url = unlockBtn
+        ? `${STAFF_BASE}/sites/${id}/allow-api-metrics`
+        : (enrichBtn ? `${STAFF_BASE}/sites/${id}/enrich` : `${STAFF_BASE}/sites/${id}/refresh-screenshot`);
     btn.disabled = true;
     try {
         const res = await fetch(url, {
@@ -1172,16 +1175,17 @@ document.addEventListener('click', async function(e){
                 'Content-Type': 'application/json',
             },
             // Queue jobs — sync capture blocks the UI for tens of seconds.
-            body: JSON.stringify({ sync: false }),
+            body: JSON.stringify(unlockBtn ? {} : { sync: false }),
         });
         const data = await res.json();
+        const okLabel = unlockBtn ? 'API overwrite allowed' : (enrichBtn ? 'Enrichment queued' : 'Screenshot queued');
         toast(
-            data.message || (data.success ? (enrichBtn ? 'Enrichment queued' : 'Screenshot queued') : 'Failed'),
+            data.message || (data.success ? okLabel : 'Failed'),
             data.success ? 'success' : 'error'
         );
         // Do not reload the whole publisher list after queueing — keep the UI snappy.
     } catch (err) {
-        toast('Enrichment request failed', 'error');
+        toast(unlockBtn ? 'Could not unlock API overwrite' : 'Enrichment request failed', 'error');
     } finally {
         btn.disabled = false;
     }
@@ -1541,7 +1545,10 @@ function renderSites(data){
             const enrichItems = (IS_MARKETING_EDITOR && listingLocked)
                 ? ''
                 : `<li><button type="button" class="dropdown-item enrich-site" data-id="${site.id}"><i class="fa fa-sync me-2"></i>Enrich</button></li>
-                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>`;
+                        <li><button type="button" class="dropdown-item refresh-screenshot" data-id="${site.id}"><i class="fa fa-camera me-2"></i>Shot</button></li>`
+                    + (site.metrics_manual
+                        ? `<li><button type="button" class="dropdown-item allow-api-overwrite" data-id="${site.id}"><i class="fa fa-unlock me-2"></i>Allow API overwrite</button></li>`
+                        : '');
 
             const deleteItem = canDeleteSiteRow(site)
                 ? `<li><button type="button" class="dropdown-item text-danger delete-site" data-id="${site.id}"><i class="fa fa-trash me-2"></i>Delete</button></li>`

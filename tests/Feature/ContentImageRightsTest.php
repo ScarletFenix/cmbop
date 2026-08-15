@@ -244,7 +244,44 @@ class ContentImageRightsTest extends TestCase
             ->assertJsonPath('success', true)
             ->assertJsonPath('has_images', true)
             ->assertJsonPath('needs_image_rights', true)
-            ->assertJsonPath('image_rights_covers', false);
+            ->assertJsonPath('image_rights_covers', false)
+            ->assertJsonPath('can_order', false)
+            ->assertJsonPath(
+                'editor_notice',
+                'This article contains images. Confirm you own them, or add the source URL or copyright details.'
+            );
+
+        $this->assertFalse($submission->fresh()->canBeOrdered());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+    }
+
+    public function test_preview_shows_the_language_mismatch_when_reopening_the_editor(): void
+    {
+        $advertiser = $this->advertiser();
+        $message = 'Article language looks like FR, but you selected DE. Write the article in DE, or change the language selection to match.';
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluation_status' => 'rejected',
+            'evaluation_report' => [
+                'summary' => $message,
+                'checks' => [[
+                    'key' => 'language_match',
+                    'label' => 'Article language',
+                    'status' => 'fail',
+                    'detail' => $message,
+                ]],
+            ],
+        ]);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.preview', $submission))
+            ->assertOk()
+            ->assertJsonPath('editor_notice', $message)
+            ->assertJsonPath('editor_notice_ok', false)
+            ->assertJsonPath('can_order', false);
     }
 
     public function test_library_upload_rejects_an_unpaired_market_as_json(): void

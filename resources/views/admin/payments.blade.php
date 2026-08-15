@@ -213,6 +213,14 @@ function escapeHtml(value) {
         .replace(/'/g, '&#39;');
 }
 
+const PAYMENTS_DATA = @json(route('admin.payments.data'));
+const PAYMENTS_UPDATE = @json(route('admin.payments.updateStatus', ['id' => '__ID__']));
+const ORDERS_SHOW = @json(route('admin.orders.show', ['id' => '__ID__']));
+
+function paymentUrl(template, id) {
+    return String(template).replace('__ID__', encodeURIComponent(id));
+}
+
 $(document).ready(function() {
     // Support deep-links from ops dashboard, e.g. ?payment_status=unpaid&search=ORD-123
     const params = new URLSearchParams(window.location.search);
@@ -285,12 +293,12 @@ $(document).ready(function() {
         $btn.prop('disabled', true).html('<i class="fa fa-spinner fa-spin"></i> Updating...');
         
         $.ajax({
-            url: '/admin/payments/' + orderId + '/update-status',
+            url: paymentUrl(PAYMENTS_UPDATE, orderId),
             method: 'POST',
             data: {
                 payment_status: newStatus,
                 notes: notes,
-                send_notification: sendNotification,
+                send_notification: sendNotification ? 1 : 0,
                 _token: '{{ csrf_token() }}'
             },
             success: function(response) {
@@ -325,7 +333,7 @@ $(document).ready(function() {
         );
         
         $.ajax({
-            url: '/admin/payments/data',
+            url: PAYMENTS_DATA,
             method: 'GET',
             data: {
                 page: page,
@@ -458,7 +466,7 @@ $(document).ready(function() {
             html += '<div class="dropdown admin-manage-dropdown">';
             html += '<button class="btn btn-sm btn-outline-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">Manage</button>';
             html += '<ul class="dropdown-menu dropdown-menu-end">';
-            html += '<li><a class="dropdown-item" href="/admin/orders/' + order.id + '"><i class="fa fa-shopping-bag me-2"></i>Open order</a></li>';
+            html += '<li><a class="dropdown-item" href="' + escapeHtml(paymentUrl(ORDERS_SHOW, order.id)) + '"><i class="fa fa-shopping-bag me-2"></i>Open order</a></li>';
             if (order.payment_status !== 'paid') {
                 html += '<li><button type="button" class="dropdown-item update-payment-btn" ';
                 html += 'data-id="' + escapeHtml(order.id) + '" ';

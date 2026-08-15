@@ -4,6 +4,7 @@ namespace App\Services\Orders;
 
 use App\Mail\DisputeClawbackPublisher;
 use App\Mail\DisputeRefundAdvertiser;
+use App\Models\ContentSubmission;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderItemDispute;
@@ -243,6 +244,8 @@ class OrderClawbackService
                     ]);
                 }
             }
+
+            ContentSubmission::releaseAllForOrderItem((int) $item->id);
 
             Log::info('Order item dispute upheld / clawback applied', [
                 'dispute_id' => $fresh->id,

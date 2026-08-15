@@ -52,6 +52,7 @@ use App\Models\DepositRequest;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemDispute;
 use App\Models\Site;
 use App\Models\SiteClaim;
 use App\Models\User;
@@ -484,6 +485,8 @@ class EmailCatalog
             'publisher_new_order' => new SiteOwnerOrderNotification($site, [$order]),
             'order_accepted' => new OrderAccepted($order, $item, $site),
             'order_rejected' => new OrderRejected($order, $item, $site, 'Sample rejection reason for preview.'),
+            'dispute_clawback_publisher' => new DisputeClawbackPublisher(self::sampleDispute(), $user, 100.0, 0.0),
+            'dispute_refund_advertiser' => new DisputeRefundAdvertiser(self::sampleDispute(), $user, 115.0),
             'live_url_submitted' => new LiveUrlSubmitted($order, $item, $site, 'https://example.com/sample-live-url'),
             'modification_requested' => new ModificationRequested($order, 'Please update the anchor text.'),
             'content_revision_requested' => new ContentRevisionRequested($order, $item, $site, 'Please send a cleaner draft with the correct brand mentions.'),
@@ -631,6 +634,27 @@ class EmailCatalog
         $item->setRelation('site', self::sampleSite());
 
         return $item;
+    }
+
+    protected static function sampleDispute(): OrderItemDispute
+    {
+        $order = self::sampleOrder();
+        $item = self::sampleOrderItem();
+        $dispute = new OrderItemDispute([
+            'order_id' => $order->id ?? 0,
+            'order_item_id' => $item->id ?? 0,
+            'status' => OrderItemDispute::STATUS_UPHELD,
+            'reason' => 'The live article was removed after completion (preview).',
+            'admin_notes' => 'Confirmed 404. Sample clawback notes for preview.',
+            'publisher_debited' => 100.00,
+            'advertiser_credited' => 115.00,
+            'debt_created' => 0,
+        ]);
+        $dispute->id = 0;
+        $dispute->setRelation('order', $order);
+        $dispute->setRelation('orderItem', $item);
+
+        return $dispute;
     }
 
     protected static function sampleSite(): Site

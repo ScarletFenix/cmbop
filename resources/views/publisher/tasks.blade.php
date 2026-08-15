@@ -1249,7 +1249,12 @@ $(document).ready(function() {
             var cancelBtn = '<button class="btn btn-outline-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Cancel order"><i class="fa fa-times"></i> Cancel</button>';
 
             var actions = '';
-            if (orderStatus === 'pending') {
+            var awaitingSchedule = !!(item.order && item.order.is_awaiting_scheduled_release);
+            if (orderStatus === 'pending' && awaitingSchedule) {
+                actions = '<div class="action-buttons">' +
+                    viewBtn + chatBtn +
+                    '</div>';
+            } else if (orderStatus === 'pending') {
                 actions = '<div class="action-buttons">' +
                     '<button class="btn btn-success btn-action-sm accept-task" data-id="' + item.id + '" aria-label="Accept order"><i class="fa fa-check"></i> Accept</button>' +
                     '<button class="btn btn-danger btn-action-sm reject-task" data-id="' + item.id + '" data-order-items="' + orderItemsCount + '" aria-label="Reject order"><i class="fa fa-times"></i> Reject</button>' +

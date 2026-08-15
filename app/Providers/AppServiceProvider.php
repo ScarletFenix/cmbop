@@ -13,6 +13,7 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
+use App\Support\BillingCustomerMailSuppressor;
 use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PublicStorageLink;
@@ -30,6 +31,7 @@ class AppServiceProvider extends ServiceProvider
     public function register(): void
     {
         $this->app->singleton(OrderLifecycleMailSuppressor::class);
+        $this->app->singleton(BillingCustomerMailSuppressor::class);
 
         // Blade views call these helpers on every form page. Composer "files"
         // autoload is enough after dump-autoload, but a deploy that only

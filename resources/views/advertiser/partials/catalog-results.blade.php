@@ -24,6 +24,8 @@
         || request()->input('quality') == '1'
         || request()->filled('rating_min')
         || request()->input('has_completions') == '1'
+        || request()->input('bulk_deals') == '1'
+        || request()->input('on_sale') == '1'
     );
     // Live results fragment may not inherit parent @php; compute recovery when empty.
     $catalogEmptyRecovery = $catalogEmptyRecovery ?? (

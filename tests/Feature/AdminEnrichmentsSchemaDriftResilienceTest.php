@@ -2,12 +2,14 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\EnrichSiteJob;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Queue;
 use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
@@ -66,7 +68,10 @@ class AdminEnrichmentsSchemaDriftResilienceTest extends TestCase
             ->get(route('admin.site-enrichment.index'))
             ->assertOk()
             ->assertDontSee('Something went wrong')
-            ->assertSee('Publisher Enrichment');
+            ->assertSee('Publisher Enrichment')
+            ->assertSee('Needs attention', false)
+            ->assertSee('No scans need attention.', false)
+            ->assertSee('Stale sites', false);
     }
 
     public function test_enrichment_index_ok_when_metrics_columns_missing(): void
@@ -90,6 +95,19 @@ class AdminEnrichmentsSchemaDriftResilienceTest extends TestCase
             ->assertStatus(422)
             ->assertJsonPath('success', false)
             ->assertJsonPath('count', 0);
+    }
+
+    public function test_queue_stale_works_when_runs_table_missing(): void
+    {
+        Schema::dropIfExists('site_enrichment_runs');
+        Queue::fake();
+
+        $this->actingAs($this->admin)
+            ->postJson(route('admin.site-enrichment.queue-stale'), ['limit' => 5])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Queue::assertPushed(EnrichSiteJob::class);
     }
 
     public function test_enrichment_index_ok_with_full_schema(): void

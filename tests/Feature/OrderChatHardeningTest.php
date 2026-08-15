@@ -184,6 +184,85 @@ class OrderChatHardeningTest extends TestCase
         $this->assertMatchesRegularExpression('/^chat_message:\d+$/', $keys[1]);
     }
 
+    public function test_unpaid_order_rejects_send_and_is_read_only(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $order = $this->orderFor($advertiser, $site);
+        $order->update([
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('chat.send', $order->id), ['message' => 'Can we start before payment?'])
+            ->assertStatus(422)
+            ->assertJsonPath('can_send', false)
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('chat.messages', $order->id))
+            ->assertOk()
+            ->assertJsonPath('can_send', false)
+            ->assertJsonPath('composer_note', 'Chat is available after the order is paid.');
+
+        $this->assertDatabaseMissing('order_chat_messages', [
+            'order_id' => $order->id,
+            'message' => 'Can we start before payment?',
+        ]);
+    }
+
+    public function test_publisher_unread_ignores_unpaid_and_cancelled_orders(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+
+        $unpaid = $this->orderFor($advertiser, $site);
+        $unpaid->update([
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+        OrderChatMessage::create([
+            'order_id' => $unpaid->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Unpaid chat should not badge',
+            'is_read' => false,
+        ]);
+
+        $cancelled = $this->orderFor($advertiser, $site, 'cancelled');
+        OrderChatMessage::create([
+            'order_id' => $cancelled->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Cancelled chat should not badge',
+            'is_read' => false,
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.unread-summary'))
+            ->assertOk()
+            ->assertJsonPath('unread_chat', 0);
+
+        $paid = $this->orderFor($advertiser, $site);
+        OrderChatMessage::create([
+            'order_id' => $paid->id,
+            'user_id' => $advertiser->id,
+            'sender_type' => 'advertiser',
+            'message' => 'Paid chat should badge',
+            'is_read' => false,
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('chat.unread-summary'))
+            ->assertOk()
+            ->assertJsonPath('unread_chat', 1);
+    }
+
     public function test_cancelled_order_rejects_send_completed_allows_send(): void
     {
         Mail::fake();

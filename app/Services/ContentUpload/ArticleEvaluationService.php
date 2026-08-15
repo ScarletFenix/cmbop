@@ -164,6 +164,43 @@ class ArticleEvaluationService
             ];
         }
 
+        $imageCount = (new ArticleHtmlSanitizer)->countImages($html);
+        if ($imageCount > ContentUploadService::IMAGE_MAX_PER_ARTICLE) {
+            $message = ContentUploadService::tooManyImagesMessage();
+            $report = [
+                'word_count' => str_word_count($text),
+                'summary' => $message,
+                'language' => $languageCheck,
+                'fix_hints' => [$message],
+                'matched_terms' => [],
+                'checks' => [[
+                    'key' => 'image_count',
+                    'label' => 'Image limit',
+                    'status' => 'fail',
+                    'detail' => $message,
+                ]],
+                'passed_compliance' => true,
+                'passed_language' => true,
+                'passed_uniqueness' => true,
+                'passed_quality' => true,
+            ];
+
+            return [
+                'approved' => false,
+                'moderation_status' => ContentSubmission::STATUS_REJECTED,
+                'evaluation_status' => 'rejected',
+                'uniqueness_score' => 0,
+                'quality_score' => 0,
+                'report' => $report,
+                'title' => 'Too many images',
+                'message' => $message,
+                'log' => null,
+                'highlighted_html' => null,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
         // 1) Policy compliance (casino / gambling / betting / adult) — includes cloaked hrefs,
         // bare/www domains in body text, and multi-link detected_links metadata.
         $linkUrls = $this->moderation->linksFromSubmission($submission);

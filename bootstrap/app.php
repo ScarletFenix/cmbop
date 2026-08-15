@@ -54,9 +54,11 @@ return Application::configure(basePath: dirname(__DIR__))
             $uploads = app(ContentUploadService::class);
             $path = $request->path();
             if (str_contains($path, 'content-submissions/editor-image')) {
+                [, $clientBytes] = $uploads->uploadByteHints($request);
+
                 return response()->json([
                     'success' => false,
-                    'message' => $uploads->phpImageRejectedMessage(),
+                    'message' => $uploads->phpImageRejectedMessage($clientBytes),
                 ], 422);
             }
             if (! str_contains($path, 'content-library/upload')
@@ -123,7 +125,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Publisher catalog enrichment (metrics + screenshots) — non-blocking scheduled refresh
         $enrichFreq = config('site_enrichment.refresh_frequency', 'weekly');
-        $enrichCommand = $schedule->command('sites:enrich --stale --sync')
+        $enrichCommand = $schedule->command('sites:enrich --stale')
             ->withoutOverlapping()
             ->sendOutputTo(storage_path('logs/site-enrichment.log'));
 
