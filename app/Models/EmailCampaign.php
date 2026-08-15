@@ -357,26 +357,28 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                $found = DB::table($table)
+                $payloads = DB::table($table)
                     ->where('payload', 'like', '%SendEmailCampaignJob%')
-                    ->pluck('payload')
-                    ->contains(fn ($payload) => MailJobPayload::containsSendCampaignJob(
-                        (string) $payload,
-                        $campaignId
-                    ));
+                    ->pluck('payload');
 
-                if ($found) {
-                    return true;
+                foreach ($payloads as $payload) {
+                    if (MailJobPayload::containsSendCampaignJob((string) $payload, $campaignId)) {
+                        return true;
+                    }
                 }
+            } catch (\Throwable) {
+                // A broken first connection must not hide a job on the other.
             }
-        } catch (\Throwable) {
-            return false;
         }
 
         return false;
     }
 
     /**
+     * The send job pins onConnection() to preferredSendJobConnection()
+     * (mail first, otherwise queue.default). Check both so a sync side
+     * cannot hide a database-queued send job on the other connection.
+     *
      * @return list<string>
      */
     protected static function sendJobQueueConnections(): array
@@ -385,6 +387,57 @@ class EmailCampaign extends Model
             (string) config('email_notifications.queue_connection', config('queue.default')),
             (string) config('queue.default'),
         ])));
+    }
+
+    /**
+     * Connections that can actually store campaign / mail jobs. Sync mail
+     * with a database app queue still has SendEmailCampaignJob rows to drain.
+     *
+     * @return list<string>
+     */
+    public static function drainableQueueConnections(): array
+    {
+        $ready = [];
+
+        foreach (self::sendJobQueueConnections() as $connection) {
+            if ($connection === '' || $connection === 'sync') {
+                continue;
+            }
+
+            if (config("queue.connections.{$connection}.driver") === 'database') {
+                try {
+                    $table = (string) config("queue.connections.{$connection}.table", 'jobs');
+                    if (! Schema::hasTable($table)) {
+                        continue;
+                    }
+                } catch (\Throwable) {
+                    continue;
+                }
+            }
+
+            $ready[] = $connection;
+        }
+
+        return array_values(array_unique($ready));
+    }
+
+    /**
+     * Prefer the mail connection when it can store jobs, otherwise the first
+     * drainable app connection. Null means both are sync (run inline).
+     */
+    public static function preferredSendJobConnection(): ?string
+    {
+        $drainable = self::drainableQueueConnections();
+        if ($drainable === []) {
+            return null;
+        }
+
+        $mail = (string) config('email_notifications.queue_connection', '');
+        if ($mail !== '' && in_array($mail, $drainable, true)) {
+            return $mail;
+        }
+
+        return $drainable[0];
     }
 
     /**

@@ -603,6 +603,33 @@ class AdminCampaignsTest extends TestCase
         Mail::assertNothingQueued();
     }
 
+    public function test_send_job_uses_mail_database_when_app_queue_is_sync(): void
+    {
+        Mail::fake();
+        config([
+            'queue.default' => 'sync',
+            'email_notifications.queue_connection' => 'database',
+            'email_notifications.queue' => 'emails',
+            'email_notifications.auto_drain' => false,
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
+        ]);
+
+        $admin = $this->makeUser('admin');
+        $this->makeUser('advertiser');
+
+        $this->actingAs($admin)
+            ->post(route('admin.campaigns.send'), $this->campaignPayload([
+                'respect_preferences' => '0',
+            ]))
+            ->assertRedirect(route('admin.campaigns.index'));
+
+        $campaign = EmailCampaign::query()->latest('id')->first();
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->status);
+        $this->assertSame(1, DB::table('jobs')->count());
+        $this->assertSame('database', (new SendEmailCampaignJob($campaign->id))->connection);
+    }
+
     public function test_job_skips_opted_out_and_queues_mail_for_the_rest(): void
     {
         Mail::fake();
@@ -1471,18 +1498,43 @@ class AdminCampaignsTest extends TestCase
         Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
     }
 
-    public function test_send_job_uses_mail_queue_connection(): void
+    public function test_drain_command_recovers_stalled_campaigns_when_mail_is_sync(): void
     {
+        Queue::fake();
         config([
-            'email_notifications.queue_connection' => 'database',
-            'email_notifications.queue' => 'emails',
-            'queue.default' => 'sync',
+            'queue.default' => 'database',
+            'email_notifications.auto_drain' => false,
+            'email_notifications.queue_connection' => 'sync',
+            'queue.connections.database.driver' => 'database',
+            'queue.connections.database.table' => 'jobs',
         ]);
 
-        $job = new SendEmailCampaignJob(1);
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
 
-        $this->assertSame('database', $job->connection);
-        $this->assertSame('emails', $job->queue);
+        $campaign = EmailCampaign::create([
+            'name' => 'Sync mail recover',
+            'subject' => 'Sync mail recover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->artisan('mail:drain-queue')
+            ->expectsOutputToContain('auto-drain is disabled')
+            ->assertSuccessful();
+
+        Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
     }
 
     public function test_stall_recovery_skips_dispatch_when_json_escaped_send_job_exists(): void
@@ -1535,12 +1587,12 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
     }
 
-    public function test_stall_recovery_sees_send_job_on_default_queue_when_mail_connection_is_sync(): void
+    public function test_stall_recovery_sees_mail_queue_job_when_app_queue_is_sync(): void
     {
         Queue::fake();
         config([
-            'email_notifications.queue_connection' => 'sync',
-            'queue.default' => 'database',
+            'queue.default' => 'sync',
+            'email_notifications.queue_connection' => 'database',
             'queue.connections.database.driver' => 'database',
             'queue.connections.database.table' => 'jobs',
         ]);
@@ -1548,8 +1600,8 @@ class AdminCampaignsTest extends TestCase
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
         $campaign = EmailCampaign::create([
-            'name' => 'Default queue job',
-            'subject' => 'Default queue job',
+            'name' => 'Mail queue backlog',
+            'subject' => 'Mail queue backlog',
             'body_html' => '<p>Hi</p>',
             'audience' => 'advertisers',
             'recipients_count' => 1,
@@ -1583,6 +1635,7 @@ class AdminCampaignsTest extends TestCase
 
         $this->assertSame(0, EmailCampaign::recoverStalled());
         Queue::assertNothingPushed();
+        $this->assertSame(EmailCampaign::STATUS_QUEUED, $campaign->fresh()->status);
     }
 
     public function test_job_fails_recipient_when_email_is_blank(): void
