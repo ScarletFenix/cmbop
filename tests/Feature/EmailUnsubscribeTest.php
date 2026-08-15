@@ -10,6 +10,7 @@ use App\Models\EmailNotificationPreference;
 use App\Models\Order;
 use App\Models\Role;
 use App\Models\User;
+use App\Support\EmailCatalog;
 use App\Support\EmailUnsubscribeLink;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -157,6 +158,24 @@ class EmailUnsubscribeTest extends TestCase
         $this->assertSame('<'.$url.'>', $headers->text['List-Unsubscribe']);
         $this->assertSame('List-Unsubscribe=One-Click', $headers->text['List-Unsubscribe-Post']);
         $this->assertSame($url, $mailable->unsubscribeUrl());
+    }
+
+    public function test_preview_user_gets_placeholder_unsubscribe_url(): void
+    {
+        $user = EmailCatalog::previewUser();
+        $url = EmailUnsubscribeLink::url($user);
+
+        $this->assertSame(EmailUnsubscribeLink::previewUrl(), $url);
+        $this->assertStringContainsString('/email/unsubscribe/preview-id', $url);
+        $this->assertStringNotContainsString('signature=', $url);
+
+        $mailable = new AudienceCampaignMail(new EmailCampaign([
+            'subject' => 'Preview',
+            'body_html' => '<p>Hi</p>',
+        ]), $user);
+        $html = $mailable->render();
+        $this->assertStringContainsString('/email/unsubscribe/preview-id', $html);
+        $this->assertSame('<'.$url.'>', $mailable->headers()->text['List-Unsubscribe']);
     }
 
     public function test_order_payment_mail_has_no_unsubscribe_footer(): void
