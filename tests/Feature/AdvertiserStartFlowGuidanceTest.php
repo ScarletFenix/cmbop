@@ -119,6 +119,29 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
             ->assertDontSee('You have an approved article ready', false);
     }
 
+    public function test_dashboard_has_orderable_false_when_only_incomplete_checkout_link(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->makeCompletedOrder($advertiser);
+
+        $incomplete = $this->createApprovedSubmission($advertiser);
+        $incomplete->update(['target_url' => null]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertViewHas('hasOrderableArticle', false)
+            ->assertSee('Upload an article', false)
+            ->assertSee('id="dashUploadLibraryAction"', false)
+            ->assertDontSee('id="dashOrderableLibraryAction"', false)
+            ->assertDontSee('You have an approved article ready', false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertViewHas('approvedArticleCount', 0);
+    }
+
     public function test_catalog_shows_missing_article_guidance_when_none_approved(): void
     {
         $advertiser = $this->advertiser();

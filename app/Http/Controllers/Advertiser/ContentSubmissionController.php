@@ -632,6 +632,8 @@ class ContentSubmissionController extends Controller
             'country' => $submission->country,
             'language' => $submission->language,
             'can_order' => $submission->canBeOrdered(),
+            'ready' => $submission->isReadyForCheckout(),
+            'availability' => $submission->libraryAvailability(),
             'anchor_text' => $submission->anchor_text,
             'target_url' => $submission->target_url,
             'feature_image_url' => $submission->feature_image_url

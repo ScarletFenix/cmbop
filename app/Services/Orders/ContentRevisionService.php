@@ -235,7 +235,7 @@ class ContentRevisionService
 
                 if (! $existing->hasCheckoutReadyLinks()) {
                     throw ValidationException::withMessages([
-                        'confirm_existing' => 'Add a valid HTTPS target URL, or clear the link, before sending this article back.',
+                        'confirm_existing' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 
@@ -288,7 +288,7 @@ class ContentRevisionService
 
                 if (! $submission->hasCheckoutReadyLinks()) {
                     throw ValidationException::withMessages([
-                        'content_submission_id' => 'Add a valid HTTPS target URL, or clear the link, before attaching this article.',
+                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 

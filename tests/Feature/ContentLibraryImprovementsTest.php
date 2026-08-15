@@ -937,23 +937,92 @@ class ContentLibraryImprovementsTest extends TestCase
     public function test_incomplete_link_is_not_shown_as_orderable(): void
     {
         $advertiser = $this->advertiser();
+        $ready = $this->createApprovedSubmission($advertiser);
+        $ready->update(['title' => 'Ready To Order']);
+
         $submission = $this->createApprovedSubmission($advertiser);
-        $submission->update(['target_url' => null]);
+        $submission->update([
+            'title' => 'Incomplete Link Piece',
+            'target_url' => null,
+            'evaluation_report' => [
+                'summary' => 'Your article was approved for publication. You can now select websites and place an order.',
+            ],
+        ]);
 
-        $this->assertTrue($submission->fresh()->canBeOrdered());
-        $this->assertFalse($submission->fresh()->isReadyForCheckout());
-        $this->assertSame('needs_fix', $submission->fresh()->libraryAvailability());
+        $fresh = $submission->fresh();
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertFalse($fresh->isReadyForCheckout());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertSame(ContentSubmission::CHECKOUT_LINK_MESSAGE, $fresh->libraryFixSummary());
+        $this->assertSame(ContentSubmission::CHECKOUT_LINK_MESSAGE, $fresh->editorNotice());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
 
-        $html = $this->actingAs($advertiser)
+        $approved = $this->actingAs($advertiser)
             ->get(route('advertiser.content-library'))
             ->assertOk()
+            ->assertSee('Ready To Order')
+            ->assertDontSee('Incomplete Link Piece')
             ->getContent();
 
         $this->assertStringNotContainsString(
             route('advertiser.content-library.order', $submission, false),
-            $html
+            $approved
         );
-        $this->assertStringContainsString('Edit article', $html);
+        $this->assertMatchesRegularExpression(
+            '/aria-label="Needs corrections, 1 article"/',
+            $approved
+        );
+
+        $needsFix = $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['status' => 'all', 'availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Incomplete Link Piece')
+            ->assertDontSee('Ready To Order')
+            ->assertSee(ContentSubmission::CHECKOUT_LINK_MESSAGE)
+            ->assertDontSee('You can now select websites and place an order')
+            ->assertSee('Edit article')
+            ->assertDontSee('>Resubmit<')
+            ->getContent();
+
+        $this->assertStringNotContainsString(
+            route('advertiser.content-library.order', $submission, false),
+            $needsFix
+        );
+        $this->assertStringContainsString('js-open-editor', $needsFix);
+        $this->assertStringContainsString('data-submission-id="'.$submission->id.'"', $needsFix);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', [
+                'edit' => $submission->id,
+                'upload' => 1,
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]))
+            ->assertOk()
+            ->assertSee('name="replace_id"', false)
+            ->assertSee('value="'.$submission->id.'"', false);
+
+        $this->actingAs($advertiser)
+            ->getJson(route('advertiser.content-submissions.preview', $submission))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('can_order', true)
+            ->assertJsonPath('ready', false)
+            ->assertJsonPath('availability', 'needs_fix')
+            ->assertJsonPath('editor_notice', ContentSubmission::CHECKOUT_LINK_MESSAGE);
+
+        $cart = $this->actingAs($advertiser)
+            ->getJson(route('advertiser.cart.get'))
+            ->assertOk()
+            ->json();
+        $articleIds = collect($cart['approved_articles'] ?? [])->pluck('id')->all();
+        $this->assertContains($ready->id, $articleIds);
+        $this->assertNotContains($submission->id, $articleIds);
     }
 
     public function test_evaluation_does_not_call_an_incomplete_link_ready_to_order(): void
