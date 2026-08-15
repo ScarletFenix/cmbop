@@ -226,10 +226,10 @@ class ContentLibraryPreviewExpiryTest extends TestCase
             $this->markTestSkipped('GD WebP not available');
         }
 
-        Storage::fake('public');
-        Storage::fake('local');
         $advertiser = $this->advertiser();
         $submission = $this->createApprovedSubmission($advertiser);
+        Storage::fake('public');
+        Storage::fake('local');
 
         $png = $this->largePngBytes();
         $this->assertGreaterThan(ArticlePreviewImage::SKIP_UNDER_BYTES, strlen($png));
