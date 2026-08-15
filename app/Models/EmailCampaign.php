@@ -450,9 +450,12 @@ class EmailCampaign extends Model
      * Null means the log table could not be read — callers must not treat
      * that as "no pending retries".
      *
+     * Expire only holds logs newer than the campaign stale window — a
+     * 72h leftover pending row is a lost retry and must still expire.
+     *
      * @return list<int>|null
      */
-    protected static function pendingLogUserIdsForCampaign(int $campaignId): ?array
+    protected static function pendingLogUserIdsForCampaign(int $campaignId, ?\DateTimeInterface $fresherThan = null): ?array
     {
         if ($campaignId < 1) {
             return [];
@@ -471,7 +474,12 @@ class EmailCampaign extends Model
                         ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
                         ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
                 })
-                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable', 'updated_at']) as $log) {
+                if ($fresherThan
+                    && $log->updated_at
+                    && ! $log->updated_at->greaterThan($fresherThan)) {
+                    continue;
+                }
                 $userId = 0;
                 $foundCampaign = (int) data_get($log->meta, 'campaign_id');
                 $foundUser = (int) data_get($log->meta, 'user_id');
@@ -1079,7 +1087,7 @@ class EmailCampaign extends Model
             // Reclaim already holds those users; expire used to skip-stale
             // them and fail the pending row when the jobs-table scan
             // missed the retried job — a second retry doubled the send.
-            $pendingHold = self::pendingLogUserIdsForCampaign($campaignId);
+            $pendingHold = self::pendingLogUserIdsForCampaign($campaignId, $cutoff);
             if ($pendingHold === null) {
                 continue;
             }

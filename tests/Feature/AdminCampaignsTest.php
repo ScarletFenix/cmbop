@@ -2653,6 +2653,7 @@ class AdminCampaignsTest extends TestCase
             'email' => $advertiser->email,
             'status' => EmailCampaignRecipient::STATUS_QUEUED,
         ]);
+        $log->forceFill(['updated_at' => now()->subHours(80)])->save();
         $row->forceFill(['updated_at' => now()->subHours(80)])->save();
 
         EmailCampaign::recoverStalled();
@@ -3209,6 +3210,7 @@ class AdminCampaignsTest extends TestCase
             'status' => EmailCampaignRecipient::STATUS_QUEUED,
         ]);
         $this->insertFailedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
+        $log->forceFill(['updated_at' => now()->subHours(80)])->save();
         $row->forceFill(['updated_at' => now()->subHours(80)])->save();
         $campaign->forceFill(['updated_at' => now()->subHours(80)])->save();
 
