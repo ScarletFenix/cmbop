@@ -40,12 +40,19 @@ class AdminEmailCenterTest extends TestCase
     /**
      * @param  list<string>|string  $ids
      */
-    private function mockQueueRetry(array|string $ids, string $output = 'Pushing failed queue jobs back onto the queue.'): void
+    private function mockQueueRetry(array|string $ids, string $output = 'Pushing failed queue jobs back onto the queue.', bool $forget = true): void
     {
+        $ids = is_array($ids) ? $ids : [$ids];
         Artisan::shouldReceive('call')
             ->once()
-            ->with('queue:retry', ['id' => is_array($ids) ? $ids : [$ids]])
-            ->andReturn(0);
+            ->with('queue:retry', ['id' => $ids])
+            ->andReturnUsing(function () use ($ids, $output, $forget) {
+                if ($forget && str_contains($output, 'Pushing failed queue jobs')) {
+                    DB::table('failed_jobs')->whereIn('uuid', $ids)->delete();
+                }
+
+                return 0;
+            });
         Artisan::shouldReceive('output')->andReturn($output);
     }
 
@@ -1298,7 +1305,7 @@ class AdminEmailCenterTest extends TestCase
             'failed_at' => now(),
         ]);
 
-        $this->mockQueueRetry([$mailUuid]);
+        $this->mockQueueRetry([$mailUuid], forget: false);
 
         $this->actingAs($admin)
             ->from(route('admin.emails.index'))
@@ -1381,7 +1388,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
         $this->assertSame(1, $campaign->fresh()->sent_count);
         $this->assertSame(0, $campaign->fresh()->skipped_count);
-        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
     public function test_bulk_retry_marks_linked_campaign_log_pending(): void
@@ -1460,7 +1467,76 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
         $this->assertSame(EmailLog::STATUS_FAILED, $unlinked->fresh()->status);
         $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
-        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
+    }
+
+    public function test_bulk_retry_does_not_mark_logs_when_jobs_remain_failed(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $mailUuid = (string) Str::uuid();
+        $campaign = EmailCampaign::create([
+            'name' => 'Stale uuid',
+            'subject' => 'Stale uuid',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign:'.$campaign->id.':user:'.$advertiser->id,
+            'to_email' => $advertiser->email,
+            'subject' => 'Stale uuid',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $mailUuid,
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $mailUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => AudienceCampaignMail::class,
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+            ]),
+            'exception' => 'SMTP failed',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')->once()->andReturn(0);
+        Artisan::shouldReceive('output')->andReturn('Pushing failed queue jobs back onto the queue.');
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertTrue(DB::table('failed_jobs')->where('uuid', $mailUuid)->exists());
+        $this->assertSame(EmailLog::STATUS_FAILED, $log->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $row->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
     public function test_mail_failure_does_not_wipe_known_recipient(): void
@@ -1740,5 +1816,38 @@ class AdminEmailCenterTest extends TestCase
             ->get(route('admin.emails.preview', ['key' => 'order_status_changed', 'audience' => 'admin']))
             ->assertOk()
             ->assertSee('admin copy', false);
+    }
+
+    public function test_wallet_ops_previews_do_not_embed_signed_live_urls(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $deposit = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'deposit_submitted'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $deposit);
+        $this->assertStringContainsString('/admin/deposits/approve-confirm/preview', $deposit);
+
+        $paid = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'deposit_marked_paid'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $paid);
+        $this->assertStringContainsString('/admin/deposits/approve-confirm/preview', $paid);
+
+        $withdrawal = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'withdrawal_request'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $withdrawal);
+        $this->assertStringContainsString('/admin/withdrawals/mark-paid-confirm/preview', $withdrawal);
+
+        $invoice = $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'payment_successful_invoice'))
+            ->assertOk()
+            ->getContent();
+        $this->assertStringNotContainsString('signature=', $invoice);
+        $this->assertStringContainsString('/advertiser/billing/preview', $invoice);
     }
 }
