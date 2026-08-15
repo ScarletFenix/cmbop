@@ -48,6 +48,9 @@ class PhpIniSizeTest extends TestCase
         $this->assertStringContainsString('That file is over the 10 MB limit', $overCap);
         $this->assertStringContainsString('JPG', $service->phpImageRejectedMessage());
         $this->assertStringNotContainsString('.docx', $service->phpImageRejectedMessage());
+        $this->assertStringNotContainsString('under 5 MB', $service->phpImageRejectedMessage());
+        $this->assertStringNotContainsString('under 5 MB', $service->phpImageRejectedMessage(3 * 1024 * 1024));
+        $this->assertStringContainsString('under 5 MB', $service->phpImageRejectedMessage(6 * 1024 * 1024));
         $uploaded = $service->uploadValidationMessages($cfg)['file.uploaded'] ?? '';
         $this->assertStringContainsString('Please try again', $uploaded);
         $this->assertStringNotContainsString('under 10 MB', $uploaded);
@@ -75,6 +78,9 @@ class PhpIniSizeTest extends TestCase
         $this->assertIsString($imageMessage);
         $this->assertStringContainsString('image could not be uploaded', $imageMessage);
         $this->assertStringNotContainsString('.docx', $imageMessage);
+        $this->assertStringNotContainsString('under 5 MB', $imageMessage);
+        $overImage = $service->rejectedImageUploadMessage(null, null, 6 * 1024 * 1024);
+        $this->assertStringContainsString('under 5 MB', $overImage);
         $this->assertNull($service->rejectedImageUploadMessage(null, 1024));
 
         $noLength = $service->rejectedUploadMessage(null, $cfg, null, 5 * 1024 * 1024);

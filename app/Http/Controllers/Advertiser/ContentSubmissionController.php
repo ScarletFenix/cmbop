@@ -274,7 +274,7 @@ class ContentSubmissionController extends Controller
         }
 
         $request->validate([
-            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'],
+            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:'.ContentUploadService::IMAGE_MAX_KILOBYTES],
         ]);
 
         $file = $request->file('image');

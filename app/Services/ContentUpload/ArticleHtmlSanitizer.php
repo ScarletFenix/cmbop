@@ -59,11 +59,10 @@ class ArticleHtmlSanitizer
                 if (str_starts_with($src, '/media/')) {
                     $src = '/storage/'.substr($src, strlen('/media/'));
                 }
-                // Allow absolute https/http, site-relative /storage/ or /media/, and data:image for editor paste
+                // Persist hosted files only. data:image paste would store megabytes in HTML.
                 $ok = preg_match('#^https?://#i', $src)
                     || str_starts_with($src, '/storage/')
-                    || str_starts_with($src, '/media/')
-                    || str_starts_with($src, 'data:image/');
+                    || str_starts_with($src, '/media/');
                 if (! $ok) {
                     return '';
                 }

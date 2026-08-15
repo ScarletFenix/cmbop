@@ -836,6 +836,25 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertNotEmpty($fresh->articleHistory());
     }
 
+    public function test_editor_rejects_embedded_data_images_instead_of_saving_them(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $response = $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => '<p>Updated body</p><p><img src="data:image/png;base64,iVBORw0KGgo=" alt=""></p>',
+                'title' => $submission->title,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ]);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $this->assertStringContainsString('image button', (string) $response->json('message'));
+        $this->assertSame($original, (string) $submission->fresh()->preview_html);
+    }
+
     public function test_editor_media_image_src_is_persisted_as_storage_path(): void
     {
         config(['content_moderation.enabled' => false]);
@@ -921,7 +940,22 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('image could not be uploaded', $message);
         $this->assertStringNotContainsString('.docx', $message);
         $this->assertStringNotContainsString('over the 10 MB limit', $message);
+        $this->assertStringNotContainsString('under 5 MB', $message);
         $this->assertStringNotContainsString('upload_max_filesize', $message);
+    }
+
+    public function test_editor_image_over_five_mb_is_blamed_on_the_image_cap(): void
+    {
+        $advertiser = $this->advertiser();
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.editor-image').'?client_bytes='.(6 * 1024 * 1024), [])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath(
+                'message',
+                'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
+            );
     }
 
     public function test_content_library_preview_modal_exposes_external_link_rows(): void
@@ -1322,6 +1356,11 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('Your session expired', $js);
         $this->assertStringContainsString('Too many upload attempts', $js);
         $this->assertStringContainsString('The image could not be uploaded', $js);
+        $this->assertStringContainsString('LIBRARY_IMAGE_MAX_BYTES = 5120 * 1024', $js);
+        $this->assertStringContainsString('function librarySizeAwareImageMessage', $js);
+        $this->assertStringContainsString('function uploadEditorImageFile', $js);
+        $this->assertStringContainsString('function bindEditorImagePasteAndDrop', $js);
+        $this->assertStringNotContainsString("? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'", $js);
         $this->assertStringContainsString('The article editor failed to load', $js);
         $this->assertStringContainsString('editor_notice', $js);
         $this->assertStringContainsString('function submissionForEditor', $js);

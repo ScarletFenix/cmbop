@@ -53,6 +53,18 @@ class ContentLibraryModerationUxTest extends TestCase
         $this->assertStringNotContainsString('src="/media/content-articles/1/a.png"', $clean);
     }
 
+    public function test_html_sanitizer_drops_embedded_data_images(): void
+    {
+        $sanitizer = new ArticleHtmlSanitizer;
+        $clean = $sanitizer->sanitize(
+            '<p>Body</p><p><img src="data:image/png;base64,iVBORw0KGgo=" alt="Huge"></p>'
+        );
+
+        $this->assertStringContainsString('Body', $clean);
+        $this->assertStringNotContainsString('data:image', $clean);
+        $this->assertStringNotContainsString('<img', $clean);
+    }
+
     public function test_normalize_strips_legacy_detected_link_footer(): void
     {
         $html = '<p>Body with <a href="https://example.com/x">keyword</a>.</p>'
