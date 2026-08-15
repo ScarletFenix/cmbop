@@ -828,6 +828,57 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Own unpaid leftover (Wise/bank/crypto/legacy card) that Order / a new
+     * checkout may replace. Failed card leftovers stay for Pay again.
+     */
+    public function canReplaceUnpaidLeftover(): bool
+    {
+        $owner = $this->relatedOwnerOrder();
+        if ($owner instanceof Order) {
+            return $this->orderLooksLikeReplaceableLeftover($owner);
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        if ($this->relationLoaded('orderItems')) {
+            return $this->orderItems->contains(function (OrderItem $item) {
+                $order = $item->relationLoaded('order')
+                    ? $item->order
+                    : $item->order()->first();
+
+                return $order instanceof Order
+                    && $this->orderLooksLikeReplaceableLeftover($order);
+            });
+        }
+
+        return $this->orderItems()
+            ->whereHas('order', function ($q) {
+                $this->constrainReplaceableLeftoverOrder($q);
+            })
+            ->exists();
+    }
+
+    /**
+     * @param  Builder<Order>|Builder  $orderQuery
+     */
+    protected function constrainReplaceableLeftoverOrder($orderQuery): void
+    {
+        $orderQuery->where('status', 'pending')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+            });
+    }
+
+    protected function orderLooksLikeReplaceableLeftover(Order $order): bool
+    {
+        return $order->status === 'pending'
+            && ! in_array((string) $order->payment_status, ['paid', 'refunded', 'failed'], true);
+    }
+
+    /**
      * Unused approved articles approaching retention purge (content:purge-expired).
      */
     public function isNearExpiry(int $withinDays = 7): bool

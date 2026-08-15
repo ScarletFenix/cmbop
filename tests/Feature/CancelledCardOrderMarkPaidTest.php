@@ -375,4 +375,90 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
         $this->assertNull(Order::query()->where('reference_code', 'REF-SHOULD-NOT-REPLACE')->first());
     }
+
+    public function test_library_shows_order_for_abandoned_wise_leftover(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Stuck Wise Piece']);
+        $stale = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STALE-WISE-UI',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $stale->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $stale->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->assertTrue($submission->fresh()->load('order')->canReplaceUnpaidLeftover());
+        $this->assertSame('in_progress', $submission->fresh()->libraryAvailability());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Stuck Wise Piece')
+            ->assertSee(route('advertiser.content-library.order', $submission, false), false)
+            ->assertSee('View order');
+    }
+
+    public function test_library_does_not_offer_order_for_paid_in_progress(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update(['title' => 'Paid Processing Piece']);
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-PROGRESS',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->assertFalse($submission->fresh()->load('order')->canReplaceUnpaidLeftover());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Paid Processing Piece')
+            ->assertSee('View order')
+            ->assertDontSee(route('advertiser.content-library.order', $submission, false), false);
+    }
 }

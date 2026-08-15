@@ -369,8 +369,11 @@ class OrderPaymentService
             ->whereIn('content_submission_id', $submissionIds)
             ->whereHas('order', function ($q) use ($userId) {
                 $q->where('user_id', $userId)
-                    ->where('payment_status', 'pending')
-                    ->where('status', 'pending');
+                    ->where('status', 'pending')
+                    ->where(function ($payment) {
+                        $payment->whereNull('payment_status')
+                            ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+                    });
             })
             ->pluck('order_id');
 
@@ -388,8 +391,11 @@ class OrderPaymentService
         $orders = Order::query()
             ->whereIn('id', $orderIds)
             ->where('user_id', $userId)
-            ->where('payment_status', 'pending')
             ->where('status', 'pending')
+            ->where(function ($payment) {
+                $payment->whereNull('payment_status')
+                    ->orWhereNotIn('payment_status', ['paid', 'refunded', 'failed']);
+            })
             ->get();
 
         if ($orders->isEmpty()) {

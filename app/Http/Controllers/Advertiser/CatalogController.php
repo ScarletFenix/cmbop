@@ -1466,6 +1466,11 @@ class CatalogController extends Controller
             return response()->json(array_merge(['success' => true, 'message' => 'Article cleared for this placement.'], $this->cartPayloadForClient()));
         }
 
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+            (int) auth()->id(),
+            [$submissionId]
+        );
+
         $submission = ContentSubmission::query()
             ->forArticlePicker()
             ->where('id', $submissionId)
@@ -1585,9 +1590,15 @@ class CatalogController extends Controller
             $librarySubmission = null;
 
             if (session('ordering_from_library') && session('checkout_content_submission_id')) {
+                $sessionArticleId = (int) session('checkout_content_submission_id');
+                app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
+                    (int) auth()->id(),
+                    [$sessionArticleId]
+                );
+
                 $librarySubmission = ContentSubmission::query()
                     ->forArticlePicker()
-                    ->where('id', (int) session('checkout_content_submission_id'))
+                    ->where('id', $sessionArticleId)
                     ->where('user_id', auth()->id())
                     ->checkoutReady()
                     ->first();
