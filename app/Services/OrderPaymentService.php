@@ -273,7 +273,7 @@ class OrderPaymentService
                 if (($fallback ?? 0) <= 0) {
                     $fallback = round((float) ($package['bonus_applied'] ?? 0), 2);
                 }
-                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback);
+                $this->refundBonusReservedForReference($resolvedUserId, $referenceCode, $fallback, $marked);
             }
             $this->forgetPendingCheckout($referenceCode);
 
@@ -311,22 +311,21 @@ class OrderPaymentService
     /**
      * Refund promotional credit reserved for a card checkout reference.
      */
-    public function refundBonusReservedForReference(int $userId, string $referenceCode, ?float $fallbackBonus = null): void
-    {
-        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $userId)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
+    /**
+     * @param  Collection<int, Order>|null  $failedOrders
+     */
+    public function refundBonusReservedForReference(
+        int $userId,
+        string $referenceCode,
+        ?float $fallbackBonus = null,
+        ?Collection $failedOrders = null
+    ): void {
+        app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
+            $userId,
+            $referenceCode,
+            $failedOrders ?? collect(),
+            $fallbackBonus
+        );
     }
 
     /**

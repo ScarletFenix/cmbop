@@ -494,8 +494,11 @@ class Wallet extends Model
     /**
      * Order rejected / cancelled: return reserved funds; restore any promo portion as spend-only.
      * Only moves money that is actually reserved — never invents withdrawable cash.
+     *
+     * $bonusLimit caps how much of the refund comes from bonus_reserved so a
+     * shared checkout promo is not restored on the first sibling reject.
      */
-    public function refundReserved(float $amount): void
+    public function refundReserved(float $amount, ?float $bonusLimit = null): void
     {
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -526,6 +529,9 @@ class Wallet extends Model
 
         $bonusReserved = max(0, round((float) ($this->bonus_reserved ?? 0), 2));
         $fromBonus = min($refund, $bonusReserved);
+        if ($bonusLimit !== null) {
+            $fromBonus = min($fromBonus, max(0, round($bonusLimit, 2)));
+        }
 
         $this->reserved_balance = round($available - $refund, 2);
         $this->balance = round((float) $this->balance + $refund, 2);

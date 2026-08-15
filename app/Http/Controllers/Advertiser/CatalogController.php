@@ -3479,7 +3479,9 @@ class CatalogController extends Controller
             // while the advertiser pays the original total again.
             app(OrderPaymentService::class)->refundBonusReservedForReference(
                 (int) auth()->id(),
-                $referenceCode
+                $referenceCode,
+                null,
+                $package
             );
 
             Stripe::setApiKey(config('services.stripe.secret'));
@@ -4684,20 +4686,18 @@ class CatalogController extends Controller
 
     private function refundCheckoutBonus(int $userId, string $referenceCode): void
     {
-        $bonus = app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode);
-        if ($bonus <= 0) {
-            return;
-        }
+        $failed = Order::query()
+            ->where('user_id', $userId)
+            ->where('reference_code', $referenceCode)
+            ->whereIn('payment_status', ['failed', 'pending'])
+            ->where('status', '!=', 'cancelled')
+            ->get();
 
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $userId)->where('role_id', $roleId)->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
+        app(OrderRefundService::class)->releaseReservedCheckoutBonusForReference(
+            $userId,
+            $referenceCode,
+            $failed
+        );
     }
 
     /**

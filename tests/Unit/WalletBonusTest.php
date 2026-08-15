@@ -263,6 +263,21 @@ class WalletBonusTest extends TestCase
         $this->assertSame(0.0, $wallet->withdrawableBalance());
     }
 
+    public function test_refund_reserved_honors_bonus_limit_for_sibling_share(): void
+    {
+        $wallet = $this->makeWallet(100, 20);
+        $wallet->reserveForOrder(100);
+
+        $wallet->refundReserved(50, 10);
+
+        $wallet->refresh();
+        $this->assertEquals(50.0, (float) $wallet->balance);
+        $this->assertEquals(50.0, (float) $wallet->reserved_balance);
+        $this->assertEquals(10.0, (float) $wallet->bonus_balance);
+        $this->assertEquals(10.0, (float) $wallet->bonus_reserved);
+        $this->assertEquals(40.0, $wallet->withdrawableBalance());
+    }
+
     public function test_cannot_deduct_bonus_via_withdrawable_helper(): void
     {
         $wallet = $this->makeWallet(20, 20);

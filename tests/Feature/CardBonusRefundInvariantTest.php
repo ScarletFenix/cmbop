@@ -255,6 +255,108 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
     }
 
+    public function test_admin_fail_pending_sibling_does_not_release_paid_siblings_bonus(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, reservedBonus: 20);
+        $site = $this->site($publisher);
+
+        $paid = $this->cardOrder($advertiser, $site, 50, 'REF-ADMIN-FAIL-SPLIT');
+        $pending = $this->cardOrder($advertiser, $site, 50, 'REF-ADMIN-FAIL-SPLIT', 'pending');
+        $pending->order->update(['payment_method' => 'wise']);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $pending->order_id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $paid->id), [
+                'reason' => 'Paid sibling must restore only its leftover promo share.',
+            ])
+            ->assertOk();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
+    public function test_wallet_reject_first_sibling_keeps_half_the_promo_reserved(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 100,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->site($publisher);
+
+        $first = $this->walletOrder($advertiser, $site, 50, 'REF-WALLET-REJECT-FIRST');
+        $this->walletOrder($advertiser, $site, 50, 'REF-WALLET-REJECT-FIRST');
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $first->id), [
+                'reason' => 'First wallet placement is not a fit for the site.',
+            ])
+            ->assertOk();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
+    public function test_admin_fail_one_wallet_sibling_keeps_half_the_promo_reserved(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 100,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->site($publisher);
+
+        $first = $this->walletOrder($advertiser, $site, 50, 'REF-WALLET-ADMIN-FAIL-SPLIT');
+        $this->walletOrder($advertiser, $site, 50, 'REF-WALLET-ADMIN-FAIL-SPLIT');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $first->order_id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
     /**
      * @return array{0: User, 1: User, 2: Wallet, 3: OrderItem}
      */

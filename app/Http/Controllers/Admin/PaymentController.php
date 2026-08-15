@@ -14,11 +14,9 @@ use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\BillingDocumentService;
-use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
-use App\Services\Wallet\WalletLedgerService;
 use App\Support\BillingCustomerMailSuppressor;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
@@ -228,8 +226,10 @@ class PaymentController extends Controller
                 if ($order->payment_method === 'wallet') {
                     $refundAmount = $this->releaseWalletHoldOnAdminFailed($order);
                 } elseif (! in_array((string) $order->status, ['cancelled', 'completed'], true)) {
-                    // Card / bank / wise: no reserved hold to release, but the
-                    // order must not stay processing/review as a failed payment.
+                    // Collected card / bank / Wise: credit the advertiser wallet
+                    // the same way Refunded does. Failed used to cancel the
+                    // placement and release the article with €0 in-app credit.
+                    $refundAmount = $this->creditAdvertiserRefund($order);
                     $order->status = 'cancelled';
                 }
 
@@ -258,9 +258,10 @@ class PaymentController extends Controller
                 }
             }
 
-            // Unpaid failure: release leftover checkout bonus. Paid refunds go
-            // through creditAdvertiserRefund so promo is not minted as cash.
-            if ($request->payment_status === 'failed' && $oldStatus !== 'failed') {
+            // Unpaid failure: release this line's leftover checkout bonus.
+            // Paid failures already restored promo via creditAdvertiserRefund /
+            // releaseWalletHoldOnAdminFailed — do not dump the sibling share.
+            if ($request->payment_status === 'failed' && $oldStatus !== 'failed' && $oldStatus !== 'paid') {
                 $this->refundReservedCheckoutBonus($order);
             }
 
@@ -393,20 +394,7 @@ class PaymentController extends Controller
 
     private function refundReservedCheckoutBonus(Order $order): void
     {
-        $bonus = app(CheckoutIntentService::class)->takeBonus((int) $order->user_id, (string) $order->reference_code);
-        if ($bonus <= 0) {
-            return;
-        }
-
-        $roleId = Wallet::advertiserRoleId();
-        if (! $roleId) {
-            return;
-        }
-
-        $wallet = Wallet::where('user_id', $order->user_id)->where('role_id', $roleId)->lockForUpdate()->first();
-        if ($wallet && (float) $wallet->bonus_reserved > 0) {
-            $wallet->refundReserved(min($bonus, (float) $wallet->bonus_reserved));
-        }
+        app(OrderRefundService::class)->releaseReservedCheckoutBonus($order);
     }
 
     /**
@@ -444,20 +432,13 @@ class PaymentController extends Controller
             return 0.0;
         }
 
-        $bonusReservedBefore = (float) $wallet->bonus_reserved;
-        $wallet->refundReserved($amount);
+        app(OrderRefundService::class)->refundToAdvertiser(
+            $order,
+            $amount,
+            'Admin marked payment failed'
+        );
+        $wallet->refresh();
         $refunded = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
-        $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
-
-        if ($refunded > 0) {
-            app(WalletLedgerService::class)->recordRefund(
-                $wallet,
-                $refunded,
-                $bonusRestored,
-                $order,
-                $order->reference_code ?? $order->order_number
-            );
-        }
 
         if ($order->status !== 'cancelled') {
             $order->status = 'cancelled';
