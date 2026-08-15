@@ -127,4 +127,13 @@ class ArticleHtmlSanitizer
 
         return count(preg_split('/\s+/u', $text) ?: []);
     }
+
+    public function countImages(?string $html): int
+    {
+        if ($html === null || $html === '') {
+            return 0;
+        }
+
+        return preg_match_all('/<img\b/i', $html) ?: 0;
+    }
 }

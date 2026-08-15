@@ -25,6 +25,9 @@ class ContentUploadService
     /** Per-image cap for the article editor. Not counted against the .docx cap. */
     public const IMAGE_MAX_KILOBYTES = 5120;
 
+    /** Max img tags per article (Word extract + editor inserts). */
+    public const IMAGE_MAX_PER_ARTICLE = 10;
+
     /**
      * Slice size the browser should send. Hostinger LiteSpeed often still
      * drops a 5 MB body at the default 2M pipe even when .user.ini says 64M.
@@ -419,6 +422,14 @@ class ContentUploadService
             return ['ok' => false, 'approved' => false, 'message' => 'Article content cannot be empty.'];
         }
 
+        if ($sanitizer->countImages($clean) > self::IMAGE_MAX_PER_ARTICLE) {
+            return [
+                'ok' => false,
+                'approved' => false,
+                'message' => self::tooManyImagesMessage(),
+            ];
+        }
+
         $links = $sanitizer->extractLinksFromHtml($clean);
         $firstLink = $links[0] ?? null;
 
@@ -622,6 +633,11 @@ class ContentUploadService
         }
 
         return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP and try again.';
+    }
+
+    public static function tooManyImagesMessage(): string
+    {
+        return 'This article can have up to '.self::IMAGE_MAX_PER_ARTICLE.' images. Remove one before adding another.';
     }
 
     /**

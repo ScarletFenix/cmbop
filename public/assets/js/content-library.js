@@ -247,12 +247,32 @@ function librarySizeAwareUploadMessage(fileBytes, serverMessage) {
 const LIBRARY_UPLOAD_CHUNK_BYTES = 512 * 1024;
 const LIBRARY_UPLOAD_PART_NAME = 'article.docx';
 const LIBRARY_IMAGE_MAX_BYTES = 5120 * 1024;
+const LIBRARY_IMAGE_MAX_PER_ARTICLE = 10;
 
 function libraryImageTooLargeMessage(file) {
     if (file && file.size > LIBRARY_IMAGE_MAX_BYTES) {
         return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
     }
     return '';
+}
+
+function libraryTooManyImagesMessage() {
+    return 'This article can have up to 10 images. Remove one before adding another.';
+}
+
+function editorImageCount() {
+    return articleQuill ? articleQuill.root.querySelectorAll('img').length : 0;
+}
+
+function updateEditorImageCount() {
+    const el = document.getElementById('articleEditorImageCount');
+    if (!el) {
+        return;
+    }
+    const n = editorImageCount();
+    el.textContent = n + ' / ' + LIBRARY_IMAGE_MAX_PER_ARTICLE + ' images';
+    el.hidden = false;
+    el.classList.toggle('is-over', n > LIBRARY_IMAGE_MAX_PER_ARTICLE);
 }
 
 function librarySizeAwareImageMessage(fileBytes, serverMessage) {
@@ -270,6 +290,10 @@ function librarySizeAwareImageMessage(fileBytes, serverMessage) {
 async function uploadEditorImageFile(file) {
     const feedback = document.getElementById('articleEditorFeedback');
     if (!file || !articleQuill) return;
+    if (editorImageCount() >= LIBRARY_IMAGE_MAX_PER_ARTICLE) {
+        setFeedbackHtml(feedback, false, libraryTooManyImagesMessage());
+        return;
+    }
     const tooLarge = libraryImageTooLargeMessage(file);
     if (tooLarge) {
         setFeedbackHtml(feedback, false, tooLarge);
@@ -278,6 +302,8 @@ async function uploadEditorImageFile(file) {
     if (feedback) feedback.textContent = 'Uploading image…';
     const fd = new FormData();
     fd.append('image', file);
+    fd.append('content_submission_id', String(articleEditorSubmissionId || ''));
+    fd.append('current_image_count', String(editorImageCount()));
     try {
         const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
             method: 'POST',
@@ -302,6 +328,7 @@ async function uploadEditorImageFile(file) {
         const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
         articleQuill.insertEmbed(range.index, 'image', data.url, 'user');
         articleQuill.setSelection(range.index + 1);
+        updateEditorImageCount();
         setFeedbackHtml(feedback, true, 'Image added. Select it and press Backspace, or use Remove.');
     } catch (e) {
         setFeedbackHtml(feedback, false, 'Network error while uploading image.');
@@ -1085,6 +1112,7 @@ function loadArticleHtml(html) {
     hideImageRemoveOverlay();
     bindBrokenEditorImages();
     silenceArticleQuillSelectionScroll();
+    updateEditorImageCount();
 }
 
 function bindEditorImageChrome() {
@@ -1111,6 +1139,10 @@ function bindEditorImageChrome() {
         e.preventDefault();
         articleQuill.deleteText(imageIndex, 1, 'user');
         hideImageRemoveOverlay();
+    });
+
+    articleQuill.on('text-change', function () {
+        updateEditorImageCount();
     });
 
     articleQuill.on('selection-change', function (range) {
@@ -1599,6 +1631,10 @@ async function saveArticleEditor() {
     const feedback = document.getElementById('articleEditorFeedback');
     const btn = document.getElementById('articleEditorSaveBtn');
     const html = articleQuill.root.innerHTML;
+    if (editorImageCount() > LIBRARY_IMAGE_MAX_PER_ARTICLE) {
+        setFeedbackHtml(feedback, false, libraryTooManyImagesMessage());
+        return;
+    }
     const title = (document.getElementById('articleEditorTitle').value || '').trim();
     const wrap = document.getElementById('articleEditorImageRights');
     if (wrap && !wrap.classList.contains('d-none') && window.readImageRights) {

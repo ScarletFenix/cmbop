@@ -275,7 +275,37 @@ class ContentSubmissionController extends Controller
 
         $request->validate([
             'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:'.ContentUploadService::IMAGE_MAX_KILOBYTES],
+            'content_submission_id' => ['required', 'integer', 'exists:content_submissions,id'],
+            'current_image_count' => ['required', 'integer', 'min:0', 'max:500'],
         ]);
+
+        $submission = ContentSubmission::query()->findOrFail((int) $request->input('content_submission_id'));
+        $this->authorizeSubmission($submission);
+
+        if ($submission->order_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This article is already linked to an order and cannot be edited.',
+            ], 422);
+        }
+
+        if ($submission->isArchived()) {
+            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
+        if ($submission->isExpired()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Expired articles are preview only. The original file cannot be edited.',
+            ], 422);
+        }
+
+        if ((int) $request->input('current_image_count') >= ContentUploadService::IMAGE_MAX_PER_ARTICLE) {
+            return response()->json([
+                'success' => false,
+                'message' => ContentUploadService::tooManyImagesMessage(),
+            ], 422);
+        }
 
         $file = $request->file('image');
         $binary = file_get_contents($file->getRealPath());
@@ -423,7 +453,14 @@ class ContentSubmissionController extends Controller
         unset($data['scheduled_date'], $data['scheduled_time']);
 
         if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
-            $data['preview_html'] = (new ArticleHtmlSanitizer)->sanitize($data['preview_html']);
+            $sanitizer = new ArticleHtmlSanitizer;
+            $data['preview_html'] = $sanitizer->sanitize($data['preview_html']);
+            if ($sanitizer->countImages($data['preview_html']) > ContentUploadService::IMAGE_MAX_PER_ARTICLE) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ContentUploadService::tooManyImagesMessage(),
+                ], 422);
+            }
         }
 
         $submission->fill($data)->save();
