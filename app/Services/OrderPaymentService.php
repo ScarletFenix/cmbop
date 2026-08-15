@@ -1036,6 +1036,26 @@ class OrderPaymentService
                 'package_session_id' => $packageSessionId,
                 'session_id' => $incomingId,
             ]);
+
+            // Pay again uses a new Checkout session and does not rewrite the
+            // leftover package. Mark matching leftovers instead of only
+            // crediting the capture and leaving the article claimed.
+            $existingCardOrders = Order::query()
+                ->where('reference_code', $referenceCode)
+                ->where('payment_method', 'card')
+                ->get();
+            if ($existingCardOrders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order))) {
+                $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+                if ($marked->isNotEmpty()) {
+                    $this->forgetPendingCheckoutKeepLeftoverHold(
+                        $referenceCode,
+                        (int) ($marked->first()->user_id ?? $package['user_id'] ?? 0)
+                    );
+
+                    return $marked;
+                }
+            }
+
             $this->creditCapturedCardWhenPackageMissing($referenceCode, $session);
 
             return collect();
