@@ -824,6 +824,11 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertSame('cancelled', $leftover->fresh()->status);
         $this->assertNull($payments->getPendingCheckout('REF-FAILED-THEN-REPLACED'));
 
+        $wallet = Wallet::where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $balanceAfterReplace = (float) $wallet->balance;
+
         $session = (object) [
             'id' => 'cs_late_after_replace',
             'object' => 'checkout.session',
@@ -850,10 +855,8 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertNotNull($paid);
         $this->assertSame($paid->id, (int) $submission->fresh()->order_id);
 
-        $wallet = Wallet::where('user_id', $advertiser->id)
-            ->where('role_id', Wallet::advertiserRoleId())
-            ->first();
-        $this->assertEqualsWithDelta(100.0, (float) $wallet->balance, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta($balanceAfterReplace + 80.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount('REF-FAILED-THEN-REPLACED'), 0.01);
     }
 
