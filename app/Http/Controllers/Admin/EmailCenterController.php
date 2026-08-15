@@ -9,6 +9,7 @@ use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
 use App\Support\EmailCatalog;
+use App\Support\MailJobPayload;
 use App\Support\UserFacingError;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
@@ -146,12 +147,14 @@ class EmailCenterController extends Controller
 
         $data = $request->validate($rules);
 
-        foreach ($editable as $type) {
-            EmailNotificationSetting::updateOrCreate(
-                ['type' => $type],
-                ['enabled' => (string) $data['enabled'][$type] === '1']
-            );
-        }
+        DB::transaction(function () use ($editable, $data) {
+            foreach ($editable as $type) {
+                EmailNotificationSetting::updateOrCreate(
+                    ['type' => $type],
+                    ['enabled' => (string) $data['enabled'][$type] === '1']
+                );
+            }
+        });
 
         EmailNotificationSetting::flushCache();
 
@@ -304,7 +307,7 @@ class EmailCenterController extends Controller
         }
 
         $adminEmail = (string) request()->user()->email;
-        $dedupe = $log->dedupe_key ?: 'email_center_test:'.$key.':retry:'.$log->id;
+        $dedupe = 'email_center_test:'.$key.':retry:'.$log->id;
         $log->update(['dedupe_key' => $dedupe]);
 
         try {
@@ -339,22 +342,63 @@ class EmailCenterController extends Controller
             return null;
         }
 
+        $stored = data_get($log->meta, 'failed_job_uuid');
+        if (is_string($stored) && $stored !== '' && DB::table('failed_jobs')->where('uuid', $stored)->exists()) {
+            return $stored;
+        }
+
         $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
         $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
         if ($class === '') {
             return null;
         }
 
-        $jsonClass = str_replace('\\', '\\\\', $class);
-
-        foreach (DB::table('failed_jobs')->where($this->mailJobPayloadConstraint())->get(['uuid', 'payload']) as $job) {
+        $basename = class_basename($class);
+        $candidates = [];
+        foreach (DB::table('failed_jobs')
+            ->where($this->mailJobPayloadConstraint())
+            ->where('payload', 'like', '%'.$basename.'%')
+            ->orderByDesc('id')
+            ->limit(100)
+            ->get(['uuid', 'payload']) as $job) {
             $payload = (string) $job->payload;
-            if (str_contains($payload, $class) || str_contains($payload, $jsonClass)) {
-                return (string) $job->uuid;
+            if (MailJobPayload::containsMailable($payload, $class)) {
+                $candidates[] = $job;
             }
         }
 
-        return null;
+        if ($candidates === []) {
+            return null;
+        }
+
+        $to = (string) $log->to_email;
+        $dedupe = (string) $log->dedupe_key;
+        $tight = array_values(array_filter($candidates, function ($job) use ($to, $dedupe) {
+            $payload = (string) $job->payload;
+
+            return MailJobPayload::containsToken($payload, $to)
+                || MailJobPayload::containsToken($payload, $dedupe);
+        }));
+
+        if (count($tight) === 1) {
+            return (string) $tight[0]->uuid;
+        }
+
+        if (count($tight) > 1) {
+            return null;
+        }
+
+        if (count($candidates) !== 1) {
+            return null;
+        }
+
+        $payload = (string) $candidates[0]->payload;
+        $logHasIdentity = ($to !== '' && $to !== 'unknown') || $dedupe !== '';
+        if ($logHasIdentity && MailJobPayload::looksIdentified($payload)) {
+            return null;
+        }
+
+        return (string) $candidates[0]->uuid;
     }
 
     protected function queuedMailJobsCount(): int
@@ -399,9 +443,7 @@ class EmailCenterController extends Controller
     protected function mailJobPayloadConstraint(): \Closure
     {
         return function ($q) {
-            $q->where('payload', 'like', '%SendQueuedMailable%')
-                ->orWhere('payload', 'like', '%App\\\\Mail\\\\%')
-                ->orWhere('payload', 'like', '%Illuminate\\\\Mail\\\\%');
+            $q->where('payload', 'like', '%SendQueuedMailable%');
         };
     }
 

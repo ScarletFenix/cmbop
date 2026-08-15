@@ -356,6 +356,21 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
         return $this->publicRoute('publisher.tasks', $params);
     }
 
+    protected function failedJobUuid(): ?string
+    {
+        if (! isset($this->job) || ! is_object($this->job) || ! method_exists($this->job, 'uuid')) {
+            return null;
+        }
+
+        try {
+            $uuid = $this->job->uuid();
+
+            return is_string($uuid) && $uuid !== '' ? $uuid : null;
+        } catch (\Throwable) {
+            return null;
+        }
+    }
+
     public function failed(?\Throwable $exception): void
     {
         try {
@@ -364,6 +379,11 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 ?? data_get($this->to, '0.address')
                 ?? data_get($this->to, '0')
                 ?? 'unknown';
+
+            $meta = array_filter([
+                'source' => $this->forceSend ? 'email_center_test' : 'queue',
+                'failed_job_uuid' => $this->failedJobUuid(),
+            ]);
 
             $payload = [
                 'mailable' => static::class,
@@ -374,14 +394,12 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
                 'subject' => $this->subject,
                 'status' => EmailLog::STATUS_FAILED,
                 'error' => $exception?->getMessage(),
-                'meta' => [
-                    'source' => $this->forceSend ? 'email_center_test' : 'queue',
-                ],
             ];
 
             $existing = EmailLog::findOpenByDedupe($this->dedupeKey);
             if ($existing) {
                 $existing->fill($payload);
+                $existing->meta = array_filter(array_merge((array) $existing->meta, $meta));
                 $existing->attempts = max(1, (int) $existing->attempts) + 1;
                 $existing->save();
 
@@ -391,6 +409,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             EmailLog::create(array_merge($payload, [
                 'uuid' => (string) Str::uuid(),
                 'attempts' => 1,
+                'meta' => $meta,
             ]));
         } catch (\Throwable $e) {
             Log::warning('Failed to record mail failure', [

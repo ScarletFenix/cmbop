@@ -35,10 +35,13 @@ class DepositApproved extends PlatformMailable
             ? 'Wallet topped up — €'.$amount
             : 'Deposit Approved - €'.$amount;
 
-        $advertiserRoleId = Wallet::advertiserRoleId();
-        $advertiserWallet = $advertiserRoleId && $deposit->user && ! EmailCatalog::isPreviewUser($deposit->user)
-            ? $deposit->user->wallets()->where('role_id', $advertiserRoleId)->first()
-            : null;
+        $advertiserWallet = null;
+        if ($deposit->user && ! EmailCatalog::isPreviewUser($deposit->user)) {
+            $advertiserRoleId = Wallet::advertiserRoleId();
+            $advertiserWallet = $advertiserRoleId
+                ? $deposit->user->wallets()->where('role_id', $advertiserRoleId)->first()
+                : null;
+        }
 
         $mail = $this->subject($subject)
             ->markdown('emails.deposit-approved', [
