@@ -935,7 +935,7 @@ class EmailCampaign extends Model
                     ]);
             }
         } catch (\Throwable) {
-            // Recipient expire still lets recount leave sending.
+            // Missing email_logs table must not break recover.
         }
     }
 }
