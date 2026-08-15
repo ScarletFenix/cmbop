@@ -19,22 +19,27 @@ class SiteEnrichmentController extends Controller
 {
     public function index(Request $request)
     {
-        $failures = new LengthAwarePaginator([], 0, 40);
+        $status = $this->attentionStatusFilter($request->query('status'));
+        $type = $this->attentionTypeFilter($request->query('type'));
+        $attention = new LengthAwarePaginator([], 0, 40);
+        $attention->withPath($request->url())->appends($request->only(['status', 'type']));
 
         try {
             if (Schema::hasTable('site_enrichment_runs')) {
                 $siteSelect = $this->siteRelationSelectColumns();
-                $failures = SiteEnrichmentRun::query()
+                $attention = SiteEnrichmentRun::query()
                     ->with(['site:'.implode(',', $siteSelect)])
-                    ->where('status', 'failed')
+                    ->needsAttention($status, $type)
                     ->latest('id')
-                    ->paginate(40);
+                    ->paginate(40)
+                    ->withQueryString();
             }
         } catch (\Throwable $e) {
-            Log::warning('Admin enrichment failures list failed', [
+            Log::warning('Admin enrichment attention list failed', [
                 'error' => $e->getMessage(),
             ]);
-            $failures = new LengthAwarePaginator([], 0, 40);
+            $attention = new LengthAwarePaginator([], 0, 40);
+            $attention->withPath($request->url())->appends($request->only(['status', 'type']));
         }
 
         $config = [
@@ -55,11 +60,14 @@ class SiteEnrichmentController extends Controller
             ]);
         }
 
-        return view('admin.site-enrichment', compact('failures', 'config', 'staleCount'));
+        return view('admin.site-enrichment', compact('attention', 'config', 'staleCount', 'status', 'type'));
     }
 
     public function refreshMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
         $site = Site::findOrFail($id);
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
@@ -91,6 +99,9 @@ class SiteEnrichmentController extends Controller
 
     public function refreshScreenshot(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
         $site = Site::findOrFail($id);
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
@@ -141,6 +152,9 @@ class SiteEnrichmentController extends Controller
 
     public function enrich(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
         $site = Site::findOrFail($id);
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
@@ -200,6 +214,10 @@ class SiteEnrichmentController extends Controller
 
     public function rerunFailed(Request $request)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
+
         if (! Schema::hasTable('site_enrichment_runs')) {
             return response()->json([
                 'success' => false,
@@ -211,12 +229,12 @@ class SiteEnrichmentController extends Controller
         try {
             $limit = min(100, max(1, (int) $request->input('limit', 20)));
             $ids = SiteEnrichmentRun::query()
-                ->where('status', 'failed')
+                ->needsAttention()
                 ->latest('id')
-                ->limit($limit * 3)
+                ->limit($limit)
                 ->pluck('site_id')
                 ->unique()
-                ->take($limit);
+                ->filter();
 
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
@@ -224,7 +242,7 @@ class SiteEnrichmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Queued '.$ids->count().' failed site(s) for re-scan',
+                'message' => 'Queued '.$ids->count().' site(s) for re-scan',
                 'count' => $ids->count(),
             ]);
         } catch (\Throwable $e) {
@@ -284,6 +302,32 @@ class SiteEnrichmentController extends Controller
                 }
             })
             ->count();
+    }
+
+    private function denyIfEnrichmentDisabled()
+    {
+        if (SiteEnrichmentService::enabled()) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Site enrichment is disabled (SITE_ENRICHMENT_ENABLED=false).',
+        ], 422);
+    }
+
+    private function attentionStatusFilter(mixed $status): ?string
+    {
+        $status = is_string($status) ? strtolower(trim($status)) : '';
+
+        return in_array($status, SiteEnrichmentRun::ATTENTION_STATUSES, true) ? $status : null;
+    }
+
+    private function attentionTypeFilter(mixed $type): ?string
+    {
+        $type = is_string($type) ? strtolower(trim($type)) : '';
+
+        return in_array($type, ['metrics', 'screenshot'], true) ? $type : null;
     }
 
     private function denyMarketingLockedListing(Request $request, Site $site)

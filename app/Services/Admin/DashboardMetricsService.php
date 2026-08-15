@@ -426,7 +426,7 @@ class DashboardMetricsService
     }
 
     /**
-     * Failed enrichment runs — same queue as /admin/site-enrichment.
+     * Latest failed / partial / stuck runs — same queue as /admin/site-enrichment.
      *
      * @return Collection<int, array<string, mixed>>
      */
@@ -439,13 +439,14 @@ class DashboardMetricsService
 
             return SiteEnrichmentRun::query()
                 ->with('site:id,site_name,site_url')
-                ->where('status', 'failed')
-                ->latest()
+                ->needsAttention()
+                ->latest('id')
                 ->take(5)
                 ->get()
                 ->map(fn (SiteEnrichmentRun $run) => [
                     'id' => $run->id,
                     'site_name' => $run->site?->site_name ?: 'Unknown site',
+                    'status' => $run->status,
                     'error' => Str::limit((string) ($run->error ?: 'Enrichment failed'), 80),
                     'date' => optional($run->created_at)->format('d M Y'),
                     'url' => $run->site_id

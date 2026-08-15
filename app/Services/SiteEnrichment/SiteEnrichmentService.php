@@ -15,6 +15,11 @@ class SiteEnrichmentService
         private readonly CountryDetectionService $countries,
     ) {}
 
+    public static function enabled(): bool
+    {
+        return (bool) config('site_enrichment.enabled', true);
+    }
+
     public function refreshMetrics(Site $site, string $triggeredBy = 'system', ?string $provider = null): SiteEnrichmentRun
     {
         $this->countries->detectAndApply($site);
