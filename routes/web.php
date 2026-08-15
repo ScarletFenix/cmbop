@@ -591,7 +591,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::post('blogs/upload-image', [AdminBlogController::class, 'uploadImage'])->name('blogs.upload-image');
         Route::delete('blogs/content-image', [AdminBlogController::class, 'deleteContentImage'])->name('blogs.delete-content-image');
         Route::resource('blogs', AdminBlogController::class);
-        Route::get('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
+        Route::post('blogs/{id}/toggle-status', [AdminBlogController::class, 'toggleStatus'])->name('blogs.toggle-status');
 
         Route::get('/emails', [AdminEmailCenterController::class, 'index'])->name('emails.index');
         Route::get('/emails/preview/{key}', [AdminEmailCenterController::class, 'preview'])->name('emails.preview');

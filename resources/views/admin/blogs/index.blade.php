@@ -95,10 +95,11 @@
                                         <i class="fa fa-edit" aria-hidden="true"></i>
                                     </a>
                                     @php $toggleLabel = $blog->status === 'published' ? 'Unpublish' : 'Publish'; @endphp
-                                    <a href="{{ route('admin.blogs.toggle-status', $blog->id) }}" class="btn btn-sm btn-outline-warning"
-                                       title="{{ $toggleLabel }}" aria-label="{{ $toggleLabel }} {{ $blog->title }}">
+                                    <button type="submit" form="toggleBlog{{ $blog->id }}"
+                                            class="btn btn-sm btn-outline-warning"
+                                            title="{{ $toggleLabel }}" aria-label="{{ $toggleLabel }} {{ $blog->title }}">
                                         <i class="fa {{ $blog->status === 'published' ? 'fa-eye-slash' : 'fa-check-circle' }}" aria-hidden="true"></i>
-                                    </a>
+                                    </button>
                                     {{-- Same confirm helper as every other destructive admin action.
                                          The form lives outside the group so the button stays a direct
                                          .btn-group child and keeps its grouped shape. --}}
@@ -113,6 +114,10 @@
                                     </button>
                                 </div>
 
+                                <form id="toggleBlog{{ $blog->id }}" class="d-none"
+                                      action="{{ route('admin.blogs.toggle-status', $blog->id) }}" method="POST">
+                                    @csrf
+                                </form>
                                 <form id="deleteBlog{{ $blog->id }}" class="d-none"
                                       action="{{ route('admin.blogs.destroy', $blog->id) }}" method="POST">
                                     @csrf
