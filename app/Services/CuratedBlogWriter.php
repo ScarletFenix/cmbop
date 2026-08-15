@@ -225,12 +225,16 @@ class CuratedBlogWriter
 
     private static function translationSlugTaken(string $slug, int $blogId, string $locale): bool
     {
+        // Public /blog/{slug} resolves translations first, then blogs.slug.
+        // A uniquified {slug}-{locale} must not steal another post's fallback URL.
+        if (self::publicSlugTakenByAnother($slug, $blogId)) {
+            return true;
+        }
+
         return BlogTranslation::query()
+            ->where('blog_id', $blogId)
+            ->where('locale', '!=', $locale)
             ->where('slug', $slug)
-            ->where(function ($query) use ($blogId, $locale) {
-                $query->where('blog_id', '!=', $blogId)
-                    ->orWhere('locale', '!=', $locale);
-            })
             ->exists();
     }
 

@@ -557,4 +557,54 @@ class AdminBlogCuratedSyncTest extends TestCase
         $this->assertNotSame('collision-slug-en', $translationSlug);
         $this->assertSame('collision-slug-en-1', $translationSlug);
     }
+
+    public function test_sync_primary_translation_does_not_steal_another_blogs_public_slug(): void
+    {
+        $occupant = Blog::factory()->published()->create([
+            'title' => 'Occupant Public Url',
+            'slug' => 'collision-slug-en',
+            'content' => '<p>Occupant body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $occupant->id,
+            'locale' => 'en',
+            'title' => 'Occupant Public Url',
+            'slug' => 'occupant-public-url',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Occupant body</p>',
+            'is_published' => true,
+        ]);
+
+        $blocker = Blog::factory()->published()->create([
+            'slug' => 'blocker-host',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blocker->id,
+            'locale' => 'de',
+            'title' => 'Taken base',
+            'slug' => 'collision-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Taken base</p>',
+            'is_published' => true,
+        ]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'Needs a free translation slug',
+            'slug' => 'collision-slug',
+            'content' => '<p>Body</p>',
+            'primary_locale' => 'en',
+        ]);
+
+        CuratedBlogWriter::syncPrimaryTranslation($blog);
+
+        $translationSlug = $blog->translations()->where('locale', 'en')->value('slug');
+        $this->assertNotSame('collision-slug-en', $translationSlug);
+        $this->assertSame('collision-slug-en-1', $translationSlug);
+
+        $html = $this->get('/blog/collision-slug-en')
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Occupant Public Url\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Needs a free translation slug\s*<\/h1>/', $html);
+    }
 }

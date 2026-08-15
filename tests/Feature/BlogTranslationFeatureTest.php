@@ -605,4 +605,48 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertOk()
             ->assertSee('/de/blog/'.GastbeitraegeEuropaBlogPost::SLUG, false);
     }
+
+    public function test_sitemap_fallback_does_not_reuse_another_posts_translation_slug(): void
+    {
+        $listed = Blog::factory()->published()->create([
+            'title' => 'Listed English Post',
+            'slug' => 'listed-english-post',
+            'content' => '<p>Listed body</p>',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $listed->id,
+            'locale' => 'en',
+            'title' => 'Listed English Post',
+            'slug' => 'shared-fallback-slug',
+            'excerpt' => 'Excerpt',
+            'content' => '<p>Listed body</p>',
+            'is_published' => true,
+        ]);
+
+        $deOnly = Blog::factory()->published()->create([
+            'title' => 'DE-only fallback post',
+            'slug' => 'shared-fallback-slug',
+            'content' => '<p>German body</p>',
+            'primary_locale' => 'de',
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $deOnly->id,
+            'locale' => 'de',
+            'title' => 'Nur Deutscher Beitrag',
+            'slug' => 'nur-deutscher-beitrag',
+            'excerpt' => 'Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $enSitemap = $this->get('/sitemap-en.xml')->assertOk()->getContent();
+        $this->assertSame(1, substr_count($enSitemap, '/blog/shared-fallback-slug'));
+        $this->assertStringContainsString('/blog/nur-deutscher-beitrag', $enSitemap);
+
+        $html = $this->get('/blog/shared-fallback-slug')
+            ->assertOk()
+            ->getContent();
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Listed English Post\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*Nur Deutscher Beitrag\s*<\/h1>/', $html);
+    }
 }
