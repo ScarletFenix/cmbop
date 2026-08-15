@@ -43,7 +43,7 @@ class OptionalSoftDeletingScope extends SoftDeletingScope
 
         $builder->onDelete(function (Builder $builder) {
             if (! self::columnReady($builder->getModel())) {
-                return $builder->toBase()->delete();
+                return 0;
             }
 
             $column = $this->getDeletedAtColumn($builder);
