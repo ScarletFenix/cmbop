@@ -289,6 +289,8 @@ class ContentLibraryController extends Controller
                 $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })->orWhere(function ($owned) {
                 $owned->withOpenOwnerOrder();
+            })->orWhere(function ($claimed) {
+                $claimed->withActiveOrderClaim();
             });
         });
     }

@@ -112,6 +112,26 @@ class AdminContentLibraryTest extends TestCase
         return $item;
     }
 
+    private function claimByItemOnly(ContentSubmission $submission, Order $order, Site $site): OrderItem
+    {
+        $item = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+        ]);
+
+        $submission->update([
+            'order_id' => null,
+            'order_item_id' => null,
+        ]);
+
+        return $item;
+    }
+
     public function test_unused_expired_approved_is_only_in_expired_chip(): void
     {
         $admin = $this->admin();
@@ -262,6 +282,74 @@ class AdminContentLibraryTest extends TestCase
             ->get(route('admin.content-library.index', ['availability' => 'in_progress']))
             ->assertOk()
             ->assertDontSee('Purged Leftover File');
+    }
+
+    public function test_expired_item_only_leftover_is_needs_fix_not_expired(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Expired Item Leftover',
+            'expires_at' => now()->subDay(),
+        ]);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $this->claimByItemOnly($submission, $order, $site);
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertNull($fresh->order_id);
+        $this->assertTrue($fresh->isClaimedByAnotherOrder());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertTrue($fresh->isReadyToFulfill((int) $order->id));
+        $this->assertTrue($fresh->isUsableAfterStaffApproval());
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($submission->id)->expiredUnused()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Expired Item Leftover');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'expired']))
+            ->assertOk()
+            ->assertDontSee('Expired Item Leftover');
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index'))
+            ->assertOk()
+            ->assertSee('Expired Item Leftover');
+    }
+
+    public function test_unused_approved_missing_file_is_needs_fix(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Missing File Unused',
+            'path' => '',
+        ]);
+
+        $fresh = $submission->fresh();
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->needsLibraryFix()->exists()
+        );
+
+        $this->actingAs($admin)
+            ->get(route('admin.content-library.index', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Missing File Unused');
     }
 
     public function test_legacy_status_approved_maps_to_available_chip(): void
@@ -691,6 +779,48 @@ class AdminContentLibraryTest extends TestCase
         $this->assertStringContainsString('continue the open order', (string) $bell->message);
         $this->assertStringNotContainsString('still needs a fix', (string) $bell->message);
         $this->assertStringContainsString('availability=in_progress', (string) $bell->action_url);
+    }
+
+    public function test_override_approve_of_item_only_leftover_is_usable_not_needs_fix_copy(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->siteFor($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Item leftover after decline',
+            'moderation_status' => ContentSubmission::STATUS_REJECTED,
+            'evaluation_status' => ContentSubmission::STATUS_REJECTED,
+        ]);
+        $order = $this->orderFor($advertiser, [
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $this->claimByItemOnly($submission, $order, $site);
+
+        $this->actingAs($admin)
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Staff restore item leftover',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success', function ($message) {
+                return is_string($message) && str_contains($message, 'stays on the open order');
+            });
+
+        $fresh = $submission->fresh()->load(['order', 'orderItems.order']);
+        $this->assertNull($fresh->order_id);
+        $this->assertTrue($fresh->isUsableAfterStaffApproval());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+        $this->assertSame(['status' => 'all', 'availability' => 'needs_fix'], $fresh->staffApprovalLibraryParams());
+
+        $bell = InAppNotification::query()->where('user_id', $advertiser->id)->latest('id')->first();
+        $this->assertNotNull($bell);
+        $this->assertStringContainsString('continue the open order', (string) $bell->message);
+        $this->assertStringNotContainsString('still needs a fix', (string) $bell->message);
+        $this->assertStringContainsString('availability=needs_fix', (string) $bell->action_url);
     }
 
     public function test_override_approve_of_unused_expired_article_points_at_expired_chip(): void
