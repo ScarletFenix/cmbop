@@ -134,3 +134,23 @@ if (! function_exists('old_text')) {
         return scalar_text(old($key, $default));
     }
 }
+
+if (! function_exists('blade_e')) {
+    /**
+     * Blade {{ }} echo that never hands an array to htmlspecialchars().
+     *
+     * Laravel compiles `{{ $value }}` to e(), and e() TypeErrors on arrays.
+     * Promotions (and any other view) still 500s when a leftover `title[]`,
+     * flashed list, or validation line is an array — even after individual
+     * fields were switched to old_text()/scalar_text(). Flatten first, then
+     * escape exactly as e() would.
+     */
+    function blade_e(mixed $value, bool $doubleEncode = true): string
+    {
+        if (is_array($value)) {
+            $value = scalar_text($value);
+        }
+
+        return e($value, $doubleEncode);
+    }
+}
