@@ -62,7 +62,8 @@ class Wallet extends Model
 
     /**
      * Create advertiser + publisher wallets for a newly registered user.
-     * Tolerates production DBs that have not yet migrated bonus_* columns.
+     * Welcome credit is applied only when bonus_* columns exist so it cannot
+     * become withdrawable cash on an unmigrated Hostinger wallet table.
      */
     public static function insertRegistrationPair(
         int $userId,
@@ -72,8 +73,9 @@ class Wallet extends Model
         string $currency = 'EUR'
     ): void {
         $now = now();
-        $bonus = round(max(0, $advertiserWelcomeBonus), 2);
         $hasBonusColumns = Schema::hasColumn('wallets', 'bonus_balance');
+        // Never put welcome credit in plain balance — that makes it withdrawable.
+        $bonus = $hasBonusColumns ? round(max(0, $advertiserWelcomeBonus), 2) : 0.0;
 
         $advertiser = [
             'user_id' => $userId,

@@ -33,7 +33,7 @@ class WelcomeBonusGrantTest extends TestCase
         foreach ([
             '1.2.3.4', '9.9.9.9', '10.0.0.2', '127.0.0.1',
             '8.8.8.8', '11.11.11.11', '203.0.113.80',
-            '203.0.113.90', '203.0.113.91',
+            '203.0.113.90', '203.0.113.91', '203.0.113.92',
         ] as $ip) {
             RateLimiter::clear('register:'.$ip);
             RateLimiter::clear('register-http:'.$ip);
@@ -123,6 +123,44 @@ class WelcomeBonusGrantTest extends TestCase
 
         $user = User::where('email', 'no-claims-table@example.com')->first();
         $this->assertAdvertiserBonus($user, 0.0);
+    }
+
+    public function test_register_does_not_grant_withdrawable_cash_when_bonus_columns_are_missing(): void
+    {
+        Notification::fake();
+        Schema::table('wallets', function ($table) {
+            if (Schema::hasColumn('wallets', 'bonus_balance')) {
+                $table->dropColumn(['bonus_balance', 'bonus_reserved']);
+            }
+        });
+        $this->assertFalse(Schema::hasColumn('wallets', 'bonus_balance'));
+
+        $this->withServerVariables(['REMOTE_ADDR' => '203.0.113.92'])
+            ->postJson('/register', $this->registerPayload('no-bonus-cols@example.com'))
+            ->assertOk()
+            ->assertJsonPath('status', 'success');
+
+        $user = User::where('email', 'no-bonus-cols@example.com')->first();
+        $this->assertNotNull($user);
+        $advertiserRoleId = Role::where('name', 'advertiser')->value('id');
+        $wallet = Wallet::where('user_id', $user->id)->where('role_id', $advertiserRoleId)->first();
+        $this->assertNotNull($wallet);
+        $this->assertEquals(0.0, (float) $wallet->balance);
+        $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_register_page_hides_bonus_copy_when_bonus_columns_are_missing(): void
+    {
+        Schema::table('wallets', function ($table) {
+            if (Schema::hasColumn('wallets', 'bonus_balance')) {
+                $table->dropColumn(['bonus_balance', 'bonus_reserved']);
+            }
+        });
+
+        $this->get(route('register'))
+            ->assertOk()
+            ->assertDontSee('€20 welcome credit', false)
+            ->assertSee('const welcomeBonusEnabled = false', false);
     }
 
     public function test_register_page_hides_bonus_copy_when_claims_table_is_missing(): void

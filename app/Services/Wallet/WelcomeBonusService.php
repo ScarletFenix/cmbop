@@ -33,7 +33,7 @@ class WelcomeBonusService
 
     public function canGrant(): bool
     {
-        return $this->isEnabled() && $this->claimsTableReady();
+        return $this->isEnabled() && $this->claimsTableReady() && $this->bonusColumnsReady();
     }
 
     /**
@@ -81,7 +81,7 @@ class WelcomeBonusService
         }
 
         $write = function () use ($user, $request, $amount, $source): bool {
-            if (! $this->claimsTableReady() || ! WelcomeBonusSetting::isEnabledForGrant()) {
+            if (! $this->claimsTableReady() || ! $this->bonusColumnsReady() || ! WelcomeBonusSetting::isEnabledForGrant()) {
                 return false;
             }
 
@@ -297,6 +297,19 @@ class WelcomeBonusService
     {
         try {
             return Schema::hasTable((new WelcomeBonusClaim)->getTable());
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * Without bonus_balance the welcome credit lands in plain balance and
+     * becomes withdrawable cash. Refuse the grant until the columns exist.
+     */
+    private function bonusColumnsReady(): bool
+    {
+        try {
+            return Schema::hasColumn('wallets', 'bonus_balance');
         } catch (\Throwable) {
             return false;
         }
