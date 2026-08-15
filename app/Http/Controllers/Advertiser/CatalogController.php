@@ -4664,6 +4664,10 @@ class CatalogController extends Controller
             throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
         }
 
+        if ($locked->order_id !== null && ! $locked->hasCheckoutReadyLinks()) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+
         // Each article is published on one site only. Keep the first order/item linkage on the
         // submission row; every OrderItem still stores its own content_submission_id.
         $payload = [

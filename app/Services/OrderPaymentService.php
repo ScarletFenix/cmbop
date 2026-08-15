@@ -624,11 +624,14 @@ class OrderPaymentService
                 $lineKey = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
 
                 $submissionId = (int) ($line['content_submission_id'] ?? 0);
-                $submission = $submissionId > 0
+                $expectLibrary = $submissionId > 0;
+                $submission = $expectLibrary
                     ? ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first()
                     : null;
+                $articleMissing = $expectLibrary && ! $submission;
                 $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
-                $articleUnready = $submission && ! $articleTaken && ! $submission->isReadyForCheckout();
+                $articleUnready = $articleMissing
+                    || ($submission && ! $articleTaken && ! $submission->isReadyForCheckout());
                 $attachSubmission = $submission && ! $articleTaken && ! $articleUnready;
 
                 $order = $this->createPaidCardOrderRow($schema, [
@@ -666,14 +669,14 @@ class OrderPaymentService
                     'price' => $line['price'] ?? 0,
                     'content_link' => $line['content_link'] ?? null,
                     'content_submission_id' => $attachSubmission ? $submission->id : null,
-                    'content_disk' => $attachSubmission ? $submission->disk : ($line['content_disk'] ?? null),
-                    'content_path' => $attachSubmission ? $submission->path : ($line['content_path'] ?? null),
-                    'content_original_name' => $attachSubmission ? $submission->original_filename : ($line['content_original_name'] ?? null),
-                    'content_mime' => $attachSubmission ? $submission->mime : ($line['content_mime'] ?? null),
-                    'anchor_text' => $attachSubmission ? $submission->anchor_text : ($line['anchor_text'] ?? null),
-                    'target_url' => $attachSubmission ? $submission->target_url : ($line['target_url'] ?? null),
-                    'feature_image_url' => $attachSubmission ? $submission->feature_image_url : ($line['feature_image_url'] ?? null),
-                    'moderation_status' => $attachSubmission ? $submission->moderation_status : ($line['moderation_status'] ?? null),
+                    'content_disk' => $attachSubmission ? $submission->disk : ($expectLibrary ? null : ($line['content_disk'] ?? null)),
+                    'content_path' => $attachSubmission ? $submission->path : ($expectLibrary ? null : ($line['content_path'] ?? null)),
+                    'content_original_name' => $attachSubmission ? $submission->original_filename : ($expectLibrary ? null : ($line['content_original_name'] ?? null)),
+                    'content_mime' => $attachSubmission ? $submission->mime : ($expectLibrary ? null : ($line['content_mime'] ?? null)),
+                    'anchor_text' => $attachSubmission ? $submission->anchor_text : ($expectLibrary ? null : ($line['anchor_text'] ?? null)),
+                    'target_url' => $attachSubmission ? $submission->target_url : ($expectLibrary ? null : ($line['target_url'] ?? null)),
+                    'feature_image_url' => $attachSubmission ? $submission->feature_image_url : ($expectLibrary ? null : ($line['feature_image_url'] ?? null)),
+                    'moderation_status' => $attachSubmission ? $submission->moderation_status : ($expectLibrary ? null : ($line['moderation_status'] ?? null)),
                     'sensitive_type' => $line['sensitive_type'] ?? null,
                     'additional_price' => $line['additional_price'] ?? 0,
                     'homepage_days' => $line['homepage_days'] ?? null,
@@ -698,11 +701,13 @@ class OrderPaymentService
                     );
                     Log::warning($articleTaken
                         ? 'Refunded duplicate Content Library Stripe checkout'
-                        : 'Refunded Stripe checkout for an unready Content Library article', [
-                            'reference_code' => $referenceCode,
-                            'order_id' => $order->id,
-                            'content_submission_id' => $submission?->id,
-                        ]);
+                        : ($articleMissing
+                            ? 'Refunded Stripe checkout for a missing Content Library article'
+                            : 'Refunded Stripe checkout for an unready Content Library article'), [
+                                'reference_code' => $referenceCode,
+                                'order_id' => $order->id,
+                                'content_submission_id' => $submission?->id ?? $submissionId,
+                            ]);
 
                     continue;
                 }
