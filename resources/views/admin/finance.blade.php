@@ -13,9 +13,18 @@
                 Accounting truth for the period — GMV vs platform fees, cash in bank vs internal wallets, and what you owe publishers.
             </p>
         </div>
-        <div class="d-flex flex-wrap gap-2 align-items-start">
-            <form method="GET" action="{{ route('admin.finance') }}" class="d-flex flex-wrap gap-2 align-items-end">
-                <div style="min-width:220px">
+        <div class="admin-finance-toolbar d-flex flex-wrap align-items-end gap-2">
+            <form method="GET" action="{{ route('admin.finance') }}" class="d-flex flex-wrap align-items-end gap-2">
+                @if($dateFrom)
+                    <input type="hidden" name="date_from" value="{{ $dateFrom }}">
+                @endif
+                @if($dateTo)
+                    <input type="hidden" name="date_to" value="{{ $dateTo }}">
+                @endif
+                @if(! $dateFrom && ! $dateTo && in_array($periodKey, ['week', 'month', 'all'], true))
+                    <input type="hidden" name="period" value="{{ $periodKey }}">
+                @endif
+                <div class="admin-finance-toolbar__search">
                     <x-slb-search-field
                         name="q"
                         id="adminFinanceUserSearch"
@@ -24,24 +33,42 @@
                         label="Find user dossier"
                     />
                 </div>
-                <button class="btn btn-sm btn-outline-primary mb-3">Open</button>
+                <div class="admin-finance-toolbar__action">
+                    <label class="form-label fw-semibold small text-muted mb-1" for="adminFinanceUserOpen">&nbsp;</label>
+                    <button type="submit" id="adminFinanceUserOpen" class="btn btn-sm btn-outline-primary">Open</button>
+                </div>
             </form>
-            <a href="{{ route('admin.finance.ledger') }}" class="btn btn-sm btn-outline-secondary">
-                <i class="fa fa-book me-1"></i> Wallet ledger
-            </a>
-            <a href="{{ route('admin.finance.export', request()->query()) }}" class="btn btn-sm btn-outline-primary">
-                <i class="fa fa-file-csv me-1"></i> Export period CSV
-            </a>
+            <div class="admin-finance-toolbar__action">
+                <span class="form-label fw-semibold small text-muted mb-1" aria-hidden="true">&nbsp;</span>
+                <a id="adminFinanceWalletLedger" href="{{ route('admin.finance.ledger') }}" class="btn btn-sm btn-outline-secondary">
+                    <i class="fa fa-book me-1"></i> Wallet ledger
+                </a>
+            </div>
+            <div class="admin-finance-toolbar__action">
+                <span class="form-label fw-semibold small text-muted mb-1" aria-hidden="true">&nbsp;</span>
+                <a id="adminFinanceExport" href="{{ route('admin.finance.export', request()->query()) }}" class="btn btn-sm btn-outline-primary">
+                    <i class="fa fa-file-csv me-1"></i> Export period CSV
+                </a>
+            </div>
         </div>
     </div>
 
-    <form method="GET" class="card border-0 shadow-sm mb-3">
+    <form method="GET" action="{{ route('admin.finance') }}" class="card border-0 shadow-sm mb-3 admin-finance-period">
         <div class="card-body py-3">
             <div class="row g-2 align-items-end">
+                @if($userQuery !== '')
+                    <input type="hidden" name="q" value="{{ $userQuery }}">
+                @endif
+                @if(! $dateFrom && ! $dateTo && in_array($periodKey, ['week', 'month', 'all'], true))
+                    <input type="hidden" name="period" value="{{ $periodKey }}">
+                @endif
                 <div class="col-auto">
                     <div class="btn-group btn-group-sm" role="group">
                         @foreach(['week' => 'This week', 'month' => 'This month', 'all' => 'All time'] as $key => $label)
-                            <a href="{{ route('admin.finance', ['period' => $key]) }}"
+                            <a href="{{ route('admin.finance', array_filter([
+                                    'period' => $key,
+                                    'q' => $userQuery !== '' ? $userQuery : null,
+                                ])) }}"
                                class="btn {{ $periodKey === $key && !$dateFrom && !$dateTo ? 'btn-primary' : 'btn-outline-secondary' }}">
                                 {{ $label }}
                             </a>
@@ -49,15 +76,16 @@
                     </div>
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small text-muted mb-0">From</label>
-                    <input type="date" name="date_from" value="{{ $dateFrom }}" class="form-control form-control-sm">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceDateFrom">From</label>
+                    <input type="date" id="adminFinanceDateFrom" name="date_from" value="{{ $dateFrom }}" class="form-control form-control-sm">
                 </div>
                 <div class="col-md-2">
-                    <label class="form-label small text-muted mb-0">To</label>
-                    <input type="date" name="date_to" value="{{ $dateTo }}" class="form-control form-control-sm">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceDateTo">To</label>
+                    <input type="date" id="adminFinanceDateTo" name="date_to" value="{{ $dateTo }}" class="form-control form-control-sm">
                 </div>
-                <div class="col-auto">
-                    <button class="btn btn-sm btn-primary">Apply range</button>
+                <div class="col-auto admin-finance-period__action">
+                    <label class="form-label small text-muted mb-1" for="adminFinanceApplyRange">&nbsp;</label>
+                    <button type="submit" id="adminFinanceApplyRange" class="btn btn-sm btn-primary">Apply range</button>
                 </div>
                 <div class="col-auto ms-auto">
                     <span class="badge bg-light text-dark border">Period: {{ $d['period']['label'] }}</span>
