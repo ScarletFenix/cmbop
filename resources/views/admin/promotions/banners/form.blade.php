@@ -15,7 +15,7 @@
         <div class="alert alert-danger">
             <ul class="mb-0">
                 @foreach($errors->all() as $error)
-                    <li>{{ $error }}</li>
+                    <li>{{ scalar_text($error) }}</li>
                 @endforeach
             </ul>
         </div>

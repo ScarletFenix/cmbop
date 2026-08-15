@@ -20,6 +20,7 @@ use App\Support\PublicStorageLink;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
@@ -54,6 +55,12 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         $this->assertConfiguredMediaPath();
+
+        // {{ $array }} compiles to htmlspecialchars() and 500s. Flatten first.
+        // Drop stale compiled views that still call e() directly — Hostinger
+        // zip deploys often keep compiled PHP newer than the Blade source.
+        Blade::setEchoFormat('blade_e(%s)');
+        $this->forgetStaleBladeEchoCache();
 
         // App shells use Bootstrap, not Tailwind. Laravel's default Tailwind
         // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities
@@ -248,6 +255,21 @@ class AppServiceProvider extends ServiceProvider
                 'ssrCartRemovedOwned' => $pruned['removed_owned'],
             ]);
         });
+    }
+
+    private function forgetStaleBladeEchoCache(): void
+    {
+        $dir = storage_path('framework/views');
+        $marker = $dir.DIRECTORY_SEPARATOR.'.blade-e-v1';
+        if (! is_dir($dir) || is_file($marker)) {
+            return;
+        }
+
+        foreach (glob($dir.DIRECTORY_SEPARATOR.'*.php') ?: [] as $file) {
+            @unlink($file);
+        }
+
+        @file_put_contents($marker, '1');
     }
 
     /**
