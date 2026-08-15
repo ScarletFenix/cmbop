@@ -563,6 +563,8 @@ class ContentModerationEngine
         $text = preg_replace('/\p{Mn}+/u', '', $text) ?? $text;
         // After NFKD, fullwidth %HH becomes ASCII so cas％６９no → casino.
         $text = $this->percentDecode($text);
+        // CSS hex escapes in inline style urls: cas\69no → casino.
+        $text = $this->cssDecode($text);
 
         $text = strtr($text, self::latinConfusables());
 
@@ -592,7 +594,7 @@ class ContentModerationEngine
      */
     public function tightenHaystack(string $haystack): string
     {
-        return preg_replace('/(?<=\p{L})[\s\-\._]+(?=\p{L})/u', '', $haystack) ?? $haystack;
+        return preg_replace('/(?<=\p{L})[\s\-\._\\\\\/]+(?=\p{L})/u', '', $haystack) ?? $haystack;
     }
 
     /**
@@ -628,6 +630,28 @@ class ContentModerationEngine
         }
 
         return $decoded;
+    }
+
+    /**
+     * Unfold CSS hex escapes used in inline style urls ("cas\69no").
+     */
+    public function cssDecode(string $text): string
+    {
+        $decoded = preg_replace_callback(
+            '/\\\\([0-9a-fA-F]{1,6})(?:\s|(?![0-9a-fA-F]))/u',
+            static function (array $m): string {
+                $codepoint = hexdec($m[1]);
+                if ($codepoint <= 0 || $codepoint > 0x10FFFF) {
+                    return '';
+                }
+                $char = mb_chr($codepoint, 'UTF-8');
+
+                return is_string($char) ? $char : '';
+            },
+            $text
+        );
+
+        return is_string($decoded) ? $decoded : $text;
     }
 
     /**
