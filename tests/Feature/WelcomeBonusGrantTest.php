@@ -370,8 +370,9 @@ class WelcomeBonusGrantTest extends TestCase
         $advertiserRoleId = (int) Role::where('name', 'advertiser')->value('id');
         $publisherRoleId = (int) Role::where('name', 'publisher')->value('id');
 
-        Wallet::insertRegistrationPair($user->id, $advertiserRoleId, $publisherRoleId, 20.0);
+        $credited = Wallet::insertRegistrationPair($user->id, $advertiserRoleId, $publisherRoleId, 20.0);
 
+        $this->assertSame(0.0, $credited);
         $this->assertAdvertiserBonus($user, 0.0);
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
@@ -388,8 +389,9 @@ class WelcomeBonusGrantTest extends TestCase
         $advertiserRoleId = (int) Role::where('name', 'advertiser')->value('id');
         $publisherRoleId = (int) Role::where('name', 'publisher')->value('id');
 
-        Wallet::insertRegistrationPair($user->id, $advertiserRoleId, $publisherRoleId, 2000.0);
+        $credited = Wallet::insertRegistrationPair($user->id, $advertiserRoleId, $publisherRoleId, 2000.0);
 
+        $this->assertSame(20.0, $credited);
         $this->assertAdvertiserBonus($user, 20.0);
     }
 

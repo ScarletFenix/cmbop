@@ -105,6 +105,19 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
     }
 
+    public function test_claims_table_has_a_unique_index_on_ip_address(): void
+    {
+        $found = false;
+        foreach (Schema::getIndexes('welcome_bonus_claims') as $index) {
+            if (! empty($index['unique']) && ($index['columns'] ?? []) === ['ip_address']) {
+                $found = true;
+                break;
+            }
+        }
+
+        $this->assertTrue($found, 'welcome_bonus_claims.ip_address must be unique');
+    }
+
     public function test_missing_claims_table_does_not_grant(): void
     {
         Schema::dropIfExists('welcome_bonus_claims');

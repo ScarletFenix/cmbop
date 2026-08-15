@@ -5,9 +5,11 @@ namespace App\Services\Wallet;
 use App\Models\User;
 use App\Models\WelcomeBonusClaim;
 use App\Models\WelcomeBonusSetting;
+use Illuminate\Contracts\Cache\LockTimeoutException;
 use Illuminate\Database\QueryException;
 use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
@@ -92,33 +94,49 @@ class WelcomeBonusService
             $amount = round(min($amount, $allowed), 2);
 
             $ip = $this->normalizedIp($request);
-            if ($ip === null || $this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
+            if ($ip === null) {
                 return false;
             }
 
-            try {
-                WelcomeBonusClaim::query()->create([
-                    'user_id' => $user->id,
-                    'ip_address' => $ip,
-                    'user_agent' => $request->userAgent(),
-                    'source' => $source,
-                    'amount' => $amount,
-                ]);
-
-                return true;
-            } catch (UniqueConstraintViolationException) {
-                return false;
-            } catch (QueryException $e) {
-                if ($this->isUniqueViolation($e)) {
+            $insert = function () use ($user, $request, $amount, $source, $ip): bool {
+                if ($this->userAlreadyClaimed((int) $user->id) || $this->ipAlreadyClaimed($ip, true)) {
                     return false;
                 }
 
-                Log::warning('Welcome bonus claim write failed; skipping grant', [
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
+                try {
+                    WelcomeBonusClaim::query()->create([
+                        'user_id' => $user->id,
+                        'ip_address' => $ip,
+                        'user_agent' => $request->userAgent(),
+                        'source' => $source,
+                        'amount' => $amount,
+                    ]);
 
+                    return true;
+                } catch (UniqueConstraintViolationException) {
+                    return false;
+                } catch (QueryException $e) {
+                    if ($this->isUniqueViolation($e)) {
+                        return false;
+                    }
+
+                    Log::warning('Welcome bonus claim write failed; skipping grant', [
+                        'user_id' => $user->id,
+                        'error' => $e->getMessage(),
+                    ]);
+
+                    return false;
+                }
+            };
+
+            // Settings-row lock serializes grants only when that table exists.
+            // Per-place lock covers Hostinger drift (no unique IP index yet).
+            try {
+                return Cache::lock('welcome-bonus-claim:'.$ip, 15)->block(8, $insert);
+            } catch (LockTimeoutException) {
                 return false;
+            } catch (\BadMethodCallException) {
+                return $insert();
             }
         };
 

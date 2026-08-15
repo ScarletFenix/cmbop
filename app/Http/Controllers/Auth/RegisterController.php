@@ -102,7 +102,7 @@ class RegisterController extends Controller
                 $welcomeBonus = 0.0;
             }
 
-            Wallet::insertRegistrationPair(
+            $welcomeBonus = Wallet::insertRegistrationPair(
                 $user->id,
                 $advertiserRole->id,
                 $publisherRole->id,
