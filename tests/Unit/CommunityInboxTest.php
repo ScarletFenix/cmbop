@@ -107,6 +107,10 @@ class CommunityInboxTest extends TestCase
         $this->assertNull(CommunityInbox::safeHttpUrl(['https://x.example']));
         $this->assertNull(CommunityInbox::safeHttpUrl("https://app.example/x\r\nLocation: https://evil.example"));
         $this->assertNull(CommunityInbox::safeHttpUrl('https://app.example/has space'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('https://'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('https://user:pass@fresh-tech.example/secret'));
+        $this->assertNull(CommunityInbox::safeHttpUrl('ftp://fresh-tech.example'));
+        $this->assertNull(CommunityInbox::storedPageUrl('https://user:secret@app.example/checkout'));
         $this->assertNull(CommunityInbox::storedPageUrl('https://app.example/'.str_repeat('a', 300)));
         $this->assertSame('https://app.example/checkout', CommunityInbox::storedPageUrl('https://app.example/checkout'));
     }
@@ -151,6 +155,16 @@ class CommunityInboxTest extends TestCase
             'suggestion_id' => 4,
             'site_name' => 'Bad Site',
         ], CommunityInbox::createListingQuery($suggestion));
+
+        $withUserinfo = new WebsiteSuggestion([
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://user:pass@fresh-tech.example/secret',
+        ]);
+        $withUserinfo->id = 5;
+        $this->assertSame([
+            'suggestion_id' => 5,
+            'site_name' => 'Fresh Tech Blog',
+        ], CommunityInbox::createListingQuery($withUserinfo));
     }
 
     public function test_suggestion_lookup_domain_uses_url_host_when_domain_is_empty(): void

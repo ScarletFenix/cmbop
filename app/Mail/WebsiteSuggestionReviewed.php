@@ -19,7 +19,7 @@ class WebsiteSuggestionReviewed extends PlatformMailable
     ) {
         parent::__construct();
         $this->suggestion->loadMissing(['user']);
-        $this->status = $status ?? (string) $this->suggestion->status;
+        $this->status = CommunityInbox::plainLine($status ?? (string) $this->suggestion->status, 'reviewed');
         $this->notes = $notes ?? trim((string) ($this->suggestion->admin_notes ?? ''));
         $this->siteName = CommunityInbox::plainLine(
             $siteName ?? ($this->suggestion->website_name ?: ($this->suggestion->domain ?: 'the website')),

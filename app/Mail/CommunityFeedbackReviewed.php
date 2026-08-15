@@ -21,7 +21,7 @@ class CommunityFeedbackReviewed extends PlatformMailable
     ) {
         parent::__construct();
         $this->item->loadMissing(['user']);
-        $this->status = $status ?? (string) $this->item->status;
+        $this->status = CommunityInbox::plainLine($status ?? (string) $this->item->status, 'reviewed');
         $this->notes = $notes ?? trim((string) ($this->item->admin_notes ?? ''));
         $fallback = $this->kind === 'problem' ? 'your report' : 'your suggestion';
         $this->subjectLabel = CommunityInbox::plainLine(

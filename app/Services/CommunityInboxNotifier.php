@@ -121,7 +121,7 @@ class CommunityInboxNotifier
                 )
                 : new CommunityFeedbackReviewed(
                     $item,
-                    $tab === CommunityInbox::TAB_SUGGESTIONS ? 'suggestion' : 'problem',
+                    $item instanceof Suggestion ? 'suggestion' : 'problem',
                     (string) $item->status,
                     $notes,
                     $item instanceof ProblemReport ? (string) ($item->subject ?: 'your report') : 'your suggestion',

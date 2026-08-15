@@ -129,6 +129,25 @@ class CommunityFeedbackTest extends TestCase
         ]);
     }
 
+    public function test_website_suggestion_rejects_credential_and_non_http_urls(): void
+    {
+        $user = $this->userWithRole('advertiser');
+
+        $this->actingAs($user)->postJson(route('advertiser.website-suggestions.store'), [
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'https://user:pass@fresh-tech.example/admin',
+        ])->assertStatus(422)->assertJson(['success' => false]);
+
+        $this->actingAs($user)->postJson(route('advertiser.website-suggestions.store'), [
+            'website_name' => 'Fresh Tech Blog',
+            'website_url' => 'ftp://fresh-tech.example',
+        ])->assertStatus(422)->assertJson(['success' => false]);
+
+        $this->assertDatabaseMissing('website_suggestions', [
+            'domain' => 'fresh-tech.example',
+        ]);
+    }
+
     public function test_publisher_can_claim_website_with_matching_name(): void
     {
         $owner = $this->userWithRole('publisher');

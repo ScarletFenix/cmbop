@@ -159,6 +159,14 @@ class CommunityInbox
             return null;
         }
 
+        $parts = parse_url($url);
+        if (! is_array($parts) || ! is_string($parts['host'] ?? null) || $parts['host'] === '') {
+            return null;
+        }
+        if (isset($parts['user']) || isset($parts['pass'])) {
+            return null;
+        }
+
         return $url;
     }
 
