@@ -297,9 +297,12 @@ class AdminModerationOverrideTest extends TestCase
             'admin_override' => true,
             'scan_token' => 'scan-url-old',
             'word_count' => 20,
+        ]);
+        ContentModerationLog::query()->whereKey($log->id)->update([
             'created_at' => now()->subDays(2),
             'updated_at' => now()->subDays(2),
         ]);
+        $log->refresh();
 
         $this->assertFalse($log->isUsableApproval(900));
 
