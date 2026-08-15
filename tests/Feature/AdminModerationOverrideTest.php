@@ -214,7 +214,98 @@ class AdminModerationOverrideTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $this->assertSame('rejected', $submission->fresh()->evaluation_status);
+        $this->assertStringNotContainsString(
+            'Approved by admin override',
+            (string) ($submission->fresh()->evaluation_report['summary'] ?? '')
+        );
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+    }
+
+    public function test_stale_reject_row_cannot_be_overridden(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $old] = $this->rejectCasinoArticle($advertiser);
+
+        $current = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'content_submission_id' => $submission->id,
+            'document_url' => 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'scan_token' => 'scan-current',
+            'word_count' => 20,
+        ]);
+        $submission->update(['moderation_log_id' => $current->id, 'scan_token' => 'scan-current']);
+
+        $this->actingAs($admin)
+            ->from(route('admin.moderation.index'))
+            ->post(route('admin.moderation.override', $old), [
+                'notes' => 'Trying to override an old row.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertFalse((bool) $old->fresh()->admin_override);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $this->assertSame((int) $current->id, (int) $submission->fresh()->moderation_log_id);
+    }
+
+    public function test_library_reject_blocks_checkout_until_the_article_is_edited(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'rejected',
+                'notes' => 'Client asked us to hold this version.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $submission->refresh();
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->moderation_status);
+        $this->assertTrue((bool) $submission->moderationLog?->admin_override);
+        $this->assertNotEmpty($submission->moderationLog?->signals['override_fingerprint'] ?? null);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
+        $this->assertFalse($check['ok']);
+
+        $submission->update([
+            'extracted_text' => $submission->extracted_text.' Updated closing paragraph for the new brief.',
+        ]);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
+    }
+
+    public function test_url_override_is_not_immortal(): void
+    {
+        $advertiser = $this->advertiser();
+        $url = 'https://docs.google.com/document/d/stale-override/edit';
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'document_url' => $url,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'admin_override' => true,
+            'scan_token' => 'scan-url-old',
+            'word_count' => 20,
+            'created_at' => now()->subDays(2),
+            'updated_at' => now()->subDays(2),
+        ]);
+
+        $this->assertFalse($log->isUsableApproval(900));
+
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $check = app(ContentModerationService::class)->assertLinksApproved([$url], $advertiser);
         $this->assertFalse($check['ok']);
     }
 

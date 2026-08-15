@@ -7,6 +7,7 @@ use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\ContentUpload\ContentUploadService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -356,6 +357,17 @@ class ContentModerationService
                 continue;
             }
 
+            if ($this->usableAdminReject($submission)) {
+                $failures[] = [
+                    'url' => 'upload:'.$submission->id,
+                    'title' => 'Article needs changes',
+                    'message' => config('content_upload.help.compliance_reject')
+                        ?: 'A staff member rejected this article. Please revise it before ordering.',
+                ];
+
+                continue;
+            }
+
             $result = $this->scanExtractedContent(
                 text: (string) $submission->extracted_text,
                 html: (string) ($submission->preview_html ?? ''),
@@ -412,14 +424,11 @@ class ContentModerationService
             $recent = ContentModerationLog::query()
                 ->where('document_url', $url)
                 ->when($user?->id, fn ($q) => $q->where('user_id', $user->id))
-                ->where(function ($q) {
-                    $q->where('passed', true)
-                        ->orWhere('admin_override', true);
-                })
+                ->where('passed', true)
                 ->latest('id')
                 ->first();
 
-            if ($recent && ($recent->admin_override || $recent->isUsableApproval($within))) {
+            if ($recent && $recent->isUsableApproval($within)) {
                 continue;
             }
 
@@ -784,12 +793,48 @@ class ContentModerationService
             return false;
         }
 
-        $stored = $log->signals['override_fingerprint'] ?? null;
-        if (! is_string($stored) || $stored === '') {
+        return $this->overrideFingerprintMatches($log, $submission);
+    }
+
+    public function usableAdminReject(ContentSubmission $submission): bool
+    {
+        if ($submission->moderation_status !== ContentSubmission::STATUS_REJECTED) {
             return false;
         }
 
-        return hash_equals($stored, $this->contentFingerprint($submission));
+        $log = $submission->moderationLog;
+        if (! $log || ! $log->admin_override || $log->passed) {
+            return false;
+        }
+
+        return $this->overrideFingerprintMatches($log, $submission);
+    }
+
+    /**
+     * Library staff approve/reject. Always fingerprints the current article so
+     * checkout honors the decision until the advertiser edits.
+     *
+     * @return array{ok:bool, submission:?ContentSubmission, message:string}
+     */
+    public function applyStaffOverride(ContentSubmission $submission, string $decision, User $admin, string $notes): array
+    {
+        $decision = $decision === ContentSubmission::STATUS_REJECTED
+            ? ContentSubmission::STATUS_REJECTED
+            : ContentSubmission::STATUS_APPROVED;
+
+        return DB::transaction(function () use ($submission, $decision, $admin, $notes) {
+            $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
+            $log = $this->currentOrNewLogForSubmission($submission);
+
+            $this->stampOverride($log, $submission, $admin, $notes, $decision);
+            $this->logOverrideActivity($admin, $log, $submission, $notes, $decision);
+
+            $message = $decision === ContentSubmission::STATUS_APPROVED
+                ? 'Article #'.$submission->id.' approved by override. Checkout will accept it until the advertiser edits the content.'
+                : 'Article #'.$submission->id.' rejected. Checkout will block this version until the advertiser edits.';
+
+            return ['ok' => true, 'submission' => $submission->fresh(), 'message' => $message];
+        });
     }
 
     /**
@@ -814,52 +859,21 @@ class ContentModerationService
             return ['ok' => false, 'submission' => null, 'message' => 'The linked article no longer exists.'];
         }
 
+        if ($submission && ! $log->isCurrentDecision($submission)) {
+            return [
+                'ok' => false,
+                'submission' => $submission,
+                'message' => 'This scan is no longer the current decision. Open the latest scan.',
+            ];
+        }
+
         return DB::transaction(function () use ($log, $admin, $notes, $submission) {
             if ($submission) {
                 $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
             }
 
-            $signals = is_array($log->signals) ? $log->signals : [];
-            if ($submission) {
-                $signals['override_fingerprint'] = $this->contentFingerprint($submission);
-            }
-
-            $log->update([
-                'passed' => true,
-                'status' => ContentModerationLog::STATUS_APPROVED,
-                'admin_override' => true,
-                'overridden_by' => $admin->id,
-                'overridden_at' => now(),
-                'admin_notes' => $notes,
-                'signals' => $signals,
-            ]);
-
-            if ($submission) {
-                $submission->update(array_merge(
-                    $this->evaluationApprovedByOverride($submission, $notes),
-                    [
-                        'moderation_status' => ContentSubmission::STATUS_APPROVED,
-                        'evaluation_status' => 'approved',
-                        'moderation_log_id' => $log->id,
-                        'scan_token' => $log->scan_token,
-                    ]
-                ));
-            }
-
-            try {
-                ActivityLogger::log(
-                    'moderation.overridden',
-                    ($admin->name ?: $admin->email).' overrode moderation log #'.$log->id,
-                    $submission,
-                    [
-                        'log_id' => $log->id,
-                        'submission_id' => $submission?->id,
-                        'notes' => $notes,
-                    ],
-                    $submission?->title ?: $submission?->original_filename
-                );
-            } catch (\Throwable) {
-            }
+            $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
+            $this->logOverrideActivity($admin, $log, $submission, $notes, ContentSubmission::STATUS_APPROVED);
 
             $message = $submission
                 ? 'Article #'.$submission->id.' approved by override. Checkout will accept it until the advertiser edits the content.'
@@ -902,27 +916,16 @@ class ContentModerationService
             ]);
 
             if ($submission && (filled($submission->extracted_text) || filled($submission->preview_html))) {
-                $result = $this->scanExtractedContent(
-                    text: (string) $submission->extracted_text,
-                    html: (string) ($submission->preview_html ?? ''),
-                    sourceLabel: 'upload:'.$submission->id,
-                    user: $submission->user,
-                    title: $this->scanTitle($submission),
-                    links: $this->linksFromSubmission($submission),
-                    contentSubmissionId: (int) $submission->id,
-                );
-                $submission->update([
-                    'moderation_status' => $result['passed']
-                        ? ContentSubmission::STATUS_APPROVED
-                        : ($result['status'] === 'error'
-                            ? ContentSubmission::STATUS_ERROR
-                            : ContentSubmission::STATUS_REJECTED),
-                    'moderation_log_id' => $result['log']?->id,
-                    'scan_token' => $result['scan_token'],
-                ]);
+                app(ContentUploadService::class)->reEvaluateSubmission($submission, true);
             } elseif ($submission) {
+                $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+                $report['summary'] = 'Override reverted. Re-upload the article to re-check it.';
+                $report['passed_compliance'] = false;
+                unset($report['admin_override'], $report['admin_override_notes'], $report['admin_override_decision']);
                 $submission->update([
                     'moderation_status' => ContentSubmission::STATUS_REJECTED,
+                    'evaluation_status' => 'rejected',
+                    'evaluation_report' => $report,
                 ]);
             }
 
@@ -948,26 +951,139 @@ class ContentModerationService
         });
     }
 
+    protected function overrideFingerprintMatches(ContentModerationLog $log, ContentSubmission $submission): bool
+    {
+        $stored = $log->signals['override_fingerprint'] ?? null;
+        if (! is_string($stored) || $stored === '') {
+            return false;
+        }
+
+        return hash_equals($stored, $this->contentFingerprint($submission));
+    }
+
+    protected function currentOrNewLogForSubmission(ContentSubmission $submission): ContentModerationLog
+    {
+        if ($submission->moderation_log_id) {
+            $current = ContentModerationLog::query()->whereKey($submission->moderation_log_id)->lockForUpdate()->first();
+            if ($current) {
+                return $current;
+            }
+        }
+
+        return ContentModerationLog::create([
+            'user_id' => $submission->user_id,
+            'content_submission_id' => $submission->id,
+            'document_url' => 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'scan_token' => $submission->scan_token ?: Str::random(40),
+            'word_count' => str_word_count((string) $submission->extracted_text),
+            'signals' => ['staff_override' => true],
+        ]);
+    }
+
+    protected function stampOverride(
+        ContentModerationLog $log,
+        ?ContentSubmission $submission,
+        User $admin,
+        string $notes,
+        string $decision,
+    ): void {
+        $approved = $decision === ContentSubmission::STATUS_APPROVED;
+        $signals = is_array($log->signals) ? $log->signals : [];
+        if ($submission) {
+            $signals['override_fingerprint'] = $this->contentFingerprint($submission);
+        }
+        $signals['staff_decision'] = $decision;
+
+        $log->update([
+            'passed' => $approved,
+            'status' => $approved
+                ? ContentModerationLog::STATUS_APPROVED
+                : ContentModerationLog::STATUS_REJECTED,
+            'admin_override' => true,
+            'overridden_by' => $admin->id,
+            'overridden_at' => now(),
+            'admin_notes' => $notes,
+            'signals' => $signals,
+            'content_submission_id' => $log->content_submission_id ?: $submission?->id,
+        ]);
+
+        if (! $submission) {
+            return;
+        }
+
+        $submission->update(array_merge(
+            $this->evaluationReportForOverride($submission, $notes, $decision),
+            [
+                'moderation_status' => $decision,
+                'evaluation_status' => $approved ? 'approved' : 'rejected',
+                'evaluated_at' => now(),
+                'moderation_log_id' => $log->id,
+                'scan_token' => $log->scan_token,
+            ]
+        ));
+    }
+
+    protected function logOverrideActivity(
+        User $admin,
+        ContentModerationLog $log,
+        ?ContentSubmission $submission,
+        string $notes,
+        string $decision,
+    ): void {
+        try {
+            ActivityLogger::log(
+                'moderation.overridden',
+                ($admin->name ?: $admin->email).' '.$decision.' moderation log #'.$log->id,
+                $submission,
+                [
+                    'log_id' => $log->id,
+                    'submission_id' => $submission?->id,
+                    'decision' => $decision,
+                    'notes' => $notes,
+                ],
+                $submission?->title ?: $submission?->original_filename
+            );
+        } catch (\Throwable) {
+        }
+    }
+
     /**
      * @return array{evaluation_report: array<string, mixed>}
      */
-    protected function evaluationApprovedByOverride(ContentSubmission $submission, string $notes): array
+    protected function evaluationReportForOverride(ContentSubmission $submission, string $notes, string $decision): array
     {
         $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
         $checks = is_array($report['checks'] ?? null) ? $report['checks'] : [];
-        foreach ($checks as $i => $check) {
-            if (! is_array($check) || strtolower((string) ($check['status'] ?? '')) !== 'fail') {
-                continue;
+        $approved = $decision === ContentSubmission::STATUS_APPROVED;
+
+        if ($approved) {
+            foreach ($checks as $i => $check) {
+                if (! is_array($check) || strtolower((string) ($check['status'] ?? '')) !== 'fail') {
+                    continue;
+                }
+                $checks[$i]['status'] = 'pass';
+                $detail = trim((string) ($check['detail'] ?? $check['label'] ?? 'Restricted content'));
+                $checks[$i]['detail'] = 'Cleared by admin override: '.$detail;
             }
-            $checks[$i]['status'] = 'pass';
-            $detail = trim((string) ($check['detail'] ?? $check['label'] ?? 'Restricted content'));
-            $checks[$i]['detail'] = 'Cleared by admin override: '.$detail;
+            $report['passed_compliance'] = true;
+            $report['summary'] = 'Approved by admin override.';
+        } else {
+            $checks[] = [
+                'key' => 'admin_override',
+                'label' => 'Staff decision',
+                'status' => 'fail',
+                'detail' => 'Rejected by admin override: '.$notes,
+            ];
+            $report['passed_compliance'] = false;
+            $report['summary'] = 'Rejected by admin override.';
         }
+
         $report['checks'] = $checks;
-        $report['passed_compliance'] = true;
         $report['admin_override'] = true;
         $report['admin_override_notes'] = $notes;
-        $report['summary'] = 'Approved by admin override.';
+        $report['admin_override_decision'] = $decision;
 
         return ['evaluation_report' => $report];
     }

@@ -5,7 +5,7 @@ namespace App\Services\ContentUpload;
 use App\Models\ContentModerationLog;
 use App\Models\ContentSubmission;
 use App\Models\User;
-use App\Services\ActivityLogger;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Validation\ValidationException;
@@ -15,6 +15,7 @@ class AdminLibraryStaffActions
     public function __construct(
         private ContentUploadService $uploads,
         private InAppNotificationService $notifications,
+        private ContentModerationService $moderation,
     ) {}
 
     public function fileOnDisk(ContentSubmission $submission): bool
@@ -74,52 +75,18 @@ class AdminLibraryStaffActions
             ]);
         }
 
-        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
-        $report['admin_override'] = [
-            'at' => now()->toIso8601String(),
-            'by' => $admin->id,
-            'decision' => $decision,
-            'notes' => $notes,
-        ];
-        $report['summary'] = $decision === ContentSubmission::STATUS_APPROVED
-            ? 'Manually approved by staff: '.$notes
-            : 'Manually rejected by staff: '.$notes;
-
-        $submission->forceFill([
-            'moderation_status' => $decision,
-            'evaluation_status' => $decision,
-            'evaluated_at' => now(),
-            'evaluation_report' => $report,
-        ])->save();
-
-        if ($submission->moderation_log_id) {
-            ContentModerationLog::query()
-                ->whereKey($submission->moderation_log_id)
-                ->update([
-                    'passed' => $decision === ContentSubmission::STATUS_APPROVED,
-                    'status' => $decision === ContentSubmission::STATUS_APPROVED
-                        ? ContentModerationLog::STATUS_APPROVED
-                        : ContentModerationLog::STATUS_REJECTED,
-                    'admin_override' => true,
-                    'overridden_by' => $admin->id,
-                    'overridden_at' => now(),
-                    'admin_notes' => $notes,
-                ]);
+        $result = $this->moderation->applyStaffOverride($submission, $decision, $admin, $notes);
+        if (! ($result['ok'] ?? false)) {
+            throw ValidationException::withMessages([
+                'submission' => $result['message'] ?: 'Override failed.',
+            ]);
         }
 
-        try {
-            ActivityLogger::log(
-                'content_library.override',
-                ($admin->name ?: 'Admin').' '.$decision.' article #'.$submission->id,
-                $submission,
-                [
-                    'decision' => $decision,
-                    'notes' => $notes,
-                    'advertiser_id' => $submission->user_id,
-                ],
-                $submission->title ?: $submission->original_filename
-            );
-        } catch (\Throwable) {
+        $submission = $result['submission'] ?? $submission->fresh();
+        if (! $submission) {
+            throw ValidationException::withMessages([
+                'submission' => $result['message'] ?: 'Override failed.',
+            ]);
         }
 
         $owner = $submission->user;
