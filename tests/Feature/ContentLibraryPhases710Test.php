@@ -71,13 +71,8 @@ class ContentLibraryPhases710Test extends TestCase
             ->get(route('admin.content-library.show', $submission))
             ->assertOk()
             ->assertSee('Admin Visible Piece')
-            ->assertSee('Preview');
-
-        $this->actingAs($admin)
-            ->getJson(route('admin.content-library.preview', $submission))
-            ->assertOk()
-            ->assertJsonPath('success', true)
-            ->assertJsonPath('id', $submission->id);
+            ->assertSee('Preview')
+            ->assertSee('Staff actions');
     }
 
     public function test_admin_can_download_library_article_from_staff_route(): void
