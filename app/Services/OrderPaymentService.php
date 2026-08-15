@@ -34,7 +34,8 @@ class OrderPaymentService
     {
         $this->assertStripeObjectIsOrderPayment($session);
         $sessionMeta = $this->sessionMetadataArray($session);
-        $newlyPaid = DB::transaction(function () use ($referenceCode, $session) {
+        $amountMismatch = false;
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $session, &$amountMismatch) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -52,12 +53,10 @@ class OrderPaymentService
 
             $meta = $this->sessionMetadataArray($session);
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
-            if ($hasMarkable) {
-                $this->assertStripeAmountMatchesExpected(
-                    $session,
-                    $this->expectedStripeEurosForOrders($orders, $meta),
-                    $referenceCode
-                );
+            if ($hasMarkable && ! $this->allowStripeCaptureForOrders($session, $orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
             }
 
             $newlyPaid = collect();
@@ -92,6 +91,10 @@ class OrderPaymentService
             return $newlyPaid;
         });
 
+        if ($amountMismatch) {
+            return collect();
+        }
+
         $this->recordAdvertiserPurchaseForPaidCheckout(
             $referenceCode,
             $newlyPaid,
@@ -119,7 +122,8 @@ class OrderPaymentService
                 : (method_exists($intent->metadata, 'toArray') ? $intent->metadata->toArray() : (array) $intent->metadata);
         }
 
-        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent, $meta) {
+        $amountMismatch = false;
+        $newlyPaid = DB::transaction(function () use ($referenceCode, $intent, $meta, &$amountMismatch) {
             $orders = Order::with('items')
                 ->where('reference_code', $referenceCode)
                 ->where('payment_method', 'card')
@@ -131,12 +135,10 @@ class OrderPaymentService
             }
 
             $hasMarkable = $orders->contains(fn (Order $order) => $this->canMarkCardOrderPaid($order));
-            if ($hasMarkable) {
-                $this->assertStripeAmountMatchesExpected(
-                    $intent,
-                    $this->expectedStripeEurosForOrders($orders, $meta),
-                    $referenceCode
-                );
+            if ($hasMarkable && ! $this->allowStripeCaptureForOrders($intent, $orders, $meta, $referenceCode)) {
+                $amountMismatch = true;
+
+                return collect();
             }
 
             $newlyPaid = collect();
@@ -167,6 +169,10 @@ class OrderPaymentService
 
             return $newlyPaid;
         });
+
+        if ($amountMismatch) {
+            return collect();
+        }
 
         $this->recordAdvertiserPurchaseForPaidCheckout(
             $referenceCode,
@@ -381,7 +387,7 @@ class OrderPaymentService
         }
 
         $intents = app(CheckoutIntentService::class);
-        $held = $intents->peekBonus($userId, $referenceCode);
+        $held = $intents->heldBonus($userId, $referenceCode);
         $need = round(max(0, $bonusApplied - $held), 2);
         if ($need <= 0) {
             return 0.0;
@@ -439,7 +445,9 @@ class OrderPaymentService
     /**
      * Release promo held for abandoned Stripe-first packages so a retry can
      * reserve bonus again. Leaves bonus untouched when this reference already
-     * has open paid/pending orders (approve/reject still owns that hold).
+     * has open paid/pending orders (approve/reject still owns that hold), or
+     * when another checkout still has an open Stripe session (that tab can
+     * still settle and must keep its promo).
      */
     public function releaseAbandonedStripeFirstBonus(int $userId, ?string $keepReference = null): void
     {
@@ -469,6 +477,12 @@ class OrderPaymentService
             }
 
             $package = $this->getPendingCheckout($ref);
+            $openStripeSession = is_array($package)
+                && search_text($package['stripe_session_id'] ?? '') !== '';
+            if ($openStripeSession && $ref !== $keepReference) {
+                continue;
+            }
+
             $held = max(
                 app(CheckoutIntentService::class)->heldBonus($userId, $ref),
                 round((float) ($package['bonus_applied'] ?? 0), 2)
@@ -483,11 +497,7 @@ class OrderPaymentService
             }
 
             if ($keepReference !== null && $ref !== $keepReference) {
-                $openStripeSession = is_array($package)
-                    && search_text($package['stripe_session_id'] ?? '') !== '';
-                if (! $openStripeSession) {
-                    $this->forgetPendingCheckout($ref);
-                }
+                $this->forgetPendingCheckout($ref);
             }
         }
     }
@@ -587,7 +597,7 @@ class OrderPaymentService
         $paidTotal = round((float) $orders
             ->filter(fn (Order $order) => $order->payment_status === 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
-        $expected = $this->expectedStripeEurosForOrders($orders, $meta);
+        $expected = $this->capturedStripeEurosForCredit($orders, $meta);
         $unfulfilled = round(max(0, $expected - $paidTotal), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
@@ -1200,19 +1210,36 @@ class OrderPaymentService
     }
 
     /**
+     * Card cash still owed for these order rows. Ignore session metadata
+     * expected_amount — a stale cheaper Checkout session baked its own figure
+     * and must not mark the current totals paid.
+     *
      * @param  Collection<int, Order>  $orders
      * @param  array<string, mixed>  $meta
      */
     private function expectedStripeEurosForOrders(Collection $orders, array $meta): float
     {
-        if (isset($meta['expected_amount']) && $meta['expected_amount'] !== '') {
-            return round((float) $meta['expected_amount'], 2);
-        }
-
         $total = round((float) $orders->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
 
         return round(max(0, $total - $bonus), 2);
+    }
+
+    /**
+     * Card cash to return for hidden leftover rows. Prefer the session's
+     * captured expected_amount so a full charge is not reduced by leftover
+     * bonus metadata; fall back to current order totals minus bonus.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function capturedStripeEurosForCredit(Collection $orders, array $meta): float
+    {
+        if (isset($meta['expected_amount']) && $meta['expected_amount'] !== '') {
+            return round((float) $meta['expected_amount'], 2);
+        }
+
+        return $this->expectedStripeEurosForOrders($orders, $meta);
     }
 
     /**
@@ -1451,6 +1478,51 @@ class OrderPaymentService
         }
 
         return $stripeCents === null ? null : StripePaymentService::fromCents($stripeCents);
+    }
+
+    /**
+     * Credit a captured Stripe amount that does not match pending/failed card
+     * orders. Returns true when that capture may mark those orders paid.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function allowStripeCaptureForOrders(
+        object $session,
+        Collection $orders,
+        array $meta,
+        string $referenceCode
+    ): bool {
+        $expected = $this->expectedStripeEurosForOrders($orders, $meta);
+        $stripeEuros = $this->stripeEurosFromSession($session);
+        if ($stripeEuros === null) {
+            $this->assertStripeAmountMatchesExpected($session, $expected, $referenceCode);
+
+            return true;
+        }
+        if (abs($stripeEuros - $expected) <= 0.01) {
+            return true;
+        }
+
+        $userId = (int) ($orders->first()?->user_id ?? 0);
+        $sessionId = (string) ($session->id ?? '');
+        if ($userId > 0 && $stripeEuros > 0.009) {
+            $this->creditUnfulfilledCardCapture(
+                $userId,
+                $referenceCode,
+                $stripeEuros,
+                $sessionId !== '' ? $sessionId : null
+            );
+        }
+        Log::warning('Stripe session amount does not match pending card orders', [
+            'reference_code' => $referenceCode,
+            'expected_euros' => $expected,
+            'stripe_euros' => $stripeEuros,
+            'session_id' => $session->id ?? null,
+            'user_id' => $userId,
+        ]);
+
+        return false;
     }
 
     /**

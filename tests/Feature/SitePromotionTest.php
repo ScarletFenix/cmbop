@@ -309,6 +309,24 @@ class SitePromotionTest extends TestCase
         $this->assertSame(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
     }
 
+    public function test_wallet_feature_does_not_debit_cancelled_bulk_leftover(): void
+    {
+        $publisher = $this->publisherWithWallet(50);
+        $site = $this->site($publisher);
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $publisher->id,
+            'status' => BulkSiteRequest::STATUS_CANCELLED,
+            'estimated_count' => 1,
+        ]);
+        $site->forceFill(['bulk_site_request_id' => $bulk->id])->save();
+
+        $result = app(SitePromotionService::class)->featureWithWallet($site, $publisher);
+
+        $this->assertFalse($result['success']);
+        $this->assertFalse($site->fresh()->isFeatured());
+        $this->assertSame(50.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'));
+    }
+
     public function test_feature_stripe_amount_must_match_configured_price(): void
     {
         config(['site_promotions.feature.price' => 10]);

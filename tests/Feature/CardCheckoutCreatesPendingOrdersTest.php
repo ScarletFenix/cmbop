@@ -411,7 +411,7 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $this->assertSame(0, Order::where('reference_code', 'NOCFG1')->count());
     }
 
-    public function test_second_card_pay_without_cancel_re_reserves_bonus(): void
+    public function test_second_card_pay_without_cancel_does_not_steal_open_session_bonus(): void
     {
         config(['content_moderation.enabled' => false]);
 
@@ -445,7 +445,7 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
             ]],
         ];
 
-        $this->actingAs($advertiser)->withSession($session)
+        $first = $this->actingAs($advertiser)->withSession($session)
             ->postJson(route('advertiser.checkout.process'), $payload)
             ->assertOk()
             ->assertJsonPath('success', true);
@@ -455,16 +455,18 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
             ->assertOk()
             ->assertJsonPath('success', true);
 
-        $reference = (string) $retry->json('reference_code');
-        $this->assertNotSame('', $reference);
-        $package = app(OrderPaymentService::class)->getPendingCheckout($reference);
-        $this->assertNotNull($package);
-        $this->assertEqualsWithDelta(20.0, (float) ($package['bonus_applied'] ?? 0), 0.01);
-        $this->assertEqualsWithDelta(
-            round((float) ($package['order_total'] ?? 0) - 20, 2),
-            (float) ($package['amount_due'] ?? 0),
-            0.01
-        );
+        $firstRef = (string) $first->json('reference_code');
+        $retryRef = (string) $retry->json('reference_code');
+        $this->assertNotSame('', $firstRef);
+        $this->assertNotSame('', $retryRef);
+        $this->assertNotSame($firstRef, $retryRef);
+
+        $firstPackage = app(OrderPaymentService::class)->getPendingCheckout($firstRef);
+        $retryPackage = app(OrderPaymentService::class)->getPendingCheckout($retryRef);
+        $this->assertNotNull($firstPackage);
+        $this->assertNotNull($retryPackage);
+        $this->assertEqualsWithDelta(20.0, (float) ($firstPackage['bonus_applied'] ?? 0), 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) ($retryPackage['bonus_applied'] ?? 0), 0.01);
 
         $wallet = Wallet::query()
             ->where('user_id', $advertiser->id)
