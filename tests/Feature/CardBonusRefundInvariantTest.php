@@ -468,6 +468,71 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
     }
 
+    public function test_admin_mark_paid_after_fail_rereserves_snapshot_while_other_checkout_is_open(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, reservedBonus: 20);
+        $site = $this->site($publisher);
+        $item = $this->cardOrder($advertiser, $site, 80, 'REF-ADMIN-AFTER-FAIL-OTHER', 'pending');
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-ADMIN-AFTER-FAIL-OTHER', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-ADMIN-AFTER-FAIL-OTHER',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [['site_id' => $site->id, 'price' => 80]],
+            'stripe_session_id' => 'cs_will_expire_other',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-ADMIN-AFTER-FAIL-OTHER', 20);
+
+        $payments->markOrdersFailedFromReference('REF-ADMIN-AFTER-FAIL-OTHER', 'expired');
+        $this->cardOrder($advertiser, $site, 50, 'REF-OTHER-OPEN-CASH', 'paid');
+
+        $wallet->refresh();
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            0.0,
+            $payments->leftoverBonusForPurchaseLedger($item->order->fresh()),
+            0.01
+        );
+        $this->assertEqualsWithDelta(
+            20.0,
+            $payments->leftoverBonusToRereserve($item->order->fresh()),
+            0.01
+        );
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $item->order_id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertSame('paid', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, $wallet->withdrawableBalance(), 0.01);
+
+        $this->actingAs($publisher)
+            ->postJson(route('publisher.orders.reject', $item->id), [
+                'reason' => 'The topic does not fit our editorial guidelines.',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
     public function test_admin_mark_paid_then_reject_restores_promo_not_cash(): void
     {
         $admin = $this->userWithRole('admin');

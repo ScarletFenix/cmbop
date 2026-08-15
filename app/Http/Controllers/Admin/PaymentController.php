@@ -310,10 +310,12 @@ class PaymentController extends Controller
             if ($newStatus === 'paid' && $oldStatus !== 'paid') {
                 $payments = app(OrderPaymentService::class);
                 $reference = (string) ($order->reference_code ?? '');
-                $bonusApplied = $payments->leftoverBonusForPurchaseLedger($order);
+                $bonusApplied = $payments->leftoverBonusToRereserve($order);
                 // Fail/cancel already returned this leftover's promo to
                 // bonus_balance. Mark-paid without re-reserving made reject
-                // credit that slice as withdrawable cash.
+                // credit that slice as withdrawable cash. The purchase-ledger
+                // helper is 0 while another checkout is open — still use this
+                // leftover's snapshot so we re-reserve OUR promo, not skip it.
                 $payments->rereserveReleasedCheckoutBonus(
                     (int) $order->user_id,
                     $reference,
