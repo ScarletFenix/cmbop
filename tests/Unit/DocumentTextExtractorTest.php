@@ -73,6 +73,29 @@ class DocumentTextExtractorTest extends TestCase
         $this->assertStringNotContainsString('article-detected-link', (string) $result['html']);
     }
 
+    public function test_policy_signals_include_header_text_and_external_url(): void
+    {
+        $path = sys_get_temp_dir().'/cmbop-header-policy.docx';
+        $zip = new ZipArchive;
+        $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+        $zip->addFromString('word/document.xml', '<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>Clean body about software tools for teams.</w:t></w:r></w:p></w:body></w:document>');
+        $zip->addFromString('word/header1.xml', '<?xml version="1.0"?><w:hdr xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:p><w:r><w:t>Best online casino bonus</w:t></w:r></w:p></w:hdr>');
+        $zip->addFromString('word/_rels/header1.xml.rels', '<?xml version="1.0"?>'
+            .'<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
+            .'<Relationship Id="rIdH1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" '
+            .'Target="https://www.bet365.com/en/sports" TargetMode="External"/>'
+            .'</Relationships>');
+        $zip->close();
+
+        $result = (new DocumentTextExtractor)->extractPolicySignals($path);
+        @unlink($path);
+
+        $this->assertTrue($result['ok']);
+        $this->assertStringContainsString('Clean body about software tools', $result['text']);
+        $this->assertStringContainsString('Best online casino bonus', $result['text']);
+        $this->assertContains('https://www.bet365.com/en/sports', $result['links']);
+    }
+
     public function test_extracts_plain_https_url_when_no_hyperlink_part(): void
     {
         $extractor = new DocumentTextExtractor;

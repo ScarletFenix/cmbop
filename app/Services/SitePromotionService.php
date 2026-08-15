@@ -373,20 +373,20 @@ class SitePromotionService
         $max = (float) config('site_promotions.bulk.max_percent', 80);
         $percent = max($min, min($max, round($percent, 2)));
 
-        $site->forceFill([
+        Site::query()->whereKey($site->id)->update([
             'bulk_discount_enabled' => true,
             'bulk_discount_percent' => $percent,
-        ])->save();
+        ]);
 
         return $site->fresh();
     }
 
     public function leaveBulkDiscount(Site $site): Site
     {
-        $site->forceFill([
+        Site::query()->whereKey($site->id)->update([
             'bulk_discount_enabled' => false,
             'bulk_discount_percent' => null,
-        ])->save();
+        ]);
 
         return $site->fresh();
     }

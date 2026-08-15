@@ -508,9 +508,10 @@ class EmailCampaign extends Model
                     continue;
                 }
 
-                // SQLite via the query builder can return an empty set for a
-                // missing payload column instead of throwing. That looked like
-                // "no send job" and recover flooded another dispatch.
+                // SQLite treats a missing "payload" identifier as the string
+                // literal 'payload' (DQS), so the LIKE scan returns empty
+                // instead of throwing. MySQL would error. Either way this
+                // is not "no job" — recover must not enqueue another send.
                 if (! Schema::hasColumn($table, 'payload')) {
                     $scanFailed = true;
 

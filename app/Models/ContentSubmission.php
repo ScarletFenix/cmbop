@@ -1036,19 +1036,12 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Catalog / wizard / cart may list this row. Replace runs on assign,
-     * checkout, or Order — not when the picker merely opens.
+     * Approved file + market + rights + a complete HTTPS link pair.
+     * Ignores leftover/paid claims so Order / replace can see whether the
+     * article would be usable after the leftover is released.
      */
-    public function isAvailableForPicker(): bool
+    public function isContentReadyForOrder(): bool
     {
-        if ($this->isReadyForCheckout()) {
-            return true;
-        }
-
-        if (! $this->canReplaceUnpaidLeftover()) {
-            return false;
-        }
-
         return $this->moderation_status === self::STATUS_APPROVED
             && filled($this->path)
             && ! $this->isArchived()
@@ -1057,6 +1050,28 @@ class ContentSubmission extends Model
             && filled($this->language)
             && $this->imageRightsCoverContent()
             && $this->hasCheckoutReadyLinks();
+    }
+
+    /**
+     * Library Order button: free checkout-ready rows, or a leftover whose
+     * article is already content-ready. Unready leftovers keep Pay again.
+     */
+    public function canOrderFromLibrary(): bool
+    {
+        if ($this->isReadyForCheckout()) {
+            return true;
+        }
+
+        return $this->canReplaceUnpaidLeftover() && $this->isContentReadyForOrder();
+    }
+
+    /**
+     * Catalog / wizard / cart may list this row. Replace runs on assign,
+     * checkout, or Order — not when the picker merely opens.
+     */
+    public function isAvailableForPicker(): bool
+    {
+        return $this->canOrderFromLibrary();
     }
 
     /**
@@ -1969,19 +1984,7 @@ class ContentSubmission extends Model
 
         // Do not call isReadyForCheckout() here: that gate also rejects leftover
         // claims, including this order when submission.order_id is still null.
-        // Expiry is a catalog-reuse clock. Once this order already owns the
-        // row, Pay again / fulfill must not fail just because unused retention
-        // elapsed — nightly purge clears `path` when the file is actually gone.
-        $ownedByThisOrder = $this->isOwnedByOrder($orderId);
-
-        return $this->moderation_status === self::STATUS_APPROVED
-            && filled($this->path)
-            && ! $this->isArchived()
-            && ($ownedByThisOrder || $this->expires_at === null || $this->expires_at->isFuture())
-            && filled($this->country)
-            && filled($this->language)
-            && $this->imageRightsCoverContent()
-            && $this->hasCheckoutReadyLinks();
+        return $this->isContentReadyForOrder();
     }
 
     /**
