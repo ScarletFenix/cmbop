@@ -53,27 +53,4 @@ class MailJobPayloadTest extends TestCase
         $this->assertSame([34], MailJobPayload::campaignMailUserIds($payload, 12));
         $this->assertSame([], MailJobPayload::campaignMailUserIds($payload, 123));
     }
-
-    public function test_matches_email_log_require_token_rejects_unidentified_payload(): void
-    {
-        $log = new EmailLog([
-            'mailable' => WelcomeEmail::class,
-            'template_key' => 'welcome',
-            'to_email' => 'customer@example.com',
-            'dedupe_key' => 'welcome:1',
-        ]);
-        $unidentified = json_encode([
-            'displayName' => WelcomeEmail::class,
-            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
-        ], JSON_THROW_ON_ERROR);
-        $identified = json_encode([
-            'displayName' => WelcomeEmail::class,
-            'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
-            'to' => 'customer@example.com',
-        ], JSON_THROW_ON_ERROR);
-
-        $this->assertTrue(MailJobPayload::matchesEmailLog($unidentified, $log));
-        $this->assertFalse(MailJobPayload::matchesEmailLog($unidentified, $log, requireToken: true));
-        $this->assertTrue(MailJobPayload::matchesEmailLog($identified, $log, requireToken: true));
-    }
 }

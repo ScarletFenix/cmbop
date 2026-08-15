@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Builder;
 
 trait HasPromotionSchedule
 {
+    use ToleratesUnparseableDates;
+
     public function scheduleState(): string
     {
         try {
