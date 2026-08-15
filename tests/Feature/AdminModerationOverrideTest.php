@@ -6,10 +6,14 @@ use App\Models\ActivityLog;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
+use App\Services\OrderPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -172,6 +176,91 @@ class AdminModerationOverrideTest extends TestCase
 
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
         $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_title_only_draft_save_after_override_revokes_approval(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'title' => 'Best online casino bonus guide',
+            ])
+            ->assertOk()
+            ->assertJsonPath('approved', false);
+
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_settlement_rechecks_policy_after_a_silent_title_edit(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $submission->refresh()->update([
+            'title' => 'Best online casino bonus guide',
+        ]);
+        $this->assertTrue($submission->fresh()->isReadyForCheckout());
+
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Override Settlement Site',
+            'site_url' => 'https://override-settle.example',
+            'domain' => 'override-settle.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Settlement policy recheck',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-OVR-1',
+            'reference_code' => 'REF-OVR-1',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'unpaid',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'content_submission_id' => $submission->id,
+        ]);
+
+        $state = app(OrderPaymentService::class)->libraryContentStateForSettlement($order->fresh());
+        $this->assertSame('unready', $state);
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 

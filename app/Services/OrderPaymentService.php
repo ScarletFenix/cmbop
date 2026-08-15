@@ -12,6 +12,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
 use App\Services\Advertiser\SpendBudgetService;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\Orders\OrderRefundService;
 use App\Services\Wallet\WalletLedgerService;
 use Illuminate\Database\QueryException;
@@ -1119,6 +1120,11 @@ class OrderPaymentService
                 $articleTaken = $submission && $submission->isClaimedByAnotherOrder();
                 $articleUnready = $articleMissing
                     || ($submission && ! $articleTaken && ! $submission->isReadyForCheckout());
+                if ($submission && ! $articleTaken && ! $articleUnready
+                    && ! $this->submissionPassesLivePolicy($submission, $buyer)) {
+                    $articleUnready = true;
+                    $submission = $submission->fresh() ?? $submission;
+                }
                 $attachSubmission = $submission && ! $articleTaken && ! $articleUnready;
 
                 $order = $this->createPaidCardOrderRow($schema, [
@@ -1373,9 +1379,20 @@ class OrderPaymentService
             if (! $submission->isReadyToFulfill((int) $order->id)) {
                 return 'unready';
             }
+            $owner = $order->user;
+            if (! $this->submissionPassesLivePolicy($submission, $owner instanceof User ? $owner : null)) {
+                return 'unready';
+            }
         }
 
         return 'ok';
+    }
+
+    protected function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user): bool
+    {
+        $result = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $user);
+
+        return (bool) ($result['ok'] ?? false);
     }
 
     public function refreshOrderItemLibraryFields(Order $order): void
