@@ -4774,7 +4774,10 @@ class CatalogController extends Controller
 
     private function checkoutReferenceAvailable(?string $code, int $userId): bool
     {
-        if (! is_string($code) || ! preg_match('/^\d{6}$/', $code)) {
+        if (! is_string($code) || $code === '' || strlen($code) > 32) {
+            return false;
+        }
+        if (! preg_match('/^[A-Za-z0-9_-]+$/', $code)) {
             return false;
         }
 
