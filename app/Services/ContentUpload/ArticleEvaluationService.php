@@ -113,7 +113,7 @@ class ArticleEvaluationService
         $minUniqueness = max(0, min(100, (int) ($evalCfg['min_uniqueness'] ?? 50)));
         $minQuality = max(0, min(100, (int) ($evalCfg['min_quality'] ?? 50)));
 
-        $text = trim((string) $submission->extracted_text);
+        $text = $this->moderation->scanTextFromSubmission($submission);
         $html = ArticlePreviewHtml::normalize((string) ($submission->preview_html ?? ''));
         $title = $this->moderation->scanTitle($submission);
 

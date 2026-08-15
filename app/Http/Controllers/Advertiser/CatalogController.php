@@ -2180,6 +2180,10 @@ class CatalogController extends Controller
             ], 503);
         }
 
+        if ($denied = $this->checkoutLinesFailLivePolicy($checkoutContent, (int) $userId)) {
+            return $denied;
+        }
+
         $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
         $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
         $schedule = $checkoutContent['schedule'];

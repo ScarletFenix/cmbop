@@ -740,6 +740,24 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame('failed', $order->fresh()->payment_status);
     }
 
+    public function test_html_only_casino_edit_fails_live_policy(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $submission->update([
+            'preview_html' => '<p>Play at the best online casino and claim your no deposit bonus.</p>',
+        ]);
+        $this->assertStringNotContainsString('casino', strtolower((string) $submission->fresh()->extracted_text));
+        $this->assertTrue($submission->fresh()->isApproved());
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     public function test_admin_mark_paid_blocks_a_silent_title_edit_and_keeps_the_reject(): void
     {
         $admin = $this->admin();
