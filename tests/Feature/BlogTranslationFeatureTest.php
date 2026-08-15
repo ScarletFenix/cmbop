@@ -640,8 +640,8 @@ class BlogTranslationFeatureTest extends TestCase
         ]);
 
         $enSitemap = $this->get('/sitemap-en.xml')->assertOk()->getContent();
-        $this->assertSame(1, substr_count($enSitemap, '/blog/shared-fallback-slug'));
-        $this->assertStringContainsString('/blog/nur-deutscher-beitrag', $enSitemap);
+        $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/shared-fallback-slug').'</loc>'));
+        $this->assertSame(1, substr_count($enSitemap, '<loc>'.url('/blog/nur-deutscher-beitrag').'</loc>'));
 
         $html = $this->get('/blog/shared-fallback-slug')
             ->assertOk()
