@@ -76,7 +76,7 @@
                 </div>
             @endif
 
-            @if(! $log->passed && $log->status === 'rejected' && ! $log->admin_override)
+            @if($log->isOverridable($submission))
                 <div class="card border-0 shadow-sm mb-3">
                     <div class="card-header bg-white"><strong>Override</strong></div>
                     <div class="card-body">

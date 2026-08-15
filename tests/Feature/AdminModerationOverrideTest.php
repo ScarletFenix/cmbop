@@ -6,10 +6,14 @@ use App\Models\ActivityLog;
 use App\Models\ContentModerationLog;
 use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use App\Services\ContentModeration\ContentModerationService;
 use App\Services\ContentUpload\ArticleEvaluationService;
+use App\Services\OrderPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
@@ -175,6 +179,92 @@ class AdminModerationOverrideTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
     }
 
+    public function test_title_only_draft_save_after_override_revokes_approval(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'title' => 'Best online casino bonus guide',
+            ])
+            ->assertOk()
+            ->assertJsonPath('approved', false);
+
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_settlement_rechecks_policy_after_a_silent_title_edit(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $log] = $this->rejectCasinoArticle($advertiser);
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'Allow this version only.',
+            ])
+            ->assertRedirect();
+
+        $submission->refresh()->update([
+            'title' => 'Best online casino bonus guide',
+        ]);
+        $this->assertTrue($submission->fresh()->isReadyForCheckout());
+
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Override Settlement Site',
+            'site_url' => 'https://override-settle.example',
+            'domain' => 'override-settle.example',
+            'da' => 20,
+            'dr' => 20,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Settlement policy recheck',
+            'verified' => true,
+            'active' => true,
+        ]);
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-OVR-1',
+            'reference_code' => 'REF-OVR-1',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'unpaid',
+            'status' => 'pending',
+        ]);
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'price' => 40,
+            'content_link' => 'https://example.com/article.docx',
+            'content_submission_id' => $submission->id,
+        ]);
+
+        $state = app(OrderPaymentService::class)->libraryContentStateForSettlement($order->fresh());
+        $this->assertSame('unready', $state);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+    }
+
     public function test_editing_after_override_revokes_the_pass(): void
     {
         $admin = $this->admin();
@@ -196,6 +286,16 @@ class AdminModerationOverrideTest extends TestCase
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
         $this->assertFalse($check['ok']);
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $fresh = $submission->fresh();
+        $this->assertSame('rejected', $fresh->evaluation_status);
+        $this->assertStringNotContainsString(
+            'Approved by admin override',
+            (string) ($fresh->evaluation_report['summary'] ?? '')
+        );
+        $this->assertStringNotContainsString(
+            'approved by admin override',
+            strtolower(implode(' ', $fresh->evaluationReasonGroups()['blocking']))
+        );
     }
 
     public function test_revert_rechecks_and_blocks_checkout(): void
@@ -214,7 +314,160 @@ class AdminModerationOverrideTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $this->assertSame('rejected', $submission->fresh()->evaluation_status);
+        $this->assertStringNotContainsString(
+            'Approved by admin override',
+            (string) ($submission->fresh()->evaluation_report['summary'] ?? '')
+        );
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertFalse($check['ok']);
+    }
+
+    public function test_stale_reject_row_cannot_be_overridden(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        [$submission, $old] = $this->rejectCasinoArticle($advertiser);
+
+        $current = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'content_submission_id' => $submission->id,
+            'document_url' => 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_REJECTED,
+            'passed' => false,
+            'scan_token' => 'scan-current',
+            'word_count' => 20,
+        ]);
+        $submission->update(['moderation_log_id' => $current->id, 'scan_token' => 'scan-current']);
+
+        $this->actingAs($admin)
+            ->from(route('admin.moderation.index'))
+            ->post(route('admin.moderation.override', $old), [
+                'notes' => 'Trying to override an old row.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('error');
+
+        $this->assertFalse((bool) $old->fresh()->admin_override);
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $this->assertSame((int) $current->id, (int) $submission->fresh()->moderation_log_id);
+    }
+
+    public function test_library_reject_blocks_checkout_until_the_article_is_edited(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'rejected',
+                'notes' => 'Client asked us to hold this version.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $submission->refresh();
+        $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->moderation_status);
+        $this->assertTrue((bool) $submission->moderationLog?->admin_override);
+        $this->assertNotEmpty($submission->moderationLog?->signals['override_fingerprint'] ?? null);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
+        $this->assertFalse($check['ok']);
+
+        $submission->update([
+            'extracted_text' => $submission->extracted_text.' Updated closing paragraph for the new brief.',
+        ]);
+
+        $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
+        $this->assertSame('approved', $submission->fresh()->evaluation_status);
+        $this->assertStringNotContainsString(
+            'Rejected by admin override',
+            (string) ($submission->fresh()->evaluation_report['summary'] ?? '')
+        );
+    }
+
+    public function test_skipped_scan_is_not_a_usable_approval(): void
+    {
+        $advertiser = $this->advertiser();
+        $url = 'https://docs.google.com/document/d/skipped-cache/edit';
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'document_url' => $url,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'scan_token' => 'scan-skipped',
+            'word_count' => 20,
+            'signals' => ['moderation_disabled' => true],
+        ]);
+
+        $this->assertTrue($log->wasSkipped());
+        $this->assertFalse($log->isUsableApproval(900));
+
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $check = app(ContentModerationService::class)->assertLinksApproved([$url], $advertiser);
+        $this->assertFalse($check['ok']);
+    }
+
+    public function test_staff_override_clears_the_skipped_flag(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'content_submission_id' => $submission->id,
+            'document_url' => 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'scan_token' => 'scan-skipped-lib',
+            'word_count' => 20,
+            'signals' => ['moderation_disabled' => true],
+        ]);
+        $submission->update(['moderation_log_id' => $log->id, 'scan_token' => 'scan-skipped-lib']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Reviewed after turning the scanner back on.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $log->refresh();
+        $this->assertTrue((bool) $log->admin_override);
+        $this->assertFalse($log->wasSkipped());
+        $this->assertNotEmpty($log->signals['override_fingerprint'] ?? null);
+    }
+
+    public function test_url_override_is_not_immortal(): void
+    {
+        $advertiser = $this->advertiser();
+        $url = 'https://docs.google.com/document/d/stale-override/edit';
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'document_url' => $url,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'admin_override' => true,
+            'scan_token' => 'scan-url-old',
+            'word_count' => 20,
+        ]);
+        ContentModerationLog::query()->whereKey($log->id)->update([
+            'created_at' => now()->subDays(2),
+            'updated_at' => now()->subDays(2),
+        ]);
+        $log->refresh();
+
+        $this->assertFalse($log->isUsableApproval(900));
+
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $check = app(ContentModerationService::class)->assertLinksApproved([$url], $advertiser);
         $this->assertFalse($check['ok']);
     }
 
