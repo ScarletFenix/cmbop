@@ -34,11 +34,11 @@
                         @forelse($announcements as $item)
                             <tr>
                                 <td>
-                                    <div class="fw-semibold">{{ $item->title }}</div>
-                                    <div class="small text-muted">{{ \Illuminate\Support\Str::limit(strip_tags($item->message), 70) }}</div>
+                                    <div class="fw-semibold">{{ scalar_text($item->title) }}</div>
+                                    <div class="small text-muted">{{ \Illuminate\Support\Str::limit(strip_tags(scalar_text($item->message)), 70) }}</div>
                                 </td>
                                 <td><span class="badge bg-light text-dark"><i class="fa {{ $item->typeIcon() }} me-1"></i>{{ $item->typeLabel() }}</span></td>
-                                <td class="small">{{ config('promotions.audiences.'.$item->audience, $item->audience) }}</td>
+                                <td class="small">{{ scalar_text(config('promotions.audiences.'.scalar_text($item->audience), $item->audience)) }}</td>
                                 <td class="small text-muted">
                                     @if($item->starts_at || $item->ends_at)
                                         {{ optional($item->starts_at)->format('M j') ?? 'Now' }}

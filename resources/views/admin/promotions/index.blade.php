@@ -144,11 +144,11 @@
                                     <tr>
                                         <td>
                                             <a href="{{ route('admin.promotions.announcements.edit', $item) }}" class="text-decoration-none">
-                                                {{ \Illuminate\Support\Str::limit($item->title, 40) }}
+                                                {{ \Illuminate\Support\Str::limit(scalar_text($item->title), 40) }}
                                             </a>
                                         </td>
                                         <td><span class="badge bg-light text-dark">{{ $item->typeLabel() }}</span></td>
-                                        <td class="small text-muted">{{ config('promotions.audiences.'.$item->audience, $item->audience) }}</td>
+                                        <td class="small text-muted">{{ scalar_text(config('promotions.audiences.'.scalar_text($item->audience), $item->audience)) }}</td>
                                         <td>
                                             @if($item->isCurrentlyLive())
                                                 <span class="badge bg-success">Live</span>
@@ -191,7 +191,7 @@
                                     <tr>
                                         <td>
                                             <a href="{{ route('admin.promotions.banners.edit', $banner) }}" class="text-decoration-none">
-                                                {{ \Illuminate\Support\Str::limit($banner->name, 28) }}
+                                                {{ \Illuminate\Support\Str::limit(scalar_text($banner->name), 28) }}
                                             </a>
                                             <div class="small text-muted">{{ $banner->placementLabel() }}</div>
                                         </td>

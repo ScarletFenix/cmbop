@@ -140,6 +140,43 @@ class PromotionsFormOldInputTest extends TestCase
         }
     }
 
+    public function test_promotions_hub_survives_array_query_and_flash(): void
+    {
+        $admin = $this->admin();
+        $this->announcement();
+        $this->banner();
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.index', [
+                'preset' => ['limited_offer'],
+                'title' => ['x'],
+                'search' => ['y'],
+            ]))
+            ->assertOk()
+            ->assertSee('Promotions Center', false)
+            ->assertDontSee('htmlspecialchars', false);
+
+        $this->actingAs($admin)
+            ->withSession(['success' => ['Enabled', 'ignored']])
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Promotions Center', false)
+            ->assertSee('Enabled', false);
+    }
+
+    public function test_announcement_create_ignores_array_preset_query(): void
+    {
+        $admin = $this->admin();
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.announcements.create', [
+                'preset' => ['limited_offer', 'maintenance'],
+            ]))
+            ->assertOk()
+            ->assertSee('New Announcement', false)
+            ->assertDontSee('htmlspecialchars', false);
+    }
+
     public function test_old_text_helper_flattens_only_what_it_must(): void
     {
         $this->assertSame('plain', old_text('missing', 'plain'));
