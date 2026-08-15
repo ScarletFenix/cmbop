@@ -18,6 +18,7 @@ use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 use App\Support\EmailCatalog;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Artisan;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
@@ -324,6 +325,38 @@ class AdminEmailCenterTest extends TestCase
         });
     }
 
+    public function test_send_test_every_template_succeeds_without_live_side_effects(): void
+    {
+        $this->withoutMiddleware(ThrottleRequests::class);
+        $this->seedLiveCustomerRecords();
+        $admin = $this->userWithRole('admin');
+        $invoicesBefore = Invoice::query()->count();
+
+        foreach (array_keys(EmailCatalog::templates()) as $key) {
+            $response = $this->actingAs($admin)
+                ->from(route('admin.emails.index'))
+                ->post(route('admin.emails.test'), [
+                    'template' => $key,
+                    'email' => $admin->email,
+                ]);
+
+            $this->assertTrue(
+                $response->isRedirect(route('admin.emails.index')),
+                $key.' status '.$response->status().': '.($response->exception?->getMessage() ?? '')
+            );
+            $this->assertTrue(
+                $response->getSession()->has('success'),
+                $key.': '.($response->getSession()->get('error') ?? $response->exception?->getMessage() ?? 'missing success flash')
+            );
+        }
+
+        $this->assertSame($invoicesBefore, Invoice::query()->count());
+        $this->assertSame(
+            count(EmailCatalog::templates()),
+            EmailLog::query()->where('to_email', $admin->email)->where('status', EmailLog::STATUS_DELIVERED)->count()
+        );
+    }
+
     public function test_send_test_password_reset_does_not_invent_a_delivered_row_on_failure_path(): void
     {
         $admin = $this->userWithRole('admin');
@@ -339,6 +372,8 @@ class AdminEmailCenterTest extends TestCase
         $this->assertCount(1, $logs);
         $this->assertSame('password_reset', $logs->first()->template_key);
         $this->assertSame(EmailLog::STATUS_DELIVERED, $logs->first()->status);
+        $this->assertSame('email_center_test', $logs->first()->meta['source'] ?? null);
+        $this->assertNotEmpty($logs->first()->dedupe_key);
     }
 
     public function test_catalog_keys_match_notification_config(): void
@@ -623,6 +658,61 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(2, $log->attempts);
     }
 
+    public function test_retry_rebuilds_framework_test_log_without_duplicate(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->post(route('admin.emails.test'), [
+                'template' => 'password_reset',
+                'email' => $admin->email,
+            ])
+            ->assertSessionHas('success');
+
+        $log = EmailLog::query()->first();
+        $this->assertNotNull($log);
+        $log->update([
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $fresh->status);
+        $this->assertNull($fresh->error);
+        $this->assertSame('email_center_test', $fresh->meta['source'] ?? null);
+    }
+
+    public function test_retry_rebuilds_legacy_framework_log_without_source(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'email_verification',
+            'to_email' => $admin->email,
+            'subject' => 'Verify your email (Test Preview)',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, EmailLog::query()->count());
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $log->fresh()->status);
+    }
+
     public function test_retry_rebuilds_email_center_test_log(): void
     {
         $admin = $this->userWithRole('admin');
@@ -683,7 +773,7 @@ class AdminEmailCenterTest extends TestCase
         $mailUuid = (string) Str::uuid();
         $log = EmailLog::create([
             'uuid' => (string) Str::uuid(),
-            'mailable' => WelcomeEmail::class,
+            'mailable' => null,
             'template_key' => 'welcome',
             'to_email' => 'customer@example.com',
             'subject' => 'Welcome to SEOLinkBuildings',

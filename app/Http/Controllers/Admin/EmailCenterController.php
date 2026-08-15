@@ -151,17 +151,12 @@ class EmailCenterController extends Controller
         abort_unless($template, 404);
 
         try {
-            if ($html = $this->frameworkPreviewHtml($key)) {
-                $subject = $key === 'email_verification'
-                    ? 'Verify your email (Test Preview)'
-                    : 'Password Reset (Test Preview)';
-                Mail::html($html, function ($message) use ($adminEmail, $key, $subject) {
-                    $message->to($adminEmail)->subject($subject);
-                    if (method_exists($message, 'getSymfonyMessage')) {
-                        $message->getSymfonyMessage()->getHeaders()
-                            ->addTextHeader('X-Platform-Notification-Type', $key);
-                    }
-                });
+            if ($this->frameworkPreviewHtml($key)) {
+                $this->sendFrameworkTestHtml(
+                    $key,
+                    $adminEmail,
+                    'email_center_test:'.$key.':'.(string) Str::uuid()
+                );
             } else {
                 $mailable = EmailCatalog::makeMailable($key);
                 abort_unless($mailable, 404);
@@ -182,6 +177,8 @@ class EmailCenterController extends Controller
                 'uuid' => (string) Str::uuid(),
                 'mailable' => $template['mailable'] ?? null,
                 'template_key' => $key,
+                'notification_type' => $key,
+                'dedupe_key' => 'email_center_test:'.$key.':failed:'.(string) Str::uuid(),
                 'to_email' => $adminEmail,
                 'subject' => ($template['name'] ?? $key).' (Test)',
                 'status' => EmailLog::STATUS_FAILED,
@@ -227,7 +224,7 @@ class EmailCenterController extends Controller
         }
 
         $source = data_get($log->meta, 'source');
-        if ($source === 'email_center_test') {
+        if ($source === 'email_center_test' || $this->isFrameworkTemplate((string) $log->template_key)) {
             return $this->retryTestLog($log);
         }
 
@@ -264,25 +261,8 @@ class EmailCenterController extends Controller
         $log->update(['dedupe_key' => $dedupe]);
 
         try {
-            if ($html = $this->frameworkPreviewHtml($key)) {
-                $subject = $key === 'email_verification'
-                    ? 'Verify your email (Test Preview)'
-                    : 'Password Reset (Test Preview)';
-                Mail::html($html, function ($message) use ($adminEmail, $key, $subject) {
-                    $message->to($adminEmail)->subject($subject);
-                    if (method_exists($message, 'getSymfonyMessage')) {
-                        $message->getSymfonyMessage()->getHeaders()
-                            ->addTextHeader('X-Platform-Notification-Type', $key);
-                    }
-                });
-                $log->update([
-                    'status' => EmailLog::STATUS_DELIVERED,
-                    'error' => null,
-                    'to_email' => $adminEmail,
-                    'subject' => $subject,
-                    'attempts' => max(1, (int) $log->attempts) + 1,
-                    'sent_at' => now(),
-                ]);
+            if ($this->frameworkPreviewHtml($key)) {
+                $this->sendFrameworkTestHtml($key, $adminEmail, $dedupe);
             } else {
                 $mailable = EmailCatalog::makeMailable($key);
                 abort_unless($mailable, 404);
@@ -308,11 +288,16 @@ class EmailCenterController extends Controller
 
     protected function failedJobUuidForLog(EmailLog $log): ?string
     {
-        if (! Schema::hasTable('failed_jobs') || blank($log->mailable)) {
+        if (! Schema::hasTable('failed_jobs')) {
             return null;
         }
 
-        $class = (string) $log->mailable;
+        $catalog = EmailCatalog::get((string) $log->template_key) ?? [];
+        $class = (string) ($log->mailable ?: ($catalog['mailable'] ?? ''));
+        if ($class === '') {
+            return null;
+        }
+
         $jsonClass = str_replace('\\', '\\\\', $class);
 
         foreach (DB::table('failed_jobs')->where($this->mailJobPayloadConstraint())->get(['uuid', 'payload']) as $job) {
@@ -371,6 +356,41 @@ class EmailCenterController extends Controller
                 ->orWhere('payload', 'like', '%App\\\\Mail\\\\%')
                 ->orWhere('payload', 'like', '%Illuminate\\\\Mail\\\\%');
         };
+    }
+
+    protected function isFrameworkTemplate(string $key): bool
+    {
+        return in_array($key, ['password_reset', 'email_verification'], true);
+    }
+
+    protected function sendFrameworkTestHtml(string $key, string $adminEmail, string $dedupe): void
+    {
+        $html = $this->frameworkPreviewHtml($key);
+        abort_unless($html, 404);
+
+        $subject = $key === 'email_verification'
+            ? 'Verify your email (Test Preview)'
+            : 'Password Reset (Test Preview)';
+
+        app()->instance('platform.mail.meta', [
+            'notification_type' => $key,
+            'dedupe_key' => $dedupe,
+            'source' => 'email_center_test',
+        ]);
+
+        try {
+            Mail::html($html, function ($message) use ($adminEmail, $key, $subject, $dedupe) {
+                $message->to($adminEmail)->subject($subject);
+                if (method_exists($message, 'getSymfonyMessage')) {
+                    $headers = $message->getSymfonyMessage()->getHeaders();
+                    $headers->addTextHeader('X-Platform-Notification-Type', $key);
+                    $headers->addTextHeader('X-Platform-Dedupe-Key', $dedupe);
+                    $headers->addTextHeader('X-Platform-Source', 'email_center_test');
+                }
+            });
+        } finally {
+            app()->forgetInstance('platform.mail.meta');
+        }
     }
 
     protected function frameworkPreviewHtml(string $key): ?string

@@ -38,6 +38,8 @@ class LogSentEmail
             ?? $this->header($headers, 'X-Platform-Dedupe-Key');
         $audience = $meta['audience']
             ?? $this->header($headers, 'X-Platform-Audience');
+        $source = $meta['source']
+            ?? $this->header($headers, 'X-Platform-Source');
 
         if ($mailableInstance instanceof PlatformMailable) {
             $notificationType = $notificationType ?: $mailableInstance->notificationType;
@@ -71,7 +73,7 @@ class LogSentEmail
             'error' => null,
             'meta' => array_filter([
                 'mailer' => config('mail.default'),
-                'source' => $meta['source'] ?? null,
+                'source' => $source,
             ]),
             'sent_at' => now(),
         ];
