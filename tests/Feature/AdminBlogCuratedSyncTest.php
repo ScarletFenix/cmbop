@@ -365,23 +365,16 @@ class AdminBlogCuratedSyncTest extends TestCase
 
     public function test_upsert_does_not_overwrite_custom_post_that_reused_a_catalog_slug(): void
     {
-        $admin = $this->adminUser();
         $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
 
-        $this->actingAs($admin)->post(route('admin.blogs.store'), [
-            'status' => 'published',
-            'translations' => [
-                'en' => [
-                    'title' => 'Custom Occupying Catalog Slug',
-                    'slug' => $slug,
-                    'content' => '<p>Leave this custom article alone.</p>',
-                ],
-            ],
-        ])->assertRedirect(route('admin.blogs.index'));
-
-        $custom = Blog::query()->where('slug', $slug)->firstOrFail();
-        $this->assertNotNull($custom->manually_edited_at);
-        $this->assertNull($custom->curated_key);
+        $custom = Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Leave this custom article alone.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
 
         $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
 
@@ -398,19 +391,16 @@ class AdminBlogCuratedSyncTest extends TestCase
 
     public function test_ensure_present_creates_missing_pillar_when_custom_post_occupies_slug(): void
     {
-        $admin = $this->adminUser();
         $slug = LiveLinkChecklistBlogPost::SLUG;
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
 
-        $this->actingAs($admin)->post(route('admin.blogs.store'), [
-            'status' => 'published',
-            'translations' => [
-                'en' => [
-                    'title' => 'Custom Occupying Catalog Slug',
-                    'slug' => $slug,
-                    'content' => '<p>Custom body.</p>',
-                ],
-            ],
-        ])->assertRedirect(route('admin.blogs.index'));
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
 
         Cache::forget('curated_blogs_present_v1');
         $this->get(route('blog.index'))->assertOk();
