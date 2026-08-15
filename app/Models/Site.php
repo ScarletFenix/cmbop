@@ -1331,7 +1331,12 @@ class Site extends Model
      */
     public function scopeCatalogVisible(Builder $query): Builder
     {
-        return $query->active()->verified()->notArchived()->notFromCancelledBulk();
+        $query->active()->verified()->notArchived();
+        if (static::hasSitesColumn('bulk_site_request_id')) {
+            $query->notFromCancelledBulk();
+        }
+
+        return $query;
     }
 
     public function isCatalogVisible(): bool

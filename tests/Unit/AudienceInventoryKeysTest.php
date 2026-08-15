@@ -64,7 +64,7 @@ class AudienceInventoryKeysTest extends TestCase
         $this->assertSame('Publishers (no sites)', EmailCampaign::labelForAudience('publishers_no_sites'));
         $this->assertSame('Advertisers + Publishers', EmailCampaign::labelForAudience('both'));
         $this->assertSame('Advertisers (paid orders)', EmailCampaign::labelForAudience('advertisers_paid_orders'));
-        $this->assertSame('Advertisers (deposited, no orders)', EmailCampaign::labelForAudience('advertisers_deposited_no_orders'));
+        $this->assertSame('Advertisers (deposited, no paid orders)', EmailCampaign::labelForAudience('advertisers_deposited_no_orders'));
         $this->assertSame('Publishers (no active sites)', EmailCampaign::labelForAudience('publishers_no_active_sites'));
         $this->assertSame('Selected users', EmailCampaign::labelForAudience('selected'));
         $this->assertSame('Mystery', EmailCampaign::labelForAudience('mystery'));

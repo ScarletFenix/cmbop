@@ -188,11 +188,42 @@ class AdminAudienceInventoryTest extends TestCase
             ->assertDontSee($fundedIdle->email, false)
             ->assertSee(route('admin.campaigns.index', ['audience' => 'advertisers_paid_orders'], false), false);
 
+        $abandonedFunded = $this->makeUser('advertiser');
+        $this->deposit($abandonedFunded, 'completed');
+        Order::create([
+            'user_id' => $abandonedFunded->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-ABANDON-DEP-'.random_int(1000, 9999),
+            'subtotal' => 50,
+            'tax' => 0,
+            'total_amount' => 50,
+            'payment_method' => 'wallet',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+
         $this->actingAs($admin)
             ->get(route('admin.audiences.index', ['tab' => 'deposited_no_orders']))
             ->assertOk()
             ->assertSee($fundedIdle->email, false)
-            ->assertDontSee($customer->email, false);
+            ->assertSee($abandonedFunded->email, false)
+            ->assertDontSee($customer->email, false)
+            ->assertSee('never became a customer', false);
+    }
+
+    public function test_picker_lists_verified_users_before_unverified(): void
+    {
+        $this->makeUser('advertiser', ['name' => 'Aaa One', 'email_verified_at' => null]);
+        $this->makeUser('advertiser', ['name' => 'Aaa Two', 'email_verified_at' => null]);
+        $verified = $this->makeUser('advertiser', ['name' => 'Zed Verified']);
+
+        $inventory = app(AudienceInventoryService::class);
+        $picker = $inventory->pickerUsers('advertiser', 2);
+
+        $this->assertTrue($picker->contains('id', $verified->id));
+        $this->assertCount(2, $picker);
+        $this->assertTrue($inventory->pickerIsCapped('advertiser', 2));
+        $this->assertFalse($inventory->pickerIsCapped('advertiser', 10));
     }
 
     public function test_no_active_sites_includes_draft_only_publishers(): void
@@ -439,7 +470,7 @@ class AdminAudienceInventoryTest extends TestCase
 
         $campaign = EmailCampaign::query()->latest('id')->first();
         $this->assertSame('advertisers_deposited_no_orders', $campaign->audience);
-        $this->assertSame('Advertisers (deposited, no orders)', $campaign->audienceLabel());
+        $this->assertSame('Advertisers (deposited, no paid orders)', $campaign->audienceLabel());
         $this->assertSame(1, $campaign->recipients_count);
 
         Mail::assertQueued(AudienceCampaignMail::class, fn (AudienceCampaignMail $mail) => $mail->hasTo($target->email));

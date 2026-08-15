@@ -125,7 +125,7 @@
                                         Advertisers: paid customers ({{ $stats['advertisers_paid_orders'] ?? 0 }})
                                     </option>
                                     <option value="advertisers_deposited_no_orders" @selected(old('audience', $preselect) === 'advertisers_deposited_no_orders')>
-                                        Advertisers: deposited, no orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
+                                        Advertisers: deposited, no paid orders ({{ $stats['advertisers_deposited_no_orders'] ?? 0 }})
                                     </option>
                                     <option value="publishers_no_active_sites" @selected(old('audience', $preselect) === 'publishers_no_active_sites')>
                                         Publishers: no active sites ({{ $stats['publishers_no_active_sites'] ?? 0 }})
