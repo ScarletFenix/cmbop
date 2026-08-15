@@ -103,6 +103,18 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertStringNotContainsString('/storage/blogs/content/demo.jpg', $encoded);
     }
 
+    public function test_encode_for_editor_strips_event_handlers(): void
+    {
+        $encoded = BlogHtmlSanitizer::encodeForEditor(
+            '<p onclick="alert(1)">Hi</p><img src="/storage/blogs/content/a.png" onerror="alert(1)">'
+        );
+
+        $this->assertStringContainsString('/media/blogs/content/a.png', $encoded);
+        $this->assertStringNotContainsString('onclick', $encoded);
+        $this->assertStringNotContainsString('onerror', $encoded);
+        $this->assertStringNotContainsString('alert(1)', $encoded);
+    }
+
     public function test_legacy_asset_blog_images_are_rewritten_not_stripped(): void
     {
         $html = '<p>Keep</p><img src="/assets/img/blog/gastbeitraege-europa-sprachen.jpg" alt="A">';

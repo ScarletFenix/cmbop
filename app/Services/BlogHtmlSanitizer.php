@@ -105,7 +105,7 @@ class BlogHtmlSanitizer
      */
     public static function encodeForEditor(?string $html): string
     {
-        return self::encodeForScript(self::rewritePublicBlogUrls($html));
+        return self::encodeForScript((new self)->sanitize($html));
     }
 
     public function sanitize(?string $html): string
