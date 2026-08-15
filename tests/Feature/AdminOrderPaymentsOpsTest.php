@@ -16,10 +16,12 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class AdminOrderPaymentsOpsTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     protected function setUp(): void
@@ -998,5 +1000,111 @@ class AdminOrderPaymentsOpsTest extends TestCase
 
         $this->assertSame('pending', $order->fresh()->payment_status);
         $this->assertNull($order->fresh()->paid_at);
+    }
+
+    public function test_cannot_mark_paid_when_library_article_has_an_incomplete_link(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $site = $this->makeSite($this->makeUser('publisher'), 'lib-unready');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-LIB-UNREADY-1',
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $order->items()->first()->update([
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'anchor_text' => $submission->anchor_text,
+            'target_url' => $submission->target_url,
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $order->items()->first()->id,
+            'target_url' => null,
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertNull($order->fresh()->paid_at);
+    }
+
+    public function test_cannot_mark_paid_when_library_article_was_deleted(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $site = $this->makeSite($this->makeUser('publisher'), 'lib-missing');
+        $order = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-LIB-MISSING-1',
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $order->items()->first()->update([
+            'content_submission_id' => null,
+            'content_path' => 'content-uploads/gone.docx',
+            'content_original_name' => 'article.docx',
+            'anchor_text' => 'stale anchor',
+            'target_url' => 'https://stale.example/backlink',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertSame('pending', $order->fresh()->payment_status);
+        $this->assertNull($order->fresh()->paid_at);
+    }
+
+    public function test_mark_paid_refreshes_stale_library_link_fields(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $site = $this->makeSite($this->makeUser('publisher'), 'lib-refresh');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $order = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-LIB-REFRESH-1',
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = $order->items()->first();
+        $item->update([
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'anchor_text' => 'old publisher anchor',
+            'target_url' => 'https://old.example/backlink',
+        ]);
+        $submission->update([
+            'order_id' => $order->id,
+            'order_item_id' => $item->id,
+            'anchor_text' => 'fresh publisher anchor',
+            'target_url' => 'https://example.com/tools',
+        ]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $item->refresh();
+        $this->assertSame('paid', $order->fresh()->payment_status);
+        $this->assertSame('fresh publisher anchor', $item->anchor_text);
+        $this->assertSame('https://example.com/tools', $item->target_url);
     }
 }
