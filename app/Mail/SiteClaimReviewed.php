@@ -20,7 +20,11 @@ class SiteClaimReviewed extends PlatformMailable
     public function build()
     {
         $approved = $this->claim->status === 'approved';
-        $siteName = $this->claim->site?->site_name ?: $this->claim->website_name;
+        $claimer = $this->claim->claimer;
+        $siteName = (string) ($this->claim->website_name ?: 'your claim');
+        if ($claimer && ! $claimer->inCatalogHideMode() && $this->claim->site?->site_name) {
+            $siteName = (string) $this->claim->site->site_name;
+        }
 
         return $this->subject(
             ($approved ? 'Claim approved' : 'Claim update').': '.$siteName
