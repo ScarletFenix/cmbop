@@ -461,6 +461,10 @@ class BulkSiteRequestController extends Controller
             return back()->with('error', 'Cannot seed a cancelled request.');
         }
 
+        if (! $bulkRequest->canAddDraftSites()) {
+            return back()->with('error', 'This request has no pending websites to seed.');
+        }
+
         $validator = Validator::make($request->all(), [
             'rows' => 'required|string|min:3',
         ]);
@@ -732,6 +736,21 @@ class BulkSiteRequestController extends Controller
         $didWork = $created > 0 || $deletedCount > 0;
         if ($didWork) {
             $bulkRequest->refreshProgressStatus();
+            $bulkRequest->refresh();
+            // Reject-all with no drafts must not stay "requested" — that blocks
+            // the publisher from submitting a new bulk and still enables seed.
+            if ($bulkRequest->pendingItemsCount() === 0
+                && $bulkRequest->sites()->doesntExist()
+                && in_array($bulkRequest->status, [
+                    BulkSiteRequest::STATUS_REQUESTED,
+                    BulkSiteRequest::STATUS_SHEET_SENT,
+                    BulkSiteRequest::STATUS_SEEDED,
+                ], true)) {
+                $bulkRequest->forceFill([
+                    'status' => BulkSiteRequest::STATUS_COMPLETED,
+                    'completed_at' => $bulkRequest->completed_at ?? now(),
+                ])->save();
+            }
         }
 
         return back()

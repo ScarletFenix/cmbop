@@ -51,10 +51,7 @@ class SiteController extends Controller
 
         $openBulkRequest = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
-            ->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
-            ])
+            ->blockingPublisher()
             ->latest()
             ->first();
 
@@ -339,10 +336,7 @@ class SiteController extends Controller
 
             $openBulkRequest = BulkSiteRequest::query()
                 ->where('publisher_id', auth()->id())
-                ->whereNotIn('status', [
-                    BulkSiteRequest::STATUS_COMPLETED,
-                    BulkSiteRequest::STATUS_CANCELLED,
-                ])
+                ->blockingPublisher()
                 ->latest()
                 ->first();
 

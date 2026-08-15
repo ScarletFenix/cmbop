@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\BulkSiteItemsRejected;
+use App\Mail\BulkSiteRequestCancelled;
 use App\Mail\BulkSitesSeededNotification;
 use App\Mail\SiteStatusNotification;
 use App\Models\ActivityLog;
@@ -255,16 +256,24 @@ class BulkDoneRejectRowsTest extends TestCase
 
             $this->assertSame(0, Site::query()->where('bulk_site_request_id', $bulk->id)->count());
             $this->assertSame(0, $bulk->fresh()->items()->count());
-            $this->assertSame(BulkSiteRequest::STATUS_REQUESTED, $bulk->fresh()->status);
-            $this->assertNotSame(BulkSiteRequest::STATUS_CANCELLED, $bulk->fresh()->status);
+            $fresh = $bulk->fresh();
+            $this->assertSame(BulkSiteRequest::STATUS_COMPLETED, $fresh->status);
+            $this->assertSame('Finished', $fresh->statusLabel());
+            $this->assertNotSame(BulkSiteRequest::STATUS_CANCELLED, $fresh->status);
+            $this->assertFalse($fresh->canAddDraftSites());
             $this->assertFalse(
                 MarketingOpsQueues::bulkWaitingOnMarketer()->whereKey($bulk->id)->exists(),
                 'Reject-all with no leftover URL+price rows must leave the Waiting on you queue.'
+            );
+            $this->assertFalse(
+                BulkSiteRequest::query()->whereKey($bulk->id)->blockingPublisher()->exists(),
+                'Reject-all must not block the publisher from submitting a new bulk.'
             );
 
             Mail::assertQueued(BulkSiteItemsRejected::class, 1);
             Mail::assertNotQueued(BulkSitesSeededNotification::class);
             Mail::assertNotQueued(SiteStatusNotification::class);
+            Mail::assertNotQueued(BulkSiteRequestCancelled::class);
 
             $this->assertSame(1, InAppNotification::query()
                 ->where('user_id', $this->publisher->id)
@@ -272,6 +281,39 @@ class BulkDoneRejectRowsTest extends TestCase
                 ->where('title', '2 sites were not added from your bulk request')
                 ->count());
         }
+    }
+
+    public function test_reject_all_blocks_seed_and_clears_publisher_open_banner(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'pub-open');
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'rejected_item_ids' => [$items[0]->id],
+                'rejection_note' => 'We are not listing this domain after review.',
+            ])
+            ->assertSessionHas('success');
+
+        $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->post(route('marketing.bulk-site-requests.seed', $bulk), [
+                'rows' => 'https://should-not-seed.example,40,20,20,1000,de,de,Nope',
+            ])
+            ->assertRedirect(route('marketing.bulk-site-requests.show', $bulk))
+            ->assertSessionHas('error', fn ($message) => str_contains(
+                (string) $message,
+                'no pending websites to seed'
+            ));
+
+        $this->assertDatabaseMissing('sites', ['domain' => 'should-not-seed.example']);
+
+        $this->actingAs($this->publisher)
+            ->get(route('publisher.websites'))
+            ->assertOk()
+            ->assertDontSee('Bulk request #'.$bulk->id, false)
+            ->assertDontSee('You already have an open bulk request', false);
     }
 
     public function test_reject_remaining_seeded_rows_completes_and_leaves_waiting_queue(): void

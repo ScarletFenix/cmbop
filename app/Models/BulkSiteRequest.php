@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -164,8 +165,27 @@ class BulkSiteRequest extends Model
             return true;
         }
 
-        // Legacy requests without item rows still use the paste-seed box while open.
-        return $this->isOpen();
+        // Legacy sheet workflow: open request, no item rows yet, a count was set.
+        // Reject-all deletes items and sets estimated_count to 0 — not legacy.
+        return $this->isOpen()
+            && $this->sites()->doesntExist()
+            && $this->items()->doesntExist()
+            && (int) $this->estimated_count > 0;
+    }
+
+    /**
+     * Publisher cannot start a new bulk while this one still has work.
+     *
+     * @param  Builder<self>  $query
+     * @return Builder<self>
+     */
+    public function scopeBlockingPublisher($query)
+    {
+        return $query->whereNotIn('status', [self::STATUS_COMPLETED, self::STATUS_CANCELLED])
+            ->where(function ($inner) {
+                $inner->whereHas('items', fn ($items) => $items->whereNull('site_id'))
+                    ->orWhereHas('sites');
+            });
     }
 
     public function isCancelled(): bool
@@ -191,6 +211,12 @@ class BulkSiteRequest extends Model
      */
     public function statusLabel(): string
     {
+        if ($this->status === self::STATUS_COMPLETED
+            && $this->sites()->doesntExist()
+            && ! $this->hasPendingItems()) {
+            return 'Finished';
+        }
+
         return self::statusLabelFor($this->status);
     }
 

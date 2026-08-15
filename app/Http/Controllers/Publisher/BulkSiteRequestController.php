@@ -25,10 +25,7 @@ class BulkSiteRequestController extends Controller
     {
         $open = BulkSiteRequest::query()
             ->where('publisher_id', auth()->id())
-            ->whereNotIn('status', [
-                BulkSiteRequest::STATUS_COMPLETED,
-                BulkSiteRequest::STATUS_CANCELLED,
-            ])
+            ->blockingPublisher()
             ->exists();
 
         if ($open) {
