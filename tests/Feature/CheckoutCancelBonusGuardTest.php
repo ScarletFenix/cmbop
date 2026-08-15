@@ -246,6 +246,56 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
     }
 
+    public function test_finalize_snapshot_only_package_marks_failed_leftover_instead_of_wallet_credit(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = $this->wallet($advertiser, 20);
+        $item = $this->cardOrder($advertiser, $this->site($publisher), 80, 'REF-SNAP-ONLY', 'pending');
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout('REF-SNAP-ONLY', [
+            'user_id' => $advertiser->id,
+            'reference_code' => 'REF-SNAP-ONLY',
+            'order_total' => 80,
+            'amount_due' => 60,
+            'bonus_applied' => 20,
+            'schedule' => ['mode' => 'immediate', 'timezone' => 'UTC'],
+            'lines' => [['site_id' => $item->site_id, 'price' => 80]],
+            'stripe_session_id' => 'cs_will_expire_snap',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-SNAP-ONLY', 20);
+
+        $payments->markOrdersFailedFromReference('REF-SNAP-ONLY', 'expired');
+
+        $wallet->refresh();
+        $this->assertSame('failed', $item->order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertSame([], $payments->getPendingCheckout('REF-SNAP-ONLY')['lines'] ?? null);
+
+        $session = (object) [
+            'id' => 'cs_pay_again_full',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_pay_again_full',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-SNAP-ONLY',
+                'expected_amount' => '80',
+                'order_total' => '80',
+                'bonus_applied' => '0',
+            ],
+        ];
+
+        $paid = $payments->finalizeStripeFirstCheckout('REF-SNAP-ONLY', $session);
+
+        $this->assertSame(1, $paid->count());
+        $this->assertSame('paid', $item->order->fresh()->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertSame(0.0, $wallet->withdrawableBalance());
+    }
+
     public function test_late_mark_paid_rereserves_bonus_when_package_json_still_lists_it(): void
     {
         $advertiser = $this->userWithRole('advertiser');
