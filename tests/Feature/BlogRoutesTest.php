@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Blog;
+use App\Models\BlogTranslation;
 use App\Models\User;
 use App\Services\CuratedBlogSync;
 use App\Support\AdvertiserPlatformGuideBlogPost;
@@ -62,6 +63,34 @@ class BlogRoutesTest extends TestCase
             ->assertSee('Latest Updates', false)
             ->assertSee('Footer Update Post', false)
             ->assertSee('View all posts', false);
+    }
+
+    public function test_footer_uses_primary_translation_when_english_is_missing(): void
+    {
+        Blog::query()->update(['published_at' => now()->subDay()]);
+
+        $blog = Blog::factory()->published()->create([
+            'title' => 'English leftover title',
+            'slug' => 'english-leftover-slug',
+            'content' => '<p>English leftover body</p>',
+            'primary_locale' => 'de',
+            'published_at' => now(),
+        ]);
+        BlogTranslation::create([
+            'blog_id' => $blog->id,
+            'locale' => 'de',
+            'title' => 'Deutscher Footer Titel',
+            'slug' => 'deutscher-footer-titel',
+            'excerpt' => 'Deutscher Auszug',
+            'content' => '<p>Deutscher Inhalt</p>',
+            'is_published' => true,
+        ]);
+
+        $this->get('/de/about')
+            ->assertOk()
+            ->assertSee('Deutscher Footer Titel', false)
+            ->assertSee('/de/blog/deutscher-footer-titel', false)
+            ->assertDontSee('English leftover title', false);
     }
 
     public function test_future_published_at_posts_are_hidden_from_public_blog(): void

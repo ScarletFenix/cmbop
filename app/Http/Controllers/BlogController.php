@@ -25,7 +25,7 @@ class BlogController extends Controller
             ->paginate(12);
 
         $blog->getCollection()->transform(function (Blog $post) use ($requestedLocale) {
-            $translation = $post->translationFor($requestedLocale, 'en');
+            $translation = $post->displayTranslation($requestedLocale, 'en');
             if ($translation) {
                 $post->setAttribute('title', $translation->title);
                 $post->setAttribute('slug', $translation->slug);
@@ -73,6 +73,15 @@ class BlogController extends Controller
                 ->first();
         }
 
+        // Translation slugs are globally unique. /blog/{de-slug} must still
+        // resolve when blogs.slug was renamed or differs from the DE row.
+        if (! $translation) {
+            $translation = BlogTranslation::query()
+                ->where('slug', $slug)
+                ->where('is_published', true)
+                ->first();
+        }
+
         $blog = null;
         if ($translation) {
             $blog = Blog::published()
@@ -90,7 +99,11 @@ class BlogController extends Controller
                 }])
                 ->where('slug', $slug)
                 ->firstOrFail();
-            $translation = $blog->translationFor($requestedLocale, $fallbackLocale);
+        }
+
+        $display = $blog->displayTranslation($requestedLocale, $fallbackLocale);
+        if ($display) {
+            $translation = $display;
         }
 
         if (! $translation) {
@@ -123,7 +136,7 @@ class BlogController extends Controller
             ->get();
 
         $related->transform(function (Blog $post) use ($requestedLocale) {
-            $resolved = $post->translationFor($requestedLocale, 'en');
+            $resolved = $post->displayTranslation($requestedLocale, 'en');
             if ($resolved) {
                 $post->setAttribute('title', $resolved->title);
                 $post->setAttribute('slug', $resolved->slug);

@@ -23,7 +23,8 @@ class PublicMediaController extends Controller
     public function show(Request $request, string $path): StreamedResponse
     {
         $normalized = ltrim(str_replace('\\', '/', $path), '/');
-        if ($normalized === '' || str_contains($normalized, '..')) {
+        $normalized = rawurldecode($normalized);
+        if ($normalized === '' || str_contains($normalized, '..') || str_contains($normalized, '%')) {
             abort(404);
         }
 

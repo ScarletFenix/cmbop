@@ -2,6 +2,9 @@
 
 namespace App\Support;
 
+use App\Models\Blog;
+use Illuminate\Support\Facades\Schema;
+
 /**
  * Single registry of code-defined pillar posts (slugs + FAQ payloads).
  */
@@ -88,5 +91,113 @@ class CuratedBlogCatalog
         }
 
         return [];
+    }
+
+    /**
+     * Pillar FAQ is keyed by catalog slug. Public pages must not look up
+     * a renamed / uniquified translation slug or blogs.slug alone.
+     *
+     * @return list<array{question: string, answer: string}>
+     */
+    public static function faqForBlog(Blog $blog, ?string $resolvedSlug = null): array
+    {
+        if (filled($blog->curated_key)) {
+            return self::faqForSlug((string) $blog->curated_key);
+        }
+
+        // Legacy unkeyed pillar only. A custom post that reused a catalog
+        // slug must not inherit that pillar's FAQ schema.
+        if ($blog->manually_edited_at) {
+            return [];
+        }
+
+        foreach (array_unique(array_filter([$blog->slug, $resolvedSlug])) as $slug) {
+            $items = self::faqForSlug(is_string($slug) ? $slug : null);
+            if ($items !== []) {
+                return $items;
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Point hardcoded /blog/{catalog-slug} links at the live pillar slug.
+     * After uniquify the catalog URL may belong to a custom post.
+     */
+    public static function rewriteCatalogLinks(?string $html): string
+    {
+        $html = (string) $html;
+        if ($html === '' || ! str_contains($html, '/blog/')) {
+            return $html;
+        }
+
+        try {
+            if (! Schema::hasTable('blogs') || ! Schema::hasColumn('blogs', 'curated_key')) {
+                return $html;
+            }
+
+            $locale = function_exists('public_locale') ? public_locale() : 'en';
+            $pillars = Blog::query()
+                ->whereNotNull('curated_key')
+                ->where('curated_key', '!=', '')
+                ->with(['translations' => function ($query) {
+                    $query->where('is_published', true);
+                }])
+                ->get();
+
+            $map = [];
+            foreach ($pillars as $pillar) {
+                $catalog = (string) $pillar->curated_key;
+                if ($catalog === '') {
+                    continue;
+                }
+                $live = $pillar->displayTranslation($locale, 'en')?->slug ?: $pillar->slug;
+                if (is_string($live) && $live !== '' && strcasecmp($live, $catalog) !== 0) {
+                    $map[$catalog] = $live;
+                }
+            }
+        } catch (\Throwable) {
+            return $html;
+        }
+
+        if ($map === []) {
+            return $html;
+        }
+
+        $from = [];
+        foreach (array_keys($map) as $catalogSlug) {
+            if (! is_string($catalogSlug) || $catalogSlug === '') {
+                continue;
+            }
+            $from[] = preg_quote($catalogSlug, '~');
+        }
+        if ($from === []) {
+            return $html;
+        }
+
+        $locales = implode('|', array_map(
+            static fn (string $locale): string => preg_quote($locale, '~'),
+            PublicI18n::prefixed()
+        ));
+
+        $rewritten = preg_replace_callback(
+            '~((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(?=["\'?#\s>]|$)~i',
+            static function (array $matches) use ($map): string {
+                $catalog = $matches[4];
+                $public = $map[$catalog] ?? $catalog;
+                foreach ($map as $fromSlug => $toSlug) {
+                    if (strcasecmp((string) $fromSlug, $catalog) === 0) {
+                        $public = (string) $toSlug;
+                        break;
+                    }
+                }
+
+                return $matches[1].$matches[2].$matches[3].$public;
+            },
+            $html
+        );
+
+        return is_string($rewritten) ? $rewritten : $html;
     }
 }

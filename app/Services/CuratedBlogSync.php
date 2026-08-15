@@ -123,8 +123,9 @@ class CuratedBlogSync
 
         $usedSlugs = DB::table('blog_translations')->pluck('slug')->all();
         $used = array_fill_keys($usedSlugs, true);
+        $blogSlugsById = DB::table('blogs')->pluck('slug', 'id')->all();
 
-        DB::table('blogs')->orderBy('id')->chunkById(100, function ($blogs) use (&$used): void {
+        DB::table('blogs')->orderBy('id')->chunkById(100, function ($blogs) use (&$used, $blogSlugsById): void {
             foreach ($blogs as $blog) {
                 $locale = PublicI18n::isSupported($blog->primary_locale ?? null)
                     ? $blog->primary_locale
@@ -139,10 +140,18 @@ class CuratedBlogSync
                     continue;
                 }
 
+                $taken = $used;
+                foreach ($blogSlugsById as $otherId => $otherSlug) {
+                    if ((int) $otherId === (int) $blog->id || ! is_string($otherSlug) || $otherSlug === '') {
+                        continue;
+                    }
+                    $taken[$otherSlug] = true;
+                }
+
                 $baseSlug = $blog->slug ?: Str::slug((string) $blog->title);
                 $slug = $baseSlug !== '' ? $baseSlug : 'post-'.$blog->id;
                 $counter = 1;
-                while (isset($used[$slug])) {
+                while (isset($taken[$slug])) {
                     $slug = $baseSlug.'-'.$counter;
                     $counter++;
                 }
@@ -211,14 +220,13 @@ class CuratedBlogSync
                     self::curatedSlugs(),
                     static fn (string $slug): bool => ! CuratedBlogWriter::isTombstoned($slug)
                 ));
-                $found = Blog::query()
-                    ->where(function ($query) use ($slugs) {
-                        $query->whereIn('slug', $slugs);
-                        if (Schema::hasColumn('blogs', 'curated_key')) {
-                            $query->orWhereIn('curated_key', $slugs);
-                        }
-                    })
-                    ->count();
+                // Count real pillars only. A custom post that reused a catalog
+                // slug must not satisfy presence — otherwise auto-heal never
+                // creates the uniquified curated row.
+                $found = count(array_filter(
+                    $slugs,
+                    static fn (string $slug): bool => CuratedBlogWriter::findExisting($slug) !== null
+                ));
 
                 if ($slugs === [] || $found >= count($slugs)) {
                     return true;

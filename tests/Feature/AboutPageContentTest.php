@@ -143,6 +143,31 @@ class AboutPageContentTest extends TestCase
             ->assertSee('/blog/buy-guest-posts-in-europe-how-to-choose-publisher-sites', false);
     }
 
+    public function test_about_page_links_to_uniquified_pillar_not_custom_catalog_slug(): void
+    {
+        $slug = 'what-to-check-after-the-live-link-indexation-attributes-rankings';
+        Blog::query()->where('slug', $slug)->orWhere('curated_key', $slug)->get()->each->delete();
+
+        Blog::factory()->published()->create([
+            'title' => 'Custom Occupying Catalog Slug',
+            'slug' => $slug,
+            'content' => '<p>Custom body.</p>',
+            'manually_edited_at' => now(),
+            'curated_key' => null,
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $pillarSlug = Blog::query()->where('curated_key', $slug)->value('slug');
+        $this->assertNotNull($pillarSlug);
+        $this->assertNotSame($slug, $pillarSlug);
+
+        $this->get('/about')
+            ->assertOk()
+            ->assertSee('/blog/'.$pillarSlug, false)
+            ->assertDontSee('Custom Occupying Catalog Slug', false);
+    }
+
     public function test_german_about_page_uses_local_copy_and_companies_house_link(): void
     {
         $this->get('/de/about')

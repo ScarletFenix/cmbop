@@ -88,8 +88,10 @@ class SitemapController extends Controller
             ->get();
 
         $listedIds = [];
+        $listedSlugs = [];
         foreach ($translations as $translation) {
             $listedIds[] = (int) $translation->blog_id;
+            $listedSlugs[] = $translation->slug;
             $path = 'blog/'.$translation->slug;
             $slugsByLocale = BlogTranslation::query()
                 ->where('blog_id', $translation->blog_id)
@@ -107,9 +109,9 @@ class SitemapController extends Controller
             $urls[] = $entry;
         }
 
-        // DE-primary pillars (and legacy rows) are public at /blog/{blogs.slug}
-        // even when they have no EN translation. Locale sitemaps that only join
-        // blog_translations omit those URLs.
+        // DE-primary pillars (and legacy rows) are public even without a row
+        // for this sitemap locale. Use the display translation slug so a
+        // colliding blogs.slug cannot duplicate another post's URL.
         $fallbackBlogs = Blog::published()
             ->with(['translations' => function ($query) {
                 $query->where('is_published', true);
@@ -118,9 +120,15 @@ class SitemapController extends Controller
             ->get();
 
         foreach ($fallbackBlogs as $blog) {
-            $path = 'blog/'.$blog->slug;
+            $resolved = $blog->displayTranslation($locale, 'en');
+            $pathSlug = $resolved?->slug ?: $blog->slug;
+            if ($pathSlug === '' || in_array($pathSlug, $listedSlugs, true)) {
+                continue;
+            }
+            $listedSlugs[] = $pathSlug;
+            $path = 'blog/'.$pathSlug;
             $slugsByLocale = $blog->translations->pluck('slug', 'locale')->all();
-            $slugsByLocale[$locale] = $blog->slug;
+            $slugsByLocale[$locale] = $pathSlug;
             $pathByLocale = [];
             foreach ($slugsByLocale as $altLocale => $slug) {
                 $pathByLocale[$altLocale] = 'blog/'.$slug;
