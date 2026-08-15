@@ -77,7 +77,9 @@ class AdminCampaignsTest extends TestCase
             ->assertSee('value="publishers_no_sites"', false)
             ->assertSee('name="respect_preferences" value="0"', false)
             ->assertSee('id="previewStatus"', false)
-            ->assertSee('data-slb-confirm="Send this campaign', false);
+            ->assertSee('data-slb-confirm="Send this campaign', false)
+            ->assertSee('requestSubmit() throws if the submitter is disabled', false)
+            ->assertSee("Accept': 'application/json, text/html'", false);
     }
 
     public function test_preview_returns_html_for_valid_payload(): void
@@ -159,6 +161,11 @@ class AdminCampaignsTest extends TestCase
                 'count' => 0,
                 'label' => 'Selected users',
             ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.campaigns.recipient-count', ['audience' => 'not-a-segment']))
+            ->assertStatus(422)
+            ->assertJsonValidationErrors(['audience']);
     }
 
     public function test_hidden_zero_disables_preference_gate(): void

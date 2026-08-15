@@ -378,6 +378,8 @@
 
     form.addEventListener('submit', function (e) {
         if (form.dataset.slbAllowSubmit === '1') {
+            delete form.dataset.slbAllowSubmit;
+            e.stopImmediatePropagation();
             if (sendBtn) {
                 sendBtn.disabled = true;
                 sendBtn.setAttribute('aria-busy', 'true');
@@ -403,7 +405,10 @@
                 }
 
                 const text = 'Send to ' + count.toLocaleString() + ' recipient' + (count === 1 ? '' : 's') + ' (' + label + ')?';
-                sendBtn.setAttribute('data-slb-confirm', text);
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                    sendBtn.setAttribute('data-slb-confirm', text);
+                }
 
                 return confirmSend(text);
             })
@@ -412,8 +417,12 @@
                     return;
                 }
                 form.dataset.slbAllowSubmit = '1';
+                // requestSubmit() throws if the submitter is disabled.
+                if (sendBtn) {
+                    sendBtn.disabled = false;
+                }
                 if (typeof form.requestSubmit === 'function') {
-                    form.requestSubmit(sendBtn);
+                    form.requestSubmit(sendBtn || undefined);
                 } else {
                     HTMLFormElement.prototype.submit.call(form);
                 }
@@ -444,8 +453,12 @@
         try {
             const res = await fetch(@json(route('admin.campaigns.preview')), {
                 method: 'POST',
-                headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'Accept': 'application/json, text/html',
+                },
                 body: fd,
+                redirect: 'manual',
             });
 
             if (res.status === 422) {
@@ -454,7 +467,7 @@
                 return;
             }
 
-            if (!res.ok) {
+            if (res.type === 'opaqueredirect' || res.status === 419 || !res.ok) {
                 previewFrame.removeAttribute('srcdoc');
                 setPreviewStatus('Preview failed — refresh and retry.', true);
                 return;
