@@ -675,7 +675,7 @@ class ContentSubmissionController extends Controller
             ->where(function ($q) use ($submission) {
                 $q->where('content_submission_id', $submission->id);
                 if ($submission->order_item_id) {
-                    $q->orWhereKey($submission->order_item_id);
+                    $q->orWhere('id', $submission->order_item_id);
                 }
             })
             ->whereHas('site', fn ($q) => $q->where('publisher_id', $publisherId))
