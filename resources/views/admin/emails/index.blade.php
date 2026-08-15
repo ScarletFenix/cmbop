@@ -397,8 +397,8 @@
         <div class="card-body">
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h5 class="mb-0">Failed Email Log</h5>
-                @if(($queue['failed_jobs'] ?? 0) > 0)
-                    <a href="#ec-tools" class="small">View failed queue jobs ({{ $queue['failed_jobs'] }})</a>
+                @if(($queue['mail_failed_jobs'] ?? 0) > 0)
+                    <a href="#ec-tools" class="small">View failed mail jobs ({{ $queue['mail_failed_jobs'] }})</a>
                 @endif
             </div>
             @if($failedLogs->isEmpty())

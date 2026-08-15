@@ -631,7 +631,7 @@ class AdminEmailCenterTest extends TestCase
         $this->assertStringContainsString('Delivered Today', $html);
         preg_match_all('/<div class="value[^"]*">\s*([0-9,]+)\s*<\/div>/', $html, $matches);
         $values = array_map(fn ($v) => (int) str_replace(',', '', $v), $matches[1] ?? []);
-        $this->assertSame([1, 1, 1, 1], $values);
+        $this->assertSame([3, 1, 1, 1], $values);
     }
 
     public function test_mailable_failed_hook_writes_email_log(): void
@@ -723,6 +723,32 @@ class AdminEmailCenterTest extends TestCase
 
         $this->assertSame(1, EmailLog::query()->count());
         $this->assertSame(EmailLog::STATUS_DELIVERED, $log->fresh()->status);
+    }
+
+    public function test_retry_does_not_rebuild_production_framework_log(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'email_verification',
+            'to_email' => 'customer@example.com',
+            'subject' => 'Verify your email',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => ['source' => 'queue'],
+        ]);
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'), ['log_id' => $log->id])
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('error');
+
+        $fresh = $log->fresh();
+        $this->assertSame(EmailLog::STATUS_FAILED, $fresh->status);
+        $this->assertSame('customer@example.com', $fresh->to_email);
+        $this->assertSame(1, EmailLog::query()->count());
     }
 
     public function test_retry_rebuilds_email_center_test_log(): void
@@ -932,11 +958,32 @@ class AdminEmailCenterTest extends TestCase
             'sent_at' => now(),
         ]);
 
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => 'keep_user@example.com',
+            'subject' => 'Welcome underscore',
+            'status' => EmailLog::STATUS_PENDING,
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => 'keepxuser@example.com',
+            'subject' => 'Welcome wildcard',
+            'status' => EmailLog::STATUS_PENDING,
+        ]);
+
         $this->actingAs($admin)
             ->get(route('admin.emails.index', ['status' => 'delivered', 'template_key' => 'welcome', 'to_email' => 'keep@']))
             ->assertOk()
             ->assertSee('keep@example.com', false)
             ->assertDontSee('other@example.com', false);
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index', ['to_email' => 'keep_']))
+            ->assertOk()
+            ->assertSee('keep_user@example.com', false)
+            ->assertDontSee('keepxuser@example.com', false);
 
         $this->actingAs($admin)
             ->get(route('admin.emails.log', $keep))

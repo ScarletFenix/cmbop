@@ -271,8 +271,7 @@ class EmailCenterController extends Controller
             return back()->with('error', 'That email log is not failed.');
         }
 
-        $source = data_get($log->meta, 'source');
-        if ($source === 'email_center_test' || $this->isFrameworkTemplate((string) $log->template_key)) {
+        if ($this->shouldRebuildAsTest($log)) {
             return $this->retryTestLog($log);
         }
 
@@ -459,6 +458,21 @@ class EmailCenterController extends Controller
     protected function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
+    }
+
+    protected function shouldRebuildAsTest(EmailLog $log): bool
+    {
+        if (data_get($log->meta, 'source') === 'email_center_test') {
+            return true;
+        }
+
+        if (str_starts_with((string) $log->dedupe_key, 'email_center_test:')) {
+            return true;
+        }
+
+        return $this->isFrameworkTemplate((string) $log->template_key)
+            && strcasecmp((string) $log->to_email, (string) request()->user()?->email) === 0
+            && str_contains((string) $log->subject, 'Test Preview');
     }
 
     protected function isFrameworkTemplate(string $key): bool
