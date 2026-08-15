@@ -6,6 +6,35 @@ use PHPUnit\Framework\TestCase;
 
 class EmailCampaignPhpSyntaxTest extends TestCase
 {
+    /**
+     * @return list<string>
+     */
+    private function campaignSendSources(): array
+    {
+        $root = dirname(__DIR__, 2);
+
+        return [
+            $root.'/app/Models/EmailCampaign.php',
+            $root.'/app/Services/AudienceInventoryService.php',
+            $root.'/app/Support/MailJobPayload.php',
+        ];
+    }
+
+    public function test_campaign_send_classes_parse_and_do_not_redeclare_methods(): void
+    {
+        foreach ($this->campaignSendSources() as $path) {
+            $this->assertFileExists($path);
+            $source = (string) file_get_contents($path);
+            token_get_all($source, TOKEN_PARSE);
+
+            preg_match_all('/function\s+(\w+)\s*\(/', $source, $matches);
+            $counts = array_count_values($matches[1] ?? []);
+            foreach ($counts as $name => $times) {
+                $this->assertSame(1, $times, basename($path).' redeclares '.$name);
+            }
+        }
+    }
+
     public function test_email_campaign_model_parses_and_try_is_inside_the_connection_loop(): void
     {
         $path = dirname(__DIR__, 2).'/app/Models/EmailCampaign.php';
@@ -21,6 +50,17 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertDoesNotMatchRegularExpression(
             '/foreach \(self::sendJobQueueConnections\(\) as \$connection\) \{[^;]*\} catch \(/s',
             $source
+        );
+
+        $this->assertTrue((bool) preg_match(
+            '/protected static function hasQueuedSendJob\(int \$campaignId\): bool\s*\{(.*?)\n    protected static function sendJobQueueConnections/s',
+            $source,
+            $matches
+        ));
+        $this->assertSame(
+            1,
+            substr_count($matches[1], 'try {'),
+            'hasQueuedSendJob must not leave an extra unclosed try around the connection loop'
         );
     }
 }
