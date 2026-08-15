@@ -217,7 +217,7 @@ class ContentSubmission extends Model
         // approved + file + market + rights + not in use is enough to place an order.
         return $this->moderation_status === self::STATUS_APPROVED
             && $this->path
-            && $this->order_id === null
+            && ! $this->ownerOrderBlocksOrdering()
             && ! $this->isArchived()
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
@@ -233,7 +233,10 @@ class ContentSubmission extends Model
     public function isClaimedByAnotherOrder(?int $orderId = null): bool
     {
         if ($this->order_id !== null && ($orderId === null || (int) $this->order_id !== $orderId)) {
-            return true;
+            $owner = $this->relatedOwnerOrder();
+            if ($owner && $this->orderLooksLikeActiveClaim($owner, $orderId)) {
+                return true;
+            }
         }
 
         if (! Schema::hasColumn('order_items', 'content_submission_id')) {
@@ -301,7 +304,7 @@ class ContentSubmission extends Model
     {
         $query
             ->where('moderation_status', self::STATUS_APPROVED)
-            ->whereNull('order_id')
+            ->withoutOpenOwnerOrder()
             ->whereNotNull('path')
             ->where('path', '!=', '')
             ->whereNull('archived_at')
@@ -365,6 +368,33 @@ class ContentSubmission extends Model
     }
 
     /**
+     * Direct order_id still points at a non-cancelled order.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithOpenOwnerOrder($query)
+    {
+        return $query->whereHas('order', function ($order) {
+            $order->where('status', '!=', 'cancelled');
+        });
+    }
+
+    /**
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutOpenOwnerOrder($query)
+    {
+        return $query->where(function ($q) {
+            $q->whereNull('order_id')
+                ->orWhereDoesntHave('order', function ($order) {
+                    $order->where('status', '!=', 'cancelled');
+                });
+        });
+    }
+
+    /**
      * Rejected / error articles, plus approved articles that still need image
      * rights, a complete checkout link, or release from a leftover order.
      *
@@ -404,7 +434,7 @@ class ContentSubmission extends Model
                     $links->orderable()->withoutCheckoutReadyLinks();
                 })->orWhere(function ($leftover) {
                     $leftover->where('moderation_status', self::STATUS_APPROVED)
-                        ->whereNull('order_id')
+                        ->withoutOpenOwnerOrder()
                         ->whereNull('archived_at')
                         ->withActiveOrderClaim();
                 });
@@ -573,7 +603,13 @@ class ContentSubmission extends Model
 
     public function isInUse(): bool
     {
-        return $this->order_id !== null;
+        if ($this->order_id === null) {
+            return false;
+        }
+
+        $owner = $this->relatedOwnerOrder();
+
+        return $owner instanceof Order && $owner->status !== 'cancelled';
     }
 
     public function isExpired(): bool
@@ -1242,6 +1278,26 @@ class ContentSubmission extends Model
 
         return $order->status !== 'cancelled'
             && in_array($order->payment_status, self::ACTIVE_ORDER_CLAIM_PAYMENT_STATUSES, true);
+    }
+
+    protected function relatedOwnerOrder(): ?Order
+    {
+        if ($this->order_id === null) {
+            return null;
+        }
+
+        $order = $this->relationLoaded('order')
+            ? $this->order
+            : $this->order()->first();
+
+        return $order instanceof Order ? $order : null;
+    }
+
+    protected function ownerOrderBlocksOrdering(): bool
+    {
+        $owner = $this->relatedOwnerOrder();
+
+        return $owner instanceof Order && $owner->status !== 'cancelled';
     }
 
     /**

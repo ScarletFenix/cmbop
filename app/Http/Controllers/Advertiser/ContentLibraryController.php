@@ -92,7 +92,7 @@ class ContentLibraryController extends Controller
 
         $query = ContentSubmission::query()
             ->forLibraryList()
-            ->with(['orderItem.site', 'orderItems.site', 'orderItems.order'])
+            ->with(['order', 'orderItem.site', 'orderItems.site', 'orderItems.order'])
             ->where('user_id', auth()->id())
             ->latest('id');
 
@@ -137,7 +137,7 @@ class ContentLibraryController extends Controller
                     });
             } elseif ($availability === 'in_progress') {
                 $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
-                $query->whereNotNull('order_id')
+                $query->withOpenOwnerOrder()
                     ->whereDoesntHave('orderItems', function ($item) use ($hasPublisherStatus) {
                         $item->where(function ($q) use ($hasPublisherStatus) {
                             $q->where(function ($live) {
@@ -240,7 +240,7 @@ class ContentLibraryController extends Controller
                 })
                 ->count(),
             'in_progress' => (int) (clone $countScope)
-                ->whereNotNull('order_id')
+                ->withOpenOwnerOrder()
                 ->whereDoesntHave('orderItems', function ($item) use ($hasPublisherStatus) {
                     $item->where(function ($q) use ($hasPublisherStatus) {
                         $q->where(function ($live) {

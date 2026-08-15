@@ -605,6 +605,7 @@ class OrderPaymentService
 
         foreach ($hiddenPending as $order) {
             $order->update(['status' => 'cancelled']);
+            ContentSubmission::releaseAllForOrder((int) $order->id);
         }
 
         if ($userId > 0) {

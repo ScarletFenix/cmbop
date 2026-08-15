@@ -724,6 +724,56 @@ class ContentLibraryImprovementsTest extends TestCase
         );
     }
 
+    public function test_cancelled_owner_order_id_does_not_block_checkout(): void
+    {
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $cancelled = $this->makeOrder($advertiser);
+        $cancelled->update(['status' => 'cancelled', 'payment_status' => 'failed']);
+        $submission->update(['order_id' => $cancelled->id]);
+
+        $fresh = $submission->fresh();
+        $this->assertFalse($fresh->isInUse());
+        $this->assertFalse($fresh->isClaimedByAnotherOrder());
+        $this->assertTrue($fresh->canBeOrdered());
+        $this->assertTrue($fresh->isReadyForCheckout());
+        $this->assertSame('available', $fresh->libraryAvailability());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->orderable()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($submission->id)->checkoutReady()->exists()
+        );
+    }
+
+    public function test_cannot_archive_article_tied_to_a_failed_leftover_order(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'archive-leftover');
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = $this->failedCardOrder($advertiser);
+        OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_path' => $submission->path,
+            'content_original_name' => $submission->original_filename,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.content-submissions.archive', $submission))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        $this->assertNull($submission->fresh()->archived_at);
+        $this->assertTrue($submission->fresh()->isReadyToFulfill((int) $leftover->id));
+    }
+
     public function test_download_url_only_item_still_looks_like_a_library_line(): void
     {
         $item = new OrderItem([
