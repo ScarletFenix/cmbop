@@ -634,8 +634,8 @@ class AdminEmailCenterTest extends TestCase
             ->assertRedirect(route('admin.emails.index'))
             ->assertSessionHas('success');
 
-        // No recipient token in the payload — do not pending-mark a Welcome
-        // log that might belong to someone else.
+        // Unidentified Welcome payload must not pending-mark a log that
+        // has a recipient — requireToken rejects the unique-class fallback.
         $this->assertSame(EmailLog::STATUS_FAILED, EmailLog::query()->first()->status);
         $this->assertTrue(DB::table('failed_jobs')->where('uuid', $otherUuid)->exists());
     }
