@@ -92,7 +92,7 @@ class CheckoutIntentService
     /**
      * Reserved bonus still recorded for this reference (cache + durable row).
      */
-    public function heldBonus(int $userId, string $referenceCode): float
+    public function peekBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
         if ($userId <= 0 || $referenceCode === '') {
             return 0.0;

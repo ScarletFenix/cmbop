@@ -166,7 +166,9 @@ class SendOrderLifecycleEmails
     {
         return match ($to) {
             'paid' => 'Payment was successful.',
-            'failed' => 'Payment failed. Please review the order and retry if needed.',
+            'failed' => $from === 'paid'
+                ? 'This payment was reversed and the amount was returned to the advertiser wallet.'
+                : 'Payment failed. Please review the order and retry if needed.',
             'refunded' => 'A refund has been processed for this order.',
             'pending' => 'Payment is pending.',
             default => "Payment status changed from {$from} to {$to}.",

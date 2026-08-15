@@ -103,7 +103,7 @@ class OrderRefundService
      * Move funds back to the advertiser wallet. Must run inside a transaction with
      * the order already locked; throws so the caller's transaction rolls back.
      */
-    public function refundToAdvertiser(Order $order, float $amount, ?string $reason = null): bool
+    public function refundToAdvertiser(Order $order, float $amount, ?string $reason = null, ?float $maxBonusShare = null): bool
     {
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -118,16 +118,42 @@ class OrderRefundService
         $wallet = Wallet::lockOrCreateForRole($order->user_id, $advertiserRoleId);
 
         $bonusRestored = 0.0;
+        $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
         if ($order->payment_method === 'wallet') {
-            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
+            // Peek 0 used to mean "no cap" and dumped every reserved promo
+            // on this wallet, including another checkout's leftover. Cap to
+            // the promo that still fits inside this hold (and siblings).
+            $holdCap = $this->walletHoldBonusCap($wallet, $order, $amount);
+            if ($maxBonusShare !== null && $maxBonusShare > 0) {
+                $bonusShare = min($bonusShare, round($maxBonusShare, 2), $holdCap);
+            } else {
+                $bonusShare = min($bonusShare, $holdCap);
+            }
+        } elseif ($maxBonusShare !== null) {
+            $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
+        }
+
+        $ledgerAmount = $amount;
+
+        if ($order->payment_method === 'wallet') {
+            $reservedBefore = round((float) $wallet->reserved_balance, 2);
+            if ($reservedBefore <= 0) {
+                return false;
+            }
+
             $bonusReservedBefore = (float) $wallet->bonus_reserved;
             $wallet->refundReserved($amount, $bonusShare);
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
+            $ledgerAmount = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
+            if ($ledgerAmount <= 0) {
+                return false;
+            }
         } else {
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
             // cannot unlock the whole checkout promo while other paid rows remain.
-            $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
+            // An explicit cap (this reference's leftover) also stops a second
+            // in-flight checkout on the same wallet from being stolen.
             $cashShare = round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;
@@ -137,11 +163,12 @@ class OrderRefundService
             if ($cashShare > 0) {
                 $wallet->credit($cashShare);
             }
+            $this->syncCheckoutBonusAfterLeftoverRestore($order, $bonusRestored);
         }
 
         $this->ledger->recordRefund(
             $wallet,
-            $amount,
+            $ledgerAmount,
             $bonusRestored,
             $order,
             $order->reference_code ?? $order->order_number
@@ -177,6 +204,7 @@ class OrderRefundService
         $bonusShare = $this->checkoutBonusShare($wallet, $order, $total);
 
         if ($order->payment_method === 'wallet') {
+            $bonusShare = min($bonusShare, $this->walletHoldBonusCap($wallet, $order, $total));
             $wallet->consumeReserved($total, $bonusShare);
 
             return;
@@ -185,6 +213,24 @@ class OrderRefundService
         if ($bonusShare > 0) {
             $wallet->consumeReserved($bonusShare, $bonusShare);
         }
+    }
+
+    /**
+     * Promo that can belong to this wallet hold. Reserved above this line
+     * (and its same-reference siblings) is another checkout's leftover.
+     */
+    private function walletHoldBonusCap(Wallet $wallet, Order $order, float $amount): float
+    {
+        $reserved = max(0, round((float) $wallet->reserved_balance, 2));
+        $bonus = max(0, round((float) $wallet->bonus_reserved, 2));
+        $siblingTotal = $this->openCheckoutSiblingTotal(
+            (int) $order->user_id,
+            (string) ($order->reference_code ?? ''),
+            [(int) $order->id]
+        );
+        $otherReserved = max(0, round($reserved - $amount - $siblingTotal, 2));
+
+        return max(0, round($bonus - $otherReserved, 2));
     }
 
     /**
@@ -268,6 +314,8 @@ class OrderRefundService
             ? $this->openCheckoutSiblingTotal($userId, $referenceCode, $failedIds)
             : 0.0;
 
+        $peek = app(CheckoutIntentService::class)->peekBonus($userId, $referenceCode, $fallbackBonus);
+
         if ($reserved <= 0) {
             if ($openTotal <= 0) {
                 app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
@@ -296,6 +344,10 @@ class OrderRefundService
         }
 
         if ($share <= 0) {
+            if ($openTotal <= 0) {
+                app(CheckoutIntentService::class)->takeBonus($userId, $referenceCode, $fallbackBonus);
+            }
+
             return 0.0;
         }
 

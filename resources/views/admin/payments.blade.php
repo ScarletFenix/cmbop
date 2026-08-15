@@ -163,6 +163,7 @@
                 <input type="hidden" id="update_payment_method">
                 <input type="hidden" id="update_order_status">
                 <input type="hidden" id="update_amount">
+                <input type="hidden" id="update_current_payment_status">
 
                 <div class="mb-3">
                     <label class="form-label fw-semibold" for="update_order_number">Order Number</label>
@@ -321,15 +322,24 @@ function applyQueryFilters() {
     }
 }
 
-function moneyHint(status, method) {
+function moneyHint(status, method, current) {
+    if (current && status === current) {
+        return 'Saves notes and transfer reference. Payment status stays ' + status + '.';
+    }
     if (status === 'refunded') {
+        if (current === 'failed') {
+            return 'Relabels this failed payment as refunded. Funds were already returned when it was marked failed — this does not credit the wallet again.';
+        }
         if (method === 'card') {
             return 'Refund credits the advertiser wallet. It does not refund the Stripe charge. Completed placements must use a dispute clawback.';
         }
         return 'Refund returns funds to the advertiser wallet and cancels the order. Completed placements must use a dispute clawback.';
     }
     if (status === 'failed') {
-        return 'Failed cancels an in-flight order. Wallet holds are released. Completed orders cannot be failed here.';
+        if (method === 'wallet') {
+            return 'Failed cancels an in-flight order and releases the wallet hold. Completed orders cannot be failed here.';
+        }
+        return 'Failed cancels an in-flight order and credits the advertiser wallet for a settled card / bank / Wise / crypto payment (same money move as Refunded). It does not refund the Stripe charge. Completed orders cannot be failed here.';
     }
     if (status === 'paid') {
         return 'Mark paid only after the transfer is on the statement. Publishers are notified even if customer mail is off.';
@@ -392,7 +402,7 @@ $(document).ready(function() {
     });
 
     $('#update_payment_status').on('change', function () {
-        const hint = moneyHint($(this).val(), $('#update_payment_method').val());
+        const hint = moneyHint($(this).val(), $('#update_payment_method').val(), $('#update_current_payment_status').val());
         const $box = $('#paymentMoneyHint');
         if (hint) {
             $box.removeClass('d-none').text(hint);
@@ -404,7 +414,7 @@ $(document).ready(function() {
     $(document).on('click', '.update-payment-btn', function() {
         var orderId = $(this).data('id');
         var orderNumber = $(this).data('order');
-        var currentStatus = $(this).data('status');
+        var currentStatus = String($(this).data('status') || '');
         var allowed = $(this).data('allowed') || [];
         if (typeof allowed === 'string') {
             try { allowed = JSON.parse(allowed); } catch (e) { allowed = []; }
@@ -412,7 +422,10 @@ $(document).ready(function() {
 
         $('#update_order_id').val(orderId);
         $('#update_order_number').val(orderNumber);
-        $('#update_current_status').val(currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1));
+        $('#update_current_payment_status').val(currentStatus);
+        $('#update_current_status').val(currentStatus
+            ? currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)
+            : '');
         $('#update_payment_method').val($(this).data('method') || '');
         $('#update_order_status').val($(this).data('order-status') || '');
         $('#update_amount').val($(this).data('amount') || '');
@@ -428,16 +441,26 @@ $(document).ready(function() {
     $('#savePaymentUpdate').on('click', function() {
         var orderId = $('#update_order_id').val();
         var newStatus = $('#update_payment_status').val();
+        if (!newStatus) {
+            Swal.fire('Error', 'Choose a payment status first.', 'error');
+            return;
+        }
         var notes = $('#update_notes').val();
         var paymentReference = $('#update_payment_reference').val();
         var sendNotification = $('#send_notification').is(':checked');
         var amount = parseFloat($('#update_amount').val() || '0') || 0;
         var method = $('#update_payment_method').val();
 
-        var confirmTitle = 'Update payment to ' + newStatus + '?';
-        var confirmText = moneyHint(newStatus, method) || 'This updates the order payment status.';
-        if (newStatus === 'refunded' && amount > 0) {
-            confirmText = 'About €' + amount.toFixed(2) + ' will be credited to the advertiser wallet. ' + confirmText;
+        var currentPaymentStatus = $('#update_current_payment_status').val();
+        var confirmTitle = (newStatus === currentPaymentStatus)
+            ? 'Save payment notes?'
+            : ('Update payment to ' + newStatus + '?');
+        var confirmText = moneyHint(newStatus, method, currentPaymentStatus) || 'This updates the order payment status.';
+        var willMoveMoney = currentPaymentStatus === 'paid'
+            && (newStatus === 'refunded' || newStatus === 'failed')
+            && amount > 0;
+        if (willMoveMoney) {
+            confirmText = 'About €' + amount.toFixed(2) + ' will return to the advertiser wallet. ' + confirmText;
         }
 
         var $btn = $(this);

@@ -8,6 +8,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
@@ -222,6 +223,45 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
     }
 
+    public function test_wallet_approve_does_not_burn_another_checkout_leftover(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 135,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $item = $this->walletOrder($advertiser, $this->site($publisher), 115, 'REF-WALLET-APPROVE-ISO');
+        $item->order->update(['status' => 'review']);
+        $item->update([
+            'live_url' => 'https://card-bonus.example/live-wallet-iso',
+            'live_url_submitted_at' => now()->subHour(),
+            'accepted_at' => now()->subHours(2),
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-LEFTOVER-APPROVE', 20);
+
+        $this->actingAs($advertiser)
+            ->postJson(route('advertiser.orders.approve', $item->order_id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-OTHER-LEFTOVER-APPROVE'),
+            0.01
+        );
+    }
+
     public function test_admin_mark_paid_then_reject_restores_promo_not_cash(): void
     {
         $admin = $this->userWithRole('admin');
@@ -321,6 +361,65 @@ class CardBonusRefundInvariantTest extends TestCase
         $this->assertEqualsWithDelta(50.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(10.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(40.0, $wallet->withdrawableBalance(), 0.01);
+    }
+
+    public function test_refund_paid_then_fail_pending_sibling_does_not_steal_other_leftover(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $publisher = $this->userWithRole('publisher');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 40,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->site($publisher);
+
+        $paid = $this->cardOrder($advertiser, $site, 50, 'REF-REFUND-THEN-FAIL');
+        $pending = $this->cardOrder($advertiser, $site, 50, 'REF-REFUND-THEN-FAIL', 'pending');
+        $pending->order->update(['payment_method' => 'wise']);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-REFUND-THEN-FAIL', 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'REF-OTHER-LEFTOVER', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $paid->order_id), [
+                'payment_status' => 'refunded',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            0.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-REFUND-THEN-FAIL'),
+            0.01
+        );
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $pending->order_id), [
+                'payment_status' => 'failed',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(50.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'REF-OTHER-LEFTOVER'),
+            0.01
+        );
     }
 
     public function test_admin_fail_one_wallet_sibling_keeps_half_the_promo_reserved(): void
