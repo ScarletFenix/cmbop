@@ -1491,6 +1491,15 @@ class EmailCampaign extends Model
                     $inFlight = true;
                     break;
                 }
+
+                // Unidentified SendQueuedMailable (class only). requireToken
+                // cannot prove this is a different recipient — closing the
+                // log lets retry fire beside the live job.
+                if (! MailJobPayload::looksIdentified($payload)
+                    && self::unidentifiedPayloadCouldBeLog($payload, $log)) {
+                    $inFlight = true;
+                    break;
+                }
             }
             if ($inFlight) {
                 continue;
@@ -1534,6 +1543,10 @@ class EmailCampaign extends Model
      * mail connection could not be read — callers must not expire pending
      * logs that might still be in flight.
      *
+     * Same unused-table trap as hasQueuedSendJob / inFlight: a missing
+     * payload column or lock-timeout on queue.default must not abort a
+     * healthy mail-queue scan, or lost pending logs stay pending forever.
+     *
      * @return list<string>|null
      */
     protected static function queuedMailablePayloads(): ?array
@@ -1544,6 +1557,8 @@ class EmailCampaign extends Model
             return null;
         }
 
+        $mailNeedsScan = $mail !== '' && $mail !== 'sync' && $mailDriver === 'database';
+        $mailScannedOk = false;
         $payloads = [];
         $mailScannedOk = false;
         $mailNeedsScan = $mail !== '' && $mail !== 'sync' && $mailDriver === 'database';
@@ -1594,5 +1609,15 @@ class EmailCampaign extends Model
         }
 
         return $payloads;
+    }
+
+    protected static function unidentifiedPayloadCouldBeLog(string $payload, EmailLog $log): bool
+    {
+        $class = (string) $log->mailable;
+        if ($class !== '') {
+            return MailJobPayload::containsMailable($payload, $class);
+        }
+
+        return MailJobPayload::isQueuedMailable($payload);
     }
 }

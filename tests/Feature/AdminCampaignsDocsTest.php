@@ -81,6 +81,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('expire must not fail a pending campaign log beside that jobs row', $body);
         $this->assertStringContainsString('must **not** invent a leftover failed Email Center log', $body);
         $this->assertStringContainsString('closed as delivered, not failed', $body);
+        $this->assertStringContainsString('unidentified in-flight', $body);
         $this->assertStringNotContainsString('/advertiser/campaigns', $body);
     }
 
