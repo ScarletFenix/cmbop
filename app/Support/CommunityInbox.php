@@ -2,7 +2,11 @@
 
 namespace App\Support;
 
+use App\Models\Site;
+use App\Models\WebsiteSuggestion;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 
 /**
  * Per-tab status vocabulary for the admin Community inbox.
@@ -155,5 +159,89 @@ class CommunityInbox
                 }
             }
         });
+    }
+
+    public static function emptyPage(Request $request, string $pageName): LengthAwarePaginator
+    {
+        return (new LengthAwarePaginator([], 0, 25, 1, [
+            'path' => $request->url(),
+            'pageName' => $pageName,
+        ]))->withQueryString();
+    }
+
+    /**
+     * Query string to prefill staff site-create from a website suggestion.
+     *
+     * @return array{site_name?: string, site_url?: string, country?: string, language?: string, suggestion_id: int}
+     */
+    public static function createListingQuery(WebsiteSuggestion $suggestion): array
+    {
+        $params = ['suggestion_id' => (int) $suggestion->id];
+        $name = search_text($suggestion->website_name);
+        if ($name !== '') {
+            $params['site_name'] = $name;
+        }
+        $url = self::safeHttpUrl($suggestion->website_url);
+        if ($url) {
+            $params['site_url'] = $url;
+        }
+        $country = strtolower(search_text($suggestion->country));
+        if (strlen($country) === 2) {
+            $params['country'] = $country;
+        }
+        $language = strtolower(search_text($suggestion->language));
+        if (strlen($language) === 2) {
+            $params['language'] = $language;
+        }
+
+        return $params;
+    }
+
+    /**
+     * Host used to see if a suggestion already occupies the catalog.
+     * `domain` is nullable, so fall back to the URL host — a raw
+     * `https://…` string is not a marketplace domain.
+     */
+    public static function suggestionLookupDomain(WebsiteSuggestion $suggestion): string
+    {
+        $raw = search_text($suggestion->domain);
+        if ($raw === '' || preg_match('#^https?://#i', $raw)) {
+            $url = self::safeHttpUrl($raw !== '' ? $raw : $suggestion->website_url);
+            if ($url) {
+                $host = parse_url($url, PHP_URL_HOST);
+                $raw = is_string($host) ? $host : '';
+            } elseif (preg_match('#^https?://#i', $raw)) {
+                $raw = '';
+            }
+        }
+
+        return $raw !== '' ? Site::normalizeMarketplaceDomain($raw) : '';
+    }
+
+    /**
+     * @param  iterable<int, WebsiteSuggestion>  $suggestions
+     * @return array<int, Site>
+     */
+    public static function occupyingSitesFor(iterable $suggestions): array
+    {
+        $found = [];
+        $seen = [];
+        foreach ($suggestions as $suggestion) {
+            $domain = self::suggestionLookupDomain($suggestion);
+            if ($domain === '' || array_key_exists($domain, $seen)) {
+                if ($domain !== '' && ($seen[$domain] ?? null) instanceof Site) {
+                    $found[$suggestion->id] = $seen[$domain];
+                }
+
+                continue;
+            }
+            $site = Site::findOccupyingDomain($domain);
+            $seen[$domain] = $site;
+            if ($site) {
+                $found[$suggestion->id] = $site;
+            }
+        }
+
+        return $found;
     }
 }
