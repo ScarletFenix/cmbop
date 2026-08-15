@@ -624,6 +624,45 @@ class WelcomeBonusServiceTest extends TestCase
         ));
     }
 
+    public function test_later_on_row_without_amount_does_not_restore_the_default_grant(): void
+    {
+        Schema::table('welcome_bonus_settings', function ($table) {
+            $table->dropUnique(['key']);
+        });
+
+        WelcomeBonusSetting::query()->delete();
+        DB::table('welcome_bonus_settings')->insert([
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => true, 'amount' => 0]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'key' => 'config',
+                'value' => json_encode(['enabled' => true]),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+        ]);
+
+        $this->assertTrue(WelcomeBonusSetting::isEnabled());
+        $this->assertSame(0.0, $this->service->amount());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('10.8.0.1'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('10.8.0.1'),
+            20.0,
+            'registration'
+        ));
+
+        $this->service->setEnabled(true);
+
+        $this->assertSame(0.0, $this->service->amount());
+        $this->assertSame(1, WelcomeBonusSetting::query()->where('key', 'config')->count());
+        $this->assertSame(0.0, (float) WelcomeBonusSetting::query()->value('value')['amount']);
+    }
+
     public function test_non_numeric_stored_amount_does_not_fall_back_to_the_default(): void
     {
         WelcomeBonusSetting::setValue('config', ['enabled' => true, 'amount' => 'unlimited']);

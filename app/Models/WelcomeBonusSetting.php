@@ -293,11 +293,15 @@ class WelcomeBonusSetting extends Model
      * Duplicate config rows (no unique on key) can leave Disable on one row
      * and enabled=true on another. Any explicit off wins so Disable sticks.
      *
+     * A later ON row with no amount (grant-created leftover) must not wipe an
+     * earlier explicit amount — that falls back to €20 and undoes Set amount 0.
+     *
      * @param  Collection<int, static>  $rows
      */
     private static function authoritativeConfigValue($rows): mixed
     {
         $latestOn = null;
+        $carriedAmount = null;
         foreach ($rows as $row) {
             try {
                 $value = $row->value;
@@ -311,6 +315,12 @@ class WelcomeBonusSetting extends Model
 
             if (! static::parseEnabledFlag($value['enabled'], false)) {
                 return $value;
+            }
+
+            if (array_key_exists('amount', $value)) {
+                $carriedAmount = $value['amount'];
+            } elseif ($carriedAmount !== null) {
+                $value['amount'] = $carriedAmount;
             }
 
             $latestOn = $value;
