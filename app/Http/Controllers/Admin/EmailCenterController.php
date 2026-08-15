@@ -9,6 +9,7 @@ use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationSetting;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Support\EmailCatalog;
 use App\Support\MailJobPayload;
 use App\Support\UserFacingError;
@@ -221,6 +222,13 @@ class EmailCenterController extends Controller
                 $this->sendFrameworkTestHtml($key, $adminEmail, $dedupe);
             }
 
+            ActivityLogger::tryLog(
+                'email_center.test_sent',
+                (auth()->user()?->name ?? 'Admin').' sent a test email ('.$key.') to '.$adminEmail,
+                null,
+                ['template' => $key, 'email' => $adminEmail]
+            );
+
             return back()->with(
                 'success',
                 'Test email sent to '.$adminEmail.' (synthetic preview — ignores global disable).'
@@ -283,6 +291,20 @@ class EmailCenterController extends Controller
         }
 
         $payloads = $this->failedJobPayloadsByUuid($uuids);
+        $closed = $this->closeFailedLogsAlreadyDelivered();
+        $uuids = array_values(array_filter(
+            $uuids,
+            fn (string $uuid) => ! $this->payloadAlreadyDelivered((string) ($payloads[$uuid] ?? ''))
+        ));
+
+        if ($uuids === []) {
+            return back()->with(
+                'success',
+                $closed > 0
+                    ? 'Closed '.$closed.' leftover failed log(s) that already delivered. No jobs were re-queued.'
+                    : 'No failed mail jobs to retry.'
+            );
+        }
 
         try {
             foreach ($uuids as $uuid) {
@@ -311,6 +333,10 @@ class EmailCenterController extends Controller
         $log = EmailLog::query()->findOrFail($logId);
         if ($log->status !== EmailLog::STATUS_FAILED) {
             return back()->with('error', 'That email log is not failed.');
+        }
+
+        if ($this->closeFailedLogAlreadyDelivered($log)) {
+            return back()->with('success', 'This send already delivered — closed the leftover failed log.');
         }
 
         if ($this->shouldRebuildAsTest($log)) {
@@ -434,18 +460,40 @@ class EmailCenterController extends Controller
 
         $failed = EmailLog::query()
             ->where('status', EmailLog::STATUS_FAILED)
+            ->orderByDesc('id')
             ->get();
         $marked = [];
+        $claimedUuids = [];
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored !== '' && in_array($stored, $uuids, true)) {
-                $this->pendingMarkRetriedLog($log);
-                $marked[$log->id] = true;
+            if ($stored === '' || ! in_array($stored, $uuids, true) || ! empty($claimedUuids[$stored])) {
+                continue;
             }
+
+            // A stale stamp from an unidentified Welcome job must not
+            // pending-mark a different recipient. Same token rule as search.
+            $payload = (string) ($payloadsByUuid[$stored] ?? '');
+            if ($payload === '' || ! MailJobPayload::matchesEmailLog($payload, $log, requireToken: true)) {
+                continue;
+            }
+
+            if ($this->closeFailedLogAlreadyDelivered($log)) {
+                $marked[$log->id] = true;
+
+                continue;
+            }
+
+            $this->pendingMarkRetriedLog($log);
+            $marked[$log->id] = true;
+            $claimedUuids[$stored] = true;
         }
 
         foreach ($uuids as $uuid) {
+            if (! empty($claimedUuids[$uuid])) {
+                continue;
+            }
+
             $payload = (string) ($payloadsByUuid[$uuid] ?? '');
             if ($payload === '') {
                 continue;
@@ -460,8 +508,130 @@ class EmailCenterController extends Controller
             }
 
             $log = $matches->first();
+            if ($this->closeFailedLogAlreadyDelivered($log)) {
+                $marked[$log->id] = true;
+                $claimedUuids[$uuid] = true;
+
+                continue;
+            }
+
             $this->pendingMarkRetriedLog($log);
             $marked[$log->id] = true;
+            $claimedUuids[$uuid] = true;
+        }
+    }
+
+    /**
+     * Leftover failed rows after a real delivery. Retrying the queue job
+     * would send a second campaign / welcome once the 10-minute window lapses.
+     */
+    protected function closeFailedLogsAlreadyDelivered(): int
+    {
+        $closed = 0;
+
+        foreach (EmailLog::query()
+            ->where('status', EmailLog::STATUS_FAILED)
+            ->whereNotNull('dedupe_key')
+            ->where('dedupe_key', '!=', '')
+            ->orderByDesc('id')
+            ->get() as $log) {
+            if ($this->closeFailedLogAlreadyDelivered($log)) {
+                $closed++;
+            }
+        }
+
+        return $closed;
+    }
+
+    protected function closeFailedLogAlreadyDelivered(EmailLog $log): bool
+    {
+        if ($log->status !== EmailLog::STATUS_FAILED || ! $this->isOneShotCampaignLog($log)) {
+            return false;
+        }
+
+        $delivered = EmailLog::latestDeliveredByDedupe((string) $log->dedupe_key);
+        if (! $delivered || (int) $delivered->id === (int) $log->id) {
+            return false;
+        }
+
+        $log->update([
+            'status' => EmailLog::STATUS_DELIVERED,
+            'error' => null,
+            'sent_at' => $delivered->sent_at ?? $log->sent_at ?? now(),
+            'meta' => array_filter(array_merge((array) $log->meta, [
+                'suppressed' => 'duplicate',
+                'superseded_by' => (int) $delivered->id,
+            ])),
+        ]);
+        $this->syncCampaignRecipientFromDeliveredLog($delivered);
+
+        return true;
+    }
+
+    protected function payloadAlreadyDelivered(string $payload): bool
+    {
+        if ($payload === '') {
+            return false;
+        }
+
+        $dedupe = MailJobPayload::dedupeKey($payload);
+        if (! is_string($dedupe) || ! str_starts_with($dedupe, 'audience_campaign:')) {
+            return false;
+        }
+
+        return EmailLog::latestDeliveredByDedupe($dedupe) !== null;
+    }
+
+    protected function isOneShotCampaignLog(EmailLog $log): bool
+    {
+        if (str_starts_with((string) $log->dedupe_key, 'audience_campaign:')) {
+            return true;
+        }
+
+        return (string) $log->template_key === 'audience_campaign'
+            || (string) $log->notification_type === 'audience_campaign';
+    }
+
+    protected function syncCampaignRecipientFromDeliveredLog(EmailLog $delivered): void
+    {
+        $campaignId = (int) data_get($delivered->meta, 'campaign_id');
+        $userId = (int) data_get($delivered->meta, 'user_id');
+        if ($campaignId < 1 || $userId < 1) {
+            if (! preg_match('/^audience_campaign:(\d+):user:(\d+)$/', (string) $delivered->dedupe_key, $matches)) {
+                return;
+            }
+            $campaignId = (int) $matches[1];
+            $userId = (int) $matches[2];
+        }
+
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return;
+            }
+
+            $updated = EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaignId)
+                ->where('user_id', $userId)
+                ->where(function ($query) {
+                    $query->whereIn('status', [
+                        EmailCampaignRecipient::STATUS_PENDING,
+                        EmailCampaignRecipient::STATUS_QUEUED,
+                        EmailCampaignRecipient::STATUS_FAILED,
+                    ])->orWhere(function ($skipped) {
+                        $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                            ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                    });
+                })
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+                    'skip_reason' => null,
+                    'email_log_id' => (int) $delivered->id,
+                ]);
+
+            if ($updated) {
+                EmailCampaign::query()->find($campaignId)?->recountRecipientTotals();
+            }
+        } catch (\Throwable) {
         }
     }
 
@@ -495,7 +665,17 @@ class EmailCenterController extends Controller
             $updated = EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
-                ->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                ->where(function ($query) {
+                    $query->where('status', EmailCampaignRecipient::STATUS_FAILED)
+                        ->orWhere(function ($skipped) {
+                            // Expire parks lost mail as skipped/stale and
+                            // fails the leftover pending log. Retry must
+                            // reclaim that skip or the next recoverStalled()
+                            // immediately fails the log again.
+                            $skipped->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
+                                ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE);
+                        });
+                })
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_QUEUED,
                     'skip_reason' => null,
@@ -507,10 +687,19 @@ class EmailCenterController extends Controller
             if ($updated) {
                 $campaign = EmailCampaign::query()->find($campaignId);
                 if ($campaign?->status === EmailCampaign::STATUS_FAILED) {
+                    // Same trap as recover's FAILED revival: leave MAX in
+                    // cache and the next recoverStalled() give-up wipes
+                    // leftover pending beside this retried mailable.
+                    $campaign->clearFailStreak();
                     $campaign->update([
                         'status' => EmailCampaign::STATUS_SENDING,
                         'sent_at' => null,
                     ]);
+                } else {
+                    // Already sending: bump updated_at so recover does not
+                    // treat this as a stale orphan and reclaim beside the
+                    // mailable queue:retry just pushed.
+                    $campaign?->touch();
                 }
                 $campaign?->recountRecipientTotals();
             }
@@ -570,21 +759,9 @@ class EmailCenterController extends Controller
             return (string) $tight[0]->uuid;
         }
 
-        if (count($tight) > 1) {
-            return null;
-        }
-
-        if (count($candidates) !== 1) {
-            return null;
-        }
-
-        $payload = (string) $candidates[0]->payload;
-        $logHasIdentity = ($to !== '' && $to !== 'unknown') || $dedupe !== '';
-        if ($logHasIdentity && MailJobPayload::looksIdentified($payload)) {
-            return null;
-        }
-
-        return (string) $candidates[0]->uuid;
+        // Unique class match without a recipient token is how an anonymous
+        // Welcome job was retried against the wrong failed log.
+        return null;
     }
 
     protected function failedJobMatchesLog(string $payload, EmailLog $log): bool

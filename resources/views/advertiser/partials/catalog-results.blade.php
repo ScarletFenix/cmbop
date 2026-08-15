@@ -55,6 +55,7 @@
 @endphp
             <div class="card border-0 shadow-sm catalog-results-card" id="catalogResults" aria-live="polite"
                  tabindex="-1"
+                 data-catalog-hide-mode="{{ $inCatalogHideMode ? '1' : '0' }}"
                  data-result-total="{{ (int) $resultTotal }}"
                  data-first-item="{{ (int) ($sites->firstItem() ?: 0) }}"
                  data-last-item="{{ (int) ($sites->lastItem() ?: 0) }}"
@@ -185,7 +186,7 @@
                 $hasPlacementExtras = $homepageOptions !== [] || $socialChannels !== [];
                 $hasListingExtras = $hasSensitiveExtras || $hasPlacementExtras;
                 $hasPricingExtras = $hasSensitiveExtras;
-                $expandDescriptionHtml = $site->safeDescriptionHtml();
+                $expandDescriptionHtml = $site->catalogDescriptionHtml();
                 $hasExpandDescription = trim(strip_tags($expandDescriptionHtml)) !== '';
 
                 // Own listings show the entered price and cannot be ordered.
@@ -567,7 +568,10 @@
                 </td>
             </tr>
 
-            <tr class="expanded-row-{{ $site->id }}" id="site-details-{{ $site->id }}" style="display: none;">
+            <tr class="expanded-row-{{ $site->id }} catalog-site-details"
+                id="site-details-{{ $site->id }}"
+                data-id="{{ $site->id }}"
+                style="display: none;">
     <td colspan="7" class="catalog-expand-cell">
         <div class="row">
             <div class="col-md-12">
@@ -621,7 +625,9 @@
                     <div class="{{ $hasPricingExtras ? 'col-lg-3' : ($hasPlacementExtras ? 'col-lg-4' : 'col-lg-5') }} col-md-6 catalog-expand-description">
                         <p class="mb-1"><strong class="small">Description</strong></p>
                         <div class="text-muted small">
-                            @if($hasExpandDescription)
+                            @if($inCatalogHideMode && ! $showsIdentity)
+                                <span>Use the eye to show this listing’s name and URL, then the description appears.</span>
+                            @elseif($hasExpandDescription)
                                 {!! $expandDescriptionHtml !!}
                             @else
                                 <span>No description yet</span>
@@ -844,17 +850,18 @@
                             @else
                                 @php
                                     $sampleUrl = safe_external_url($site->example_url);
+                                    $sampleVisit = route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]);
                                 @endphp
                                 @if($sampleUrl !== '#')
                                     <div class="d-flex align-items-center gap-2">
-                                        <a href="{{ $sampleUrl }}"
+                                        <a href="{{ $sampleVisit }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
-                                           class="text-decoration-none"
+                                           class="text-decoration-none catalog-site-url"
                                            style="word-break: break-all;">
                                             {{ Str::limit($site->example_url, 50) }}
                                         </a>
-                                        <a href="{{ $sampleUrl }}"
+                                        <a href="{{ $sampleVisit }}"
                                            target="_blank"
                                            rel="noopener noreferrer"
                                            class="text-muted d-inline-flex align-items-center"
@@ -867,6 +874,7 @@
                                     <button type="button"
                                             class="btn btn-sm btn-outline-secondary copy-example-url"
                                             data-url="{{ $site->example_url }}"
+                                            data-site-id="{{ $site->id }}"
                                             aria-label="Copy the sample article URL for {{ $identityLabel }}"
                                             style="width: fit-content;">
                                         <i class="fa-regular fa-copy" aria-hidden="true"></i> Copy URL
@@ -1449,8 +1457,15 @@
                 @if($site->description)
                     <div class="catalog-card-details__row">
                         <dt>About this site</dt>
-                        {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml(). --}}
-                        <dd class="catalog-card-details__description text-muted small">{{ site_description_excerpt($site->description) }}</dd>
+                        {{-- Cards stay plain-text; desktop expand keeps rich HTML via safeDescriptionHtml().
+                             Hide-mode rows stay gated — publishers often paste the listing URL here. --}}
+                        <dd class="catalog-card-details__description text-muted small">
+                            @if($inCatalogHideMode && ! $showsIdentity)
+                                Use the eye to show this listing’s name and URL, then the description appears.
+                            @else
+                                {{ site_description_excerpt($site->description) }}
+                            @endif
+                        </dd>
                     </div>
                 @endif
                 <div class="catalog-card-details__row">
@@ -1460,7 +1475,10 @@
                         @if($inCatalogHideMode && ! $showsIdentity)
                             Use the eye to show this listing’s name and URL, then the sample article link appears.
                         @elseif($site->example_url && ($mobileSampleUrl = safe_external_url($site->example_url)) !== '#')
-                            <a href="{{ $mobileSampleUrl }}" target="_blank" rel="noopener noreferrer">
+                            <a href="{{ route('advertiser.catalog.visit', ['site' => $site->id, 'sample' => 1]) }}"
+                               target="_blank"
+                               rel="noopener noreferrer"
+                               class="catalog-site-url">
                                 {{ Str::limit($site->example_url, 46) }}
                             </a>
                         @else

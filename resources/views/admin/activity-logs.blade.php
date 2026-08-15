@@ -6,38 +6,90 @@
     <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
         <div>
             <h1 class="h3 mb-1">Activity History</h1>
-            <p class="text-muted mb-0">Every dashboard action with the registered user’s name. History is append-only and cannot be deleted.</p>
+            <p class="text-muted mb-0">Append-only log of actions recorded by ActivityLogger (sites, bulk onboarding, selected money and growth events). History cannot be deleted.</p>
         </div>
+        @if(empty($dateErrors) && empty($exportCapped))
+            <a href="{{ route('admin.activity-logs.export', $exportQuery ?? []) }}" class="btn btn-sm btn-outline-secondary">Export CSV</a>
+        @elseif(!empty($exportCapped))
+            <p class="small text-muted mb-0">More than {{ number_format($exportLimit ?? \App\Http\Controllers\Admin\ActivityLogController::EXPORT_LIMIT) }} events match — narrow filters to export.</p>
+        @endif
     </div>
 
-    <form method="GET" class="row g-2 mb-3 align-items-end">
-        <div class="col-md-3">
-            <x-slb-search-field name="user" id="logUser" :value="request('user')" placeholder="Filter by user name / email" />
-        </div>
-        <div class="col-md-3">
-            <label class="visually-hidden" for="logAction">Filter by action</label>
-            <select id="logAction" name="action" class="form-select form-select-sm">
-                <option value="">All actions</option>
-                @foreach($actions as $action)
-                    <option value="{{ $action }}" @selected(request('action') === $action)>{{ $action }}</option>
-                @endforeach
-            </select>
-        </div>
-        <div class="col-md-2">
-            <label class="visually-hidden" for="logFrom">From date</label>
-            <input type="date" id="logFrom" name="from" value="{{ search_text(request('from')) }}" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-2">
-            <label class="visually-hidden" for="logTo">To date</label>
-            <input type="date" id="logTo" name="to" value="{{ search_text(request('to')) }}" class="form-control form-control-sm">
-        </div>
-        <div class="col-md-2 d-flex gap-1">
-            <button class="btn btn-sm btn-primary flex-grow-1" type="submit">Filter</button>
-            <a href="{{ route('admin.activity-logs.index') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+    <form method="GET" class="card border-0 shadow-sm mb-3">
+        <div class="card-body py-3">
+            <div class="row g-3 align-items-end">
+                <div class="col-12 col-lg-3">
+                    <x-slb-search-field
+                        name="user"
+                        id="logUser"
+                        :value="request('user')"
+                        placeholder="Filter by user name / email"
+                        label="User"
+                        label-class="form-label small mb-1"
+                    />
+                </div>
+                <div class="col-12 col-lg-3">
+                    <x-slb-search-field
+                        name="q"
+                        id="logQ"
+                        :value="request('q')"
+                        placeholder="Search subject, details, or action"
+                        label="Search"
+                        label-class="form-label small mb-1"
+                    />
+                </div>
+                <div class="col-12 col-md-6 col-lg-2">
+                    <label class="form-label small mb-1" for="logAction">Action</label>
+                    <select id="logAction" name="action" class="form-select form-select-sm">
+                        <option value="">All actions</option>
+                        @foreach($actions as $action)
+                            <option value="{{ $action }}" @selected($selectedAction === $action)>
+                                {{ activity_action_label($action) }}@if(isset($actionCounts[$action])) ({{ (int) $actionCounts[$action] }})@endif
+                            </option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 col-lg-2">
+                    <label class="form-label small mb-1" for="logRole">Role</label>
+                    <select id="logRole" name="role" class="form-select form-select-sm">
+                        <option value="">All roles</option>
+                        @foreach(\App\Http\Controllers\Admin\ActivityLogController::ROLES as $role)
+                            <option value="{{ $role }}" @selected($selectedRole === $role)>{{ ucfirst($role) }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                <div class="col-6 col-md-3 col-lg-1">
+                    <label class="form-label small mb-1" for="logFrom">From</label>
+                    <input type="date" id="logFrom" name="from" value="{{ search_text(request('from')) }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-6 col-md-3 col-lg-1">
+                    <label class="form-label small mb-1" for="logTo">To</label>
+                    <input type="date" id="logTo" name="to" value="{{ search_text(request('to')) }}" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-lg-auto d-flex flex-wrap gap-2">
+                    <button class="btn btn-sm btn-primary" type="submit">Apply filters</button>
+                    @if(!empty($filtersActive))
+                        <a href="{{ route('admin.activity-logs.index') }}" class="btn btn-sm btn-outline-secondary">Reset</a>
+                    @endif
+                </div>
+            </div>
         </div>
     </form>
+    @if(!empty($dateErrors))
+        <div class="alert alert-warning border-0 py-2">
+            {{ implode(' ', $dateErrors) }}
+        </div>
+    @endif
+    @if($logs->total() > 0)
+        <p class="small text-muted mb-2">Showing {{ $logs->firstItem() }}–{{ $logs->lastItem() }} of {{ $logs->total() }} {{ \Illuminate\Support\Str::plural('event', $logs->total()) }}</p>
+    @elseif(!empty($filtersActive))
+        <p class="small text-muted mb-2">0 events match these filters</p>
+    @endif
 
     <div class="card border-0 shadow-sm">
+        @php
+            $historyLookup = \App\Support\AdminActivityDisplay::preload($logs);
+        @endphp
         <div class="table-responsive">
             <table class="table table-hover align-middle mb-0">
                 <thead class="table-light">
@@ -47,15 +99,22 @@
                         <th>Role</th>
                         <th>Action</th>
                         <th>Subject</th>
-                        <th>Description</th>
+                        <th>Details</th>
                     </tr>
                 </thead>
                 <tbody>
                     @forelse($logs as $log)
+                        @php
+                            $subjectUrl = \App\Support\AdminActivityDisplay::subjectUrl($log, $historyLookup);
+                            $reason = \App\Support\AdminActivityDisplay::reason($log);
+                            $changeKeys = \App\Support\AdminActivityDisplay::changeKeys($log);
+                            $statusChange = \App\Support\AdminActivityDisplay::statusChange($log);
+                            $removed = \App\Support\AdminActivityDisplay::isRemoved($log, $historyLookup);
+                        @endphp
                         <tr>
                             <td class="small text-nowrap">
-                                {{ $log->created_at?->format('d M Y') }}<br>
-                                <span class="text-muted">{{ $log->created_at?->format('H:i:s') }}</span>
+                                <div>{{ $log->created_at?->diffForHumans() }}</div>
+                                <span class="text-muted">{{ $log->created_at?->format('d M Y H:i') }}</span>
                             </td>
                             <td>
                                 <div class="fw-semibold">{{ $log->user_name ?? 'System' }}</div>
@@ -68,13 +127,43 @@
                                     —
                                 @endif
                             </td>
-                            <td><code class="small">{{ $log->action }}</code></td>
-                            <td class="small">{{ $log->subject_label ?? '—' }}</td>
-                            <td class="small">{{ $log->description }}</td>
+                            <td>
+                                <div class="fw-semibold">{{ activity_action_label($log->action) }}</div>
+                                <code class="small text-muted">{{ activity_action_canonical($log->action) }}</code>
+                            </td>
+                            <td class="small">
+                                @if($subjectUrl)
+                                    <a href="{{ $subjectUrl }}">{{ $log->subject_label ?: 'Open' }}</a>
+                                @else
+                                    {{ $log->subject_label ?: '—' }}
+                                @endif
+                                @if($removed)
+                                    <span class="badge bg-secondary ms-1">Removed</span>
+                                @endif
+                            </td>
+                            <td class="small">
+                                <div>{{ $log->description }}</div>
+                                @if($reason)
+                                    <div class="text-muted mt-1">{{ \App\Support\AdminActivityDisplay::reasonLabel($log) }}: {{ $reason }}</div>
+                                @endif
+                                @if($changeKeys !== [])
+                                    <div class="text-muted mt-1">Changed: {{ implode(', ', $changeKeys) }}</div>
+                                @endif
+                                @if($statusChange)
+                                    <div class="text-muted mt-1">{{ $statusChange }}</div>
+                                @endif
+                            </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6" class="text-center text-muted py-4">No activity recorded yet.</td>
+                            <td colspan="6" class="text-center text-muted py-4">
+                                @if(!empty($filtersActive))
+                                    <div class="mb-2">No events match these filters.</div>
+                                    <a href="{{ route('admin.activity-logs.index') }}" class="btn btn-sm btn-outline-secondary">Reset filters</a>
+                                @else
+                                    No activity recorded yet.
+                                @endif
+                            </td>
                         </tr>
                     @endforelse
                 </tbody>

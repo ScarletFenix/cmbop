@@ -3,7 +3,9 @@
 namespace Tests\Feature;
 
 use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\Support\CreatesContentSubmissions;
@@ -126,6 +128,79 @@ class AdvertiserStartFlowGuidanceTest extends TestCase
 
         $incomplete = $this->createApprovedSubmission($advertiser);
         $incomplete->update(['target_url' => null]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.dashboard'))
+            ->assertOk()
+            ->assertViewHas('hasOrderableArticle', false)
+            ->assertSee('Upload an article', false)
+            ->assertSee('id="dashUploadLibraryAction"', false)
+            ->assertDontSee('id="dashOrderableLibraryAction"', false)
+            ->assertDontSee('You have an approved article ready', false);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertViewHas('approvedArticleCount', 0);
+    }
+
+    public function test_dashboard_and_catalog_do_not_treat_replaceable_leftover_as_ready_to_order(): void
+    {
+        $advertiser = $this->advertiser();
+        $this->makeCompletedOrder($advertiser);
+
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Leftover Count Site',
+            'site_url' => 'https://leftover-count.example',
+            'domain' => 'leftover-count.example',
+            'da' => 30,
+            'dr' => 30,
+            'traffic' => 500,
+            'country' => 'us',
+            'language' => 'en',
+            'countries' => ['us'],
+            'languages' => ['en'],
+            'category' => 'marketing',
+            'price' => 40,
+            'publication_time' => '7 days',
+            'link_type' => 'dofollow',
+            'description' => 'Test site',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-'.uniqid(),
+            'reference_code' => 'REF-'.uniqid(),
+            'subtotal' => 46,
+            'tax' => 0,
+            'total_amount' => 46,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_submission_id' => $submission->id,
+            'content_link' => 'https://example.com/article',
+            'price' => 46,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->assertTrue($submission->fresh()->load(['order', 'orderItems.order'])->isAvailableForPicker());
+        $this->assertFalse($submission->fresh()->isReadyForCheckout());
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.dashboard'))

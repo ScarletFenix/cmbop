@@ -4,10 +4,11 @@ namespace App\Http\Controllers\Marketing;
 
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
+use App\Support\ActivityLogDateBounds;
+use App\Support\ActivityLogTextSearch;
 use App\Support\MarketingOpsQueues;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
-use Illuminate\Support\Carbon;
 
 class PanelController extends Controller
 {
@@ -22,11 +23,14 @@ class PanelController extends Controller
         'site.deleted_by_marketing',
         'site.updated',
         'site.activated',
+        'site.approved',
         'site.deactivated',
         'site.assigned_for_acceptance',
         'site.image_uploaded',
         'site.metrics_refreshed',
+        'site.metrics_refresh_queued',
         'site.screenshot_refreshed',
+        'site.screenshot_refresh_queued',
         'site.metrics_manual',
     ];
 
@@ -34,7 +38,7 @@ class PanelController extends Controller
     {
         $userId = (int) auth()->id();
 
-        [$todayStart, $todayEnd] = $this->marketerTodayBounds();
+        [$todayStart, $todayEnd] = ActivityLogDateBounds::todayBounds();
 
         $stats = [
             'ready_to_activate' => MarketingOpsQueues::sitesReadyForStaffCount(),
@@ -79,7 +83,7 @@ class PanelController extends Controller
             ->take(12)
             ->get();
 
-        $historyToday = $this->marketerTodayDateString();
+        $historyToday = ActivityLogDateBounds::todayDateString();
 
         return view('marketing.dashboard', compact(
             'stats',
@@ -104,53 +108,27 @@ class PanelController extends Controller
     {
         $userId = (int) auth()->id();
         $query = $this->marketerHistoryQuery($userId);
-        $dateErrors = [];
 
         $selectedAction = search_text($request->input('action'));
         if ($selectedAction !== '' && ! in_array($selectedAction, self::TRACKED_ACTIONS, true)) {
             $selectedAction = '';
         }
 
-        $fromBound = null;
-        $toBound = null;
-        $datesOk = true;
+        $dateErrors = ActivityLogDateBounds::apply(
+            $query,
+            $request->input('from'),
+            $request->input('to')
+        );
 
-        if ($request->filled('from')) {
-            $fromBound = $this->parseMarketerDay($request->input('from'), true);
-            if (! $fromBound) {
-                $dateErrors[] = 'Use a valid From date.';
-                $datesOk = false;
-            }
-        }
-
-        if ($request->filled('to')) {
-            $toBound = $this->parseMarketerDay($request->input('to'), false);
-            if (! $toBound) {
-                $dateErrors[] = 'Use a valid To date.';
-                $datesOk = false;
-            }
-        }
-
-        if ($fromBound && $toBound && $fromBound->gt($toBound)) {
-            $dateErrors[] = 'From date must be on or before To date.';
-            $datesOk = false;
-        }
-
-        if ($datesOk) {
-            if ($fromBound) {
-                $query->where('created_at', '>=', $fromBound);
-            }
-            if ($toBound) {
-                $query->where('created_at', '<=', $toBound);
-            }
-        }
-
-        $searchNeedle = mb_strtolower(search_text($request->input('q')));
+        $searchNeedle = search_text($request->input('q'));
         if ($searchNeedle !== '') {
             $matchedActions = marketing_task_actions_matching($searchNeedle);
-            $query->where(function ($q) use ($searchNeedle, $matchedActions) {
-                $this->whereHistoryDescriptionHasWord($q, $searchNeedle);
-                $q->orWhereRaw('LOWER(COALESCE(subject_label, \'\')) LIKE ?', ['%'.$searchNeedle.'%']);
+            $like = like_contains($searchNeedle);
+            $query->where(function ($q) use ($searchNeedle, $matchedActions, $like) {
+                $q->whereRaw('subject_label LIKE ? ESCAPE ?', [$like, '\\']);
+                $q->orWhere(function ($inner) use ($searchNeedle) {
+                    ActivityLogTextSearch::whereDescriptionHasWord($inner, $searchNeedle);
+                });
                 if ($matchedActions !== []) {
                     $q->orWhereIn('action', $matchedActions);
                 }
@@ -198,70 +176,5 @@ class PanelController extends Controller
             ->where('user_id', $userId)
             ->where('role', 'marketing')
             ->whereIn('action', self::TRACKED_ACTIONS);
-    }
-
-    /**
-     * Inclusive "today" window in the app timezone, stored as UTC bounds.
-     *
-     * @return array{0: Carbon, 1: Carbon}
-     */
-    private function marketerTodayBounds(): array
-    {
-        $today = now()->timezone($this->marketerTimezone());
-
-        return [
-            $today->copy()->startOfDay()->utc(),
-            $today->copy()->endOfDay()->utc(),
-        ];
-    }
-
-    private function marketerTodayDateString(): string
-    {
-        return now()->timezone($this->marketerTimezone())->toDateString();
-    }
-
-    /**
-     * Word-aware description match so "Activated" does not hit "Deactivated".
-     */
-    private function whereHistoryDescriptionHasWord(Builder $q, string $needle): void
-    {
-        $pattern = '% '.$needle.' %';
-        $driver = $q->getConnection()->getDriverName();
-        $haystack = in_array($driver, ['sqlite', 'pgsql'], true)
-            ? "(' ' || LOWER(COALESCE(description, '')) || ' ')"
-            : "CONCAT(' ', LOWER(COALESCE(description, '')), ' ')";
-
-        $q->whereRaw($haystack.' LIKE ?', [$pattern]);
-    }
-
-    private function parseMarketerDay(mixed $value, bool $start): ?Carbon
-    {
-        if (! is_string($value)) {
-            return null;
-        }
-
-        $value = trim($value);
-        if (! preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) {
-            return null;
-        }
-
-        try {
-            $local = Carbon::createFromFormat('Y-m-d', $value, $this->marketerTimezone());
-        } catch (\Throwable) {
-            return null;
-        }
-
-        if (! $local || $local->format('Y-m-d') !== $value) {
-            return null;
-        }
-
-        return $start
-            ? $local->copy()->startOfDay()->utc()
-            : $local->copy()->endOfDay()->utc();
-    }
-
-    private function marketerTimezone(): string
-    {
-        return config('app.timezone') ?: 'UTC';
     }
 }

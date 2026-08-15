@@ -7,14 +7,20 @@ use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
+use App\Services\ContentUpload\DocumentTextExtractor;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
 class ContentModerationService
 {
+    /** @var array<string, array{hash:string, text:string, links:list<string>, ok:bool}> */
+    private array $storedFilePolicyCache = [];
+
     public function __construct(
         private GoogleDocsFetcher $fetcher,
         private ContentModerationEngine $engine,
@@ -223,6 +229,33 @@ class ContentModerationService
             ];
         }
 
+        if (mb_strlen($text) > ContentModerationEngine::maxScannableChars()) {
+            $log = ContentModerationLog::create([
+                'user_id' => $user?->id,
+                'content_submission_id' => $contentSubmissionId,
+                'document_url' => $sourceLabel,
+                'document_id' => $documentId,
+                'status' => ContentModerationLog::STATUS_ERROR,
+                'passed' => false,
+                'error_code' => 'article_too_large',
+                'error_message' => 'This article is too large to re-check against content policy. Shorten it and try again.',
+                'scan_token' => Str::random(40),
+            ]);
+
+            return [
+                'passed' => false,
+                'status' => 'error',
+                'user_title' => 'Unable to Check Article',
+                'user_message' => $log->error_message,
+                'loading_done' => true,
+                'log' => $log,
+                'report' => ['error' => true, 'error_code' => 'article_too_large'],
+                'scan_token' => $log->scan_token,
+                'matched_terms' => [],
+                'blocked_urls' => [],
+            ];
+        }
+
         if (! $this->isEnabled()) {
             $token = Str::random(40);
             $log = ContentModerationLog::create([
@@ -354,6 +387,16 @@ class ContentModerationService
                 continue;
             }
 
+            if ($this->storedFileUnreadable($submission)) {
+                $failures[] = [
+                    'url' => 'upload:'.$submission->id,
+                    'title' => 'Content check required',
+                    'message' => 'The stored Word file could not be re-checked. Please re-upload the article.',
+                ];
+
+                continue;
+            }
+
             if ($this->usableAdminOverride($submission)) {
                 continue;
             }
@@ -370,7 +413,7 @@ class ContentModerationService
             }
 
             $result = $this->scanExtractedContent(
-                text: (string) $submission->extracted_text,
+                text: $this->scanPolicyTextFromSubmission($submission),
                 html: (string) ($submission->preview_html ?? ''),
                 sourceLabel: 'upload:'.$submission->id,
                 user: $user,
@@ -409,6 +452,11 @@ class ContentModerationService
         }
 
         return ['ok' => $failures === [], 'failures' => $failures];
+    }
+
+    public function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user = null): bool
+    {
+        return (bool) ($this->assertSubmissionsApproved([$submission], $user)['ok'] ?? false);
     }
 
     public function assertLinksApproved(array $urls, ?User $user = null): array
@@ -686,7 +734,7 @@ class ContentModerationService
     ): array {
         $urls = [];
 
-        if ($html !== '' && preg_match_all('/\bhref\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+        if ($html !== '' && preg_match_all('/\b(?:href|src)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
             foreach ($matches[2] as $href) {
                 $href = trim(html_entity_decode((string) $href, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
                 if ($href === '') {
@@ -738,12 +786,18 @@ class ContentModerationService
      */
     public function linksFromSubmission(ContentSubmission $submission): array
     {
-        return $this->linksFromSubmissionHtml(
+        $fromPreview = $this->linksFromSubmissionHtml(
             html: (string) ($submission->preview_html ?? ''),
             targetUrl: $submission->target_url ? (string) $submission->target_url : null,
             plainText: (string) ($submission->extracted_text ?? ''),
-            extraLinks: $submission->detectedLinks(),
+            extraLinks: array_merge(
+                $submission->detectedLinks(),
+                array_filter([(string) ($submission->feature_image_url ?? '')]),
+            ),
         );
+        $fromFile = $this->storedFilePolicySignals($submission)['links'];
+
+        return $this->engine->normalizeLinkList(array_merge($fromPreview, $fromFile));
     }
 
     public function submissionIdFromSource(string $sourceLabel): ?int
@@ -769,6 +823,238 @@ class ContentModerationService
         return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
     }
 
+    /**
+     * Body copy for language / quality / uniqueness.
+     * extracted_text can lag preview_html after a silent or partial edit.
+     */
+    public function scanTextFromSubmission(ContentSubmission $submission): string
+    {
+        $extracted = trim((string) $submission->extracted_text);
+        $html = (string) ($submission->preview_html ?? '');
+        $fromHtml = $html !== ''
+            ? trim((new ArticleHtmlSanitizer)->htmlToPlainText($html))
+            : '';
+
+        if ($extracted === '') {
+            return $fromHtml;
+        }
+        if ($fromHtml === '' || $fromHtml === $extracted) {
+            return $extracted;
+        }
+
+        return $extracted."\n".$fromHtml;
+    }
+
+    /**
+     * Publisher-visible backlink labels (primary pair + detected_links).
+     *
+     * @return list<string>
+     */
+    public function anchorTextsFromSubmission(ContentSubmission $submission): array
+    {
+        $anchors = [];
+        $primary = trim((string) ($submission->anchor_text ?? ''));
+        if ($primary !== '') {
+            $anchors[] = $primary;
+        }
+
+        foreach ($submission->detectedLinks() as $link) {
+            $anchor = trim((string) ($link['anchor'] ?? ''));
+            if ($anchor !== '') {
+                $anchors[] = $anchor;
+            }
+        }
+
+        $anchors = array_values(array_unique($anchors));
+        sort($anchors);
+
+        return $anchors;
+    }
+
+    /**
+     * Attribute text strip_tags drops (image alt, title, aria-label).
+     *
+     * @return list<string>
+     */
+    public function htmlAttributeTexts(string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (preg_match_all('/\b(?:alt|title|aria-label)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            foreach ($matches[2] as $value) {
+                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($value !== '') {
+                    $texts[] = $value;
+                }
+            }
+        }
+
+        $texts = array_values(array_unique($texts));
+        sort($texts);
+
+        return $texts;
+    }
+
+    /**
+     * href/src values strip_tags drops, including local /storage image paths.
+     *
+     * @return list<string>
+     */
+    public function htmlResourceTexts(string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (preg_match_all('/\b(?:href|src|srcset|data-src|data-original|data-href|data-lazy-src|poster)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            foreach ($matches[2] as $value) {
+                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($value === '') {
+                    continue;
+                }
+                foreach (preg_split('/\s*,\s*/', $value) ?: [] as $part) {
+                    $url = trim((string) preg_replace('/\s+\d+(?:\.\d+)?[wx]$/i', '', trim($part)));
+                    if ($url !== '') {
+                        $texts[] = $url;
+                    }
+                }
+            }
+        }
+
+        $texts = array_values(array_unique($texts));
+        sort($texts);
+
+        return $texts;
+    }
+
+    /**
+     * Inline CSS the sanitizer leaves on span/div (background url, content).
+     *
+     * @return list<string>
+     */
+    public function htmlStyleTexts(string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (! preg_match_all('/\bstyle\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            return [];
+        }
+
+        foreach ($matches[2] as $style) {
+            $style = html_entity_decode((string) $style, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+            if (preg_match_all('/url\(\s*([\'"]?)(.*?)\1\s*\)/iu', $style, $urls)) {
+                foreach ($urls[2] as $url) {
+                    $url = trim((string) $url);
+                    if ($url !== '') {
+                        $texts[] = $url;
+                    }
+                }
+            }
+            if (preg_match_all('/content\s*:\s*([\'"])(.*?)\1/iu', $style, $contents)) {
+                foreach ($contents[2] as $content) {
+                    $content = trim((string) $content);
+                    if ($content !== '') {
+                        $texts[] = $content;
+                    }
+                }
+            }
+        }
+
+        $texts = array_values(array_unique($texts));
+        sort($texts);
+
+        return $texts;
+    }
+
+    /**
+     * Restricted-term haystack: body + stored anchors + HTML attributes/src +
+     * filename + the Word package the publisher downloads.
+     * Keep language / uniqueness on scanTextFromSubmission() so a short
+     * English backlink does not false-fail a non-English article.
+     */
+    public function scanPolicyTextFromSubmission(ContentSubmission $submission): string
+    {
+        $parts = [
+            $this->scanTextFromSubmission($submission),
+            implode("\n", $this->anchorTextsFromSubmission($submission)),
+            implode("\n", $this->htmlAttributeTexts((string) ($submission->preview_html ?? ''))),
+            implode("\n", $this->htmlResourceTexts((string) ($submission->preview_html ?? ''))),
+            implode("\n", $this->htmlStyleTexts((string) ($submission->preview_html ?? ''))),
+            trim((string) ($submission->original_filename ?? '')),
+            $this->storedFilePolicySignals($submission)['text'],
+        ];
+
+        return trim(implode("\n", array_filter($parts, static fn (string $part) => trim($part) !== '')));
+    }
+
+    /**
+     * Publisher download is the stored .docx, which can diverge from preview_html
+     * after an editor save. Re-read the package (headers/footers/comments + rels).
+     *
+     * @return array{hash:string, text:string, links:list<string>, ok:bool}
+     */
+    public function storedFilePolicySignals(ContentSubmission $submission): array
+    {
+        $empty = ['hash' => '', 'text' => '', 'links' => [], 'ok' => true];
+        if (! $submission->hasStoredFile()) {
+            return $empty;
+        }
+
+        try {
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $disk->exists((string) $submission->path)) {
+                return $empty;
+            }
+            $absolute = $disk->path((string) $submission->path);
+        } catch (\Throwable) {
+            return $empty;
+        }
+
+        if (! is_file($absolute)) {
+            return $empty;
+        }
+
+        $cacheKey = $absolute.'|'.(int) filemtime($absolute).'|'.(int) filesize($absolute);
+        if (isset($this->storedFilePolicyCache[$cacheKey])) {
+            return $this->storedFilePolicyCache[$cacheKey];
+        }
+
+        $hash = hash_file('sha256', $absolute) ?: '';
+        $extracted = (new DocumentTextExtractor)->extractPolicySignals($absolute);
+
+        return $this->storedFilePolicyCache[$cacheKey] = [
+            'hash' => $hash,
+            'text' => $extracted['text'],
+            'links' => $extracted['links'],
+            'ok' => $extracted['ok'],
+        ];
+    }
+
+    public function storedFileUnreadable(ContentSubmission $submission): bool
+    {
+        if (! $submission->hasStoredFile()) {
+            return false;
+        }
+
+        try {
+            $disk = Storage::disk($submission->disk ?: 'local');
+            if (! $disk->exists((string) $submission->path)) {
+                return false;
+            }
+        } catch (\Throwable) {
+            return false;
+        }
+
+        return ! $this->storedFilePolicySignals($submission)['ok'];
+    }
+
     public function scanTitle(ContentSubmission $submission): string
     {
         $title = trim((string) $submission->title);
@@ -792,6 +1078,10 @@ class ContentModerationService
             (string) $submission->preview_html,
             (string) $submission->target_url,
             implode("\n", $links),
+            implode("\n", $this->anchorTextsFromSubmission($submission)),
+            (string) $submission->feature_image_url,
+            (string) $submission->original_filename,
+            $this->storedFilePolicySignals($submission)['hash'],
         ]));
     }
 
@@ -838,6 +1128,18 @@ class ContentModerationService
         return DB::transaction(function () use ($submission, $decision, $admin, $notes) {
             $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
             $log = $this->currentOrNewLogForSubmission($submission);
+
+            if ($this->overrideAlreadyApplies($log, $submission, $notes, $decision)) {
+                if ($this->overrideFingerprintState($log, $submission) === 'missing') {
+                    $this->stampOverride($log, $submission, $admin, $notes, $decision);
+                }
+
+                $message = $decision === ContentSubmission::STATUS_APPROVED
+                    ? 'Article #'.$submission->id.' is already approved by override.'
+                    : 'Article #'.$submission->id.' is already rejected by override.';
+
+                return ['ok' => true, 'submission' => $submission->fresh(), 'message' => $message];
+            }
 
             $this->stampOverride($log, $submission, $admin, $notes, $decision);
             $this->logOverrideActivity($admin, $log, $submission, $notes, $decision);
@@ -937,6 +1239,20 @@ class ContentModerationService
                 }
             }
 
+            if ($this->overrideAlreadyApplies($log, $submission, $notes, ContentSubmission::STATUS_APPROVED)) {
+                if ($this->overrideFingerprintState($log, $submission) === 'missing') {
+                    $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
+                }
+
+                return [
+                    'ok' => true,
+                    'submission' => $submission?->fresh(),
+                    'message' => $submission
+                        ? 'Article #'.$submission->id.' is already approved by override.'
+                        : 'This scan is already approved by override.',
+                ];
+            }
+
             $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
             $this->logOverrideActivity($admin, $log, $submission, $notes, ContentSubmission::STATUS_APPROVED);
 
@@ -1034,14 +1350,48 @@ class ContentModerationService
         });
     }
 
-    protected function overrideFingerprintMatches(ContentModerationLog $log, ContentSubmission $submission): bool
-    {
-        $stored = $log->signals['override_fingerprint'] ?? null;
-        if (! is_string($stored) || $stored === '') {
+    protected function overrideAlreadyApplies(
+        ContentModerationLog $log,
+        ?ContentSubmission $submission,
+        string $notes,
+        string $decision,
+    ): bool {
+        if (! $log->admin_override) {
             return false;
         }
 
-        return hash_equals($stored, $this->contentFingerprint($submission));
+        $approved = $decision === ContentSubmission::STATUS_APPROVED;
+        if ((bool) $log->passed !== $approved) {
+            return false;
+        }
+
+        if (trim((string) $log->admin_notes) !== trim($notes)) {
+            return false;
+        }
+
+        return ! $submission || $this->overrideFingerprintState($log, $submission) !== 'mismatch';
+    }
+
+    /**
+     * @return 'match'|'missing'|'mismatch'
+     */
+    protected function overrideFingerprintState(ContentModerationLog $log, ?ContentSubmission $submission): string
+    {
+        if (! $submission) {
+            return 'match';
+        }
+
+        $stored = $log->signals['override_fingerprint'] ?? null;
+        if (! is_string($stored) || $stored === '') {
+            return 'missing';
+        }
+
+        return hash_equals($stored, $this->contentFingerprint($submission)) ? 'match' : 'mismatch';
+    }
+
+    protected function overrideFingerprintMatches(ContentModerationLog $log, ContentSubmission $submission): bool
+    {
+        return $this->overrideFingerprintState($log, $submission) === 'match';
     }
 
     protected function currentOrNewLogForSubmission(ContentSubmission $submission): ContentModerationLog
@@ -1154,6 +1504,8 @@ class ContentModerationService
             }
             $report['passed_compliance'] = true;
             $report['summary'] = 'Approved by admin override.';
+            $report['matched_terms'] = [];
+            $report['blocked_urls'] = [];
         } else {
             $replaced = false;
             foreach ($checks as $i => $check) {

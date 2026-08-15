@@ -46,6 +46,10 @@ class AdminBlogPublishTest extends TestCase
 
         $this->assertSame('draft', $blog->fresh()->status);
         $this->assertNotNull($blog->fresh()->manually_edited_at);
+        $this->assertDatabaseHas('activity_logs', [
+            'action' => 'blog.unpublished',
+            'subject_id' => $blog->id,
+        ]);
     }
 
     public function test_store_does_not_steal_legacy_blog_slug(): void

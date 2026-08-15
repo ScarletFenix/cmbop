@@ -121,7 +121,7 @@ class ContentUploadService
             return ['ok' => false, 'accepted' => false, 'approved' => false, 'title' => 'Market required', 'message' => $marketError];
         }
 
-        if ($replace?->isExpired()) {
+        if ($replace?->isUnusedExpired()) {
             return [
                 'ok' => false,
                 'accepted' => false,
@@ -411,6 +411,20 @@ class ContentUploadService
             ? 'approved'
             : $moderationStatus;
 
+        if (! empty($result['approved']) && ! $submission->isReadyForCheckout()) {
+            $params = $submission->staffApprovalLibraryParams();
+            if ($params !== []) {
+                $result['action_url'] = route('advertiser.content-library', $params, false);
+            }
+            if ($submission->isUsableAfterStaffApproval() || $submission->activeClaimOrderId()) {
+                $result['approved_leftover'] = true;
+                if (trim((string) ($result['message'] ?? '')) === '') {
+                    $result['message'] = $submission->editorNotice()
+                        ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE;
+                }
+            }
+        }
+
         return $result;
     }
 
@@ -521,7 +535,7 @@ class ContentUploadService
             return ['ok' => false, 'approved' => false, 'message' => 'This article is already linked to an order and cannot be edited.'];
         }
 
-        if ($submission->isExpired()) {
+        if ($submission->isUnusedExpired()) {
             return ['ok' => false, 'approved' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'];
         }
 

@@ -200,6 +200,14 @@ class SitePromotionService
                     'ends_at' => now(),
                 ]);
 
+                $this->logStripeFeatureCredited(
+                    $site,
+                    $payer,
+                    $price,
+                    $stripeSessionId,
+                    $reason ?: 'the website changed owner'
+                );
+
                 return [
                     'success' => true,
                     'credited' => true,
@@ -257,29 +265,26 @@ class SitePromotionService
                         ->where('stripe_session_id', $stripeSessionId)
                         ->first();
                     if ($already) {
-                        return [
-                            'success' => true,
-                            'message' => $already->payment_method === 'stripe_credit'
-                                ? 'This payment was already credited to your wallet.'
-                                : 'Feature already applied for this payment.',
-                            'site' => $locked->fresh(),
-                        ];
+                        return $this->alreadyAppliedStripeFeature($locked, $already);
                     }
                 }
 
                 $featured = $this->applyFeaturePeriod($locked, $publisher, $price, $days, 'stripe', $stripeSessionId);
+                $this->logStripeFeatureApplied($featured, $publisher, $price, $days, $stripeSessionId);
 
                 return [
                     'success' => true,
+                    'already' => false,
+                    'credited' => false,
                     'message' => 'Site featured for '.$days.' days (€'.number_format($price, 2).') via card.',
                     'site' => $featured,
                 ];
             });
         } catch (UniqueConstraintViolationException) {
-            return $this->alreadyAppliedStripeFeature($site);
+            return $this->alreadyAppliedStripeFeature($site, $stripeSessionId);
         } catch (QueryException $e) {
             if ($this->isUniqueViolation($e)) {
-                return $this->alreadyAppliedStripeFeature($site);
+                return $this->alreadyAppliedStripeFeature($site, $stripeSessionId);
             }
 
             return ['success' => false, 'message' => $e->getMessage()];
@@ -289,15 +294,72 @@ class SitePromotionService
     }
 
     /**
-     * @return array{success:bool, message:string, site:Site}
+     * @return array{success:bool, already:bool, credited:bool, message:string, site:Site}
      */
-    private function alreadyAppliedStripeFeature(Site $site): array
+    private function alreadyAppliedStripeFeature(Site $site, SiteFeaturePurchase|string|null $existing = null): array
     {
+        $purchase = $existing instanceof SiteFeaturePurchase
+            ? $existing
+            : (is_string($existing) && $existing !== ''
+                ? SiteFeaturePurchase::query()->where('stripe_session_id', $existing)->first()
+                : null);
+        $credited = $purchase?->payment_method === 'stripe_credit';
+
         return [
             'success' => true,
-            'message' => 'Feature already applied for this payment.',
+            'already' => true,
+            'credited' => $credited,
+            'message' => $credited
+                ? 'This payment was already credited to your wallet.'
+                : 'Feature already applied for this payment.',
             'site' => $site->fresh(),
         ];
+    }
+
+    private function logStripeFeatureApplied(
+        Site $site,
+        User $publisher,
+        float $price,
+        int $days,
+        ?string $stripeSessionId
+    ): void {
+        ActivityLogger::tryLog(
+            'site.featured_stripe',
+            ($publisher->name ?: $publisher->email).' featured "'.$site->site_name.'" via Stripe',
+            $site,
+            [
+                'session_id' => $stripeSessionId,
+                'days' => $days,
+                'amount' => $price,
+                'payment_method' => 'stripe',
+            ],
+            $site->site_name,
+            $publisher
+        );
+    }
+
+    private function logStripeFeatureCredited(
+        Site $site,
+        User $payer,
+        float $price,
+        string $stripeSessionId,
+        string $reason
+    ): void {
+        ActivityLogger::tryLog(
+            'site.feature_stripe_credited',
+            ($payer->name ?: $payer->email).' was credited €'.number_format($price, 2)
+                .' for a Stripe feature payment that could not be applied',
+            $site,
+            [
+                'session_id' => $stripeSessionId,
+                'amount' => $price,
+                'reason' => $reason,
+                'payer_id' => $payer->id,
+                'payment_method' => 'stripe_credit',
+            ],
+            $site->site_name,
+            $payer
+        );
     }
 
     /**

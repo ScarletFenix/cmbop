@@ -59,8 +59,31 @@ class UserController extends Controller
 
             $user = User::findOrFail($id);
 
-            $user->company_name = $request->company_name;
+            $from = $user->company_name;
+            $to = $request->input('company_name');
+            $to = is_string($to) ? trim($to) : null;
+            if ($to === '') {
+                $to = null;
+            }
+            $fromNorm = ($from === null || $from === '') ? null : (string) $from;
+
+            if ($fromNorm === $to) {
+                return response()->json([
+                    'success' => true,
+                    'message' => 'Company updated successfully',
+                ]);
+            }
+
+            $user->company_name = $to;
             $user->save();
+
+            ActivityLogger::tryLog(
+                'user.company_updated',
+                (auth()->user()?->name ?? 'Admin').' updated company name for user #'.$user->id,
+                $user,
+                ['from' => $fromNorm, 'to' => $to, 'company_name' => $to],
+                $user->name
+            );
 
             return response()->json([
                 'success' => true,
@@ -107,7 +130,17 @@ class UserController extends Controller
         }
 
         $user = User::findOrFail($id);
+        $before = $user->payoutProfile();
         $this->payoutProfiles->adminUpdateProfile($user, $method, $data);
+        $after = $user->fresh()->payoutProfile();
+
+        if (! $this->payoutDestinationsChanged($before, $after)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Payout details are already up to date.',
+                'payout_profile' => $after,
+            ]);
+        }
 
         try {
             Mail::to($user->email)->send(new PayoutProfileUpdatedBySupport($user->fresh(), $method));
@@ -126,7 +159,7 @@ class UserController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Payout details updated. The publisher was notified by email.',
-            'payout_profile' => $user->fresh()->payoutProfile(),
+            'payout_profile' => $after,
         ]);
     }
 
@@ -238,23 +271,25 @@ class UserController extends Controller
         $marketingCount = $this->marketingCount();
         $storedActivate = $hasActivateColumn ? (bool) $user->fresh()->can_activate_sites : $canActivateSites;
 
-        try {
-            ActivityLogger::log(
-                $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
-                auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
-                $user,
-                [
-                    'from' => $previousRoles,
-                    'to' => $newRoles,
-                    'active_role' => $user->activeRole(),
-                    'marketing_count' => $marketingCount,
-                    'can_activate_sites' => $storedActivate,
-                ],
-                $user->name
-            );
-        } catch (\Throwable $e) {
-            // Role change already committed — do not fail the admin UI if logging is unavailable.
-            report($e);
+        if ($grantMarketing !== $alreadyHasMarketing) {
+            try {
+                ActivityLogger::log(
+                    $grantMarketing ? 'user.marketing_granted' : 'user.marketing_revoked',
+                    auth()->user()->name.($grantMarketing ? ' granted' : ' revoked').' Marketing for '.$user->name,
+                    $user,
+                    [
+                        'from' => $previousRoles,
+                        'to' => $newRoles,
+                        'active_role' => $user->activeRole(),
+                        'marketing_count' => $marketingCount,
+                        'can_activate_sites' => $storedActivate,
+                    ],
+                    $user->name
+                );
+            } catch (\Throwable $e) {
+                // Role change already committed — do not fail the admin UI if logging is unavailable.
+                report($e);
+            }
         }
 
         return response()->json([
@@ -289,5 +324,30 @@ class UserController extends Controller
         }
 
         return (int) DB::table('role_user')->where('role_id', $marketingRoleId)->distinct()->count('user_id');
+    }
+
+    /**
+     * @param  array<string, mixed>  $before
+     * @param  array<string, mixed>  $after
+     */
+    private function payoutDestinationsChanged(array $before, array $after): bool
+    {
+        foreach ([
+            'preferred_method',
+            'paypal_email',
+            'wise_email',
+            'bank_holder_name',
+            'bank_name',
+            'bank_account',
+            'bank_swift',
+            'crypto_wallet',
+            'crypto_type',
+        ] as $key) {
+            if ((string) ($before[$key] ?? '') !== (string) ($after[$key] ?? '')) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

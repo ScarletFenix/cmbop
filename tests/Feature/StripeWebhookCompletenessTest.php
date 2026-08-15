@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -301,6 +302,7 @@ class StripeWebhookCompletenessTest extends TestCase
             $site->fresh()->featured_until->timestamp
         );
         $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', $sessionId)->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
     }
 
     public function test_site_feature_session_with_wrong_amount_is_rejected(): void
@@ -441,6 +443,8 @@ class StripeWebhookCompletenessTest extends TestCase
             'stripe_session_id' => $sessionId,
             'payment_method' => 'stripe_credit',
         ]);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.feature_stripe_credited')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
     }
 
     public function test_site_feature_cancelled_bulk_credits_wallet_and_acks(): void
@@ -508,6 +512,8 @@ class StripeWebhookCompletenessTest extends TestCase
             'stripe_session_id' => $sessionId,
             'payment_method' => 'stripe_credit',
         ]);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.feature_stripe_credited')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
     }
 
     public function test_unpaid_order_checkout_session_is_rejected(): void

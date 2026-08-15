@@ -34,7 +34,8 @@ class ContentLibraryController extends Controller
                 'user:id,name,email',
                 'order:id,status,payment_status,order_number',
                 'orderItem.site:id,site_name,site_url',
-                'orderItems.order:id,status,payment_status',
+                'orderItems.site:id,site_name,site_url',
+                'orderItems.order:id,status,payment_status,order_number',
             ])
             ->latest('id');
 
@@ -289,6 +290,8 @@ class ContentLibraryController extends Controller
                 $active->whereNull('expires_at')->orWhere('expires_at', '>', now());
             })->orWhere(function ($owned) {
                 $owned->withOpenOwnerOrder();
+            })->orWhere(function ($claimed) {
+                $claimed->withActiveOrderClaim();
             });
         });
     }
@@ -424,7 +427,7 @@ class ContentLibraryController extends Controller
             return false;
         }
 
-        if ($submission->isExpired() && ! $submission->isInUse()) {
+        if ($submission->isUnusedExpired()) {
             return false;
         }
 

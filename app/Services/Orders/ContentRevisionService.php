@@ -11,9 +11,9 @@ use App\Models\OrderItem;
 use App\Models\Site;
 use App\Models\User;
 use App\Services\CheckoutSchemaService;
+use App\Services\ContentModeration\ContentModerationService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderChatContactGuard;
-use App\Services\OrderPaymentService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -163,6 +163,10 @@ class ContentRevisionService
         $orderItemId = isset($payload['order_item_id']) ? (int) $payload['order_item_id'] : null;
         $confirmExisting = ! empty($payload['confirm_existing']);
 
+        // Scan before the fulfillment TX. A reject written inside that TX would
+        // roll back with ValidationException and leave the library row approved.
+        $this->preflightLibraryArticlePolicy($order, $advertiser, $confirmExisting, $submissionId, $orderItemId);
+
         return DB::transaction(function () use ($order, $advertiser, $contentLink, $submissionId, $note, $orderItemId, $confirmExisting) {
             $lockedOrder = Order::query()->whereKey($order->id)->lockForUpdate()->firstOrFail();
 
@@ -228,6 +232,8 @@ class ContentRevisionService
                     ]);
                 }
 
+                $existing = $this->assertLibraryArticlePassesPolicy($existing, $advertiser, 'confirm_existing');
+
                 if ($existing->hasImages() && ! $existing->imageRightsCoverContent()) {
                     throw ValidationException::withMessages([
                         'confirm_existing' => 'Confirm image rights on the attached article before sending it back.',
@@ -260,18 +266,29 @@ class ContentRevisionService
                     ]);
                 }
 
+                $submission = $this->assertLibraryArticlePassesPolicy($submission, $advertiser, 'content_submission_id');
+
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
-                if (! $sameAsCurrent) {
-                    app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-                        (int) $advertiser->id,
-                        [(int) $submission->id]
-                    );
-                    $submission = $submission->fresh() ?? $submission;
-                }
 
                 if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'Confirm image rights on this article before sending it back.',
+                    ]);
+                }
+
+                if (! $submission->hasCheckoutReadyLinks()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                    ]);
+                }
+
+                // Revision is not a new checkout. Do not cancel Pay again just
+                // to discover this leftover cannot be attached here.
+                if (! $sameAsCurrent && $submission->isClaimedByAnotherOrder((int) $lockedOrder->id)) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => $submission->isLockedByPaidOrder()
+                            ? 'That Content Library article is already used on another placement.'
+                            : ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE,
                     ]);
                 }
 
@@ -299,12 +316,6 @@ class ContentRevisionService
                     && ! $submission->canBeOrdered()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'That Content Library article is not available to attach.',
-                    ]);
-                }
-
-                if (! $submission->hasCheckoutReadyLinks()) {
-                    throw ValidationException::withMessages([
-                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 
@@ -483,6 +494,69 @@ class ContentRevisionService
         }
 
         return $payload;
+    }
+
+    /**
+     * Persist a live-policy reject before the fulfillment transaction starts.
+     */
+    protected function preflightLibraryArticlePolicy(
+        Order $order,
+        User $advertiser,
+        bool $confirmExisting,
+        ?int $submissionId,
+        ?int $orderItemId,
+    ): void {
+        if ($confirmExisting) {
+            $openItems = OrderItem::query()
+                ->where('order_id', $order->id)
+                ->where('content_revision_requested', 'yes')
+                ->orderBy('id')
+                ->get();
+            $item = $orderItemId
+                ? $openItems->firstWhere('id', $orderItemId)
+                : ($openItems->count() === 1 ? $openItems->first() : null);
+            if (! $item || ! filled($item->content_submission_id)) {
+                return;
+            }
+            $existing = ContentSubmission::query()
+                ->whereKey((int) $item->content_submission_id)
+                ->where('user_id', $advertiser->id)
+                ->first();
+            if ($existing && $existing->isApproved()) {
+                $this->assertLibraryArticlePassesPolicy($existing, $advertiser, 'confirm_existing');
+            }
+
+            return;
+        }
+
+        if (! $submissionId) {
+            return;
+        }
+
+        $submission = ContentSubmission::query()
+            ->whereKey($submissionId)
+            ->where('user_id', $advertiser->id)
+            ->first();
+        if ($submission && $submission->isApproved()) {
+            $this->assertLibraryArticlePassesPolicy($submission, $advertiser, 'content_submission_id');
+        }
+    }
+
+    /**
+     * Re-scan the article against live policy before sending it back to the publisher.
+     * A staff override or stale approved flag is not enough after the advertiser edits.
+     */
+    protected function assertLibraryArticlePassesPolicy(ContentSubmission $submission, User $advertiser, string $field): ContentSubmission
+    {
+        $result = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
+        if (! ($result['ok'] ?? false)) {
+            throw ValidationException::withMessages([
+                $field => $result['failures'][0]['message']
+                    ?? 'This article no longer passes content policy. Edit it and try again.',
+            ]);
+        }
+
+        return $submission->fresh() ?? $submission;
     }
 
     /**

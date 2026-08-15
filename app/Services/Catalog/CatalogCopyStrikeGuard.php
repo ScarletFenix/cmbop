@@ -5,7 +5,11 @@ namespace App\Services\Catalog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ActivityLogger;
+use App\Services\InAppNotificationService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -13,15 +17,22 @@ use Illuminate\Support\Str;
  * Tracks clipboard copies of catalog URL/domain identity and applies strikes.
  *
  *   strike 1 — warning only; catalog stays fully visible
- *   strike 2 — catalog_hide_until = now + 24h
+ *   strike 2 — catalog_hide_until = now + hide_hours
+ *
+ * Warning-wave and hide-wave rows are kept (admin forensics). The next wave
+ * inserts and counts only event ids above catalog_copy_after_id so the same
+ * listings — or same-second MySQL timestamps — cannot restage the burst.
  *
  * While hide mode is active, tracking is paused (identity is already masked /
- * eye-gated). Tracking resumes after the window expires or an admin clears it.
+ * eye-gated). Tracking resumes after the window expires or an admin lifts it.
  *
  * Threshold is “~5 pages” of distinct domains inside a short window
- * (defaults: 100 copies / 120 seconds). After a warning the copy window is
- * cleared so a second full wave is required for hide mode (and so MySQL
- * second-precision timestamps cannot stall strike 2).
+ * (defaults: 100 copies / 120 seconds). After a warning, hide, lift, or
+ * strike reset the watermark advances so a second full wave is required.
+ *
+ * A table-cell copy often includes a trailing newline, and a multi-select
+ * or CSV dump includes several hosts. Those still count (capped) — rejecting
+ * the whole clipboard was a harvest bypass.
  */
 class CatalogCopyStrikeGuard
 {
@@ -32,6 +43,10 @@ class CatalogCopyStrikeGuard
     public const STATUS_WARNING = 'warning';
 
     public const STATUS_HIDE_MODE = 'hide_mode';
+
+    public const MAX_HOSTS_PER_COPY = 40;
+
+    public function __construct(private InAppNotificationService $notifications) {}
 
     /**
      * @return array{
@@ -50,27 +65,39 @@ class CatalogCopyStrikeGuard
             return $this->payload($user, self::STATUS_IGNORED, 0, null);
         }
 
-        $host = $this->normalizeHost($text);
+        $hosts = $this->extractHosts($text);
 
         if ($siteId !== null) {
             $site = Site::query()->catalogVisible()->find($siteId);
             if (! $site) {
                 $siteId = null;
-            } elseif ($host === '') {
+            } elseif ($hosts === []) {
                 // Row id known but selection was messy — fall back to listing URL.
-                $host = $this->normalizeHost((string) $site->site_url);
+                $fallback = $this->listingHosts($site)[0] ?? '';
+                if ($fallback !== '') {
+                    $hosts = [$fallback];
+                }
+            } elseif (count($hosts) === 1 && ! in_array($hosts[0], $this->listingHosts($site), true)) {
+                // A scripted client can reuse one valid site_id with rotating
+                // hosts. Pinning those rows to the listing makes insertIfNew
+                // OR-dedupe on site_id and distinctCount collapse to 1.
+                $siteId = null;
             }
         }
 
-        if ($host === '') {
+        if ($hosts === []) {
             return $this->payload($user, self::STATUS_IGNORED, 0, 'Not a domain or URL.');
         }
+
+        // A multi-host dump must not attribute every domain to the row the
+        // selection started on.
+        $siteId = count($hosts) === 1 ? $siteId : null;
 
         $cfg = $this->config();
         $windowSeconds = $cfg['window_seconds'];
         $threshold = $cfg['threshold'];
 
-        return DB::transaction(function () use ($user, $siteId, $host, $windowSeconds, $threshold, $cfg) {
+        $result = DB::transaction(function () use ($user, $siteId, $hosts, $windowSeconds, $threshold, $cfg) {
             /** @var User $locked */
             $locked = User::query()->whereKey($user->id)->lockForUpdate()->firstOrFail();
 
@@ -85,7 +112,9 @@ class CatalogCopyStrikeGuard
                 );
             }
 
-            $this->insertIfNew($locked, $siteId, $host, $windowSeconds);
+            foreach ($hosts as $host) {
+                $this->insertIfNew($locked, $siteId, $host, $windowSeconds);
+            }
             $distinct = $this->distinctCount($locked, $windowSeconds);
 
             if ($distinct < $threshold) {
@@ -97,16 +126,16 @@ class CatalogCopyStrikeGuard
             if ($strikes < 1) {
                 $locked->catalog_copy_strike_count = 1;
                 $locked->catalog_copy_warned_at = now();
+                // Keep the warning-wave rows for admin forensics. Strike 2
+                // inserts/counts only ids above this cutoff so the same
+                // listings cannot restage the burst.
+                self::watermarkEvents($locked);
                 $locked->save();
 
-                // Clear the window so the same burst cannot escalate on the next
-                // copy. MySQL timestamps are second-precision, so "created_at >
-                // warned_at" would otherwise miss same-second follow-ups and
-                // leave strike 2 unreachable in a fast harvest.
-                CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
+                $fresh = $locked->fresh();
 
                 return $this->payload(
-                    $locked->fresh(),
+                    $fresh,
                     self::STATUS_WARNING,
                     $distinct,
                     'Heads up: copying lots of website addresses from the catalog looks like harvesting. '
@@ -114,21 +143,37 @@ class CatalogCopyStrikeGuard
                 );
             }
 
-            // Strike 2: another full threshold after the post-warning clear.
+            // Strike 2: another full threshold after the post-warning watermark.
             if ($strikes < 2) {
                 $locked->catalog_copy_strike_count = 2;
             }
             $locked->catalog_hide_until = now()->addHours($cfg['hide_hours']);
+            // Advance again so a lift (or expiry + first copy) cannot restage
+            // this hide wave as an instant re-hide.
+            self::watermarkEvents($locked);
             $locked->save();
 
+            $fresh = $locked->fresh();
+
             return $this->payload(
-                $locked->fresh(),
+                $fresh,
                 self::STATUS_HIDE_MODE,
                 $distinct,
-                'Repeated domain copying detected. Site names and URLs will be hidden for 24 hours — '
-                .'use the eye icon to reveal them one listing at a time.'
+                $this->hideModeUserMessage($cfg['hide_hours'])
             );
         });
+
+        if (in_array($result['status'], [self::STATUS_WARNING, self::STATUS_HIDE_MODE], true)) {
+            $subject = User::query()->find($user->id) ?? $user;
+            $this->announce(
+                $subject,
+                $result['status'],
+                (int) $result['distinct_in_window']
+            );
+            $this->logEnforcement($subject, $result);
+        }
+
+        return $result;
     }
 
     public function inHideMode(User $user): bool
@@ -136,12 +181,54 @@ class CatalogCopyStrikeGuard
         return $user->inCatalogHideMode();
     }
 
+    public function hideModeUserMessage(?int $hours = null): string
+    {
+        $hours = max(1, $hours ?? $this->config()['hide_hours']);
+        $label = $hours === 1 ? '1 hour' : $hours.' hours';
+
+        return 'Repeated domain copying detected. Site names and URLs will be hidden for '.$label.' — '
+            .'use the eye icon to reveal them one listing at a time.';
+    }
+
     /**
      * True when clipboard/selection text looks like a URL or domain.
      */
     public function looksLikeDomainOrUrl(string $text): bool
     {
-        return $this->normalizeHost($text) !== '';
+        return $this->extractHosts($text) !== [];
+    }
+
+    /**
+     * Distinct listing hosts found in clipboard text (one cell, or a dump).
+     *
+     * @return list<string>
+     */
+    public function extractHosts(string $text): array
+    {
+        $raw = trim($text);
+        if ($raw === '') {
+            return [];
+        }
+
+        // Newlines, tabs, commas, semicolons, and pipes are all dump
+        // separators. Counting only whitespace let a CSV paste (or one
+        // POST of host1,host2,host3) collapse to a single event.
+        $tokens = preg_split('/[\s,;|]+/u', $raw) ?: [];
+        $hosts = [];
+
+        foreach ($tokens as $token) {
+            $token = trim($token, " \t\n\r\0\x0B\"'<>()[],");
+            $host = $this->normalizeHost($token);
+            if ($host === '') {
+                continue;
+            }
+            $hosts[$host] = $host;
+            if (count($hosts) >= self::MAX_HOSTS_PER_COPY) {
+                break;
+            }
+        }
+
+        return array_values($hosts);
     }
 
     public function normalizeHost(string $text): string
@@ -151,7 +238,8 @@ class CatalogCopyStrikeGuard
             return '';
         }
 
-        // Reject multi-line dumps / whole-row copies that are clearly not one host.
+        // Single-token API. extractHosts() splits dumps first so a trailing
+        // newline or a multi-URL selection still counts.
         if (preg_match('/\R/u', $raw) === 1) {
             return '';
         }
@@ -181,6 +269,24 @@ class CatalogCopyStrikeGuard
     }
 
     /**
+     * Hosts that belong to this listing (site_url and domain column).
+     *
+     * @return list<string>
+     */
+    private function listingHosts(Site $site): array
+    {
+        $hosts = [];
+        foreach ([(string) $site->site_url, (string) ($site->domain ?? '')] as $raw) {
+            $host = $this->normalizeHost($raw);
+            if ($host !== '') {
+                $hosts[$host] = $host;
+            }
+        }
+
+        return array_values($hosts);
+    }
+
+    /**
      * @return array{threshold: int, window_seconds: int, hide_hours: int}
      */
     private function config(): array
@@ -206,9 +312,31 @@ class CatalogCopyStrikeGuard
         }
     }
 
+    /**
+     * Ignore existing copy rows for future strike counts. Events stay on file.
+     *
+     * Used after a warning/hide wave and after admin lift/reset so the same
+     * listings cannot immediately restage the next strike.
+     */
+    public static function watermarkEvents(User $user): void
+    {
+        try {
+            if (! Schema::hasColumn('users', 'catalog_copy_after_id')) {
+                return;
+            }
+        } catch (\Throwable) {
+            return;
+        }
+
+        $user->catalog_copy_after_id = (int) (CatalogCopyEvent::query()
+            ->where('user_id', $user->id)
+            ->max('id') ?? 0);
+    }
+
     private function insertIfNew(User $user, ?int $siteId, string $host, int $windowSeconds): void
     {
         $since = now()->subSeconds($windowSeconds);
+        $afterId = $this->copyAfterId($user);
 
         $exists = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
@@ -236,6 +364,7 @@ class CatalogCopyStrikeGuard
     private function distinctCount(User $user, int $windowSeconds): int
     {
         $since = now()->subSeconds($windowSeconds);
+        $afterId = $this->copyAfterId($user);
 
         // Prefer site_id identity; fall back to host for copies without a row id.
         $withSite = CatalogCopyEvent::query()
@@ -255,6 +384,76 @@ class CatalogCopyStrikeGuard
             ->count('normalized_host');
 
         return $withSite + $hostOnly;
+    }
+
+    private function copyAfterId(User $user): int
+    {
+        return $this->afterIdColumnReady()
+            ? (int) ($user->catalog_copy_after_id ?? 0)
+            : 0;
+    }
+
+    public static function noticeCacheKey(int $userId, string $status): string
+    {
+        return 'catalog-copy-strike-'.$status.':'.$userId;
+    }
+
+    /**
+     * Forget warning/hide bells so a later wave after lift/reset can page again.
+     */
+    public static function forgetNotices(int $userId): void
+    {
+        Cache::forget(self::noticeCacheKey($userId, self::STATUS_WARNING));
+        Cache::forget(self::noticeCacheKey($userId, self::STATUS_HIDE_MODE));
+    }
+
+    private function afterIdColumnReady(): bool
+    {
+        try {
+            return Schema::hasColumn('users', 'catalog_copy_after_id');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
+     * @param  array{status:string, distinct_in_window:int, hide_until?:string|null, strike_count?:int}  $result
+     */
+    private function logEnforcement(User $user, array $result): void
+    {
+        $hide = $result['status'] === self::STATUS_HIDE_MODE;
+
+        ActivityLogger::tryLog(
+            $hide ? 'catalog_hide_applied' : 'catalog_copy_warned',
+            $hide
+                ? 'Catalog hide mode applied for '.$user->email.' after a second copy-harvest wave.'
+                : 'Catalog copy-harvest warning issued to '.$user->email.'.',
+            $user,
+            [
+                'strikes' => (int) ($user->catalog_copy_strike_count ?? $result['strike_count'] ?? 0),
+                'distinct_in_window' => (int) $result['distinct_in_window'],
+                'hide_until' => $result['hide_until'] ?? $user->catalog_hide_until?->toIso8601String(),
+            ],
+            $user->email
+        );
+    }
+
+    private function announce(User $user, string $status, int $distinct): void
+    {
+        $key = self::noticeCacheKey((int) $user->id, $status);
+
+        if (Cache::has($key)) {
+            return;
+        }
+
+        try {
+            $this->notifications->notifyAdminsCatalogCopyStrike($user, $status, $distinct);
+            // Short debounce only — a 24h lock hid the next offense after an
+            // admin lift.
+            Cache::put($key, true, now()->addMinutes(10));
+        } catch (\Throwable $e) {
+            Log::warning('Catalog copy-strike notice failed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**

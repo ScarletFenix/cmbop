@@ -5,8 +5,10 @@ namespace App\Services;
 use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\Site;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Request;
 
 class ActivityLogger
@@ -19,9 +21,13 @@ class ActivityLogger
         string $description,
         ?Model $subject = null,
         array $properties = [],
-        ?string $subjectLabel = null
+        ?string $subjectLabel = null,
+        ?User $actor = null
     ): ActivityLog {
-        $user = Auth::user();
+        $user = $actor ?? Auth::user();
+        if (! $user instanceof User) {
+            $user = null;
+        }
         $properties = self::withSubjectContext($subject, $properties);
 
         return ActivityLog::create([
@@ -39,6 +45,29 @@ class ActivityLogger
             'ip_address' => Request::ip(),
             'user_agent' => substr((string) Request::userAgent(), 0, 512),
         ]);
+    }
+
+    /**
+     * Best-effort log: never fail the business action if history cannot be written.
+     */
+    public static function tryLog(
+        string $action,
+        string $description,
+        ?Model $subject = null,
+        array $properties = [],
+        ?string $subjectLabel = null,
+        ?User $actor = null
+    ): ?ActivityLog {
+        try {
+            return self::log($action, $description, $subject, $properties, $subjectLabel, $actor);
+        } catch (\Throwable $e) {
+            Log::warning('Activity log failed', [
+                'action' => $action,
+                'error' => $e->getMessage(),
+            ]);
+
+            return null;
+        }
     }
 
     /**

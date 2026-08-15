@@ -154,6 +154,7 @@ class ContentModerationController extends Controller
         $wasEnabled = (bool) ((ContentModerationSetting::getValue('config_override', []) ?: [])['enabled']
             ?? config('content_moderation.enabled', true));
         $previousDisabled = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
+        $before = $this->moderationSettingsSnapshot();
 
         $override = ContentModerationSetting::getValue('config_override', []) ?: [];
         $override['enabled'] = $request->boolean('enabled');
@@ -191,22 +192,37 @@ class ContentModerationController extends Controller
 
         ContentModerationSetting::clearCache();
 
-        try {
-            ActivityLogger::log(
+        $after = $this->normalizeModerationSettings([
+            'enabled' => $request->boolean('enabled'),
+            'confidence_threshold' => (int) $data['confidence_threshold'],
+            'min_word_count' => (int) ($data['min_word_count'] ?? 500),
+            'block_on_quality_failure' => $request->boolean('block_on_quality_failure'),
+            'extra_keywords' => $keywords,
+            'exceptions' => $exceptions,
+            'disabled_categories' => $disabled,
+            'enabled_categories' => $enabled,
+            'uploads_enabled' => $request->boolean('uploads_enabled'),
+            'retention_months' => (int) ($data['retention_months'] ?? 6),
+            'scheduling_enabled' => $request->boolean('scheduling_enabled'),
+            'require_same_language' => $request->boolean('require_same_language'),
+            'min_uniqueness' => (int) ($data['min_uniqueness'] ?? 50),
+        ]);
+
+        if ($before !== $after) {
+            ActivityLogger::tryLog(
                 'moderation.settings_updated',
                 ($request->user()?->name ?? 'Admin').' updated content moderation settings',
                 null,
                 [
-                    'enabled' => $request->boolean('enabled'),
+                    'enabled' => $after['enabled'],
                     'was_enabled' => $wasEnabled,
-                    'confidence_threshold' => (int) $data['confidence_threshold'],
-                    'disabled_categories' => $disabled,
+                    'confidence_threshold' => $after['confidence_threshold'],
+                    'disabled_categories' => $after['disabled_categories'],
                     'previous_disabled_categories' => is_array($previousDisabled) ? array_values($previousDisabled) : [],
                     'extra_keyword_count' => count($keywords),
-                    'uploads_enabled' => $request->boolean('uploads_enabled'),
+                    'uploads_enabled' => $after['uploads_enabled'],
                 ]
             );
-        } catch (\Throwable) {
         }
 
         return back()->with('success', 'Moderation and content upload settings saved.');
@@ -228,6 +244,70 @@ class ContentModerationController extends Controller
         $result = $moderation->revertAdminOverride($log, $request->user());
 
         return back()->with($result['ok'] ? 'success' : 'error', $result['message']);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function moderationSettingsSnapshot(): array
+    {
+        $override = ContentModerationSetting::getValue('config_override', []) ?: [];
+        $quality = is_array($override['quality'] ?? null)
+            ? $override['quality']
+            : (array) config('content_moderation.quality', []);
+        $upload = ContentModerationSetting::getValue('upload_config', []) ?: [];
+        $allCats = array_keys(config('content_moderation.categories', []));
+        $disabled = ContentModerationSetting::getValue('disabled_categories', []) ?: [];
+        $enabled = ContentModerationSetting::getValue('enabled_categories', []) ?: [];
+        if ($enabled === [] && $disabled === []) {
+            $enabled = $allCats;
+        }
+
+        return $this->normalizeModerationSettings([
+            'enabled' => (bool) ($override['enabled'] ?? config('content_moderation.enabled', true)),
+            'confidence_threshold' => (int) ($override['confidence_threshold'] ?? config('content_moderation.confidence_threshold', 70)),
+            'min_word_count' => (int) ($quality['min_word_count'] ?? 500),
+            'block_on_quality_failure' => (bool) ($quality['block_on_quality_failure'] ?? false),
+            'extra_keywords' => ContentModerationSetting::getValue('extra_keywords', []) ?: [],
+            'exceptions' => ContentModerationSetting::getValue('exceptions', []) ?: [],
+            'disabled_categories' => $disabled,
+            'enabled_categories' => $enabled,
+            'uploads_enabled' => (bool) ($upload['enabled'] ?? config('content_upload.enabled', true)),
+            'retention_months' => (int) ($upload['retention_months'] ?? config('content_upload.retention_months', 6)),
+            'scheduling_enabled' => (bool) data_get($upload, 'scheduling.enabled', config('content_upload.scheduling.enabled', true)),
+            'require_same_language' => (bool) data_get($upload, 'placement.require_same_language', config('content_upload.placement.require_same_language', false)),
+            'min_uniqueness' => (int) data_get($upload, 'evaluation.min_uniqueness', config('content_upload.evaluation.min_uniqueness', 50)),
+        ]);
+    }
+
+    /**
+     * @param  array<string, mixed>  $settings
+     * @return array<string, mixed>
+     */
+    private function normalizeModerationSettings(array $settings): array
+    {
+        foreach (['extra_keywords', 'exceptions', 'disabled_categories', 'enabled_categories'] as $key) {
+            $values = array_values(array_filter(array_map(
+                static fn ($value) => trim((string) $value),
+                is_array($settings[$key] ?? null) ? $settings[$key] : []
+            ), static fn (string $value) => $value !== ''));
+            sort($values);
+            $settings[$key] = $values;
+        }
+
+        $settings['enabled'] = (bool) $settings['enabled'];
+        $settings['confidence_threshold'] = (int) $settings['confidence_threshold'];
+        $settings['min_word_count'] = (int) $settings['min_word_count'];
+        $settings['block_on_quality_failure'] = (bool) $settings['block_on_quality_failure'];
+        $settings['uploads_enabled'] = (bool) $settings['uploads_enabled'];
+        $settings['retention_months'] = (int) $settings['retention_months'];
+        $settings['scheduling_enabled'] = (bool) $settings['scheduling_enabled'];
+        $settings['require_same_language'] = (bool) $settings['require_same_language'];
+        $settings['min_uniqueness'] = (int) $settings['min_uniqueness'];
+
+        ksort($settings);
+
+        return $settings;
     }
 
     /**

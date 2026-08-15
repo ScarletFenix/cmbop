@@ -107,7 +107,7 @@ class ContentSubmissionController extends Controller
                 ->where('id', $data['replace_id'])
                 ->where('user_id', auth()->id())
                 ->first();
-            if ($replace?->isExpired()) {
+            if ($replace?->isUnusedExpired()) {
                 return response()->json([
                     'success' => false,
                     'title' => 'Expired',
@@ -181,7 +181,7 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
         }
 
-        if ($submission->isExpired()) {
+        if ($submission->isUnusedExpired()) {
             return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
         }
 
@@ -326,7 +326,7 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
         }
 
-        if ($submission->isExpired()) {
+        if ($submission->isUnusedExpired()) {
             return response()->json([
                 'success' => false,
                 'message' => 'Expired articles are preview only. The original file cannot be edited.',
@@ -380,7 +380,7 @@ class ContentSubmissionController extends Controller
             return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
         }
 
-        if ($submission->isExpired()) {
+        if ($submission->isUnusedExpired()) {
             return response()->json(['success' => false, 'message' => 'Expired articles are preview only. The original file cannot be edited.'], 422);
         }
 
@@ -512,6 +512,11 @@ class ContentSubmissionController extends Controller
             $data['feature_image_url'] = $img;
         } elseif (array_key_exists('feature_image_url', $data)) {
             $data['feature_image_url'] = null;
+        }
+
+        if (array_key_exists('feature_image_url', $data)
+            && (string) ($data['feature_image_url'] ?? '') !== (string) ($submission->feature_image_url ?? '')) {
+            $contentChanged = true;
         }
 
         if (($data['publication_mode'] ?? null) === 'scheduled' || ! empty($data['scheduled_date'])) {

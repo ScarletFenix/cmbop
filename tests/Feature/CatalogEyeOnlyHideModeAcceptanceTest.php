@@ -118,6 +118,7 @@ class CatalogEyeOnlyHideModeAcceptanceTest extends TestCase
         $this->assertStringNotContainsString('Dual Mask Brand', $html);
         $this->assertStringNotContainsString('dual-mask.example', $html);
         $this->assertStringContainsString('inCatalogHideMode: true', $html);
+        $this->assertMatchesRegularExpression('/id="catalogResults"[^>]*data-catalog-hide-mode="1"/', $html);
     }
 
     // —— Reveal API + clear ——————————————————————————————————————
@@ -152,7 +153,7 @@ class CatalogEyeOnlyHideModeAcceptanceTest extends TestCase
         $this->assertStringNotContainsString('cleared-open.example', $hidden);
 
         $this->actingAs($admin)
-            ->post(route('admin.catalog-activity.clear-copy-hide', $advertiser->id))
+            ->post(route('admin.catalog-activity.lift-hide', $advertiser->id))
             ->assertRedirect();
 
         $advertiser->refresh();
@@ -168,6 +169,7 @@ class CatalogEyeOnlyHideModeAcceptanceTest extends TestCase
         $this->assertStringNotContainsString('catalog-url-eye', $open);
         $this->assertStringNotContainsString('catalog-hide-mode-banner', $open);
         $this->assertStringContainsString('inCatalogHideMode: false', $open);
+        $this->assertMatchesRegularExpression('/id="catalogResults"[^>]*data-catalog-hide-mode="0"/', $open);
 
         $this->actingAs($advertiser)
             ->postJson(route('advertiser.catalog.reveal-url', $site->id))
@@ -194,6 +196,7 @@ class CatalogEyeOnlyHideModeAcceptanceTest extends TestCase
         $this->assertStringContainsString('expired-open.example', $html);
         $this->assertStringNotContainsString('catalog-url-eye', $html);
         $this->assertStringNotContainsString('catalog-hide-mode-banner', $html);
+        $this->assertMatchesRegularExpression('/id="catalogResults"[^>]*data-catalog-hide-mode="0"/', $html);
     }
 
     // —— Leave alone ————————————————————————————————————————————

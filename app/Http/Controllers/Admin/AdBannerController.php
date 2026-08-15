@@ -106,7 +106,9 @@ class AdBannerController extends Controller
         }
 
         $banner->update($data);
-        $this->log('banner.updated', $banner, 'updated banner');
+        if ($request->hasFile('image') || $banner->wasChanged()) {
+            $this->log('banner.updated', $banner, 'updated banner');
+        }
 
         $warning = $this->unwiredWarning($data['placement'] ?? '');
 

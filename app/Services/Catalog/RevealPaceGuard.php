@@ -126,6 +126,18 @@ class RevealPaceGuard
             .'contact us via chat or email '.$email.'.';
     }
 
+    /**
+     * Short wait copy for the /go redirect (eye AJAX uses the same idea).
+     */
+    public static function slowUserMessage(int $wait = 3): string
+    {
+        $wait = max(1, $wait);
+
+        return $wait <= 10
+            ? 'One moment… try opening that site again in a few seconds.'
+            : 'You are opening addresses faster than we serve them. Try again in about '.$wait.' seconds.';
+    }
+
     public function countWithin(User $user, int $minutes): int
     {
         return $this->countWithinSeconds($user, max(1, $minutes) * 60);

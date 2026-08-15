@@ -11,8 +11,24 @@ namespace App\Services\ContentModeration;
  */
 class ContentModerationEngine
 {
-    /** Cap policy haystack so a 10 MB article cannot timeout the upload request. */
-    private const SCORE_TEXT_CHARS = 200000;
+    /** Per-window cap so a 10 MB article cannot timeout one regex pass. */
+    public const SCORE_TEXT_CHARS = 200000;
+
+    /** Overlap so a keyword cannot hide on a window boundary ("cas" | "ino"). */
+    public const SCORE_TEXT_OVERLAP = 128;
+
+    /** Max windows scored in full. Beyond this the article is fail-closed. */
+    public const SCORE_TEXT_WINDOWS = 20;
+
+    public static function windowStep(): int
+    {
+        return self::SCORE_TEXT_CHARS - self::SCORE_TEXT_OVERLAP;
+    }
+
+    public static function maxScannableChars(): int
+    {
+        return self::SCORE_TEXT_CHARS + (self::SCORE_TEXT_WINDOWS - 1) * self::windowStep();
+    }
 
     /**
      * @param  array<string, mixed>  $categories
@@ -36,16 +52,86 @@ class ContentModerationEngine
         array $extraKeywords = [],
         array $exceptions = [],
     ): array {
-        if (mb_strlen($text) > self::SCORE_TEXT_CHARS) {
-            $text = mb_substr($text, 0, self::SCORE_TEXT_CHARS);
+        $merged = [
+            'scores' => [],
+            'max_confidence' => 0,
+            'detected_category' => null,
+            'signals' => ['hits' => [], 'blocked_urls' => []],
+            'matched_terms' => [],
+            'blocked_urls' => [],
+        ];
+
+        foreach ($this->policyTextWindows($text) as $window) {
+            $merged = $this->mergeScoreResults($merged, $this->scoreWindow(
+                $title,
+                $window,
+                $links,
+                $categories,
+                $extraKeywords,
+                $exceptions,
+            ));
         }
 
+        return $merged;
+    }
+
+    /**
+     * @return list<string>
+     */
+    public function policyTextWindows(string $text): array
+    {
+        $len = mb_strlen($text);
+        if ($len <= self::SCORE_TEXT_CHARS) {
+            return [$text];
+        }
+
+        $step = self::windowStep();
+        $windows = [];
+        for ($offset = 0; $offset < $len; $offset += $step) {
+            $windows[] = mb_substr($text, $offset, self::SCORE_TEXT_CHARS);
+            if (count($windows) >= self::SCORE_TEXT_WINDOWS) {
+                break;
+            }
+            if ($offset + self::SCORE_TEXT_CHARS >= $len) {
+                break;
+            }
+        }
+
+        return $windows;
+    }
+
+    /**
+     * @param  array<string, mixed>  $categories
+     * @param  array<int, string|array{url?:string,anchor?:string}>  $links
+     * @param  array<int, string>  $extraKeywords
+     * @param  array<int, string>  $exceptions
+     * @return array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }
+     */
+    protected function scoreWindow(
+        string $title,
+        string $text,
+        array $links,
+        array $categories,
+        array $extraKeywords,
+        array $exceptions,
+    ): array {
         $rawHaystack = mb_strtolower($title."\n".$text);
         $haystack = $this->applyExceptions($this->deobfuscate($rawHaystack), $exceptions);
         $urlStrings = $this->normalizeLinkList($links);
         $urlStrings = $this->enrichLinksFromContent($urlStrings, $haystack, $categories);
         $linkHosts = array_map(fn (string $u) => $this->hostForMatch($u), $urlStrings);
         $linkBlob = mb_strtolower(implode(' ', array_merge($urlStrings, $linkHosts)));
+        if ($linkBlob !== '') {
+            $haystack = trim($haystack."\n".$this->deobfuscate($linkBlob));
+        }
+        $tightHaystack = $this->tightenHaystack($haystack);
 
         $scores = [];
         $signals = ['hits' => []];
@@ -70,7 +156,7 @@ class ContentModerationEngine
                 if ($kw === '') {
                     continue;
                 }
-                $count = $this->countTerm($haystack, $kw);
+                $count = $this->countTerm($haystack, $kw, $tightHaystack);
                 if ($count > 0) {
                     // One clear restricted keyword is enough to fail the default threshold (70).
                     $points += min(95, 78 + ($count - 1) * 6);
@@ -82,7 +168,7 @@ class ContentModerationEngine
 
             foreach ($cat['intent_phrases'] ?? [] as $phrase) {
                 $phrase = mb_strtolower(trim((string) $phrase));
-                if ($phrase !== '' && str_contains($haystack, $phrase)) {
+                if ($phrase !== '' && $this->phrasePresent($haystack, $tightHaystack, $phrase)) {
                     $points += 85;
                     $hits++;
                     $matched[] = $phrase;
@@ -147,7 +233,7 @@ class ContentModerationEngine
         $customHits = 0;
         foreach ($extraKeywords as $extra) {
             $extra = mb_strtolower(trim((string) $extra));
-            if ($extra !== '' && $this->countTerm($haystack, $extra) > 0) {
+            if ($extra !== '' && $this->countTerm($haystack, $extra, $tightHaystack) > 0) {
                 $customHits++;
                 $customMatched[] = $extra;
             }
@@ -190,6 +276,80 @@ class ContentModerationEngine
     }
 
     /**
+     * @param  array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }  $into
+     * @param  array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }  $part
+     * @return array{
+     *   scores: array<string,int>,
+     *   max_confidence:int,
+     *   detected_category:?string,
+     *   signals:array,
+     *   matched_terms: array<int, string>,
+     *   blocked_urls: array<int, string>
+     * }
+     */
+    protected function mergeScoreResults(array $into, array $part): array
+    {
+        foreach ($part['scores'] as $key => $conf) {
+            $into['scores'][$key] = max((int) ($into['scores'][$key] ?? 0), (int) $conf);
+        }
+        arsort($into['scores']);
+        $into['max_confidence'] = 0;
+        $into['detected_category'] = null;
+        foreach ($into['scores'] as $key => $conf) {
+            if ($conf > $into['max_confidence']) {
+                $into['max_confidence'] = $conf;
+                $into['detected_category'] = $conf > 0 ? $key : null;
+            }
+        }
+        $into['matched_terms'] = array_values(array_unique(array_merge(
+            $into['matched_terms'],
+            $part['matched_terms']
+        )));
+        $into['blocked_urls'] = array_values(array_unique(array_merge(
+            $into['blocked_urls'],
+            $part['blocked_urls']
+        )));
+        $into['signals']['blocked_urls'] = $into['blocked_urls'];
+        foreach ($part['signals']['hits'] ?? [] as $key => $hit) {
+            $existing = $into['signals']['hits'][$key] ?? null;
+            if (! is_array($existing)) {
+                $into['signals']['hits'][$key] = $hit;
+
+                continue;
+            }
+            $into['signals']['hits'][$key] = [
+                'term_hits' => max((int) ($existing['term_hits'] ?? 0), (int) ($hit['term_hits'] ?? 0)),
+                'confidence' => max((int) ($existing['confidence'] ?? 0), (int) ($hit['confidence'] ?? 0)),
+                'matched_terms' => array_values(array_unique(array_merge(
+                    $existing['matched_terms'] ?? [],
+                    $hit['matched_terms'] ?? []
+                ))),
+                'blocked_urls' => array_values(array_unique(array_merge(
+                    $existing['blocked_urls'] ?? [],
+                    $hit['blocked_urls'] ?? []
+                ))),
+                'hard_hit' => (bool) ($existing['hard_hit'] ?? false) || (bool) ($hit['hard_hit'] ?? false),
+            ];
+        }
+
+        return $into;
+    }
+
+    /**
      * @param  array<int, string|array{url?:string,anchor?:string}|mixed>  $links
      * @return list<string>
      */
@@ -198,9 +358,9 @@ class ContentModerationEngine
         $out = [];
         foreach ($links as $link) {
             if (is_string($link)) {
-                $url = trim($link);
+                $url = $this->percentDecode(trim($link));
             } elseif (is_array($link)) {
-                $url = trim((string) ($link['url'] ?? ''));
+                $url = $this->percentDecode(trim((string) ($link['url'] ?? '')));
             } else {
                 continue;
             }
@@ -224,6 +384,7 @@ class ContentModerationEngine
 
     public function hostForMatch(string $url): string
     {
+        $url = $this->percentDecode($url);
         $host = parse_url($url, PHP_URL_HOST);
         if (! is_string($host) || $host === '') {
             // Bare domain / path fragments
@@ -232,6 +393,12 @@ class ContentModerationEngine
         }
 
         $host = mb_strtolower($host);
+        if (function_exists('idn_to_ascii')) {
+            $ascii = idn_to_ascii($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+            if (is_string($ascii) && $ascii !== '') {
+                $host = mb_strtolower($ascii);
+            }
+        }
         if (str_starts_with($host, 'www.')) {
             $host = substr($host, 4);
         }
@@ -379,8 +546,88 @@ class ContentModerationEngine
         // "stake . com" / "bet365 . com"
         $text = preg_replace('/(\w)\s*\.\s*(\w)/u', '$1.$2', $text) ?? $text;
         $text = str_ireplace(['hxxps://', 'hxxp://', 'h**ps://'], ['https://', 'http://', 'https://'], $text);
+        // Soft hyphen / zero-width / bidi marks used to split "casino" into "cas<zw>ino".
+        $text = preg_replace(
+            '/[\x{00AD}\x{034F}\x{061C}\x{180E}\x{200B}-\x{200F}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{206F}\x{FEFF}\x{FFF9}-\x{FFFB}]/u',
+            '',
+            $text
+        ) ?? $text;
 
-        return $text;
+        if (class_exists(\Normalizer::class)) {
+            $normalized = \Normalizer::normalize($text, \Normalizer::FORM_KD);
+            if (is_string($normalized) && $normalized !== '') {
+                $text = $normalized;
+            }
+        }
+        // Combining slashes / accents used to hide "casino" as "c̸a̸s̸i̸n̸o̸".
+        $text = preg_replace('/\p{Mn}+/u', '', $text) ?? $text;
+        // After NFKD, fullwidth %HH becomes ASCII so cas％６９no → casino.
+        $text = $this->percentDecode($text);
+
+        $text = strtr($text, self::latinConfusables());
+
+        return mb_strtolower($text);
+    }
+
+    /**
+     * Cyrillic / Greek / other lookalikes used to hide Latin keywords ("caѕino").
+     *
+     * @return array<string, string>
+     */
+    protected static function latinConfusables(): array
+    {
+        return [
+            'а' => 'a', 'е' => 'e', 'о' => 'o', 'р' => 'p', 'с' => 'c',
+            'у' => 'y', 'х' => 'x', 'і' => 'i', 'ј' => 'j', 'ѕ' => 's',
+            'ԁ' => 'd', 'ɡ' => 'g', 'ԛ' => 'q', 'ԝ' => 'w',
+            'α' => 'a', 'ο' => 'o', 'ρ' => 'p', 'τ' => 't', 'υ' => 'y',
+            'χ' => 'x', 'ι' => 'i', 'ν' => 'v', 'η' => 'n', 'κ' => 'k',
+            'ϲ' => 'c', 'ᴄ' => 'c', 'ꜱ' => 's',
+        ];
+    }
+
+    /**
+     * Join letter-split evasions ("cas-ino", "c a s i n o") without
+     * destroying hyphen boundaries on the original haystack.
+     */
+    public function tightenHaystack(string $haystack): string
+    {
+        return preg_replace('/(?<=\p{L})[\s\-\._]+(?=\p{L})/u', '', $haystack) ?? $haystack;
+    }
+
+    /**
+     * Digit / symbol substitutions used to hide keywords ("casin0", "sl0ts").
+     */
+    public function leetFold(string $haystack): string
+    {
+        return strtr($haystack, [
+            '0' => 'o',
+            '1' => 'i',
+            '3' => 'e',
+            '4' => 'a',
+            '5' => 's',
+            '7' => 't',
+            '@' => 'a',
+            '$' => 's',
+        ]);
+    }
+
+    /**
+     * Unfold %69 / %2569 cloaking in URLs, filenames, and body copy.
+     */
+    public function percentDecode(string $text): string
+    {
+        $decoded = $text;
+        for ($i = 0; $i < 3; $i++) {
+            $next = rawurldecode($decoded);
+            $next = str_replace("\0", '', $next);
+            if ($next === $decoded) {
+                break;
+            }
+            $decoded = $next;
+        }
+
+        return $decoded;
     }
 
     /**
@@ -408,7 +655,21 @@ class ContentModerationEngine
         ), static fn ($k) => $k !== '')));
     }
 
-    protected function countTerm(string $haystack, string $term): int
+    protected function countTerm(string $haystack, string $term, ?string $tightHaystack = null): int
+    {
+        $count = 0;
+        foreach (array_filter([$haystack, $tightHaystack]) as $candidate) {
+            $count = max($count, $this->countTermIn($candidate, $term));
+            $leet = $this->leetFold($candidate);
+            if ($leet !== $candidate) {
+                $count = max($count, $this->countTermIn($leet, $term));
+            }
+        }
+
+        return $count;
+    }
+
+    protected function countTermIn(string $haystack, string $term): int
     {
         if (str_contains($term, ' ')) {
             return substr_count($haystack, $term);
@@ -416,6 +677,22 @@ class ContentModerationEngine
 
         // Unicode-aware word boundaries; also catch glued variants like "casino!" already via \b.
         return preg_match_all('/(?<![\p{L}\p{N}_])'.preg_quote($term, '/').'(?![\p{L}\p{N}_])/u', $haystack) ?: 0;
+    }
+
+    protected function phrasePresent(string $haystack, string $tightHaystack, string $phrase): bool
+    {
+        $leetPhrase = $this->leetFold($phrase);
+        if (str_contains($haystack, $phrase) || str_contains($this->leetFold($haystack), $leetPhrase)) {
+            return true;
+        }
+
+        $tightPhrase = preg_replace('/[\s\-\._]+/u', '', $phrase) ?? $phrase;
+        if ($tightPhrase === '') {
+            return false;
+        }
+
+        return str_contains($tightHaystack, $tightPhrase)
+            || str_contains($this->leetFold($tightHaystack), $this->leetFold($tightPhrase));
     }
 
     /**

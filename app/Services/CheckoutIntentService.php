@@ -59,6 +59,40 @@ class CheckoutIntentService
         $this->upsertIntent($referenceCode, $attributes);
     }
 
+    /**
+     * Persist THIS leftover's promo snapshot after the live hold was released.
+     * Must not write the bonus cache / row hold — that made cancel/expiry
+     * refundReserved() another checkout's reserve.
+     *
+     * @param  array<string, mixed>  $package
+     */
+    public function storeLeftoverBonusSnapshot(
+        string $referenceCode,
+        int $userId,
+        array $package,
+        float $bonus,
+        int $hours = 720
+    ): void {
+        $bonus = round($bonus, 2);
+        if ($userId <= 0 || $bonus <= 0.009) {
+            return;
+        }
+
+        $package['user_id'] = $userId;
+        $package['reference_code'] = $referenceCode;
+        $package['bonus_applied'] = $bonus;
+        $package['lines'] = [];
+        $package['stripe_session_id'] = '';
+
+        Cache::put(self::pendingCheckoutCacheKey($referenceCode), $package, now()->addHours($hours));
+        $this->upsertIntent($referenceCode, [
+            'user_id' => $userId,
+            'package' => $package,
+            'bonus_applied' => 0,
+            'expires_at' => now()->addHours($hours),
+        ]);
+    }
+
     public function rememberBonus(int $userId, string $referenceCode, float $amount, int $hours = 720): void
     {
         $amount = round($amount, 2);

@@ -74,6 +74,15 @@ class SendNewSitesDigest extends Command
                     continue;
                 }
 
+                // Hide mode dual-masks catalog names. Do not email a fresh
+                // name list, and do not advance the clock — they get the
+                // digest after the window ends.
+                if ($advertiser->inCatalogHideMode()) {
+                    $this->line('- skipped (catalog hide mode) advertiser #'.$advertiser->id);
+
+                    continue;
+                }
+
                 $sites = $selector->forUser($advertiser);
 
                 if (! $selector->minimumMet($sites)) {

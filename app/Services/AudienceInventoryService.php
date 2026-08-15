@@ -510,7 +510,7 @@ class AudienceInventoryService
     protected function pickerQuery(string $roleName): Builder
     {
         $query = $this->queryForRole($roleName);
-        $this->excludeStaffAccounts($query);
+        $this->constrainUsableEmail($this->excludeStaffAccounts($query));
 
         return $query
             ->setEagerLoads([])
@@ -591,6 +591,34 @@ class AudienceInventoryService
     }
 
     /**
+     * @return list<string>
+     */
+    public static function staffRoleNames(): array
+    {
+        return ['admin', 'marketing'];
+    }
+
+    /**
+     * True when the account has a staff role, even if advertiser/publisher
+     * is still attached and is the active role. Matches excludeStaffAccounts().
+     * User::isStaff() only looks at activeRole() and would miss that case.
+     */
+    public static function userHasStaffRole(?User $user): bool
+    {
+        if ($user === null || (int) $user->id < 1) {
+            return false;
+        }
+
+        try {
+            return $user->roles()
+                ->whereIn('roles.name', self::staffRoleNames())
+                ->exists();
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    /**
      * Inventory + campaigns never email staff, including dual-role
      * admin/marketing accounts that still have advertiser or publisher.
      * Reminder queries keep queryForRole() as-is so deposit / add-site /
@@ -599,7 +627,7 @@ class AudienceInventoryService
     protected function excludeStaffAccounts(Builder $query): Builder
     {
         return $query->whereDoesntHave('roles', function (Builder $q) {
-            $q->whereIn('roles.name', ['admin', 'marketing']);
+            $q->whereIn('roles.name', self::staffRoleNames());
         });
     }
 
