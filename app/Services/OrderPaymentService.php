@@ -586,6 +586,50 @@ class OrderPaymentService
     }
 
     /**
+     * Cancel leftovers only when the articles are free for a new checkout
+     * afterwards. A concurrent paid claim or leftover that is still attached
+     * rolls the cancel back so Pay again stays. $keepReferenceCode leaves the
+     * in-flight Stripe-first package in place when forgetting after commit.
+     *
+     * @param  array<int, int|string>  $submissionIds
+     */
+    public function replaceUnpaidLeftoversIfStillOrderable(
+        int $userId,
+        array $submissionIds,
+        ?string $keepReferenceCode = null,
+        bool $forgetPackages = true
+    ): bool {
+        $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
+        if ($userId <= 0 || $submissionIds === []) {
+            return true;
+        }
+
+        try {
+            DB::transaction(function () use ($userId, $submissionIds) {
+                $this->replaceUnpaidLeftoversForSubmissions($userId, $submissionIds, null, false);
+                foreach ($submissionIds as $submissionId) {
+                    $fresh = ContentSubmission::query()->whereKey($submissionId)->lockForUpdate()->first();
+                    if (! $fresh || ! $fresh->canBeOrdered() || ! $fresh->isReadyForCheckout()) {
+                        throw new \RuntimeException('leftover-replace-unready');
+                    }
+                }
+            });
+        } catch (\RuntimeException $e) {
+            if ($e->getMessage() !== 'leftover-replace-unready') {
+                throw $e;
+            }
+
+            return false;
+        }
+
+        if ($forgetPackages) {
+            $this->forgetPendingCheckoutsForSubmissions($userId, $submissionIds, $keepReferenceCode);
+        }
+
+        return true;
+    }
+
+    /**
      * Drop Stripe-first packages that still list these articles. Cancel URL
      * keeps the package when there are no leftover rows; a later checkout of
      * one line must not let a late webhook rematerialize the rest.
@@ -1950,7 +1994,10 @@ class OrderPaymentService
      *
      * Cancelled leftovers (replaced by a later checkout) are not owed. A
      * multi-site Stripe session that still totals the original package must
-     * not match and mark the leftover sibling paid.
+     * not match and mark the leftover sibling paid. Already-paid siblings
+     * are not owed either — Pay again charges only the failed rows, and
+     * counting the paid line made that capture look short and wallet-credit
+     * instead of marking the leftover paid.
      *
      * @param  Collection<int, Order>  $orders
      * @param  array<string, mixed>  $meta
@@ -1958,7 +2005,8 @@ class OrderPaymentService
     private function expectedStripeEurosForOrders(Collection $orders, array $meta): float
     {
         $total = round((float) $orders
-            ->filter(fn (Order $order) => ! in_array((string) $order->status, ['cancelled', 'completed'], true))
+            ->filter(fn (Order $order) => ! in_array((string) $order->status, ['cancelled', 'completed'], true)
+                && (string) $order->payment_status !== 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
         $appliedCredit = round((float) ($meta['unfulfilled_credit_applied'] ?? 0), 2);
