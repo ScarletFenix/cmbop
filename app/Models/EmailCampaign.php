@@ -274,6 +274,13 @@ class EmailCampaign extends Model
                 continue;
             }
 
+            // Reconcile can flip this row to a terminal status before we
+            // dispatch. A no-op SendEmailCampaignJob still burns the queue.
+            if (in_array($campaign->status, [self::STATUS_SENT, self::STATUS_FAILED], true)
+                && ! $campaign->hasInFlightRecipients()) {
+                continue;
+            }
+
             if ($campaign->status === self::STATUS_SENT && $campaign->hasInFlightRecipients()) {
                 $campaign->finalizeIfIdle();
                 $campaign->refresh();
@@ -630,6 +637,7 @@ class EmailCampaign extends Model
         }
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
+        $attachedIds = self::healQueuedRecipientsWithTerminalLog();
         $rows = EmailCampaignRecipient::query()
             ->whereNull('email_log_id')
             ->where('updated_at', '<=', $cutoff)
@@ -643,6 +651,10 @@ class EmailCampaign extends Model
             ->get(['id', 'email_campaign_id', 'user_id', 'status', 'updated_at']);
 
         if ($rows->isEmpty()) {
+            foreach ($attachedIds as $id) {
+                static::query()->find($id)?->recountRecipientTotals();
+            }
+
             return;
         }
 
@@ -662,11 +674,15 @@ class EmailCampaign extends Model
             ->get()
             ->groupBy('dedupe_key');
 
+        $campaignIds = array_fill_keys($attachedIds, true);
+
         if ($logs->isEmpty()) {
+            foreach (array_keys($campaignIds) as $id) {
+                static::query()->find($id)?->recountRecipientTotals();
+            }
+
             return;
         }
-
-        $campaignIds = [];
 
         foreach ($rows as $row) {
             $group = $logs->get(EmailCampaignRecipient::dedupeKey(
@@ -739,41 +755,33 @@ class EmailCampaign extends Model
     }
 
     /**
-     * A queued row that already has a delivered/failed log FK is finished.
-     * Expire and reclaim both require a null FK, so these sat queued forever
-     * on a failed campaign.
+     * Queued + a terminal log FK is not in-flight. Expire used to skip
+     * those rows forever, so a failed campaign could keep a queued leftover.
+     *
+     * @return list<int>
      */
-    protected static function syncQueuedRecipientsWithAttachedLogs(): void
+    protected static function healQueuedRecipientsWithTerminalLog(): array
     {
-        try {
-            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())
-                || ! Schema::hasTable((new EmailLog)->getTable())) {
-                return;
-            }
-        } catch (\Throwable) {
-            return;
-        }
-
         $rows = EmailCampaignRecipient::query()
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNotNull('email_log_id')
             ->get(['id', 'email_campaign_id', 'email_log_id']);
 
         if ($rows->isEmpty()) {
-            return;
+            return [];
         }
 
         $logs = EmailLog::query()
-            ->whereIn('id', $rows->pluck('email_log_id')->unique()->filter()->all())
+            ->whereIn('id', $rows->pluck('email_log_id')->filter()->unique()->all())
             ->whereIn('status', [
                 EmailLog::STATUS_DELIVERED,
                 EmailLog::STATUS_FAILED,
             ])
-            ->get()
+            ->get(['id', 'status'])
             ->keyBy('id');
 
         if ($logs->isEmpty()) {
-            return;
+            return [];
         }
 
         $campaignIds = [];
@@ -785,10 +793,10 @@ class EmailCampaign extends Model
             }
 
             $delivered = $log->status === EmailLog::STATUS_DELIVERED;
-            $updated = EmailCampaignRecipient::query()
+            EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
-                ->where('email_log_id', $log->id)
+                ->where('email_log_id', (int) $log->id)
                 ->update([
                     'status' => $delivered
                         ? EmailCampaignRecipient::STATUS_DELIVERED
@@ -796,14 +804,10 @@ class EmailCampaign extends Model
                     'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
                 ]);
 
-            if ($updated) {
-                $campaignIds[(int) $row->email_campaign_id] = true;
-            }
+            $campaignIds[(int) $row->email_campaign_id] = true;
         }
 
-        foreach (array_keys($campaignIds) as $id) {
-            static::query()->find($id)?->recountRecipientTotals();
-        }
+        return array_keys($campaignIds);
     }
 
     /**
@@ -825,69 +829,40 @@ class EmailCampaign extends Model
             ->where('updated_at', '<=', $cutoff)
             ->get(['id', 'email_campaign_id', 'user_id']);
 
-        if ($expired->isNotEmpty()) {
-            EmailCampaignRecipient::query()
-                ->whereIn('id', $expired->pluck('id')->all())
-                ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
-                ->whereNull('email_log_id')
-                ->update([
-                    'status' => EmailCampaignRecipient::STATUS_SKIPPED,
-                    'skip_reason' => EmailCampaignRecipient::SKIP_STALE,
-                ]);
-
-            foreach ($expired->pluck('email_campaign_id')->unique()->filter()->all() as $id) {
-                static::query()->find($id)?->recountRecipientTotals();
-            }
-        }
-
-        self::failPendingLogsForStaleRecipients();
-    }
-
-    /**
-     * Retry pending-marks the Email Center row and clears the recipient FK.
-     * If that mailable is then lost, expire skipped the recipient but the
-     * log stayed pending — retry only works on failed logs.
-     *
-     * Do not Schema::hasTable('email_logs') here: recoverStalled() runs on
-     * Email Center page views, and that probe is counted as an email_logs
-     * query. Skip the table entirely when there are no stale-skip keys.
-     */
-    protected static function failPendingLogsForStaleRecipients(): void
-    {
-        try {
-            $keys = EmailCampaignRecipient::query()
-                ->where('status', EmailCampaignRecipient::STATUS_SKIPPED)
-                ->where('skip_reason', EmailCampaignRecipient::SKIP_STALE)
-                ->get(['email_campaign_id', 'user_id'])
-                ->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
-                    (int) $row->email_campaign_id,
-                    (int) $row->user_id
-                ))
-                ->unique()
-                ->values();
-        } catch (\Throwable) {
+        if ($expired->isEmpty()) {
             return;
         }
 
-        if ($keys->isEmpty()) {
-            return;
-        }
+        EmailCampaignRecipient::query()
+            ->whereIn('id', $expired->pluck('id')->all())
+            ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
+            ->whereNull('email_log_id')
+            ->update([
+                'status' => EmailCampaignRecipient::STATUS_SKIPPED,
+                'skip_reason' => EmailCampaignRecipient::SKIP_STALE,
+            ]);
 
-        $now = now();
+        $keys = $expired->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
+            (int) $row->email_campaign_id,
+            (int) $row->user_id
+        ))->unique()->values()->all();
 
         try {
-            foreach ($keys->chunk(500) as $chunk) {
+            if ($keys !== [] && Schema::hasTable((new EmailLog)->getTable())) {
                 EmailLog::query()
-                    ->whereIn('dedupe_key', $chunk->all())
+                    ->whereIn('dedupe_key', $keys)
                     ->where('status', EmailLog::STATUS_PENDING)
                     ->update([
                         'status' => EmailLog::STATUS_FAILED,
                         'error' => 'Expired: campaign mail was not confirmed',
-                        'updated_at' => $now,
                     ]);
             }
         } catch (\Throwable) {
             // Recipient expire still lets recount leave sending.
+        }
+
+        foreach ($expired->pluck('email_campaign_id')->unique()->filter()->all() as $id) {
+            static::query()->find($id)?->recountRecipientTotals();
         }
     }
 }
