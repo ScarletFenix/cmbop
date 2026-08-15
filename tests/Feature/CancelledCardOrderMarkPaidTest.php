@@ -2288,6 +2288,119 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount('REF-PARTIAL-PAY-AGAIN'), 0.01);
     }
 
+    public function test_pay_again_capture_marks_failed_sibling_when_other_line_already_paid(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $siteA = $this->makeSite($publisher, 'paid-sibling-a.example');
+        $siteB = $this->makeSite($publisher, 'failed-sibling-b.example');
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $articleA = $this->createApprovedSubmission(
+            $advertiser,
+            $siteA->id,
+            0,
+            'paid sibling article a',
+            'https://example.com/target-a'
+        );
+        $articleB = $this->createApprovedSubmission(
+            $advertiser,
+            $siteB->id,
+            1,
+            'failed sibling article b',
+            'https://example.com/target-b'
+        );
+
+        $orderA = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-SIBLING-PAY-AGAIN',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+            'paid_at' => now(),
+        ]);
+        $itemA = OrderItem::create([
+            'order_id' => $orderA->id,
+            'site_id' => $siteA->id,
+            'site_name' => $siteA->site_name,
+            'site_url' => $siteA->site_url,
+            'content_link' => 'https://example.com/article-a',
+            'content_submission_id' => $articleA->id,
+            'price' => 80,
+        ]);
+        $articleA->update([
+            'order_id' => $orderA->id,
+            'order_item_id' => $itemA->id,
+        ]);
+
+        $orderB = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-PAID-SIBLING-PAY-AGAIN',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $itemB = OrderItem::create([
+            'order_id' => $orderB->id,
+            'site_id' => $siteB->id,
+            'site_name' => $siteB->site_name,
+            'site_url' => $siteB->site_url,
+            'content_link' => 'https://example.com/article-b',
+            'content_submission_id' => $articleB->id,
+            'price' => 80,
+        ]);
+        $articleB->update([
+            'order_id' => $orderB->id,
+            'order_item_id' => $itemB->id,
+        ]);
+
+        $payments = app(OrderPaymentService::class);
+        $session = (object) [
+            'id' => 'cs_pay_again_paid_sibling',
+            'object' => 'checkout.session',
+            'amount_total' => 8000,
+            'payment_intent' => 'pi_pay_again_paid_sibling',
+            'metadata' => (object) [
+                'type' => 'order_payment',
+                'reference_code' => 'REF-PAID-SIBLING-PAY-AGAIN',
+                'expected_amount' => '80',
+                'user_id' => (string) $advertiser->id,
+                'bonus_applied' => '0',
+                'is_retry' => '1',
+            ],
+        ];
+
+        $created = $payments->finalizeStripeFirstCheckout('REF-PAID-SIBLING-PAY-AGAIN', $session);
+
+        $this->assertCount(1, $created);
+        $this->assertSame('paid', $orderA->fresh()->payment_status);
+        $this->assertSame('paid', $orderB->fresh()->payment_status);
+        $this->assertSame('pending', $orderB->fresh()->status);
+        $this->assertSame($orderB->id, (int) $articleB->fresh()->order_id);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount('REF-PAID-SIBLING-PAY-AGAIN'), 0.01);
+        $wallet = Wallet::query()
+            ->where('user_id', $advertiser->id)
+            ->where('role_id', Wallet::advertiserRoleId())
+            ->first();
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
+    }
+
     public function test_late_stripe_webhook_after_wallet_claim_does_not_fulfill_package_sibling(): void
     {
         config(['content_moderation.enabled' => false]);

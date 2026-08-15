@@ -1757,7 +1757,10 @@ class OrderPaymentService
      *
      * Cancelled leftovers (replaced by a later checkout) are not owed. A
      * multi-site Stripe session that still totals the original package must
-     * not match and mark the leftover sibling paid.
+     * not match and mark the leftover sibling paid. Already-paid siblings
+     * are not owed either — Pay again charges only the failed rows, and
+     * counting the paid line made that capture look short and wallet-credit
+     * instead of marking the leftover paid.
      *
      * @param  Collection<int, Order>  $orders
      * @param  array<string, mixed>  $meta
@@ -1765,7 +1768,8 @@ class OrderPaymentService
     private function expectedStripeEurosForOrders(Collection $orders, array $meta): float
     {
         $total = round((float) $orders
-            ->filter(fn (Order $order) => ! in_array((string) $order->status, ['cancelled', 'completed'], true))
+            ->filter(fn (Order $order) => ! in_array((string) $order->status, ['cancelled', 'completed'], true)
+                && (string) $order->payment_status !== 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
 
