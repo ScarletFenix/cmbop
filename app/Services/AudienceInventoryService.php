@@ -300,13 +300,18 @@ class AudienceInventoryService
     }
 
     /**
-     * Publishers whose listings are all inactive or who never listed a site.
+     * Publishers with no catalog-visible listing.
+     *
+     * Publisher archive keeps active=1 (so restore does not force a site live).
+     * Counting only active=1 therefore missed archived-only publishers.
+     * Match the advertiser catalog: active + verified + not archived + not
+     * leftover from a cancelled bulk.
      */
     public function queryPublishersNoActiveSites(): Builder
     {
         return $this->queryForRole('publisher')
             ->whereDoesntHave('sites', function (Builder $q) {
-                $q->where('active', 1);
+                $q->catalogVisible();
             });
     }
 
@@ -364,14 +369,18 @@ class AudienceInventoryService
 
     /**
      * Resolve a list/export/paginate key to a user query.
+     * Tab slugs and aliases are canonicalized first so collect/count cannot
+     * silently return an empty set for a known inventory tab.
      */
     public function queryForAudienceKey(string $audienceKey): Builder
     {
+        $audienceKey = self::canonicalAudienceKey($audienceKey) ?? $audienceKey;
+
         return match ($audienceKey) {
-            self::AUDIENCE_ADVERTISERS, 'advertiser' => $this->queryForRole('advertiser'),
-            self::AUDIENCE_PUBLISHERS, 'publisher' => $this->queryForRole('publisher'),
+            self::AUDIENCE_ADVERTISERS => $this->queryForRole('advertiser'),
+            self::AUDIENCE_PUBLISHERS => $this->queryForRole('publisher'),
             self::AUDIENCE_BOTH => $this->queryMarketplaceUsers(),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->queryAdvertisersNoOrders(),
+            self::AUDIENCE_ADVERTISERS_NO_ORDERS => $this->queryAdvertisersNoOrders(),
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->queryAdvertisersNoPaidOrders(),
             self::AUDIENCE_ADVERTISERS_PAID_ORDERS => $this->queryAdvertisersWithPaidOrders(),
             self::AUDIENCE_PUBLISHERS_NO_SITES => $this->queryPublishersNoSites(),
@@ -400,20 +409,12 @@ class AudienceInventoryService
      */
     public function collect(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        return match ($audience) {
-            self::AUDIENCE_ADVERTISERS => $this->applyRecipientScope($this->queryForRole('advertiser'), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS => $this->applyRecipientScope($this->queryForRole('publisher'), $includeUnverified)->get(),
-            self::AUDIENCE_BOTH => $this->applyRecipientScope($this->queryMarketplaceUsers(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->applyRecipientScope($this->queryAdvertisersNoOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersWithPaidOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->applyRecipientScope($this->queryPublishersNoSites(), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => $this->applyRecipientScope($this->queryPublishersNoActiveSites(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->applyRecipientScope($this->queryAdvertisersNeverDeposited(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->applyRecipientScope($this->queryAdvertisersDepositedNoOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_SELECTED => $this->querySelected($selectedIds, $includeUnverified)->get(),
-            default => collect(),
-        };
+        $key = self::canonicalAudienceKey($audience) ?? $audience;
+        if ($key === self::AUDIENCE_SELECTED) {
+            return $this->querySelected($selectedIds, $includeUnverified)->get();
+        }
+
+        return $this->applyRecipientScope($this->queryForAudienceKey($key), $includeUnverified)->get();
     }
 
     /**
@@ -425,21 +426,16 @@ class AudienceInventoryService
      */
     public function collectRecipientRows(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): Collection
     {
-        return match ($audience) {
-            self::AUDIENCE_ADVERTISERS => $this->recipientRowQuery($this->queryForRole('advertiser'), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS => $this->recipientRowQuery($this->queryForRole('publisher'), $includeUnverified)->get(),
-            self::AUDIENCE_BOTH => $this->recipientRowQuery($this->queryForRole('advertiser'), $includeUnverified)
-                ->get()
-                ->merge($this->recipientRowQuery($this->queryForRole('publisher'), $includeUnverified)->get())
-                ->unique('id')
-                ->values(),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->recipientRowQuery($this->queryAdvertisersNoOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->recipientRowQuery($this->queryAdvertisersNoPaidOrders(), $includeUnverified)->get(),
-            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->recipientRowQuery($this->queryPublishersNoSites(), $includeUnverified)->get(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->recipientRowQuery($this->queryAdvertisersNeverDeposited(), $includeUnverified)->get(),
-            self::AUDIENCE_SELECTED => $this->recipientRowQuery($this->querySelected($selectedIds, $includeUnverified), $includeUnverified, alreadyScoped: true)->get(),
-            default => collect(),
-        };
+        $key = self::canonicalAudienceKey($audience) ?? $audience;
+        if ($key === self::AUDIENCE_SELECTED) {
+            return $this->recipientRowQuery(
+                $this->querySelected($selectedIds, $includeUnverified),
+                $includeUnverified,
+                alreadyScoped: true
+            )->get();
+        }
+
+        return $this->recipientRowQuery($this->queryForAudienceKey($key), $includeUnverified)->get();
     }
 
     /**
@@ -449,20 +445,12 @@ class AudienceInventoryService
      */
     public function count(string $audience, ?array $selectedIds = null, bool $includeUnverified = false): int
     {
-        return match ($audience) {
-            self::AUDIENCE_ADVERTISERS => $this->advertiserCount($includeUnverified),
-            self::AUDIENCE_PUBLISHERS => $this->publisherCount($includeUnverified),
-            self::AUDIENCE_BOTH => $this->bothUniqueCount($includeUnverified),
-            self::AUDIENCE_ADVERTISERS_NO_ORDERS, self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT => $this->advertisersNoOrdersCount($includeUnverified),
-            self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS => $this->advertisersNoPaidOrdersCount($includeUnverified),
-            self::AUDIENCE_ADVERTISERS_PAID_ORDERS => $this->applyRecipientScope($this->queryAdvertisersWithPaidOrders(), $includeUnverified)->count(),
-            self::AUDIENCE_PUBLISHERS_NO_SITES => $this->publishersNoSitesCount($includeUnverified),
-            self::AUDIENCE_PUBLISHERS_NO_ACTIVE_SITES => $this->applyRecipientScope($this->queryPublishersNoActiveSites(), $includeUnverified)->count(),
-            self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED => $this->advertisersNeverDepositedCount($includeUnverified),
-            self::AUDIENCE_ADVERTISERS_DEPOSITED_NO_ORDERS => $this->applyRecipientScope($this->queryAdvertisersDepositedNoOrders(), $includeUnverified)->count(),
-            self::AUDIENCE_SELECTED => $this->querySelected($selectedIds, $includeUnverified)->count(),
-            default => 0,
-        };
+        $key = self::canonicalAudienceKey($audience) ?? $audience;
+        if ($key === self::AUDIENCE_SELECTED) {
+            return $this->querySelected($selectedIds, $includeUnverified)->count();
+        }
+
+        return $this->applyRecipientScope($this->queryForAudienceKey($key), $includeUnverified)->count();
     }
 
     public function bothUniqueCount(bool $includeUnverified = true): int
@@ -582,7 +570,7 @@ class AudienceInventoryService
             $query->whereDate('created_at', '<=', $filters['registered_to']);
         }
         if (filled($filters['country'] ?? null)) {
-            $query->where('country', $filters['country']);
+            $query->whereRaw('LOWER(country) = ?', [mb_strtolower(trim((string) $filters['country']))]);
         }
 
         $marketing = $filters['marketing'] ?? 'all';
@@ -597,10 +585,7 @@ class AudienceInventoryService
         }
 
         if (! empty($filters['exclude_dual_role'])) {
-            $other = $this->otherMarketplaceRole($audienceKey);
-            if ($other !== null) {
-                $query->whereDoesntHave('roles', fn (Builder $q) => $q->where('roles.name', $other));
-            }
+            $this->excludeDualRoleUsers($query, $audienceKey);
         }
 
         $sort = ($filters['sort'] ?? 'name') === 'registered' ? 'created_at' : 'name';
@@ -610,12 +595,32 @@ class AudienceInventoryService
         return $query;
     }
 
+    protected function excludeDualRoleUsers(Builder $query, string $audienceKey): void
+    {
+        $canonical = self::canonicalAudienceKey($audienceKey) ?? $audienceKey;
+
+        if ($canonical === self::AUDIENCE_BOTH) {
+            $query->where(function (Builder $q) {
+                $q->whereDoesntHave('roles', fn (Builder $r) => $r->where('roles.name', 'advertiser'))
+                    ->orWhereDoesntHave('roles', fn (Builder $r) => $r->where('roles.name', 'publisher'));
+            });
+
+            return;
+        }
+
+        $other = $this->otherMarketplaceRole($canonical);
+        if ($other !== null) {
+            $query->whereDoesntHave('roles', fn (Builder $q) => $q->where('roles.name', $other));
+        }
+    }
+
     protected function otherMarketplaceRole(string $audienceKey): ?string
     {
+        $audienceKey = self::canonicalAudienceKey($audienceKey) ?? $audienceKey;
+
         return match ($audienceKey) {
             self::AUDIENCE_ADVERTISERS,
             self::AUDIENCE_ADVERTISERS_NO_ORDERS,
-            self::AUDIENCE_ADVERTISERS_NEVER_CHECKED_OUT,
             self::AUDIENCE_ADVERTISERS_NO_PAID_ORDERS,
             self::AUDIENCE_ADVERTISERS_PAID_ORDERS,
             self::AUDIENCE_ADVERTISERS_NEVER_DEPOSITED,

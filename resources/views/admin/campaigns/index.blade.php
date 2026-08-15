@@ -34,7 +34,7 @@
         <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Advertisers available</div>
+                    <div class="text-muted small">Advertisers available (verified)</div>
                     <h3 class="mb-0">{{ number_format($stats['advertisers']) }}</h3>
                 </div>
             </div>
@@ -42,7 +42,7 @@
         <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Publishers available</div>
+                    <div class="text-muted small">Publishers available (verified)</div>
                     <h3 class="mb-0">{{ number_format($stats['publishers']) }}</h3>
                 </div>
             </div>
@@ -50,7 +50,7 @@
         <div class="col-md-4 col-xl">
             <div class="card border-0 shadow-sm h-100">
                 <div class="card-body">
-                    <div class="text-muted small">Unique combined</div>
+                    <div class="text-muted small">Unique combined (verified)</div>
                     <h3 class="mb-0">{{ number_format($stats['both_unique']) }}</h3>
                 </div>
             </div>

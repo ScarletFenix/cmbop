@@ -77,4 +77,18 @@ class AudienceInventoryKeysTest extends TestCase
         $this->assertSame('Advertisers', AudienceInventoryService::exportLabel('advertisers'));
         $this->assertSame('Advertisers + Publishers', AudienceInventoryService::exportLabel('both'));
     }
+
+    public function test_tab_slugs_canonicalize_to_the_same_campaign_keys(): void
+    {
+        $this->assertSame(
+            AudienceInventoryService::canonicalAudienceKey('no_orders'),
+            AudienceInventoryService::canonicalAudienceKey('advertisers_no_orders')
+        );
+        $this->assertSame(
+            AudienceInventoryService::canonicalAudienceKey('no_active_sites'),
+            AudienceInventoryService::canonicalAudienceKey('publishers_no_active_sites')
+        );
+        $this->assertSame('advertisers_no_orders', AudienceInventoryService::canonicalAudienceKey('no_orders'));
+        $this->assertSame('publishers_no_active_sites', AudienceInventoryService::canonicalAudienceKey('no_active_sites'));
+    }
 }
