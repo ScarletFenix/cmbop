@@ -362,14 +362,31 @@ class CatalogActivityController extends Controller
      */
     public function toggleExempt(int $user): RedirectResponse
     {
-        $model = User::findOrFail($user);
         $minutes = max(1, (int) config('catalog.url_reveal.pace.exemption_minutes', 60));
+        $result = $this->mutateLockedUser($user, function (User $model) use ($minutes) {
+            if ($model->catalog_reveal_exempt_until && $model->catalog_reveal_exempt_until->isFuture()) {
+                $model->catalog_reveal_exempt = false;
+                $model->catalog_reveal_exempt_until = null;
+                $model->save();
 
-        if ($model->catalog_reveal_exempt_until && $model->catalog_reveal_exempt_until->isFuture()) {
-            $model->catalog_reveal_exempt = false;
-            $model->catalog_reveal_exempt_until = null;
+                return ['grant' => false, 'model' => $model];
+            }
+
+            $until = now()->addMinutes($minutes);
+            $model->catalog_reveal_exempt = true;
+            $model->catalog_reveal_exempt_until = $until;
             $model->save();
 
+            return [
+                'grant' => true,
+                'model' => $model,
+                'until' => $until,
+                'minutes' => $minutes,
+            ];
+        });
+
+        $model = $result['model'];
+        if (! $result['grant']) {
             $this->logActivity(
                 'catalog_activity.exempt_toggled',
                 $model->email.' is back under the usual pace checks.',
@@ -383,25 +400,20 @@ class CatalogActivityController extends Controller
             );
         }
 
-        $until = now()->addMinutes($minutes);
-        $model->catalog_reveal_exempt = true;
-        $model->catalog_reveal_exempt_until = $until;
-        $model->save();
-
         $this->logActivity(
             'catalog_activity.exempt_toggled',
-            $model->email.' is trusted for '.$minutes.' minutes.',
+            $model->email.' is trusted for '.$result['minutes'].' minutes.',
             $model,
             [
                 'exempt' => true,
-                'exempt_until' => $until->toIso8601String(),
-                'minutes' => $minutes,
+                'exempt_until' => $result['until']->toIso8601String(),
+                'minutes' => $result['minutes'],
             ]
         );
 
         return back()->with(
             'success',
-            $model->email.' is trusted until '.$until->timezone(config('app.timezone'))->format('H:i').' ('.$minutes.' minutes).'
+            $model->email.' is trusted until '.$result['until']->timezone(config('app.timezone'))->format('H:i').' ('.$result['minutes'].' minutes).'
         );
     }
 

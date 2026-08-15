@@ -160,7 +160,16 @@ class AdminModerationOverrideTest extends TestCase
 
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $advertiser);
         $this->assertTrue($check['ok'], json_encode($check['failures']));
-        $this->assertTrue(ActivityLog::query()->where('action', 'moderation.overridden')->exists());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
+
+        $this->actingAs($admin)
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'News article about regulation, not a promo.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'moderation.overridden')->count());
     }
 
     public function test_title_change_after_override_revokes_the_pass(): void

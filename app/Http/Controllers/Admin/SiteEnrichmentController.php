@@ -227,6 +227,21 @@ class SiteEnrichmentController extends Controller
             'traffic' => 'nullable|integer|min:0|max:4294967295',
         ]);
 
+        $newDr = array_key_exists('dr', $data) ? $data['dr'] : $site->dr;
+        $newDa = array_key_exists('da', $data) ? $data['da'] : $site->da;
+        $newTraffic = array_key_exists('traffic', $data) ? $data['traffic'] : $site->traffic;
+        if ((bool) $site->metrics_manual
+            && (int) ($site->dr ?? 0) === (int) ($newDr ?? 0)
+            && (int) ($site->da ?? 0) === (int) ($newDa ?? 0)
+            && (int) ($site->traffic ?? 0) === (int) ($newTraffic ?? 0)) {
+            return response()->json([
+                'success' => true,
+                'message' => 'Manual metrics saved',
+                'run' => null,
+                'site' => $site->fresh(),
+            ]);
+        }
+
         $run = $enrichment->applyManualMetrics(
             $site,
             isset($data['dr']) ? (int) $data['dr'] : null,

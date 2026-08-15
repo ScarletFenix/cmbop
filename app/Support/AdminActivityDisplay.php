@@ -8,12 +8,16 @@ use App\Models\Blog;
 use App\Models\BulkSiteRequest;
 use App\Models\ContentSubmission;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\Invoice;
 use App\Models\Order;
+use App\Models\ProblemReport;
 use App\Models\Site;
 use App\Models\SiteAnnouncement;
+use App\Models\Suggestion;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Models\WebsiteSuggestion;
 use App\Models\Withdrawal;
 
 /**
@@ -144,6 +148,10 @@ class AdminActivityDisplay
     {
         if (! $log || in_array($log->action, self::DELETED_ACTIONS, true)) {
             return null;
+        }
+
+        if (str_starts_with((string) $log->action, 'withdrawal.batch_')) {
+            return route('admin.withdrawals');
         }
 
         $type = (string) $log->subject_type;
@@ -412,6 +420,10 @@ class AdminActivityDisplay
             ContentSubmission::class => isset($lookup['existingSubmissionIds'][$id])
                 ? route('admin.content-library.show', $id)
                 : null,
+            EmailCampaign::class => route('admin.campaigns.index'),
+            ProblemReport::class => route('admin.community.index', ['tab' => 'problems']),
+            Suggestion::class => route('admin.community.index', ['tab' => 'suggestions']),
+            WebsiteSuggestion::class => route('admin.community.index', ['tab' => 'websites']),
             default => null,
         };
     }

@@ -4,7 +4,9 @@ namespace Tests\Feature;
 
 use App\Models\ActivityLog;
 use App\Models\DepositRequest;
+use App\Models\EmailCampaign;
 use App\Models\Order;
+use App\Models\ProblemReport;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -238,6 +240,20 @@ class AdminActivityLogTest extends TestCase
         $this->assertStringContainsString('site.approved', $csv);
         $this->assertStringContainsString('Approved for export', $csv);
 
+        $this->makeLog([
+            'action' => 'catalog_pace_exempted',
+            'description' => 'Legacy pace code should export as the live action',
+            'subject_label' => 'Alias Export User',
+        ]);
+
+        $aliased = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export'))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringContainsString('catalog_activity.exempt_toggled', $aliased);
+        $this->assertStringNotContainsString('catalog_pace_exempted', $aliased);
+
         $marketerRole = Role::where('name', 'marketing')->firstOrFail();
         $marketer = User::factory()->create([
             'email_verified_at' => now(),
@@ -420,6 +436,41 @@ class AdminActivityLogTest extends TestCase
         $this->assertSame(1, substr_count($html, 'value="catalog_activity.exempt_toggled"'));
         $this->assertStringNotContainsString('value="catalog_pace_exempted"', $html);
         $this->assertStringContainsString('Toggled catalog pace exemption (2)', $html);
+    }
+
+    public function test_batch_payout_and_inbox_rows_have_labels_and_safe_links(): void
+    {
+        $this->makeLog([
+            'action' => 'withdrawal.batch_completed',
+            'description' => 'Batch marked withdrawals paid',
+            'subject_label' => 'PAYOUT-TEST-1',
+        ]);
+        $this->makeLog([
+            'action' => 'problem.report_updated',
+            'description' => 'Updated problem report #9',
+            'subject_type' => ProblemReport::class,
+            'subject_id' => 9,
+            'subject_label' => 'Checkout broken',
+        ]);
+        $this->makeLog([
+            'action' => 'campaign.queued',
+            'description' => 'Queued a campaign',
+            'subject_type' => EmailCampaign::class,
+            'subject_id' => 3,
+            'subject_label' => 'August promo',
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('Batch marked withdrawals paid', false)
+            ->assertSee('Updated problem report', false)
+            ->assertSee('Queued campaign', false)
+            ->getContent();
+
+        $this->assertStringContainsString(route('admin.withdrawals'), $html);
+        $this->assertStringContainsString(route('admin.community.index', ['tab' => 'problems']), $html);
+        $this->assertStringContainsString(route('admin.campaigns.index'), $html);
     }
 
     public function test_search_activate_does_not_match_deactivated(): void

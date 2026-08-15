@@ -1129,6 +1129,14 @@ class ContentModerationService
             $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
             $log = $this->currentOrNewLogForSubmission($submission);
 
+            if ($this->overrideAlreadyApplies($log, $submission, $notes, $decision)) {
+                $message = $decision === ContentSubmission::STATUS_APPROVED
+                    ? 'Article #'.$submission->id.' is already approved by override.'
+                    : 'Article #'.$submission->id.' is already rejected by override.';
+
+                return ['ok' => true, 'submission' => $submission->fresh(), 'message' => $message];
+            }
+
             $this->stampOverride($log, $submission, $admin, $notes, $decision);
             $this->logOverrideActivity($admin, $log, $submission, $notes, $decision);
 
@@ -1227,6 +1235,16 @@ class ContentModerationService
                 }
             }
 
+            if ($this->overrideAlreadyApplies($log, $submission, $notes, ContentSubmission::STATUS_APPROVED)) {
+                return [
+                    'ok' => true,
+                    'submission' => $submission?->fresh(),
+                    'message' => $submission
+                        ? 'Article #'.$submission->id.' is already approved by override.'
+                        : 'This scan is already approved by override.',
+                ];
+            }
+
             $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
             $this->logOverrideActivity($admin, $log, $submission, $notes, ContentSubmission::STATUS_APPROVED);
 
@@ -1322,6 +1340,28 @@ class ContentModerationService
                 'message' => 'Override reverted. The article was re-checked against current policy.',
             ];
         });
+    }
+
+    protected function overrideAlreadyApplies(
+        ContentModerationLog $log,
+        ?ContentSubmission $submission,
+        string $notes,
+        string $decision,
+    ): bool {
+        if (! $log->admin_override) {
+            return false;
+        }
+
+        $approved = $decision === ContentSubmission::STATUS_APPROVED;
+        if ((bool) $log->passed !== $approved) {
+            return false;
+        }
+
+        if (trim((string) $log->admin_notes) !== trim($notes)) {
+            return false;
+        }
+
+        return ! $submission || $this->overrideFingerprintMatches($log, $submission);
     }
 
     protected function overrideFingerprintMatches(ContentModerationLog $log, ContentSubmission $submission): bool

@@ -110,7 +110,7 @@ class ActivityLogController extends Controller
                     $this->csvCell($log->user_name),
                     $this->csvCell($log->user_email),
                     $this->csvCell($log->role),
-                    $this->csvCell($log->action),
+                    $this->csvCell(activity_action_canonical($log->action)),
                     $this->csvCell($log->subject_label),
                     $this->csvCell($log->description),
                     $this->csvCell(is_array($log->properties) ? json_encode($log->properties) : $log->properties),
