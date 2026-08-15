@@ -76,7 +76,7 @@ class PaymentController extends Controller
                 ],
             ]);
 
-        } catch (\Exception $e) {
+        } catch (\Throwable $e) {
             Log::error('Error fetching payments: '.$e->getMessage());
 
             return response()->json([
@@ -592,6 +592,22 @@ class PaymentController extends Controller
             ],
             $order->order_number
         );
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function attachInvoiceDocuments(Collection $orders): void
+    {
+        $links = app(AdminInvoiceLinks::class);
+        $byOrder = $links->forOrders($orders);
+
+        foreach ($orders as $order) {
+            $documents = $byOrder->get((int) $order->id, []);
+            $order->setAttribute('invoice_documents', $documents);
+            $primary = $links->primary($documents);
+            $order->setAttribute('invoice_url', data_get($primary, 'url'));
+        }
     }
 
     /**
