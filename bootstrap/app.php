@@ -123,7 +123,7 @@ return Application::configure(basePath: dirname(__DIR__))
 
         // Publisher catalog enrichment (metrics + screenshots) — non-blocking scheduled refresh
         $enrichFreq = config('site_enrichment.refresh_frequency', 'weekly');
-        $enrichCommand = $schedule->command('sites:enrich --stale --sync')
+        $enrichCommand = $schedule->command('sites:enrich --stale')
             ->withoutOverlapping()
             ->sendOutputTo(storage_path('logs/site-enrichment.log'));
 
