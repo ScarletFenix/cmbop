@@ -740,7 +740,10 @@ class CancelledCardOrderMarkPaidTest extends TestCase
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library.order', $submission))
-            ->assertRedirect(route('advertiser.content-library'));
+            ->assertRedirect(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]).'#library-row-'.$submission->id);
 
         $leftover->refresh();
         $this->assertSame('pending', $leftover->status);

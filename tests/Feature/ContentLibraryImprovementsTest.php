@@ -805,7 +805,10 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->actingAs($advertiser)
             ->from(route('advertiser.content-library'))
             ->get(route('advertiser.content-library.order', $submission))
-            ->assertRedirect(route('advertiser.content-library'))
+            ->assertRedirect(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]).'#library-row-'.$submission->id)
             ->assertSessionHas('error');
 
         $this->assertTrue(session()->missing('checkout_content_submission_id'));
@@ -2756,6 +2759,9 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertStringContainsString('function goToLibraryResult', $js);
         $this->assertStringContainsString('function libraryDestinationUrl', $js);
         $this->assertStringContainsString("availability: 'needs_fix'", $js);
+        $this->assertStringContainsString("availability === 'evaluating'", $js);
+        $this->assertStringContainsString("availability === 'published'", $js);
+        $this->assertStringContainsString('stays on Evaluating', $js);
         $this->assertStringContainsString('submission.needs_image_rights', $js);
         $this->assertStringContainsString('submission.ready === false', $js);
         $this->assertStringContainsString('if (stillApproved && sub.ready)', $js);

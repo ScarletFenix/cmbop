@@ -12,6 +12,7 @@ use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
 use App\Services\OrderPaymentService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -509,16 +510,15 @@ class ContentLibraryController extends Controller
                     ? ContentUploadService::imageRightsRequiredMessage()
                     : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
 
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $message);
+            return $this->redirectToLibraryChip($submission, $message);
         }
 
         if (! $submission->canOrderFromLibrary()) {
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $submission->libraryFixSummary()
-                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
+            return $this->redirectToLibraryChip(
+                $submission,
+                $submission->libraryFixSummary()
+                    ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.'
+            );
         }
 
         app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
@@ -534,9 +534,7 @@ class ContentLibraryController extends Controller
                     ? ContentUploadService::imageRightsRequiredMessage()
                     : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
 
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $message);
+            return $this->redirectToLibraryChip($submission, $message);
         }
 
         // Keep existing cart sites and any publication date already chosen at checkout.
@@ -640,5 +638,18 @@ class ContentLibraryController extends Controller
                 : null,
             'created_at' => optional($s->created_at)?->toDateTimeString(),
         ];
+    }
+
+    /**
+     * Failed Order must land on the chip that still lists the row.
+     * The default library URL is Available and hides leftovers / unready articles.
+     */
+    protected function redirectToLibraryChip(ContentSubmission $submission, string $message): RedirectResponse
+    {
+        $url = route('advertiser.content-library', $submission->staffApprovalLibraryParams());
+
+        return redirect()
+            ->to($url.'#library-row-'.$submission->id)
+            ->with('error', $message);
     }
 }

@@ -212,7 +212,10 @@ class ContentLibraryCatalogOrderTest extends TestCase
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library.order', $article))
-            ->assertRedirect(route('advertiser.content-library'))
+            ->assertRedirect(route('advertiser.content-library', [
+                'status' => 'all',
+                'availability' => 'needs_fix',
+            ]).'#library-row-'.$article->id)
             ->assertSessionHas('error', ContentUploadService::imageRightsRequiredMessage());
     }
 
