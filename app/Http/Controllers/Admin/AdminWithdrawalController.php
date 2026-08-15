@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Admin;
 use App\Http\Controllers\Controller;
 use App\Models\Withdrawal;
 use App\Services\ActivityLogger;
+use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Services\Wallet\ManualWithdrawalUnknownWalletException;
@@ -76,10 +77,16 @@ class AdminWithdrawalController extends Controller
             $perPage = (int) $request->get('per_page', 20);
             $withdrawals = $query->paginate(max(1, min($perPage, 100)));
 
-            $withdrawals->getCollection()->transform(function ($withdrawal) {
+            $invoiceLinks = app(AdminInvoiceLinks::class)->forWithdrawals($withdrawals->getCollection());
+
+            $withdrawals->getCollection()->transform(function ($withdrawal) use ($invoiceLinks) {
                 if (is_string($withdrawal->payment_details)) {
                     $withdrawal->payment_details = json_decode($withdrawal->payment_details, true);
                 }
+
+                $invoice = $invoiceLinks->get((int) $withdrawal->id);
+                $withdrawal->setAttribute('invoice', $invoice);
+                $withdrawal->setAttribute('invoice_url', $invoice['url'] ?? null);
 
                 return $withdrawal;
             });
@@ -117,6 +124,10 @@ class AdminWithdrawalController extends Controller
             if (is_string($withdrawal->payment_details)) {
                 $withdrawal->payment_details = json_decode($withdrawal->payment_details, true);
             }
+
+            $invoice = app(AdminInvoiceLinks::class)->forWithdrawals(collect([$withdrawal]))->get((int) $withdrawal->id);
+            $withdrawal->setAttribute('invoice', $invoice);
+            $withdrawal->setAttribute('invoice_url', $invoice['url'] ?? null);
 
             return response()->json([
                 'success' => true,

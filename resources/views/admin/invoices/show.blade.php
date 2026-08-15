@@ -62,12 +62,8 @@
                         <div class="col-md-4">
                             <span class="text-muted d-block">{{ $invoice->order_id ? 'Order' : 'Reference' }}</span>
                             <strong>
-                                @if($invoice->order_id)
-                                    <a href="{{ route('admin.orders.show', $invoice->order_id) }}">{{ $invoice->referenceLabel() }}</a>
-                                @elseif($depositId)
-                                    <a href="{{ route('admin.deposits.show', $depositId) }}">{{ $invoice->referenceLabel() }}</a>
-                                @elseif($withdrawalId)
-                                    <a href="{{ route('admin.withdrawals.show', $withdrawalId) }}">{{ $invoice->referenceLabel() }}</a>
+                                @if(!empty($relatedUrl))
+                                    <a href="{{ $relatedUrl }}">{{ $invoice->referenceLabel() }}</a>
                                 @else
                                     {{ $invoice->referenceLabel() }}
                                 @endif

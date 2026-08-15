@@ -101,16 +101,9 @@ class InvoiceController extends Controller
             'events' => fn ($q) => $q->latest()->limit(30),
         ]);
 
-        $depositId = (int) data_get($invoice->meta, 'deposit_request_id');
-        $withdrawalId = (int) data_get($invoice->meta, 'withdrawal_id');
-        if ($withdrawalId <= 0 && preg_match('/^WD-(\d+)$/', (string) $invoice->reference_code, $matches)) {
-            $withdrawalId = (int) $matches[1];
-        }
-
         return view('admin.invoices.show', [
             'invoice' => $invoice,
-            'depositId' => $depositId > 0 ? $depositId : null,
-            'withdrawalId' => $withdrawalId > 0 ? $withdrawalId : null,
+            'relatedUrl' => $invoice->relatedAdminUrl(),
             'currencySymbol' => (string) config('billing.currency_symbol', '€'),
         ]);
     }

@@ -143,6 +143,57 @@ class Invoice extends Model
         return '—';
     }
 
+    public function depositRequestId(): ?int
+    {
+        $id = (int) data_get($this->meta, 'deposit_request_id');
+
+        return $id > 0 ? $id : null;
+    }
+
+    public function withdrawalId(): ?int
+    {
+        $id = (int) data_get($this->meta, 'withdrawal_id');
+        if ($id > 0) {
+            return $id;
+        }
+
+        if (preg_match('/^WD-(\d+)$/', (string) $this->reference_code, $matches)) {
+            return (int) $matches[1];
+        }
+
+        return null;
+    }
+
+    /**
+     * HTML admin page for the related order, deposit, or withdrawal.
+     * Deposit/payout JSON show endpoints are not used — ops land on the list.
+     */
+    public function relatedAdminUrl(): ?string
+    {
+        if ($this->order_id) {
+            return route('admin.orders.show', $this->order_id);
+        }
+
+        if ($this->isDepositReceipt()) {
+            if (filled($this->reference_code)) {
+                return route('admin.deposits', ['search' => $this->reference_code]);
+            }
+
+            if ($this->depositRequestId()) {
+                return route('admin.deposits.show', $this->depositRequestId());
+            }
+        }
+
+        if ($this->isWithdrawalPayout() && $this->withdrawalId()) {
+            return route('admin.withdrawals', [
+                'search' => (string) $this->withdrawalId(),
+                'queue' => 'history',
+            ]);
+        }
+
+        return null;
+    }
+
     public function isCancelled(): bool
     {
         return $this->status === self::STATUS_CANCELLED;

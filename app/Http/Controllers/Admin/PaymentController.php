@@ -13,6 +13,7 @@ use App\Models\User;
 use App\Models\Wallet;
 use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
+use App\Services\Billing\AdminInvoiceLinks;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\CheckoutIntentService;
 use App\Services\InAppNotificationService;
@@ -23,6 +24,7 @@ use App\Support\BillingCustomerMailSuppressor;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\UserFacingError;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
@@ -95,6 +97,7 @@ class PaymentController extends Controller
 
             $perPage = $request->get('per_page', 20);
             $orders = $query->paginate($perPage);
+            $this->attachInvoiceDocuments($orders->getCollection());
 
             return response()->json([
                 'success' => true,
@@ -126,6 +129,7 @@ class PaymentController extends Controller
     {
         try {
             $order = Order::with(['user', 'items.site'])->findOrFail($id);
+            $this->attachInvoiceDocuments(collect([$order]));
 
             return response()->json([
                 'success' => true,
@@ -501,6 +505,22 @@ class PaymentController extends Controller
         app(OrderRefundService::class)->refundToAdvertiser($order, $amount, 'Admin refund');
 
         return $amount;
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function attachInvoiceDocuments($orders): void
+    {
+        $links = app(AdminInvoiceLinks::class);
+        $byOrder = $links->forOrders($orders);
+
+        foreach ($orders as $order) {
+            $documents = $byOrder->get((int) $order->id, []);
+            $order->setAttribute('invoice_documents', $documents);
+            $primary = $links->primary($documents);
+            $order->setAttribute('invoice_url', $primary['url'] ?? null);
+        }
     }
 
     /**

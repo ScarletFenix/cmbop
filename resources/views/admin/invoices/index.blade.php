@@ -141,8 +141,8 @@
                                 <div class="text-muted">{{ $invoice->customer_email }}</div>
                             </td>
                             <td class="small">
-                                @if($invoice->order_id)
-                                    <a href="{{ route('admin.orders.show', $invoice->order_id) }}" class="admin-id-clamp" title="{{ $refTitle }}">{{ $invoice->referenceLabel() }}</a>
+                                @if($invoice->relatedAdminUrl())
+                                    <a href="{{ $invoice->relatedAdminUrl() }}" class="admin-id-clamp" title="{{ $refTitle }}">{{ $invoice->referenceLabel() }}</a>
                                 @else
                                     <span class="admin-id-clamp" title="{{ $refTitle }}">{{ $invoice->referenceLabel() }}</span>
                                 @endif
