@@ -313,7 +313,7 @@
                                     @if($site->joinsBulkDiscount()) <span class="badge bg-info text-dark">Bulk</span> @endif
                                 </td>
                                 <td class="small text-muted">
-                                    @if($site->isFeatured()) until {{ optional($site->featured_until)->format('M j') }} @endif
+                                    @if($site->isFeatured()) until {{ optional($site->safeFeaturedUntil())->format('M j') }} @endif
                                     @if($site->hasActiveCustomDiscount()) −{{ rtrim(rtrim(number_format((float) $site->custom_discount_percent, 2), '0'), '.') }}% @endif
                                     @if($site->joinsBulkDiscount()) pack −{{ rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.') }}% @endif
                                 </td>

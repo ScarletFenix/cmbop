@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
 use App\Services\Wallet\WelcomeBonusService;
@@ -87,6 +88,7 @@ class AdminWelcomeBonusToggleTest extends TestCase
             ->assertSessionHas('success');
 
         $this->assertFalse($service->isEnabled());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'welcome_bonus.toggled')->count());
     }
 
     public function test_toggle_requires_an_intended_enabled_state(): void

@@ -90,7 +90,7 @@
                                 <td class="small">{{ $banner->sizeLabel() }}</td>
                                 <td class="small">{{ $banner->placementLabel() }}</td>
                                 <td class="small text-muted">
-                                    {{ number_format($banner->impressions) }} views · {{ number_format($banner->clicks) }} clicks
+                                    {{ number_format((int) $banner->impressions) }} views · {{ number_format((int) $banner->clicks) }} clicks
                                     <div>7d CTR {{ number_format($ctr7, 1) }}%</div>
                                 </td>
                                 <td>@include('admin.promotions.partials.status-badge', ['item' => $banner])</td>

@@ -7,6 +7,7 @@ use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
@@ -370,7 +371,7 @@ class ContentModerationService
             }
 
             $result = $this->scanExtractedContent(
-                text: (string) $submission->extracted_text,
+                text: $this->scanPolicyTextFromSubmission($submission),
                 html: (string) ($submission->preview_html ?? ''),
                 sourceLabel: 'upload:'.$submission->id,
                 user: $user,
@@ -409,6 +410,11 @@ class ContentModerationService
         }
 
         return ['ok' => $failures === [], 'failures' => $failures];
+    }
+
+    public function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user = null): bool
+    {
+        return (bool) ($this->assertSubmissionsApproved([$submission], $user)['ok'] ?? false);
     }
 
     public function assertLinksApproved(array $urls, ?User $user = null): array
@@ -769,6 +775,97 @@ class ContentModerationService
         return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
     }
 
+    /**
+     * Body copy for language / quality / uniqueness.
+     * extracted_text can lag preview_html after a silent or partial edit.
+     */
+    public function scanTextFromSubmission(ContentSubmission $submission): string
+    {
+        $extracted = trim((string) $submission->extracted_text);
+        $html = (string) ($submission->preview_html ?? '');
+        $fromHtml = $html !== ''
+            ? trim((new ArticleHtmlSanitizer)->htmlToPlainText($html))
+            : '';
+
+        if ($extracted === '') {
+            return $fromHtml;
+        }
+        if ($fromHtml === '' || $fromHtml === $extracted) {
+            return $extracted;
+        }
+
+        return $extracted."\n".$fromHtml;
+    }
+
+    /**
+     * Publisher-visible backlink labels (primary pair + detected_links).
+     *
+     * @return list<string>
+     */
+    public function anchorTextsFromSubmission(ContentSubmission $submission): array
+    {
+        $anchors = [];
+        $primary = trim((string) ($submission->anchor_text ?? ''));
+        if ($primary !== '') {
+            $anchors[] = $primary;
+        }
+
+        foreach ($submission->detectedLinks() as $link) {
+            $anchor = trim((string) ($link['anchor'] ?? ''));
+            if ($anchor !== '') {
+                $anchors[] = $anchor;
+            }
+        }
+
+        $anchors = array_values(array_unique($anchors));
+        sort($anchors);
+
+        return $anchors;
+    }
+
+    /**
+     * Attribute text strip_tags drops (image alt, title, aria-label).
+     *
+     * @return list<string>
+     */
+    public function htmlAttributeTexts(string $html): array
+    {
+        if ($html === '') {
+            return [];
+        }
+
+        $texts = [];
+        if (preg_match_all('/\b(?:alt|title|aria-label)\s*=\s*(["\'])(.*?)\1/iu', $html, $matches)) {
+            foreach ($matches[2] as $value) {
+                $value = trim(html_entity_decode((string) $value, ENT_QUOTES | ENT_HTML5, 'UTF-8'));
+                if ($value !== '') {
+                    $texts[] = $value;
+                }
+            }
+        }
+
+        $texts = array_values(array_unique($texts));
+        sort($texts);
+
+        return $texts;
+    }
+
+    /**
+     * Restricted-term haystack: body + stored anchors + HTML attributes.
+     * Keep language / uniqueness on scanTextFromSubmission() so a short
+     * English backlink does not false-fail a non-English article.
+     */
+    public function scanPolicyTextFromSubmission(ContentSubmission $submission): string
+    {
+        $parts = [
+            $this->scanTextFromSubmission($submission),
+            implode("\n", $this->anchorTextsFromSubmission($submission)),
+            implode("\n", $this->htmlAttributeTexts((string) ($submission->preview_html ?? ''))),
+        ];
+
+        return trim(implode("\n", array_filter($parts, static fn (string $part) => trim($part) !== '')));
+    }
+
     public function scanTitle(ContentSubmission $submission): string
     {
         $title = trim((string) $submission->title);
@@ -792,6 +889,7 @@ class ContentModerationService
             (string) $submission->preview_html,
             (string) $submission->target_url,
             implode("\n", $links),
+            implode("\n", $this->anchorTextsFromSubmission($submission)),
         ]));
     }
 
@@ -1154,6 +1252,8 @@ class ContentModerationService
             }
             $report['passed_compliance'] = true;
             $report['summary'] = 'Approved by admin override.';
+            $report['matched_terms'] = [];
+            $report['blocked_urls'] = [];
         } else {
             $replaced = false;
             foreach ($checks as $i => $check) {

@@ -1,26 +1,69 @@
 @extends('admin.layouts.app')
 
 @section('content')
+@php
+    $days = $days ?? 7;
+    $copyFilter = $copyFilter ?? 'attention';
+    $q = $q ?? '';
+    $focusUserId = (int) ($focusUserId ?? 0);
+    $hideHours = (int) ($hideHours ?? 24);
+    $exemptionMinutes = (int) ($exemptionMinutes ?? 60);
+    $noOrdersThreshold = (int) ($noOrdersThreshold ?? 100);
+    $copyAttentionDays = (int) ($copyAttentionDays ?? 14);
+    $queryBase = array_filter([
+        'days' => $days,
+        'copy' => $copyFilter === 'all' ? 'all' : null,
+        'q' => $q !== '' ? $q : null,
+        'user' => $focusUserId > 0 ? $focusUserId : null,
+    ], fn ($v) => $v !== null && $v !== '');
+@endphp
 <div class="container-fluid">
 
     @include('admin.partials.page-header', [
         'title' => 'Catalog activity',
-        'subtitle' => 'Who is opening publisher addresses, and whether it looks like shopping.',
+        'subtitle' => 'Who is in catalog hide mode or on a copy warning. Open-catalog browsing is not logged.',
     ])
 
-    {{-- Phase 4: copy-strike hide mode queue --}}
+    <form method="GET" action="{{ route('admin.catalog-activity') }}" class="mb-3">
+        <input type="hidden" name="days" value="{{ $days }}">
+        @if($copyFilter === 'all')
+            <input type="hidden" name="copy" value="all">
+        @endif
+        <div class="input-group" style="max-width: 28rem;">
+            <input type="search" name="q" value="{{ $q }}" class="form-control form-control-sm"
+                   placeholder="Search email or name" aria-label="Search accounts">
+            <button type="submit" class="btn btn-sm btn-outline-secondary">Search</button>
+            @if($q !== '')
+                <a href="{{ route('admin.catalog-activity', array_filter($queryBase, fn ($k) => $k !== 'q', ARRAY_FILTER_USE_KEY)) }}"
+                   class="btn btn-sm btn-outline-secondary">Clear</a>
+            @endif
+        </div>
+    </form>
+
     @if($copyStrikesAvailable ?? false)
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
                     <strong>Copy strikes &amp; hide mode</strong>
                     <div class="small text-muted mb-0">
-                        Advertisers warned or restricted for mass-copying catalog domains.
-                        Clear hide mode restores full name + URL visibility and resets their strike ladder.
+                        @if($copyFilter === 'all')
+                            All accounts still on the strike ladder.
+                        @else
+                            Needs attention: in hide now, or warned / served hide in the last {{ $copyAttentionDays }} days.
+                        @endif
                     </div>
+                </div>
+                <div class="btn-group btn-group-sm">
+                    <a href="{{ route('admin.catalog-activity', array_filter(array_merge($queryBase, ['copy' => null]), fn ($v) => $v !== null && $v !== '')) }}"
+                       class="btn btn-outline-secondary {{ $copyFilter !== 'all' ? 'active' : '' }}">Needs attention</a>
+                    <a href="{{ route('admin.catalog-activity', array_merge($queryBase, ['copy' => 'all'])) }}"
+                       class="btn btn-outline-secondary {{ $copyFilter === 'all' ? 'active' : '' }}">All</a>
                 </div>
             </div>
             <div class="card-body p-0">
+                @if($copyStrikeCapped ?? false)
+                    <div class="small text-muted px-3 pt-2">Showing 100. Narrow with search.</div>
+                @endif
                 <div class="table-responsive">
                     <table class="table table-sm align-middle mb-0">
                         <thead class="table-light">
@@ -30,26 +73,43 @@
                                 <th>Status</th>
                                 <th>Warned</th>
                                 <th>Hide until</th>
-                                <th class="text-end">Recent copies</th>
+                                <th class="text-end">Copies (24h)</th>
+                                <th class="text-end">Unlocks</th>
+                                <th class="text-end">Paid orders</th>
                                 <th class="text-end">Action</th>
                             </tr>
                         </thead>
                         <tbody>
                             @forelse($copyStrikeRows as $row)
-                                <tr>
+                                @php $uid = (int) $row['user']->id; @endphp
+                                <tr id="user-{{ $uid }}" class="{{ $focusUserId === $uid ? 'table-warning' : '' }}">
                                     <td>
-                                        <div class="fw-semibold">{{ $row['user']->name ?: '—' }}</div>
+                                        <div class="fw-semibold">
+                                            <a href="{{ $row['user_url'] }}" class="link-dark">{{ $row['user']->name ?: '—' }}</a>
+                                        </div>
                                         <div class="small text-muted">{{ $row['user']->email }}</div>
                                         <div class="small text-muted">{{ $row['account_age_days'] }} days old</div>
                                     </td>
                                     <td class="text-end fw-semibold">{{ $row['strike_count'] }}</td>
                                     <td>
-                                        @if($row['in_hide_mode'])
-                                            <span class="badge bg-danger">Hide mode 24h</span>
-                                        @elseif($row['strike_count'] >= 1)
+                                        @if($row['status'] === \App\Models\User::CATALOG_COPY_HIDDEN)
+                                            <span class="badge bg-danger">Hide mode</span>
+                                            @if($row['hide_remaining'])
+                                                <div class="small text-muted mt-1">{{ $row['hide_remaining'] }}</div>
+                                            @endif
+                                        @elseif($row['status'] === \App\Models\User::CATALOG_COPY_POST_HIDE)
+                                            <span class="badge bg-secondary">Served hide</span>
+                                            <div class="small text-muted mt-1">Next wave re-hides immediately.</div>
+                                        @elseif($row['status'] === \App\Models\User::CATALOG_COPY_WARNED)
                                             <span class="badge bg-warning text-dark">Warned</span>
                                         @else
                                             <span class="text-muted small">—</span>
+                                        @endif
+                                        @if($row['exempt'])
+                                            <div class="mt-1"><span class="badge bg-light text-dark">Trusted</span></div>
+                                            @if($row['exempt_until'])
+                                                <div class="small text-muted">Until {{ $row['exempt_until']->timezone(config('app.timezone'))->format('H:i') }}</div>
+                                            @endif
                                         @endif
                                     </td>
                                     <td class="small text-muted">
@@ -58,29 +118,63 @@
                                             : '—' }}
                                     </td>
                                     <td class="small text-muted">
-                                        @if($row['in_hide_mode'] && $row['hide_until'])
+                                        @if($row['hide_until'] && $row['in_hide_mode'])
                                             {{ $row['hide_until']->timezone(config('app.timezone'))->format('M j, H:i') }}
+                                        @elseif($row['hide_until'] && $row['status'] === \App\Models\User::CATALOG_COPY_POST_HIDE)
+                                            Ended {{ $row['hide_until']->timezone(config('app.timezone'))->format('M j, H:i') }}
                                         @else
                                             —
                                         @endif
                                     </td>
-                                    <td class="text-end">{{ number_format($row['recent_copies']) }}</td>
+                                    <td class="text-end">{{ number_format($row['copies_24h']) }}</td>
+                                    <td class="text-end">{{ number_format($row['total']) }}</td>
                                     <td class="text-end">
-                                        <form method="POST"
-                                              action="{{ route('admin.catalog-activity.clear-copy-hide', $row['user']->id) }}"
-                                              class="d-inline"
-                                              data-slb-confirm="Clear hide mode for this account? Strikes reset and catalog names/URLs show normally again. Reveal history is kept."
-                                              data-slb-confirm-title="Clear copy hide mode?">
-                                            @csrf
-                                            <button type="submit" class="btn btn-sm btn-outline-primary">
-                                                Clear hide mode
-                                            </button>
-                                        </form>
+                                        {{ number_format($row['orders']) }}
+                                        @if($row['established'])
+                                            <div class="small text-muted">Established</div>
+                                        @endif
+                                    </td>
+                                    <td class="text-end">
+                                        <div class="d-flex flex-wrap justify-content-end gap-1">
+                                            <a href="{{ route('admin.catalog-activity.show', $uid) }}" class="btn btn-sm btn-outline-secondary">Details</a>
+                                            @if($row['in_hide_mode'])
+                                                <form method="POST"
+                                                      action="{{ route('admin.catalog-activity.lift-hide', $uid) }}"
+                                                      class="d-inline"
+                                                      data-slb-confirm="Lift hide mode? They stay on strike {{ $row['strike_count'] }}; the next copy wave can re-hide them. Copy history is kept."
+                                                      data-slb-confirm-title="Lift hide mode?">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-outline-primary">Lift hide</button>
+                                                </form>
+                                                <form method="POST"
+                                                      action="{{ route('admin.catalog-activity.exempt', $uid) }}"
+                                                      class="d-inline"
+                                                      data-slb-confirm="{{ $row['exempt']
+                                                            ? 'Put this account back under the usual pace checks now?'
+                                                            : 'Trust this account for '.$exemptionMinutes.' minutes? Pace checks pause while hide mode is on.' }}"
+                                                      data-slb-confirm-title="{{ $row['exempt'] ? 'Remove trust?' : 'Trust for '.$exemptionMinutes.' minutes?' }}">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary">
+                                                        {{ $row['exempt'] ? 'Remove exemption' : 'Mark as trusted' }}
+                                                    </button>
+                                                </form>
+                                            @endif
+                                            @if($row['strike_count'] > 0)
+                                                <form method="POST"
+                                                      action="{{ route('admin.catalog-activity.reset-strikes', $uid) }}"
+                                                      class="d-inline"
+                                                      data-slb-confirm="Reset the strike ladder? Copy history is kept.{{ $row['in_hide_mode'] ? ' Hide mode stays on until you lift it.' : '' }}"
+                                                      data-slb-confirm-title="Reset strikes?">
+                                                    @csrf
+                                                    <button type="submit" class="btn btn-sm btn-outline-secondary">Reset strikes</button>
+                                                </form>
+                                            @endif
+                                        </div>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">
+                                    <td colspan="9" class="text-center text-muted py-4">
                                         No warned or hide-mode accounts right now.
                                     </td>
                                 </tr>
@@ -112,10 +206,10 @@
 
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white border-0 d-flex justify-content-between align-items-center flex-wrap gap-2">
-                <strong>Top 50 by addresses opened &middot; last {{ $days }} days</strong>
+                <strong>Hide-mode unlocks (eye / visit / cart) &middot; last {{ $days }} days</strong>
                 <div class="btn-group btn-group-sm">
                     @foreach([1, 7, 30] as $option)
-                        <a href="{{ route('admin.catalog-activity', ['days' => $option]) }}"
+                        <a href="{{ route('admin.catalog-activity', array_merge($queryBase, ['days' => $option])) }}"
                            class="btn btn-outline-secondary {{ $days === $option ? 'active' : '' }}">
                             {{ $option }}d
                         </a>
@@ -128,8 +222,9 @@
                         <thead class="table-light">
                             <tr>
                                 <th>Account</th>
-                                <th class="text-end">Opened</th>
+                                <th class="text-end">Unlocks</th>
                                 <th class="text-end">Last hour</th>
+                                <th>Last unlock</th>
                                 <th class="text-end">Paid orders</th>
                                 <th class="text-end">Per order</th>
                                 <th>Signal</th>
@@ -138,30 +233,37 @@
                         </thead>
                         <tbody>
                             @forelse($rows as $row)
+                                @php $uid = (int) $row['user']->id; @endphp
                                 <tr>
                                     <td>
-                                        <div class="fw-semibold">{{ $row['user']->name ?: '—' }}</div>
+                                        <div class="fw-semibold">
+                                            <a href="{{ route('admin.users.index', ['user' => $uid]) }}#user-{{ $uid }}" class="link-dark">{{ $row['user']->name ?: '—' }}</a>
+                                        </div>
                                         <div class="small text-muted">{{ $row['user']->email }}</div>
                                         <div class="small text-muted">{{ $row['account_age_days'] }} days old</div>
                                     </td>
                                     <td class="text-end fw-semibold">{{ number_format($row['total']) }}</td>
                                     <td class="text-end">{{ number_format($row['last_hour']) }}</td>
-                                    <td class="text-end">{{ number_format($row['orders']) }}</td>
+                                    <td class="small text-muted">
+                                        {{ $row['last_at']
+                                            ? $row['last_at']->timezone(config('app.timezone'))->format('M j, H:i')
+                                            : '—' }}
+                                    </td>
                                     <td class="text-end">
-                                        {{-- A high number here with no orders is the shape worth looking at. --}}
+                                        {{ number_format($row['orders']) }}
+                                        @if(($row['orders_lifetime'] ?? 0) !== $row['orders'])
+                                            <div class="small text-muted">{{ number_format($row['orders_lifetime']) }} lifetime</div>
+                                        @endif
+                                    </td>
+                                    <td class="text-end">
                                         {{ $row['per_order'] !== null ? $row['per_order'] : '—' }}
                                     </td>
                                     <td>
-                                        @if($row['exempt'])
-                                            <span class="badge bg-light text-dark">Trusted</span>
-                                            @if($row['exempt_until'])
-                                                <div class="small text-muted mt-1">Until {{ $row['exempt_until']->timezone(config('app.timezone'))->format('H:i') }}</div>
-                                            @endif
-                                        @elseif($row['metronomic'])
+                                        @if($row['metronomic'])
                                             <span class="badge bg-warning text-dark">
-                                                <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>Even timing
+                                                <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>Even timing (last hour)
                                             </span>
-                                        @elseif($row['orders'] === 0 && $row['total'] >= 100)
+                                        @elseif(! $row['established'] && $row['total'] >= $noOrdersThreshold)
                                             <span class="badge bg-warning text-dark">
                                                 <i class="fa fa-triangle-exclamation me-1" aria-hidden="true"></i>No orders
                                             </span>
@@ -170,24 +272,13 @@
                                         @endif
                                     </td>
                                     <td class="text-end">
-                                        <form method="POST"
-                                              action="{{ route('admin.catalog-activity.exempt', $row['user']->id) }}"
-                                              class="d-inline"
-                                              data-slb-confirm="{{ $row['exempt']
-                                                    ? 'Put this account back under the usual pace checks now?'
-                                                    : 'Trust this account for 1 hour? Pace checks pause; reveal history stays on this page.' }}"
-                                              data-slb-confirm-title="{{ $row['exempt'] ? 'Remove trust?' : 'Trust for 1 hour?' }}">
-                                            @csrf
-                                            <button type="submit" class="btn btn-sm btn-outline-secondary">
-                                                {{ $row['exempt'] ? 'Remove exemption' : 'Mark as trusted' }}
-                                            </button>
-                                        </form>
+                                        <a href="{{ route('admin.catalog-activity.show', $uid) }}" class="btn btn-sm btn-outline-secondary">Details</a>
                                     </td>
                                 </tr>
                             @empty
                                 <tr>
-                                    <td colspan="7" class="text-center text-muted py-4">
-                                        Nobody has opened a publisher address in this period.
+                                    <td colspan="8" class="text-center text-muted py-4">
+                                        No hide-mode unlocks in this period. Everyday catalog browsing does not create rows here.
                                     </td>
                                 </tr>
                             @endforelse

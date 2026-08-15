@@ -164,14 +164,7 @@ class SiteRatingController extends Controller
         array $properties,
         ?string $subjectLabel
     ): void {
-        try {
-            ActivityLogger::log($action, $description, $subject, $properties, $subjectLabel);
-        } catch (\Throwable $e) {
-            Log::warning('Failed to log site rating activity', [
-                'action' => $action,
-                'error' => $e->getMessage(),
-            ]);
-        }
+        ActivityLogger::tryLog($action, $description, $subject, $properties, $subjectLabel);
     }
 
     /**

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Models\Concerns\ToleratesUnparseableDates;
 use App\Services\CartPricingService;
 use App\Services\Catalog\CatalogCountryInventory;
 use App\Services\Catalog\CatalogLanguageFilter;
@@ -16,6 +17,8 @@ use Illuminate\Support\Facades\Schema;
 
 class Site extends Model
 {
+    use ToleratesUnparseableDates;
+
     protected static function booted(): void
     {
         $bustInventory = static fn () => CatalogCountryInventory::forget();
@@ -594,11 +597,24 @@ class Site extends Model
 
     public function isFeatured(): bool
     {
-        if (! static::hasSitesColumn('featured_until')) {
-            return false;
-        }
+        $until = $this->safeFeaturedUntil();
 
-        return $this->featured_until !== null && $this->featured_until->isFuture();
+        return $until !== null && $until->isFuture();
+    }
+
+    public function safeFeaturedUntil(): ?\DateTimeInterface
+    {
+        return $this->safeDateAttribute('featured_until');
+    }
+
+    public function safeCustomDiscountEndsAt(): ?\DateTimeInterface
+    {
+        return $this->safeDateAttribute('custom_discount_ends_at');
+    }
+
+    public function safeCustomDiscountStartsAt(): ?\DateTimeInterface
+    {
+        return $this->safeDateAttribute('custom_discount_starts_at');
     }
 
     /**
@@ -623,17 +639,22 @@ class Site extends Model
 
     public function hasActiveCustomDiscount(): bool
     {
-        if (! static::hasSitesColumn('custom_discount_percent')) {
+        if (! static::hasSitesColumn('custom_discount_percent') || ! $this->custom_discount_percent) {
             return false;
         }
 
-        if (! $this->custom_discount_percent || ! $this->custom_discount_ends_at) {
+        $ends = $this->safeCustomDiscountEndsAt();
+        if ($ends === null) {
             return false;
         }
 
-        $startsOk = ! $this->custom_discount_starts_at || $this->custom_discount_starts_at->lte(now());
+        $starts = $this->safeCustomDiscountStartsAt();
+        $rawStarts = $this->getAttributes()['custom_discount_starts_at'] ?? null;
+        if ($rawStarts !== null && $rawStarts !== '' && $starts === null) {
+            return false;
+        }
 
-        return $startsOk && $this->custom_discount_ends_at->isFuture();
+        return ($starts === null || $starts->lte(now())) && $ends->isFuture();
     }
 
     public function activeCustomDiscountPercent(): ?float
@@ -2157,6 +2178,21 @@ class Site extends Model
             return Schema::hasColumn((new static)->getTable(), $column);
         } catch (\Throwable) {
             return false;
+        }
+    }
+
+    private function safeDateAttribute(string $attribute): ?\DateTimeInterface
+    {
+        try {
+            if (! static::hasSitesColumn($attribute)) {
+                return null;
+            }
+
+            $value = $this->{$attribute};
+
+            return $value instanceof \DateTimeInterface ? $value : null;
+        } catch (\Throwable) {
+            return null;
         }
     }
 

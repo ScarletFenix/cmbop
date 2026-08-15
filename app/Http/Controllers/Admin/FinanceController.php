@@ -6,6 +6,7 @@ use App\Http\Controllers\Controller;
 use App\Models\User;
 use App\Models\Wallet;
 use App\Models\WalletTransaction;
+use App\Services\ActivityLogger;
 use App\Services\Admin\FinanceOverviewService;
 use App\Services\Orders\OrderClawbackService;
 use Illuminate\Database\Eloquent\Builder;
@@ -181,6 +182,19 @@ class FinanceController extends Controller
 
         try {
             $cleared = $clawbacks->clearWalletDebt($wallet, $request->user(), $data['reason']);
+
+            ActivityLogger::tryLog(
+                'finance.debt_cleared',
+                ($request->user()?->name ?? 'Admin').' cleared €'.number_format($cleared, 2).' of wallet debt',
+                $wallet,
+                [
+                    'amount' => $cleared,
+                    'wallet_id' => $wallet->id,
+                    'user_id' => $wallet->user_id,
+                    'reason' => $data['reason'],
+                ],
+                'Wallet #'.$wallet->id
+            );
 
             if ($request->expectsJson()) {
                 return response()->json([

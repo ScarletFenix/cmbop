@@ -64,6 +64,9 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             substr_count($matches[1], 'try {'),
             'hasQueuedSendJob must not leave an extra unclosed try around the connection loop'
         );
+        $this->assertStringContainsString('$scanFailed = true;', $matches[1]);
+        $this->assertStringContainsString('$scannedOk = true;', $matches[1]);
+        $this->assertStringContainsString('return $scanFailed && ! $scannedOk;', $matches[1]);
     }
 
     public function test_merge_sensitive_campaign_files_parse_without_duplicate_methods(): void
@@ -85,6 +88,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $payload = (string) file_get_contents($files[1]);
         $this->assertSame(1, preg_match_all('/function containsCampaignId\b/', $payload));
         $this->assertSame(1, preg_match_all('/function containsSendCampaignJob\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function containsCampaignMail\b/', $payload));
+        $this->assertSame(1, preg_match_all('/function campaignMailUserIds\b/', $payload));
 
         $inventory = (string) file_get_contents($files[2]);
         $this->assertSame(1, preg_match_all('/function recipientRowQuery\b/', $inventory));

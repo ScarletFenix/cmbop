@@ -619,6 +619,9 @@ function libraryResultMessage(submission, fallback, ok) {
     if (submission && submission.needs_image_rights) {
         return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
     }
+    if (submission && submission.editor_notice) {
+        return submission.editor_notice;
+    }
     if (submission && submission.ready === false && submission.can_order !== false) {
         return 'Add anchor text and a valid HTTPS target URL, or clear both link fields.';
     }
