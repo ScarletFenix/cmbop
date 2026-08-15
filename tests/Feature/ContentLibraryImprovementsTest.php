@@ -440,7 +440,7 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertOk()
             ->assertSee('Paid Item Only Live')
             ->assertSee('https://live.example/item-only-post')
-            ->assertSee('Order #'.$order->id);
+            ->assertSee('>Order:</strong> #'.$order->id, false);
 
         $this->actingAs($advertiser)
             ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
