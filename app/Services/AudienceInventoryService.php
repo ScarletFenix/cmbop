@@ -557,23 +557,6 @@ class AudienceInventoryService
     }
 
     /**
-     * id + email only, no role eager-loads — used by campaign send so a large
-     * audience cannot OOM the HTTP request before the job is dispatched.
-     */
-    protected function recipientRowQuery(Builder $query, bool $includeUnverified, bool $alreadyScoped = false): Builder
-    {
-        if (! $alreadyScoped) {
-            $query = $this->applyRecipientScope($query, $includeUnverified);
-        }
-
-        return $query
-            ->setEagerLoads([])
-            ->reorder()
-            ->orderBy('users.id')
-            ->select(['users.id', 'users.email']);
-    }
-
-    /**
      * MySQL TRIM() only strips 0x20, so a tab/newline-only address still
      * counted as a recipient and then failed at Mail::to(). Require `@`
      * so count / collect / send stay aligned.
