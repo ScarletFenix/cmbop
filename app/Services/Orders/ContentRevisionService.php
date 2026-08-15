@@ -261,18 +261,25 @@ class ContentRevisionService
                 }
 
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
+
+                if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => 'Confirm image rights on this article before sending it back.',
+                    ]);
+                }
+
+                if (! $submission->hasCheckoutReadyLinks()) {
+                    throw ValidationException::withMessages([
+                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
+                    ]);
+                }
+
                 if (! $sameAsCurrent) {
                     app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
                         (int) $advertiser->id,
                         [(int) $submission->id]
                     );
                     $submission = $submission->fresh() ?? $submission;
-                }
-
-                if ($submission->hasImages() && ! $submission->imageRightsCoverContent()) {
-                    throw ValidationException::withMessages([
-                        'content_submission_id' => 'Confirm image rights on this article before sending it back.',
-                    ]);
                 }
 
                 $linkedElsewhere = $submission->isInUse()
@@ -299,12 +306,6 @@ class ContentRevisionService
                     && ! $submission->canBeOrdered()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'That Content Library article is not available to attach.',
-                    ]);
-                }
-
-                if (! $submission->hasCheckoutReadyLinks()) {
-                    throw ValidationException::withMessages([
-                        'content_submission_id' => ContentSubmission::CHECKOUT_LINK_MESSAGE,
                     ]);
                 }
 

@@ -694,6 +694,191 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertTrue($submission->fresh()->isReadyForCheckout());
     }
 
+    public function test_order_from_library_keeps_unready_leftover_for_pay_again(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Broken Link Leftover',
+            'target_url' => null,
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-UNREADY-LEFTOVER',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $fresh = $submission->fresh()->load('order');
+        $this->assertTrue($fresh->canReplaceUnpaidLeftover());
+        $this->assertFalse($fresh->isContentReadyForOrder());
+        $this->assertFalse($fresh->canOrderFromLibrary());
+        $this->assertSame('needs_fix', $fresh->libraryAvailability());
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.content-library'));
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertTrue($submission->fresh()->load('order')->canReplaceUnpaidLeftover());
+    }
+
+    public function test_library_hides_order_for_unready_leftover(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $submission->update([
+            'title' => 'Fix Links Then Pay Again',
+            'target_url' => null,
+        ]);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-UNREADY-LEFTOVER-UI',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'needs_fix']))
+            ->assertOk()
+            ->assertSee('Fix Links Then Pay Again')
+            ->assertSee('View order')
+            ->assertSee('Edit article')
+            ->assertDontSee(route('advertiser.content-library.order', $submission, false), false);
+    }
+
+    public function test_checkout_does_not_replace_unready_leftover_when_paying_another_line(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $readySite = $this->makeSite($publisher, 'ready-pay.example');
+        $leftoverSite = $this->makeSite($publisher, 'unready-leftover.example');
+
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 200,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $ready = $this->createApprovedSubmission(
+            $advertiser,
+            $readySite->id,
+            0,
+            'ready checkout anchor',
+            'https://example.com/ready'
+        );
+        $unready = $this->createApprovedSubmission(
+            $advertiser,
+            $leftoverSite->id,
+            0,
+            'broken leftover anchor',
+            'https://example.com/broken'
+        );
+        $unready->update(['target_url' => null]);
+
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-UNREADY-SIBLING',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $leftoverSite->id,
+            'site_name' => $leftoverSite->site_name,
+            'site_url' => $leftoverSite->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $unready->id,
+            'price' => 80,
+        ]);
+        $unready->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $readySite->id, 'name' => $readySite->site_name, 'quantity' => 1],
+                    ['id' => $leftoverSite->id, 'name' => $leftoverSite->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-PAY-READY-KEEP-UNREADY',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $readySite->id => [$ready->id],
+                    $leftoverSite->id => [$unready->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $unready->fresh()->order_id);
+
+        $paid = Order::query()->where('reference_code', 'REF-PAY-READY-KEEP-UNREADY')->first();
+        $this->assertNotNull($paid);
+        $this->assertSame($paid->id, (int) $ready->fresh()->order_id);
+    }
+
     public function test_catalog_query_releases_abandoned_wise_leftover(): void
     {
         $advertiser = $this->makeUser('advertiser');

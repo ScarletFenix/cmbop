@@ -397,9 +397,11 @@ class OrderPaymentService
     /**
      * Drop this advertiser's unpaid or failed leftovers for these articles so a
      * new checkout can claim them. Pay again on the same leftover still works
-     * until they start that checkout. Already-failed card leftovers are
-     * cancelled here because pending-only fail updates skip them. Sibling
-     * leftovers that share the Stripe reference stay open for Pay again.
+     * until they start that checkout of a content-ready article. Unready rows
+     * (broken links, missing rights, expired) are skipped so Pay again survives.
+     * Already-failed card leftovers are cancelled here because pending-only
+     * fail updates skip them. Sibling leftovers that share the Stripe
+     * reference stay open for Pay again.
      *
      * Stripe-first cancel keeps a package with no order rows. A later checkout
      * of one of those articles must drop that package so a late webhook credits
@@ -411,6 +413,22 @@ class OrderPaymentService
     {
         $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
         if ($userId <= 0 || $submissionIds === []) {
+            return;
+        }
+
+        // Order / assign / checkout used to cancel leftovers first, then
+        // reject unready articles. That dropped Pay again on a leftover the
+        // advertiser could still settle after fixing links or rights.
+        $submissionIds = ContentSubmission::query()
+            ->whereIn('id', $submissionIds)
+            ->where('user_id', $userId)
+            ->get()
+            ->filter(fn (ContentSubmission $submission) => $submission->isContentReadyForOrder())
+            ->pluck('id')
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
+        if ($submissionIds === []) {
             return;
         }
 
