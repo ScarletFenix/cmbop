@@ -155,7 +155,7 @@
                                  alt="Banner preview"
                                  class="ad-banner__img"
                                  style="background:#ddd;">
-                            <div class="ad-banner__caption" id="bannerPreviewCaption">{{ $banner->title }}</div>
+                            <div class="ad-banner__caption" id="bannerPreviewCaption">{{ scalar_text($banner->title) }}</div>
                         </div>
                     </div>
                     <div class="small text-muted mt-2" id="bannerPreviewHint">Upload an image or paste a URL to refresh the preview.</div>

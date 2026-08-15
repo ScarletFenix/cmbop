@@ -59,12 +59,16 @@ class SiteAnnouncement extends Model
 
     public function typeLabel(): string
     {
-        return config("promotions.announcement_types.{$this->type}.label", ucfirst($this->type));
+        $type = scalar_text($this->type);
+
+        return scalar_text(config("promotions.announcement_types.{$type}.label", ucfirst($type)));
     }
 
     public function typeIcon(): string
     {
-        return config("promotions.announcement_types.{$this->type}.icon", 'fa-bullhorn');
+        $type = scalar_text($this->type);
+
+        return scalar_text(config("promotions.announcement_types.{$type}.icon", 'fa-bullhorn'));
     }
 
     public function isCurrentlyLive(): bool
