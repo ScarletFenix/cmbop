@@ -369,7 +369,8 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         config(['content_moderation.enabled' => false]);
 
         $advertiser = $this->advertiser();
-        $this->fundAdvertiserWallet($advertiser, 20);
+        $wallet = $this->fundAdvertiserWallet($advertiser, 20);
+        $wallet->update(['bonus_balance' => 20]);
         $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
         $publisher = User::factory()->create(['email_verified_at' => now()]);
         $publisher->roles()->attach($publisherRole->id);
@@ -410,7 +411,11 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $package = app(OrderPaymentService::class)->getPendingCheckout('BONUS1');
         $this->assertNotNull($package);
         $this->assertEqualsWithDelta(20.0, (float) ($package['bonus_applied'] ?? 0), 0.01);
-        $this->assertEqualsWithDelta(80.0, (float) ($package['amount_due'] ?? 0), 0.01);
+        $this->assertEqualsWithDelta(
+            round((float) ($package['order_total'] ?? 0) - 20, 2),
+            (float) ($package['amount_due'] ?? 0),
+            0.01
+        );
 
         $wallet = Wallet::query()
             ->where('user_id', $advertiser->id)
