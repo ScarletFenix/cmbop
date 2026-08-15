@@ -360,6 +360,8 @@ class CatalogPaceGuardTest extends TestCase
             ->get(route('admin.catalog-activity'))
             ->assertOk()
             ->assertSee($advertiser->email)
-            ->assertSee('Per order');
+            ->assertSee('Per order')
+            ->assertSee('Hide-mode unlocks (eye / visit / cart)')
+            ->assertSee('Open-catalog browsing is not logged.');
     }
 }

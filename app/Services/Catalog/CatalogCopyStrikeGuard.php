@@ -5,7 +5,10 @@ namespace App\Services\Catalog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\InAppNotificationService;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
@@ -13,7 +16,11 @@ use Illuminate\Support\Str;
  * Tracks clipboard copies of catalog URL/domain identity and applies strikes.
  *
  *   strike 1 — warning only; catalog stays fully visible
- *   strike 2 — catalog_hide_until = now + 24h
+ *   strike 2 — catalog_hide_until = now + hide_hours
+ *
+ * Warning-wave rows are kept (admin forensics). The next wave counts only
+ * event ids above catalog_copy_after_id so same-second MySQL timestamps
+ * cannot restage the same burst.
  *
  * While hide mode is active, tracking is paused (identity is already masked /
  * eye-gated). Tracking resumes after the window expires or an admin clears it.
@@ -32,6 +39,8 @@ class CatalogCopyStrikeGuard
     public const STATUS_WARNING = 'warning';
 
     public const STATUS_HIDE_MODE = 'hide_mode';
+
+    public function __construct(private InAppNotificationService $notifications) {}
 
     /**
      * @return array{
@@ -97,16 +106,23 @@ class CatalogCopyStrikeGuard
             if ($strikes < 1) {
                 $locked->catalog_copy_strike_count = 1;
                 $locked->catalog_copy_warned_at = now();
+                // Keep the warning-wave rows for admin forensics. Strike 2
+                // counts only ids above this cutoff so same-second MySQL
+                // timestamps cannot restage the same burst.
+                if ($this->afterIdColumnReady()) {
+                    $locked->catalog_copy_after_id = (int) (CatalogCopyEvent::query()
+                        ->where('user_id', $locked->id)
+                        ->max('id') ?? 0);
+                } else {
+                    CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
+                }
                 $locked->save();
 
-                // Clear the window so the same burst cannot escalate on the next
-                // copy. MySQL timestamps are second-precision, so "created_at >
-                // warned_at" would otherwise miss same-second follow-ups and
-                // leave strike 2 unreachable in a fast harvest.
-                CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
+                $fresh = $locked->fresh();
+                $this->announce($fresh, self::STATUS_WARNING, $distinct);
 
                 return $this->payload(
-                    $locked->fresh(),
+                    $fresh,
                     self::STATUS_WARNING,
                     $distinct,
                     'Heads up: copying lots of website addresses from the catalog looks like harvesting. '
@@ -121,12 +137,14 @@ class CatalogCopyStrikeGuard
             $locked->catalog_hide_until = now()->addHours($cfg['hide_hours']);
             $locked->save();
 
+            $fresh = $locked->fresh();
+            $this->announce($fresh, self::STATUS_HIDE_MODE, $distinct);
+
             return $this->payload(
-                $locked->fresh(),
+                $fresh,
                 self::STATUS_HIDE_MODE,
                 $distinct,
-                'Repeated domain copying detected. Site names and URLs will be hidden for 24 hours — '
-                .'use the eye icon to reveal them one listing at a time.'
+                $this->hideModeUserMessage($cfg['hide_hours'])
             );
         });
     }
@@ -136,6 +154,15 @@ class CatalogCopyStrikeGuard
         $until = $user->catalog_hide_until ?? null;
 
         return $until !== null && $until->isFuture();
+    }
+
+    public function hideModeUserMessage(?int $hours = null): string
+    {
+        $hours = max(1, $hours ?? $this->config()['hide_hours']);
+        $label = $hours === 1 ? '1 hour' : $hours.' hours';
+
+        return 'Repeated domain copying detected. Site names and URLs will be hidden for '.$label.' — '
+            .'use the eye icon to reveal them one listing at a time.';
     }
 
     /**
@@ -237,11 +264,15 @@ class CatalogCopyStrikeGuard
     private function distinctCount(User $user, int $windowSeconds): int
     {
         $since = now()->subSeconds($windowSeconds);
+        $afterId = $this->afterIdColumnReady()
+            ? (int) ($user->catalog_copy_after_id ?? 0)
+            : 0;
 
         // Prefer site_id identity; fall back to host for copies without a row id.
         $withSite = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
+            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
             ->whereNotNull('site_id')
             ->distinct()
             ->count('site_id');
@@ -249,11 +280,53 @@ class CatalogCopyStrikeGuard
         $hostOnly = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
+            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
             ->whereNull('site_id')
             ->distinct()
             ->count('normalized_host');
 
         return $withSite + $hostOnly;
+    }
+
+    public static function noticeCacheKey(int $userId, string $status): string
+    {
+        return 'catalog-copy-strike-'.$status.':'.$userId;
+    }
+
+    /**
+     * Forget warning/hide bells so a later wave after lift/reset can page again.
+     */
+    public static function forgetNotices(int $userId): void
+    {
+        Cache::forget(self::noticeCacheKey($userId, self::STATUS_WARNING));
+        Cache::forget(self::noticeCacheKey($userId, self::STATUS_HIDE_MODE));
+    }
+
+    private function afterIdColumnReady(): bool
+    {
+        try {
+            return Schema::hasColumn('users', 'catalog_copy_after_id');
+        } catch (\Throwable) {
+            return false;
+        }
+    }
+
+    private function announce(User $user, string $status, int $distinct): void
+    {
+        $key = self::noticeCacheKey((int) $user->id, $status);
+
+        if (Cache::has($key)) {
+            return;
+        }
+
+        try {
+            $this->notifications->notifyAdminsCatalogCopyStrike($user, $status, $distinct);
+            // Short debounce only — a 24h lock hid the next offense after an
+            // admin lift.
+            Cache::put($key, true, now()->addMinutes(10));
+        } catch (\Throwable $e) {
+            Log::warning('Catalog copy-strike notice failed', ['error' => $e->getMessage()]);
+        }
     }
 
     /**
