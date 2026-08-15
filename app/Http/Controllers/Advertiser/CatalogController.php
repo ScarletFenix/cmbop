@@ -639,11 +639,15 @@ class CatalogController extends Controller
         }
 
         if ($request->filled('new_badge') && $request->new_badge == 1) {
-            $query->where('created_at', '>=', now()->subDays(30));
+            $query->where('created_at', '>=', now()->subDays(30))
+                ->where('created_at', '<=', Site::PLAUSIBLE_SQL_DATETIME_CEIL);
         }
 
         if (Schema::hasColumn('sites', 'featured_until')) {
-            $query->orderByRaw('(featured_until IS NOT NULL AND featured_until > ?) DESC', [now()]);
+            $query->orderByRaw(
+                '(featured_until IS NOT NULL AND featured_until > ? AND featured_until <= ?) DESC',
+                [now(), Site::PLAUSIBLE_SQL_DATETIME_CEIL]
+            );
         }
 
         if ($searchText !== '' && ! $request->filled('sort')) {

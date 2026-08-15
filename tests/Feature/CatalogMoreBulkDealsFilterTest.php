@@ -229,6 +229,35 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
         $this->assertStringNotContainsString('data-site-name="Garbage Starts Site"', $filtered);
     }
 
+    public function test_featured_sort_does_not_promote_unparseable_featured_until(): void
+    {
+        $this->makeSite('Leftover Featured Site', [
+            'dr' => 10,
+            'featured_until' => now()->addDays(3),
+        ]);
+        $this->makeSite('High Dr Site', [
+            'dr' => 90,
+        ]);
+
+        $leftover = Site::query()->where('site_name', 'Leftover Featured Site')->firstOrFail();
+        DB::table('sites')->where('id', $leftover->id)->update([
+            'featured_until' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($leftover->fresh()->isFeatured());
+
+        $html = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->getContent();
+
+        $highPos = strpos($html, 'data-site-name="High Dr Site"');
+        $leftoverPos = strpos($html, 'data-site-name="Leftover Featured Site"');
+        $this->assertNotFalse($highPos);
+        $this->assertNotFalse($leftoverPos);
+        $this->assertLessThan($leftoverPos, $highPos);
+    }
+
     public function test_bulk_and_on_sale_filters_combine_with_and(): void
     {
         $this->makeSite('Bulk Only Site', [

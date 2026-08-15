@@ -200,7 +200,7 @@
             @endphp
             @php
                 // Dynamic "new" flag — listing created within the last 30 days
-                $isNew = $site->created_at->gt(now()->subDays(30));
+                $isNew = $site->isRecentlyCreated();
                 // Everyday catalog shows full identity (no eye). Mask + eye only
                 // while copy-strike hide mode is active (one control for name + URL).
                 $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
@@ -956,7 +956,7 @@
         @php
             $isBlacklisted = in_array($site->id, $blacklist);
             $isFavorited = in_array($site->id, $favorites);
-            $isNew = $site->created_at->gt(now()->subDays(30));
+            $isNew = $site->isRecentlyCreated();
             $showsIdentity = $urlVisibility->showsFullIdentity($currentUser, $site);
             $canSeeUrl = $showsIdentity;
             $displayHost = $urlVisibility->hostFor($currentUser, $site);

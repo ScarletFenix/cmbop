@@ -7,6 +7,7 @@ use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use Tests\TestCase;
 
 class CatalogNewBadgeAlignTest extends TestCase
@@ -175,5 +176,49 @@ class CatalogNewBadgeAlignTest extends TestCase
         );
         // Alignment row styles remain so discount chips do not wrap Verified/NEW.
         $this->assertStringContainsString('flex-wrap: nowrap', $css);
+    }
+
+    public function test_catalog_ok_when_created_at_is_unparseable(): void
+    {
+        $site = $this->makeSite(['site_name' => 'Leftover Created Site']);
+        DB::table('sites')->where('id', $site->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($site->fresh()->isRecentlyCreated());
+
+        $html = $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog'))
+            ->assertOk()
+            ->assertDontSee('Something went wrong')
+            ->getContent();
+
+        $this->assertStringContainsString('data-site-name="Leftover Created Site"', $html);
+        $this->assertDoesNotMatchRegularExpression(
+            '/data-site-name="Leftover Created Site"[\s\S]{0,2500}?site-badge-new/',
+            $html
+        );
+    }
+
+    public function test_new_badge_filter_excludes_unparseable_created_at(): void
+    {
+        $live = $this->makeSite(['site_name' => 'Really New Site']);
+        $leftover = $this->makeSite([
+            'site_name' => 'Garbage Created Site',
+            'site_url' => 'https://garbage-created.example',
+            'domain' => 'garbage-created.example',
+        ]);
+        DB::table('sites')->where('id', $leftover->id)->update([
+            'created_at' => 'not-a-date',
+        ]);
+
+        $html = (string) $this->actingAs($this->advertiser())
+            ->get(route('advertiser.catalog', ['new_badge' => '1']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('data-site-name="Really New Site"', $html);
+        $this->assertStringNotContainsString('data-site-name="Garbage Created Site"', $html);
+        $this->assertTrue($live->fresh()->isRecentlyCreated());
     }
 }
