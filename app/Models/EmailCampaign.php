@@ -359,6 +359,16 @@ class EmailCampaign extends Model
                     continue;
                 }
 
+                // SQLite treats a missing "payload" identifier as the string
+                // literal 'payload' (DQS), so the LIKE scan returns empty
+                // instead of throwing. MySQL would error. Either way this
+                // is not "no job" — recover must not enqueue another send.
+                if (! Schema::hasColumn($table, 'payload')) {
+                    $scanFailed = true;
+
+                    continue;
+                }
+
                 $found = false;
                 DB::table($table)
                     ->where('payload', 'like', '%SendEmailCampaignJob%')
