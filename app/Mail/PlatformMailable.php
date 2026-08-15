@@ -312,6 +312,7 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             'stale' => 'Dropped as stale',
             'disabled' => 'Suppressed: notification type disabled',
             'preference' => 'Suppressed: recipient opted out',
+            'staff' => 'Suppressed: recipient is staff',
             'duplicate' => 'Suppressed: duplicate of a recent send',
             default => 'Suppressed by notification policy',
         };

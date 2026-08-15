@@ -2175,6 +2175,120 @@ class AdminEmailCenterTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $olderCampaign->fresh()->status);
     }
 
+    public function test_bulk_retry_does_not_requeue_sibling_after_closing_delivered_log(): void
+    {
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $sharedUuid = (string) Str::uuid();
+        $deliveredCampaign = EmailCampaign::create([
+            'name' => 'Already sent stamp',
+            'subject' => 'Already sent stamp',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENT,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $otherCampaign = EmailCampaign::create([
+            'name' => 'Shared stamp leftover',
+            'subject' => 'Shared stamp leftover',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 0,
+            'skipped_count' => 1,
+            'status' => EmailCampaign::STATUS_FAILED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $otherRow = EmailCampaignRecipient::create([
+            'email_campaign_id' => $otherCampaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_FAILED,
+            'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+        ]);
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $deliveredCampaign->id, (int) $advertiser->id);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Already sent stamp',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subHours(3),
+            'attempts' => 1,
+            'meta' => [
+                'campaign_id' => $deliveredCampaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $leftover = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Already sent stamp',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down after send',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $sharedUuid,
+                'campaign_id' => $deliveredCampaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $other = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => EmailCampaignRecipient::dedupeKey((int) $otherCampaign->id, (int) $advertiser->id),
+            'to_email' => $advertiser->email,
+            'subject' => 'Shared stamp leftover',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'attempts' => 1,
+            'meta' => [
+                'source' => 'queue',
+                'failed_job_uuid' => $sharedUuid,
+                'campaign_id' => $otherCampaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+
+        DB::table('failed_jobs')->insert([
+            'uuid' => $sharedUuid,
+            'connection' => 'database',
+            'queue' => 'emails',
+            'payload' => json_encode([
+                'displayName' => AudienceCampaignMail::class,
+                'data' => ['commandName' => 'Illuminate\\Mail\\SendQueuedMailable'],
+                'to' => $advertiser->email,
+            ]),
+            'exception' => 'SMTP failed after send',
+            'failed_at' => now(),
+        ]);
+
+        Artisan::shouldReceive('call')->never();
+
+        $this->actingAs($admin)
+            ->from(route('admin.emails.index'))
+            ->post(route('admin.emails.retry'))
+            ->assertRedirect(route('admin.emails.index'))
+            ->assertSessionHas('success');
+
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $leftover->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_FAILED, $other->fresh()->status);
+        $this->assertSame(EmailCampaignRecipient::STATUS_FAILED, $otherRow->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $otherCampaign->fresh()->status);
+        $this->assertTrue(DB::table('failed_jobs')->where('uuid', $sharedUuid)->exists());
+    }
+
     public function test_bulk_retry_marks_unstamped_log_by_payload(): void
     {
         $admin = $this->userWithRole('admin');
