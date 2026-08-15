@@ -187,6 +187,26 @@ class PaymentController extends Controller
 
         $this->ensurePaymentColumns();
 
+        $requestedStatus = (string) $request->payment_status;
+        if ($requestedStatus === 'paid') {
+            $preview = Order::query()->with('user')->find($id);
+            if ($preview instanceof Order
+                && $preview->payment_status !== 'paid'
+                && $preview->payment_status !== 'refunded'
+                && ! in_array((string) $preview->status, ['cancelled', 'completed'], true)
+            ) {
+                // Scan before the payment TX. abortPaymentUpdate() rolls back, so a
+                // reject written inside that TX would leave the library row approved.
+                $libraryState = app(OrderPaymentService::class)->libraryContentStateForSettlement($preview);
+                if ($libraryState !== 'ok') {
+                    return response()->json([
+                        'success' => false,
+                        'message' => $this->libraryUnreadyForMarkPaidMessage($libraryState),
+                    ], 422);
+                }
+            }
+        }
+
         try {
             if (! $sendNotification) {
                 app(OrderLifecycleMailSuppressor::class)->suppress((int) $id, ['advertiser']);

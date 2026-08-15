@@ -7,6 +7,7 @@ use App\Models\ContentModerationSetting;
 use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ActivityLogger;
+use App\Services\ContentUpload\ArticleHtmlSanitizer;
 use App\Services\ContentUpload\ContentUploadService;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
@@ -370,7 +371,7 @@ class ContentModerationService
             }
 
             $result = $this->scanExtractedContent(
-                text: (string) $submission->extracted_text,
+                text: $this->scanTextFromSubmission($submission),
                 html: (string) ($submission->preview_html ?? ''),
                 sourceLabel: 'upload:'.$submission->id,
                 user: $user,
@@ -409,6 +410,11 @@ class ContentModerationService
         }
 
         return ['ok' => $failures === [], 'failures' => $failures];
+    }
+
+    public function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user = null): bool
+    {
+        return (bool) ($this->assertSubmissionsApproved([$submission], $user)['ok'] ?? false);
     }
 
     public function assertLinksApproved(array $urls, ?User $user = null): array
@@ -767,6 +773,28 @@ class ContentModerationService
         }
 
         return ContentSubmission::query()->where('moderation_log_id', $log->id)->first();
+    }
+
+    /**
+     * Policy haystack for the copy the publisher actually sees.
+     * extracted_text can lag preview_html after a silent or partial edit.
+     */
+    public function scanTextFromSubmission(ContentSubmission $submission): string
+    {
+        $extracted = trim((string) $submission->extracted_text);
+        $html = (string) ($submission->preview_html ?? '');
+        $fromHtml = $html !== ''
+            ? trim((new ArticleHtmlSanitizer)->htmlToPlainText($html))
+            : '';
+
+        if ($extracted === '') {
+            return $fromHtml;
+        }
+        if ($fromHtml === '' || $fromHtml === $extracted) {
+            return $extracted;
+        }
+
+        return $extracted."\n".$fromHtml;
     }
 
     public function scanTitle(ContentSubmission $submission): string

@@ -1527,9 +1527,7 @@ class OrderPaymentService
 
     protected function submissionPassesLivePolicy(ContentSubmission $submission, ?User $user): bool
     {
-        $result = app(ContentModerationService::class)->assertSubmissionsApproved([$submission], $user);
-
-        return (bool) ($result['ok'] ?? false);
+        return app(ContentModerationService::class)->submissionPassesLivePolicy($submission, $user);
     }
 
     public function refreshOrderItemLibraryFields(Order $order): void
