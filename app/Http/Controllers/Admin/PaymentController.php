@@ -14,6 +14,7 @@ use App\Services\ActivityLogger;
 use App\Services\Advertiser\SpendBudgetService;
 use App\Services\Billing\BillingDocumentService;
 use App\Services\CheckoutIntentService;
+use App\Services\CheckoutSchemaService;
 use App\Services\InAppNotificationService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
@@ -26,6 +27,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class PaymentController extends Controller
@@ -46,6 +48,7 @@ class PaymentController extends Controller
     public function getPaymentsData(Request $request)
     {
         try {
+            $this->ensurePaymentColumns();
             $query = $this->paymentsQuery($request);
 
             $perPage = (int) $request->input('per_page', 20);
@@ -86,6 +89,7 @@ class PaymentController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
+        $this->ensurePaymentColumns();
         $rows = $this->paymentsQuery($request)->limit(self::EXPORT_LIMIT)->get();
         $filename = 'order-payments-'.now()->format('Y-m-d-His').'.csv';
 
@@ -178,6 +182,8 @@ class PaymentController extends Controller
             ? trim((string) $request->input('payment_reference'))
             : '';
 
+        $this->ensurePaymentColumns();
+
         try {
             if (! $sendNotification) {
                 app(OrderLifecycleMailSuppressor::class)->suppress((int) $id, ['advertiser']);
@@ -220,10 +226,10 @@ class PaymentController extends Controller
 
             $order->payment_status = $newStatus;
 
-            if ($notes !== '') {
+            if ($notes !== '' && Schema::hasColumn('orders', 'admin_notes')) {
                 $order->admin_notes = $notes;
             }
-            if ($paymentReference !== '') {
+            if ($paymentReference !== '' && Schema::hasColumn('orders', 'payment_reference')) {
                 $order->payment_reference = $paymentReference;
             }
 
@@ -558,11 +564,13 @@ class PaymentController extends Controller
             $query->where(function ($q) use ($search) {
                 $q->where('order_number', 'like', "%{$search}%")
                     ->orWhere('reference_code', 'like', "%{$search}%")
-                    ->orWhere('payment_reference', 'like', "%{$search}%")
                     ->orWhereHas('user', function ($sub) use ($search) {
                         $sub->where('name', 'like', "%{$search}%")
                             ->orWhere('email', 'like', "%{$search}%");
                     });
+                if (Schema::hasColumn('orders', 'payment_reference')) {
+                    $q->orWhere('payment_reference', 'like', "%{$search}%");
+                }
             });
         }
 
@@ -682,6 +690,20 @@ class PaymentController extends Controller
         }
 
         return 'That payment status change is not allowed for this order.';
+    }
+
+    /**
+     * Hostinger deploys often skip migrate. Search/update must not 500
+     * when admin_notes / payment_reference are still missing.
+     */
+    private function ensurePaymentColumns(): void
+    {
+        if (Schema::hasColumn('orders', 'admin_notes')
+            && Schema::hasColumn('orders', 'payment_reference')) {
+            return;
+        }
+
+        app(CheckoutSchemaService::class)->ensureCheckoutTables();
     }
 
     private function abortPaymentUpdate(int $orderId, bool $sendNotification, string $message)

@@ -9,8 +9,10 @@ use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
 use Database\Seeders\RolesTableSeeder;
+use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminOrderPaymentsOpsTest extends TestCase
@@ -301,6 +303,47 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertSame('cancelled', $order->status);
         $this->assertNull($order->paid_at);
         $this->assertSame('Transfer reversed', $order->admin_notes);
+    }
+
+    public function test_search_and_update_survive_missing_payment_columns(): void
+    {
+        $admin = $this->makeUser('admin');
+        $order = $this->makeOrder($this->makeUser('advertiser'), $this->makeSite($this->makeUser('publisher')), [
+            'order_number' => 'PAY-MISS-1',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+
+        foreach (['payment_reference', 'admin_notes'] as $column) {
+            if (Schema::hasColumn('orders', $column)) {
+                Schema::table('orders', function (Blueprint $table) use ($column) {
+                    $table->dropColumn($column);
+                });
+            }
+        }
+
+        $this->assertFalse(Schema::hasColumn('orders', 'payment_reference'));
+        $this->assertFalse(Schema::hasColumn('orders', 'admin_notes'));
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['search' => 'PAY-MISS-1']))
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('data.0.order_number', 'PAY-MISS-1');
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'paid',
+                'notes' => 'Wire matched after column repair',
+                'payment_reference' => 'WISE-REPAIR-1',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $order->refresh();
+        $this->assertSame('paid', $order->payment_status);
+        $this->assertSame('Wire matched after column repair', $order->admin_notes);
+        $this->assertSame('WISE-REPAIR-1', $order->payment_reference);
     }
 
     public function test_payments_page_defaults_unpaid_and_confirms_money_moves(): void

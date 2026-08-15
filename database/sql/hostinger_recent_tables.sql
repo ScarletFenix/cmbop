@@ -464,6 +464,13 @@ ALTER TABLE `order_items`
   ADD COLUMN `social_post_urls` json NULL DEFAULT NULL AFTER `social_channels`;
 
 -- ---------------------------------------------------------------------------
+-- Admin Order Payments: notes + Wise/bank/crypto transfer reference
+-- Safe to re-run: ignore "Duplicate column" errors.
+-- ---------------------------------------------------------------------------
+ALTER TABLE `orders` ADD COLUMN `admin_notes` text NULL;
+ALTER TABLE `orders` ADD COLUMN `payment_reference` varchar(120) NULL;
+
+-- ---------------------------------------------------------------------------
 -- Campaign mindset: attribute order packages to projects
 -- ---------------------------------------------------------------------------
 -- Run only if column missing (Hostinger may error if already present):
