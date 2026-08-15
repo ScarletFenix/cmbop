@@ -171,7 +171,7 @@
                         @if($submission->moderationLog->admin_notes)
                             <p class="mb-2">{{ $submission->moderationLog->admin_notes }}</p>
                         @endif
-                        @if(! $submission->moderationLog->passed && $submission->moderationLog->status === 'rejected')
+                        @if($submission->moderationLog->isOverridable($submission))
                             <form method="POST" action="{{ route('admin.moderation.override', $submission->moderationLog) }}"
                                   data-slb-confirm="Approve this submission via admin override?"
                                   data-slb-confirm-title="Override moderation?"
@@ -181,7 +181,8 @@
                                 <textarea name="notes" class="form-control form-control-sm mb-2" rows="2" required minlength="3" maxlength="2000" placeholder="Why this article is allowed">{{ old_text('notes') }}</textarea>
                                 <button class="btn btn-sm btn-primary" type="submit">Approve override</button>
                             </form>
-                        @elseif($submission->moderationLog->admin_override)
+                        @endif
+                        @if($submission->moderationLog->admin_override)
                             <form method="POST" action="{{ route('admin.moderation.revert', $submission->moderationLog) }}"
                                   data-slb-confirm="Re-check this article and drop the override?"
                                   data-slb-confirm-title="Revert override?"

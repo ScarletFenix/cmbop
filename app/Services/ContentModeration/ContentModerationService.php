@@ -8,6 +8,7 @@ use App\Models\ContentSubmission;
 use App\Models\User;
 use App\Services\ActivityLogger;
 use App\Services\ContentUpload\ContentUploadService;
+use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -378,15 +379,20 @@ class ContentModerationService
                 contentSubmissionId: (int) $submission->id,
             );
 
-            $submission->update([
-                'moderation_status' => $result['passed']
-                    ? ContentSubmission::STATUS_APPROVED
-                    : ($result['status'] === 'error'
-                        ? ContentSubmission::STATUS_ERROR
-                        : ContentSubmission::STATUS_REJECTED),
+            $newStatus = $result['passed']
+                ? ContentSubmission::STATUS_APPROVED
+                : (($result['status'] ?? '') === 'error'
+                    ? ContentSubmission::STATUS_ERROR
+                    : ContentSubmission::STATUS_REJECTED);
+            $fields = [
+                'moderation_status' => $newStatus,
                 'moderation_log_id' => $result['log']?->id,
                 'scan_token' => $result['scan_token'],
-            ]);
+            ];
+            if ($this->checkoutShouldSyncEvaluation($submission, $newStatus, $result)) {
+                $fields = array_merge($fields, $this->evaluationFieldsFromScan($submission, $result));
+            }
+            $submission->update($fields);
 
             // scanExtractedContent / resultFromLog use passed + user_title/user_message
             // (not approved/title/message). Wrong keys crashed checkout on reject
@@ -619,6 +625,13 @@ class ContentModerationService
             if ($matchedTerms !== []) {
                 $fixHints[] = 'Remove or rewrite sections that mention: '.implode(', ', array_slice($matchedTerms, 0, 10));
             }
+        } elseif ($log->admin_override && $log->passed) {
+            $publicChecks[] = [
+                'label' => 'Content policy',
+                'status' => 'pass',
+                'detail' => 'Cleared by admin override'
+                    .($log->admin_notes ? ': '.$log->admin_notes : ''),
+            ];
         } elseif ($log->passed) {
             $publicChecks[] = [
                 'label' => 'Content policy',
@@ -870,6 +883,13 @@ class ContentModerationService
         return DB::transaction(function () use ($log, $admin, $notes, $submission) {
             if ($submission) {
                 $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
+                if (! $log->isCurrentDecision($submission)) {
+                    return [
+                        'ok' => false,
+                        'submission' => $submission,
+                        'message' => 'This scan is no longer the current decision. Open the latest scan.',
+                    ];
+                }
             }
 
             $this->stampOverride($log, $submission, $admin, $notes, ContentSubmission::STATUS_APPROVED);
@@ -902,6 +922,17 @@ class ContentModerationService
         }
 
         return DB::transaction(function () use ($log, $admin, $submission) {
+            if ($submission) {
+                $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
+                if ((int) $submission->moderation_log_id !== (int) $log->id) {
+                    return [
+                        'ok' => false,
+                        'submission' => $submission,
+                        'message' => 'This override is no longer the current decision. Open the latest scan.',
+                    ];
+                }
+            }
+
             $signals = is_array($log->signals) ? $log->signals : [];
             $signals['reverted'] = true;
             $signals['reverted_by'] = $admin->id;
@@ -991,10 +1022,12 @@ class ContentModerationService
     ): void {
         $approved = $decision === ContentSubmission::STATUS_APPROVED;
         $signals = is_array($log->signals) ? $log->signals : [];
+        unset($signals['moderation_disabled']);
         if ($submission) {
             $signals['override_fingerprint'] = $this->contentFingerprint($submission);
         }
         $signals['staff_decision'] = $decision;
+        $signals['staff_override'] = true;
 
         $log->update([
             'passed' => $approved,
@@ -1070,12 +1103,27 @@ class ContentModerationService
             $report['passed_compliance'] = true;
             $report['summary'] = 'Approved by admin override.';
         } else {
-            $checks[] = [
-                'key' => 'admin_override',
-                'label' => 'Staff decision',
-                'status' => 'fail',
-                'detail' => 'Rejected by admin override: '.$notes,
-            ];
+            $replaced = false;
+            foreach ($checks as $i => $check) {
+                if (! is_array($check) || ($check['key'] ?? '') !== 'admin_override') {
+                    continue;
+                }
+                $checks[$i] = [
+                    'key' => 'admin_override',
+                    'label' => 'Staff decision',
+                    'status' => 'fail',
+                    'detail' => 'Rejected by admin override: '.$notes,
+                ];
+                $replaced = true;
+            }
+            if (! $replaced) {
+                $checks[] = [
+                    'key' => 'admin_override',
+                    'label' => 'Staff decision',
+                    'status' => 'fail',
+                    'detail' => 'Rejected by admin override: '.$notes,
+                ];
+            }
             $report['passed_compliance'] = false;
             $report['summary'] = 'Rejected by admin override.';
         }
@@ -1086,5 +1134,94 @@ class ContentModerationService
         $report['admin_override_decision'] = $decision;
 
         return ['evaluation_report' => $report];
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     */
+    protected function checkoutShouldSyncEvaluation(ContentSubmission $submission, string $newStatus, array $result): bool
+    {
+        $passed = (bool) ($result['passed'] ?? false);
+        $error = ($result['status'] ?? '') === 'error';
+        $expectedEval = $passed ? 'approved' : ($error ? 'error' : 'rejected');
+        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+
+        return (string) $submission->moderation_status !== $newStatus
+            || (string) $submission->evaluation_status !== $expectedEval
+            || ! empty($report['admin_override']);
+    }
+
+    /**
+     * @param  array<string, mixed>  $result
+     * @return array{evaluation_status:string, evaluation_report:array<string, mixed>, evaluated_at:CarbonInterface}
+     */
+    protected function evaluationFieldsFromScan(ContentSubmission $submission, array $result): array
+    {
+        $report = is_array($submission->evaluation_report) ? $submission->evaluation_report : [];
+        $checks = is_array($report['checks'] ?? null) ? $report['checks'] : [];
+        $passed = (bool) ($result['passed'] ?? false);
+        $error = ($result['status'] ?? '') === 'error';
+        $terms = is_array($result['matched_terms'] ?? null) ? array_values(array_map('strval', $result['matched_terms'])) : [];
+        $urls = is_array($result['blocked_urls'] ?? null) ? array_values(array_map('strval', $result['blocked_urls'])) : [];
+
+        unset($report['admin_override'], $report['admin_override_notes'], $report['admin_override_decision']);
+        $checks = array_values(array_filter($checks, function ($check) {
+            return ! is_array($check) || ($check['key'] ?? '') !== 'admin_override';
+        }));
+
+        if ($passed) {
+            foreach ($checks as $i => $check) {
+                if (! is_array($check) || strtolower((string) ($check['status'] ?? '')) !== 'fail') {
+                    continue;
+                }
+                if (($check['key'] ?? '') !== 'restricted_content') {
+                    continue;
+                }
+                $checks[$i]['status'] = 'pass';
+                $checks[$i]['detail'] = 'Cleared on re-check.';
+            }
+            $report['passed_compliance'] = true;
+            $report['summary'] = 'Your article was approved for publication. You can now select websites and place an order.';
+            $report['matched_terms'] = [];
+            $report['blocked_urls'] = [];
+        } else {
+            $message = (string) ($result['user_message'] ?? 'Please revise restricted content before ordering.');
+            $detail = $urls !== []
+                ? 'Blocked links: '.implode(', ', array_slice($urls, 0, 5))
+                : ($terms !== []
+                    ? 'Found: '.implode(', ', array_slice($terms, 0, 10))
+                    : $message);
+            $report['passed_compliance'] = false;
+            $report['summary'] = $message;
+            $report['matched_terms'] = $terms;
+            $report['blocked_urls'] = $urls;
+
+            $updated = false;
+            foreach ($checks as $i => $check) {
+                if (! is_array($check) || ($check['key'] ?? '') !== 'restricted_content') {
+                    continue;
+                }
+                $checks[$i]['status'] = 'fail';
+                $checks[$i]['label'] = 'Restricted content ('.$this->categoryTopic($result['log']?->detected_category ?? null).')';
+                $checks[$i]['detail'] = $detail;
+                $updated = true;
+            }
+            if (! $updated && ! $error) {
+                $checks[] = [
+                    'key' => 'restricted_content',
+                    'label' => 'Restricted content ('.$this->categoryTopic($result['log']?->detected_category ?? null).')',
+                    'status' => 'fail',
+                    'detail' => $detail,
+                ];
+            }
+        }
+
+        $report['checks'] = $checks;
+
+        return [
+            'evaluation_status' => $passed ? 'approved' : ($error ? 'error' : 'rejected'),
+            'evaluation_report' => $report,
+            'evaluated_at' => now(),
+        ];
     }
 }

@@ -162,6 +162,10 @@ class ContentModerationLog extends Model
 
     public function isUsableApproval(int $withinSeconds = 900): bool
     {
+        if ($this->wasSkipped()) {
+            return false;
+        }
+
         return $this->passed
             && $this->status === self::STATUS_APPROVED
             && $this->created_at

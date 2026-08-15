@@ -196,6 +196,16 @@ class AdminModerationOverrideTest extends TestCase
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
         $this->assertFalse($check['ok']);
         $this->assertSame(ContentSubmission::STATUS_REJECTED, $submission->fresh()->moderation_status);
+        $fresh = $submission->fresh();
+        $this->assertSame('rejected', $fresh->evaluation_status);
+        $this->assertStringNotContainsString(
+            'Approved by admin override',
+            (string) ($fresh->evaluation_report['summary'] ?? '')
+        );
+        $this->assertStringNotContainsString(
+            'approved by admin override',
+            strtolower(implode(' ', $fresh->evaluationReasonGroups()['blocking']))
+        );
     }
 
     public function test_revert_rechecks_and_blocks_checkout(): void
@@ -283,6 +293,65 @@ class AdminModerationOverrideTest extends TestCase
 
         $check = app(ContentModerationService::class)->assertSubmissionsApproved([$submission->fresh()], $advertiser);
         $this->assertTrue($check['ok'], json_encode($check['failures']));
+        $this->assertSame('approved', $submission->fresh()->evaluation_status);
+        $this->assertStringNotContainsString(
+            'Rejected by admin override',
+            (string) ($submission->fresh()->evaluation_report['summary'] ?? '')
+        );
+    }
+
+    public function test_skipped_scan_is_not_a_usable_approval(): void
+    {
+        $advertiser = $this->advertiser();
+        $url = 'https://docs.google.com/document/d/skipped-cache/edit';
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'document_url' => $url,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'scan_token' => 'scan-skipped',
+            'word_count' => 20,
+            'signals' => ['moderation_disabled' => true],
+        ]);
+
+        $this->assertTrue($log->wasSkipped());
+        $this->assertFalse($log->isUsableApproval(900));
+
+        config(['content_moderation.enabled' => true]);
+        ContentModerationSetting::clearCache();
+        $check = app(ContentModerationService::class)->assertLinksApproved([$url], $advertiser);
+        $this->assertFalse($check['ok']);
+    }
+
+    public function test_staff_override_clears_the_skipped_flag(): void
+    {
+        $admin = $this->admin();
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $log = ContentModerationLog::create([
+            'user_id' => $advertiser->id,
+            'content_submission_id' => $submission->id,
+            'document_url' => 'upload:'.$submission->id,
+            'status' => ContentModerationLog::STATUS_APPROVED,
+            'passed' => true,
+            'scan_token' => 'scan-skipped-lib',
+            'word_count' => 20,
+            'signals' => ['moderation_disabled' => true],
+        ]);
+        $submission->update(['moderation_log_id' => $log->id, 'scan_token' => 'scan-skipped-lib']);
+
+        $this->actingAs($admin)
+            ->post(route('admin.content-library.override', $submission), [
+                'decision' => 'approved',
+                'notes' => 'Reviewed after turning the scanner back on.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $log->refresh();
+        $this->assertTrue((bool) $log->admin_override);
+        $this->assertFalse($log->wasSkipped());
+        $this->assertNotEmpty($log->signals['override_fingerprint'] ?? null);
     }
 
     public function test_url_override_is_not_immortal(): void
