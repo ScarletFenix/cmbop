@@ -445,7 +445,9 @@ class OrderPaymentService
     /**
      * Release promo held for abandoned Stripe-first packages so a retry can
      * reserve bonus again. Leaves bonus untouched when this reference already
-     * has open paid/pending orders (approve/reject still owns that hold).
+     * has open paid/pending orders (approve/reject still owns that hold), or
+     * when another checkout still has an open Stripe session (that tab can
+     * still settle and must keep its promo).
      */
     public function releaseAbandonedStripeFirstBonus(int $userId, ?string $keepReference = null): void
     {
@@ -475,6 +477,12 @@ class OrderPaymentService
             }
 
             $package = $this->getPendingCheckout($ref);
+            $openStripeSession = is_array($package)
+                && search_text($package['stripe_session_id'] ?? '') !== '';
+            if ($openStripeSession && $ref !== $keepReference) {
+                continue;
+            }
+
             $held = max(
                 app(CheckoutIntentService::class)->heldBonus($userId, $ref),
                 round((float) ($package['bonus_applied'] ?? 0), 2)
@@ -489,11 +497,7 @@ class OrderPaymentService
             }
 
             if ($keepReference !== null && $ref !== $keepReference) {
-                $openStripeSession = is_array($package)
-                    && search_text($package['stripe_session_id'] ?? '') !== '';
-                if (! $openStripeSession) {
-                    $this->forgetPendingCheckout($ref);
-                }
+                $this->forgetPendingCheckout($ref);
             }
         }
     }

@@ -9,6 +9,7 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutIntentService;
 use App\Services\OrderPaymentService;
 use App\Services\Orders\OrderRefundService;
 use Database\Seeders\RolesTableSeeder;
@@ -1274,6 +1275,40 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+    }
+
+    public function test_release_abandoned_bonus_does_not_steal_open_stripe_session_hold(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'open-session-hold.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $wallet->reserveBonusOnly(20);
+        $ref = 'OPEN-SESSION-HOLD-1';
+        $payments = app(OrderPaymentService::class);
+        $package = $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20);
+        $package['stripe_session_id'] = 'cs_open_first';
+        $payments->storePendingCheckout($ref, $package);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $ref, 20);
+
+        $payments->releaseAbandonedStripeFirstBonus($advertiser->id, 'NEW-REF-1');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($ref));
+
+        $created = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 60, 'cs_open_first')
+        );
+        $this->assertCount(1, $created);
+        $this->assertEqualsWithDelta(80.0, (float) $created->first()->total_amount, 0.01);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
 
     public function test_stale_cheaper_session_credits_card_and_leaves_package_for_matching_pay(): void
