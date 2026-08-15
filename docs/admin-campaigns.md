@@ -124,7 +124,9 @@ or marketing, even if that staff account also has a marketplace role.
    recipient email from compose, then fails — a profile wipe after queue
    must not drop someone we already counted.
    Email Center retry of a failed campaign mailable clears `email_log_id`
-   so a lost retry can still expire as stale. Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
+   so a lost retry can still expire as stale. Reviving a `failed` campaign
+   must also clear the fail streak — leaving MAX parked the leftover
+   pending for recover give-up beside the retried mailable. Bulk retry must mark only one failed log per job UUID — a shared stale stamp plus the same
    `to_email` used to pending-mark two campaigns and reclaim the extra
    recipient beside a single `queue:retry`.
    `user_ids` are integers capped at

@@ -43,6 +43,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
+        $this->assertStringContainsString('must also clear the fail streak', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('second database table without `payload`', $body);
         $this->assertStringContainsString('failed_jobs', $body);
