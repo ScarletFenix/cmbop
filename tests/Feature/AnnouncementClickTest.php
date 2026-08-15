@@ -55,7 +55,7 @@ class AnnouncementClickTest extends TestCase
         $this->assertSame(0, (int) $announcement->fresh()->clicks);
     }
 
-    public function test_guest_cannot_follow_advertiser_only_cta(): void
+    public function test_guest_follows_advertiser_only_cta_without_counting(): void
     {
         $announcement = SiteAnnouncement::create([
             'title' => 'Advertisers only',
@@ -69,7 +69,7 @@ class AnnouncementClickTest extends TestCase
         ]);
 
         $this->get(route('announcements.click', $announcement))
-            ->assertRedirect('/');
+            ->assertRedirect('/advertiser/catalog');
         $this->assertSame(0, (int) $announcement->fresh()->clicks);
     }
 
@@ -96,11 +96,8 @@ class AnnouncementClickTest extends TestCase
 
         $this->actingAs($advertiser)
             ->get(route('announcements.click', $announcement))
-            ->assertRedirect();
-        $this->assertStringContainsString(
-            '/advertiser/catalog',
-            (string) $this->actingAs($advertiser)->get(route('announcements.click', $announcement))->headers->get('Location')
-        );
+            ->assertRedirect('/advertiser/catalog');
+        $this->assertSame(1, (int) $announcement->fresh()->clicks);
     }
 
     public function test_userinfo_cta_goes_home(): void

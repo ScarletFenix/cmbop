@@ -116,10 +116,8 @@ class PromotionTrackingService
     {
         $href = PromotionUrl::href($storedUrl);
         $live = method_exists($subject, 'isCurrentlyLive') && $subject->isCurrentlyLive();
-        $audienceOk = ! method_exists($subject, 'visibleToAudience')
-            || $subject->visibleToAudience(app(PromotionService::class)->resolveAudience());
 
-        if (! $live || ! $audienceOk || $href === null) {
+        if (! $live || $href === null) {
             return redirect()->away('/');
         }
 
@@ -127,7 +125,13 @@ class PromotionTrackingService
             return response()->noContent();
         }
 
-        $this->record($subject, self::EVENT_CLICK, $request);
+        // Shared / emailed click URLs still land on the offer. Only count
+        // the click when the current visitor is in the intended audience.
+        $audienceOk = ! method_exists($subject, 'visibleToAudience')
+            || $subject->visibleToAudience(app(PromotionService::class)->resolveAudience());
+        if ($audienceOk) {
+            $this->record($subject, self::EVENT_CLICK, $request);
+        }
 
         return redirect()->away($href);
     }

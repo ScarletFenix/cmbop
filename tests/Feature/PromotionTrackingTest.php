@@ -259,6 +259,18 @@ class PromotionTrackingTest extends TestCase
         $this->assertSame(0, PromotionEvent::query()->count());
     }
 
+    public function test_guest_follows_advertiser_only_banner_without_counting(): void
+    {
+        $banner = $this->liveBanner();
+        $banner->update(['audience' => 'advertiser']);
+
+        $this->get(route('banners.click', $banner))
+            ->assertRedirect('https://example.com/offer');
+
+        $this->assertSame(0, (int) $banner->fresh()->clicks);
+        $this->assertSame(0, PromotionEvent::query()->count());
+    }
+
     public function test_track_ignores_advertiser_banner_for_guest(): void
     {
         $banner = $this->liveBanner();
