@@ -117,6 +117,12 @@ class PublicCopyIntegrityTest extends TestCase
                 'staff_handbook_section6_list3',
                 'staff_handbook_section6_list4',
                 'staff_handbook_section6_list5',
+                'staff_handbook_section7_title',
+                'staff_handbook_section7_list1',
+                'staff_handbook_section7_list2',
+                'staff_handbook_section7_list3',
+                'staff_handbook_section7_list4',
+                'staff_handbook_section7_list5',
             ] as $key) {
                 $this->assertNotEmpty($messages[$key] ?? '', $locale.' missing '.$key);
             }

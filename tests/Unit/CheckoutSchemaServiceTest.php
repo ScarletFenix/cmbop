@@ -21,6 +21,8 @@ class CheckoutSchemaServiceTest extends TestCase
         $this->assertTrue(Schema::hasColumn('order_items', 'content_submission_id'));
         $this->assertTrue(Schema::hasColumn('order_items', 'publisher_price'));
         $this->assertTrue(Schema::hasColumn('orders', 'publication_mode'));
+        $this->assertTrue(Schema::hasColumn('orders', 'admin_notes'));
+        $this->assertTrue(Schema::hasColumn('orders', 'payment_reference'));
         $this->assertTrue(Schema::hasColumn('sites', 'homepage_placement_prices'));
         $this->assertTrue(Schema::hasColumn('sites', 'social_promotion'));
         $this->assertTrue(Schema::hasColumn('order_items', 'homepage_days'));

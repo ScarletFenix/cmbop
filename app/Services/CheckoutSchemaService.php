@@ -77,6 +77,8 @@ class CheckoutSchemaService
         $this->addColumn('orders', 'additional_price', 'decimal(10,2) NULL DEFAULT 0');
         $this->addColumn('orders', 'completed_at', 'timestamp NULL');
         $this->addColumn('orders', 'paid_at', 'timestamp NULL');
+        $this->addColumn('orders', 'admin_notes', 'text NULL');
+        $this->addColumn('orders', 'payment_reference', 'varchar(120) NULL');
     }
 
     private function ensureOrderItemsColumns(): void
