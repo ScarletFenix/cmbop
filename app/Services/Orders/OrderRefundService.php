@@ -32,11 +32,23 @@ class OrderRefundService
      */
     public function cancelAndRefund(Order $order, ?string $reason = null): bool
     {
+        return $this->cancelAndRefundBreakdown($order, $reason)['applied'];
+    }
+
+    /**
+     * Cancel and return funds. `cash` is the wallet credit (card) or reserved
+     * release (wallet) — not the gross line total, which may include promo.
+     *
+     * @return array{applied: bool, cash: float, bonus: float}
+     */
+    public function cancelAndRefundBreakdown(Order $order, ?string $reason = null): array
+    {
         return DB::transaction(function () use ($order, $reason) {
+            $none = ['applied' => false, 'cash' => 0.0, 'bonus' => 0.0];
             $locked = Order::whereKey($order->getKey())->lockForUpdate()->first();
 
             if (! $locked || $locked->status === 'cancelled' || $locked->payment_status === 'refunded') {
-                return false;
+                return $none;
             }
 
             $amount = round((float) $locked->total_amount, 2);
@@ -50,14 +62,15 @@ class OrderRefundService
             ContentSubmission::releaseAllForOrder((int) $locked->id);
 
             if (! $refundable) {
-                return false;
+                $order->setRawAttributes($locked->getAttributes(), true);
+
+                return $none;
             }
 
-            $this->refundToAdvertiser($locked, $amount, $reason);
-
+            $moved = $this->applyAdvertiserRefund($locked, $amount, $reason);
             $order->setRawAttributes($locked->getAttributes(), true);
 
-            return true;
+            return $moved;
         });
     }
 
@@ -107,9 +120,18 @@ class OrderRefundService
      */
     public function refundToAdvertiser(Order $order, float $amount, ?string $reason = null, ?float $maxBonusShare = null): bool
     {
+        return $this->applyAdvertiserRefund($order, $amount, $reason, $maxBonusShare)['applied'];
+    }
+
+    /**
+     * @return array{applied: bool, cash: float, bonus: float}
+     */
+    private function applyAdvertiserRefund(Order $order, float $amount, ?string $reason = null, ?float $maxBonusShare = null): array
+    {
+        $none = ['applied' => false, 'cash' => 0.0, 'bonus' => 0.0];
         $amount = round($amount, 2);
         if ($amount <= 0) {
-            return false;
+            return $none;
         }
 
         $advertiserRoleId = Wallet::advertiserRoleId();
@@ -139,10 +161,11 @@ class OrderRefundService
 
         $ledgerAmount = $amount;
 
+        $cashShare = 0.0;
         if ($order->payment_method === 'wallet') {
             $reservedBefore = round((float) $wallet->reserved_balance, 2);
             if ($reservedBefore <= 0) {
-                return false;
+                return $none;
             }
 
             $bonusReservedBefore = (float) $wallet->bonus_reserved;
@@ -150,8 +173,9 @@ class OrderRefundService
             $bonusRestored = max(0, round($bonusReservedBefore - (float) $wallet->bonus_reserved, 2));
             $ledgerAmount = max(0, round($reservedBefore - (float) $wallet->reserved_balance, 2));
             if ($ledgerAmount <= 0) {
-                return false;
+                return $none;
             }
+            $cashShare = $ledgerAmount;
         } else {
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
@@ -188,7 +212,11 @@ class OrderRefundService
             'reason' => $reason,
         ]);
 
-        return true;
+        return [
+            'applied' => true,
+            'cash' => round($cashShare, 2),
+            'bonus' => round($bonusRestored, 2),
+        ];
     }
 
     /**

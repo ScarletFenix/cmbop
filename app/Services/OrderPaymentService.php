@@ -955,9 +955,12 @@ class OrderPaymentService
                     $reason = $articleTaken
                         ? 'Content Library article was already purchased on another checkout'
                         : 'Content Library article is no longer available for checkout';
-                    app(OrderRefundService::class)->cancelAndRefund($order, $reason);
+                    $refunded = app(OrderRefundService::class)->cancelAndRefundBreakdown($order, $reason);
+                    // Subtract only the card cash actually credited. The gross
+                    // line total still includes promo; using it here shorted
+                    // leftover hidden lines by that bonus slice.
                     $refundedInFinalize = round(
-                        $refundedInFinalize + (float) $order->total_amount,
+                        $refundedInFinalize + (float) $refunded['cash'],
                         2
                     );
                     Log::warning($articleTaken
