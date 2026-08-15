@@ -323,6 +323,57 @@ class AdminFinanceOpsGapsTest extends TestCase
             ->assertDontSee('wildcard ref');
     }
 
+    public function test_ledger_wildcard_only_search_does_not_dump_all_rows(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        app(WalletLedgerService::class)->recordTransferIn($wallet, 10, null, 'LEDGER-WILD-1', 'wildcard dump keep');
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => '%%']))
+            ->assertOk()
+            ->assertDontSee('wildcard dump keep');
+
+        $csv = $this->actingAs($admin)
+            ->get(route('admin.finance.ledger.export', ['search' => '%%']))
+            ->assertOk()
+            ->streamedContent();
+
+        $this->assertStringNotContainsString('wildcard dump keep', $csv);
+        $this->assertStringNotContainsString('LEDGER-WILD-1', $csv);
+    }
+
+    public function test_ledger_search_does_not_treat_leading_zero_as_row_id(): void
+    {
+        $admin = $this->makeUser('admin');
+        $publisher = $this->makeUser('publisher');
+        $pubRole = Role::firstOrCreate(['name' => 'publisher']);
+        $wallet = Wallet::create([
+            'user_id' => $publisher->id,
+            'role_id' => $pubRole->id,
+            'balance' => 20,
+            'reserved_balance' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $row = app(WalletLedgerService::class)->recordTransferIn($wallet, 10, null, 'LEDGER-PAD', 'padded id row');
+        $padded = '0'.(string) $row->id;
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance.ledger', ['search' => $padded]))
+            ->assertOk()
+            ->assertDontSee('padded id row');
+    }
+
     public function test_ledger_ignores_array_search_and_invalid_dates(): void
     {
         $admin = $this->makeUser('admin');

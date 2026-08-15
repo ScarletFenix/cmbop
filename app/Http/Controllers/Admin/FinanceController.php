@@ -270,7 +270,10 @@ class FinanceController extends Controller
 
         $search = search_text($request->input('search'));
         $meaningful = $this->dossierSearchNeedle($search);
-        if ($meaningful !== '') {
+        if ($search !== '' && $meaningful === '') {
+            // "%%" / "_" only — do not treat as no filter (that dumps the ledger).
+            $query->whereRaw('0 = 1');
+        } elseif ($meaningful !== '') {
             $like = like_contains($search);
             $query->where(function ($q) use ($like, $search) {
                 $q->whereRaw('reference LIKE ? ESCAPE ?', [$like, '\\'])
@@ -279,7 +282,7 @@ class FinanceController extends Controller
                         $sub->whereRaw('name LIKE ? ESCAPE ?', [$like, '\\'])
                             ->orWhereRaw('email LIKE ? ESCAPE ?', [$like, '\\']);
                     });
-                if (ctype_digit($search)) {
+                if ($this->isExactDigitId($search)) {
                     $q->orWhere('id', (int) $search);
                 }
             });
@@ -312,13 +315,21 @@ class FinanceController extends Controller
 
     private function redirectToDossierIfUnique(string $userQuery): ?RedirectResponse
     {
-        if (! ctype_digit($userQuery) || (string) ((int) $userQuery) !== $userQuery) {
+        if (! $this->isExactDigitId($userQuery)) {
             return null;
         }
 
         $user = User::query()->whereKey((int) $userQuery)->first();
 
         return $user ? redirect()->route('admin.finance.user', $user) : null;
+    }
+
+    /**
+     * True for "8", not "08" or an overflowing digit string.
+     */
+    private function isExactDigitId(string $value): bool
+    {
+        return ctype_digit($value) && (string) ((int) $value) === $value;
     }
 
     /**
