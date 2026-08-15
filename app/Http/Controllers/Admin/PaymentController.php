@@ -307,6 +307,17 @@ class PaymentController extends Controller
 
             $order->save();
 
+            if ($newStatus === 'paid' && $oldStatus !== 'paid') {
+                $payments = app(OrderPaymentService::class);
+                $bonusApplied = $payments->leftoverBonusForPurchaseLedger($order);
+                $payments->recordAdvertiserPurchaseForPaidCheckout(
+                    (string) ($order->reference_code ?? ''),
+                    collect([$order->fresh(['items']) ?: $order]),
+                    $bonusApplied,
+                    (float) $order->total_amount
+                );
+            }
+
             Log::info('Payment status updated by admin', [
                 'order_id' => $order->id,
                 'order_number' => $order->order_number,

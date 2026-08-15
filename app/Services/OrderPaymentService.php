@@ -200,7 +200,7 @@ class OrderPaymentService
      *
      * @param  Collection<int, Order>  $orders
      */
-    protected function recordAdvertiserPurchaseForPaidCheckout(
+    public function recordAdvertiserPurchaseForPaidCheckout(
         string $referenceCode,
         Collection $orders,
         float $bonusApplied,
@@ -240,6 +240,41 @@ class OrderPaymentService
             $orders->first(),
             $referenceCode
         );
+    }
+
+    /**
+     * Promo this settled leftover still owns. Used so admin mark-paid can
+     * write the same purchase hint Stripe finalize writes — clawback otherwise
+     * credits the full line as withdrawable cash.
+     */
+    public function leftoverBonusForPurchaseLedger(Order $order): float
+    {
+        $userId = (int) $order->user_id;
+        $reference = (string) ($order->reference_code ?? '');
+        $cap = app(OrderRefundService::class)->cardLeftoverBonusCap($userId, $reference);
+        if ($cap !== null) {
+            return round($cap, 2);
+        }
+
+        $package = $this->getPendingCheckout($reference);
+        $snapshot = is_array($package)
+            ? round((float) ($package['bonus_applied'] ?? 0), 2)
+            : 0.0;
+        if ($snapshot > 0.009) {
+            return $snapshot;
+        }
+
+        $roleId = Wallet::advertiserRoleId();
+        if (! $roleId || $userId <= 0) {
+            return 0.0;
+        }
+
+        $wallet = Wallet::query()
+            ->where('user_id', $userId)
+            ->where('role_id', $roleId)
+            ->first();
+
+        return $wallet ? max(0, round((float) $wallet->bonus_reserved, 2)) : 0.0;
     }
 
     /**
