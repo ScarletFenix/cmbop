@@ -464,8 +464,9 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Current owner line is live. Historical live URLs on cancelled leftovers
-     * must not keep a reused or released article in Completed.
+     * Current owner line is live. A sibling's live URL on the same order,
+     * or a historical URL on a cancelled leftover, must not keep this
+     * article in Completed.
      *
      * @param  Builder<static>  $query
      * @return Builder<static>
@@ -1012,7 +1013,10 @@ class ContentSubmission extends Model
             : $this->orderItems()->with(['site', 'order'])->orderBy('id')->get();
 
         if ($this->order_id) {
-            $onOwner = $items->firstWhere('order_id', (int) $this->order_id);
+            $onOwner = $items->first(function (OrderItem $item) {
+                return (int) $item->order_id === (int) $this->order_id
+                    && (int) ($item->content_submission_id ?? 0) === (int) $this->id;
+            });
             if ($onOwner) {
                 return $onOwner;
             }
@@ -1471,7 +1475,17 @@ class ContentSubmission extends Model
     protected function constrainCurrentOwnerLiveItem($itemQuery, string $submissionTable): void
     {
         $hasPublisherStatus = Schema::hasColumn('order_items', 'publisher_status');
+        $hasSubmissionFk = Schema::hasColumn('order_items', 'content_submission_id');
         $itemQuery->whereColumn('order_items.order_id', $submissionTable.'.order_id')
+            ->where(function ($ownerLine) use ($submissionTable, $hasSubmissionFk) {
+                $ownerLine->whereColumn('order_items.id', $submissionTable.'.order_item_id');
+                if ($hasSubmissionFk) {
+                    $ownerLine->orWhere(function ($legacy) use ($submissionTable) {
+                        $legacy->whereNull($submissionTable.'.order_item_id')
+                            ->whereColumn('order_items.content_submission_id', $submissionTable.'.id');
+                    });
+                }
+            })
             ->where(function ($q) use ($hasPublisherStatus) {
                 $q->where(function ($live) {
                     $live->whereNotNull('live_url')->where('live_url', '!=', '');

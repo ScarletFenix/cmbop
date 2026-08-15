@@ -310,6 +310,92 @@ class ContentLibraryImprovementsTest extends TestCase
             ->assertDontSee('Reused After Live');
     }
 
+    public function test_sibling_live_url_does_not_mark_other_library_article_completed(): void
+    {
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $liveSite = $this->activeSite($publisher, 'sibling-live');
+        $waitingSite = $this->activeSite($publisher, 'sibling-wait');
+        $liveArticle = $this->createApprovedSubmission($advertiser, null, 0, 'live', 'https://example.com/live');
+        $waitingArticle = $this->createApprovedSubmission($advertiser, null, 1, 'wait', 'https://example.com/wait');
+        $liveArticle->update(['title' => 'Already Live Piece']);
+        $waitingArticle->update(['title' => 'Still Waiting Piece']);
+
+        $order = $this->makeOrder($advertiser);
+        $order->update(['payment_status' => 'paid', 'status' => 'processing', 'paid_at' => now()]);
+
+        $liveItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $liveSite->id,
+            'site_name' => $liveSite->site_name,
+            'site_url' => $liveSite->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/live.docx',
+            'content_submission_id' => $liveArticle->id,
+            'live_url' => 'https://live.example/sibling-post',
+            'live_url_submitted_at' => now(),
+        ]);
+        $waitingItem = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $waitingSite->id,
+            'site_name' => $waitingSite->site_name,
+            'site_url' => $waitingSite->site_url,
+            'price' => 46,
+            'content_link' => 'https://example.com/wait.docx',
+            'content_submission_id' => $waitingArticle->id,
+        ]);
+        $liveArticle->update([
+            'order_id' => $order->id,
+            'order_item_id' => $liveItem->id,
+        ]);
+        $waitingArticle->update([
+            'order_id' => $order->id,
+            'order_item_id' => $waitingItem->id,
+        ]);
+
+        $waiting = $waitingArticle->fresh()->load(['orderItems.order', 'orderItem']);
+        $this->assertTrue($waiting->isInUse());
+        $this->assertFalse($waiting->isPublished());
+        $this->assertSame('in_progress', $waiting->libraryAvailability());
+        $this->assertNull($waiting->liveUrl());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($waitingArticle->id)->inProgressInLibrary()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($waitingArticle->id)->withCurrentLivePlacement()->exists()
+        );
+
+        $live = $liveArticle->fresh()->load(['orderItems.order', 'orderItem']);
+        $this->assertTrue($live->isPublished());
+        $this->assertSame('https://live.example/sibling-post', $live->liveUrl());
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($liveArticle->id)->withCurrentLivePlacement()->exists()
+        );
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($liveArticle->id)->inProgressInLibrary()->exists()
+        );
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'in_progress']))
+            ->assertOk()
+            ->assertSee('Still Waiting Piece')
+            ->assertDontSee('Already Live Piece');
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library', ['availability' => 'completed']))
+            ->assertOk()
+            ->assertSee('Already Live Piece')
+            ->assertDontSee('Still Waiting Piece');
+
+        $waitingArticle->update(['order_item_id' => null]);
+        $this->assertFalse(
+            ContentSubmission::query()->whereKey($waitingArticle->id)->withCurrentLivePlacement()->exists()
+        );
+        $this->assertTrue(
+            ContentSubmission::query()->whereKey($waitingArticle->id)->inProgressInLibrary()->exists()
+        );
+    }
+
     public function test_approved_chip_excludes_completed_and_in_progress(): void
     {
         $advertiser = $this->advertiser();
