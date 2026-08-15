@@ -11,6 +11,8 @@ use Illuminate\Mail\Mailables\Headers;
 
 class AudienceCampaignMail extends PlatformMailable
 {
+    protected ?string $cachedUnsubscribeUrl = null;
+
     public function __construct(
         public EmailCampaign $campaign,
         public User $recipient,
@@ -18,6 +20,11 @@ class AudienceCampaignMail extends PlatformMailable
         parent::__construct();
         $this->notificationType = 'audience_campaign';
         $this->recipientUser = $recipient;
+    }
+
+    public function unsubscribeUrl(): string
+    {
+        return $this->cachedUnsubscribeUrl ??= EmailUnsubscribeLink::url($this->recipient);
     }
 
     public function build()
@@ -31,13 +38,13 @@ class AudienceCampaignMail extends PlatformMailable
                 'ctaLabel' => $this->campaign->cta_label,
                 'ctaUrl' => $this->campaign->cta_url,
                 'brand' => $this->brand(),
-                'unsubscribeUrl' => EmailUnsubscribeLink::url($this->recipient),
+                'unsubscribeUrl' => $this->unsubscribeUrl(),
             ]);
     }
 
     public function headers(): Headers
     {
-        $url = EmailUnsubscribeLink::url($this->recipient);
+        $url = $this->unsubscribeUrl();
 
         return new Headers(
             text: [

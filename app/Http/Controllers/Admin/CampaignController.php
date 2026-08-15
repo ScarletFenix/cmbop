@@ -11,6 +11,8 @@ use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
 use App\Support\CampaignHtml;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\Rule;
 
 class CampaignController extends Controller
@@ -114,45 +116,56 @@ class CampaignController extends Controller
         $respectPrefs = $request->boolean('respect_preferences');
         $count = $recipients->count();
 
-        $campaign = EmailCampaign::create([
-            'name' => ($data['name'] ?? null) ?: $data['subject'],
-            'subject' => $data['subject'],
-            'body_html' => CampaignHtml::sanitize($data['body_html']),
-            'audience' => $data['audience'],
-            'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
-            'cta_label' => $data['cta_label'] ?? null,
-            'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
-            'recipients_count' => $count,
-            'sent_count' => 0,
-            'skipped_count' => 0,
-            'status' => EmailCampaign::STATUS_QUEUED,
-            'respect_preferences' => $respectPrefs,
-            'created_by' => auth()->id(),
-        ]);
+        $campaign = DB::transaction(function () use ($data, $recipients, $count, $respectPrefs) {
+            $campaign = EmailCampaign::create([
+                'name' => ($data['name'] ?? null) ?: $data['subject'],
+                'subject' => $data['subject'],
+                'body_html' => CampaignHtml::sanitize($data['body_html']),
+                'audience' => $data['audience'],
+                'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
+                'cta_label' => $data['cta_label'] ?? null,
+                'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
+                'recipients_count' => $count,
+                'sent_count' => 0,
+                'skipped_count' => 0,
+                'status' => EmailCampaign::STATUS_QUEUED,
+                'respect_preferences' => $respectPrefs,
+                'created_by' => auth()->id(),
+            ]);
 
-        $now = now();
-        foreach ($recipients->chunk(200) as $chunk) {
-            EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
-                'email_campaign_id' => $campaign->id,
-                'user_id' => $user->id,
-                'email' => $user->email,
-                'status' => EmailCampaignRecipient::STATUS_PENDING,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ])->all());
+            $now = now();
+            foreach ($recipients->chunk(200) as $chunk) {
+                EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
+                    'email_campaign_id' => $campaign->id,
+                    'user_id' => $user->id,
+                    'email' => $user->email,
+                    'status' => EmailCampaignRecipient::STATUS_PENDING,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ])->all());
+            }
+
+            return $campaign;
+        });
+
+        try {
+            ActivityLogger::log(
+                'campaign.queued',
+                "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
+                $campaign,
+                [
+                    'audience' => $campaign->audience,
+                    'recipients' => $count,
+                ]
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Campaign activity log failed', [
+                'campaign_id' => $campaign->id,
+                'error' => $e->getMessage(),
+            ]);
         }
 
         SendEmailCampaignJob::dispatch($campaign->id);
-
-        ActivityLogger::log(
-            'campaign.queued',
-            "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
-            $campaign,
-            [
-                'audience' => $campaign->audience,
-                'recipients' => $count,
-            ]
-        );
 
         return redirect()
             ->route('admin.campaigns.index')

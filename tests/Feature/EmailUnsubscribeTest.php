@@ -147,7 +147,7 @@ class EmailUnsubscribeTest extends TestCase
 
         $mailable = new AudienceCampaignMail($campaign, $user);
         $html = $mailable->render();
-        $url = EmailUnsubscribeLink::url($user);
+        $url = $mailable->unsubscribeUrl();
 
         $this->assertStringContainsString('/email/unsubscribe/'.$user->id, $html);
         $this->assertStringContainsString('Unsubscribe from marketing emails', $html);
@@ -156,6 +156,7 @@ class EmailUnsubscribeTest extends TestCase
         $headers = $mailable->headers();
         $this->assertSame('<'.$url.'>', $headers->text['List-Unsubscribe']);
         $this->assertSame('List-Unsubscribe=One-Click', $headers->text['List-Unsubscribe-Post']);
+        $this->assertSame($url, $mailable->unsubscribeUrl());
     }
 
     public function test_order_payment_mail_has_no_unsubscribe_footer(): void

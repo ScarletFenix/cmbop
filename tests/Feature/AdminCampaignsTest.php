@@ -16,6 +16,7 @@ use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Queue;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class AdminCampaignsTest extends TestCase
@@ -520,8 +521,54 @@ class AdminCampaignsTest extends TestCase
         };
         $job->handle();
 
-        $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
-        $this->assertNotSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $fresh->status);
+        $this->assertNotSame(EmailCampaign::STATUS_SENDING, $fresh->status);
+        $this->assertSame(0, $fresh->sent_count);
+    }
+
+    public function test_job_exception_recounts_recipients_already_queued(): void
+    {
+        $admin = $this->makeUser('admin');
+        $queuedUser = $this->makeUser('advertiser');
+        $pendingUser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Partial',
+            'subject' => 'Partial',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 2,
+            'status' => EmailCampaign::STATUS_QUEUED,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $queuedUser->id,
+            'email' => $queuedUser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $pendingUser->id,
+            'email' => $pendingUser->email,
+            'status' => EmailCampaignRecipient::STATUS_PENDING,
+        ]);
+
+        $job = new class($campaign->id) extends SendEmailCampaignJob
+        {
+            protected function processPending(EmailCampaign $campaign): void
+            {
+                throw new \RuntimeException('boom');
+            }
+        };
+        $job->handle();
+
+        $fresh = $campaign->fresh();
+        $this->assertSame(EmailCampaign::STATUS_FAILED, $fresh->status);
+        $this->assertSame(1, $fresh->sent_count);
+        $this->assertSame(0, $fresh->skipped_count);
     }
 
     public function test_sent_mail_syncs_email_log_and_marks_recipient_delivered(): void
@@ -608,5 +655,35 @@ class AdminCampaignsTest extends TestCase
         $this->assertNotNull($mailable->send(app('mailer')));
 
         $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $row->fresh()->status);
+    }
+
+    public function test_log_sync_does_not_break_mail_when_recipients_table_is_missing(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'No table',
+            'subject' => 'No recipient table',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+
+        Schema::drop('email_campaign_recipients');
+
+        $mailable = new AudienceCampaignMail($campaign, $advertiser);
+        $mailable->skipUserPreference = true;
+        $mailable->dedupeKey = 'missing-recipients-table';
+        $mailable->to($advertiser->email);
+
+        $this->assertNotNull($mailable->send(app('mailer')));
+        $this->assertDatabaseHas('email_logs', [
+            'subject' => 'No recipient table',
+            'to_email' => $advertiser->email,
+        ]);
     }
 }

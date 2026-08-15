@@ -2,12 +2,15 @@
 
 namespace App\Listeners;
 
+use App\Mail\AudienceCampaignMail;
 use App\Mail\PlatformMailable;
 use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Support\EmailCatalog;
 use Illuminate\Mail\Events\MessageSent;
 use Illuminate\Mail\Mailable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
 
 class LogSentEmail
@@ -65,6 +68,10 @@ class LogSentEmail
         ];
         $campaignId = isset($meta['campaign_id']) ? (int) $meta['campaign_id'] : 0;
         $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
+        if ($mailableInstance instanceof AudienceCampaignMail) {
+            $campaignId = $campaignId ?: (int) ($mailableInstance->campaign->id ?? 0);
+            $userId = $userId ?: (int) ($mailableInstance->recipient->id ?? 0);
+        }
         if ($campaignId > 0) {
             $logMeta['campaign_id'] = $campaignId;
         }
@@ -89,7 +96,20 @@ class LogSentEmail
             'sent_at' => now(),
         ]);
 
-        if ($campaignId > 0 && $userId > 0) {
+        $this->markCampaignRecipientDelivered($campaignId, $userId, (int) $log->id);
+    }
+
+    protected function markCampaignRecipientDelivered(int $campaignId, int $userId, int $logId): void
+    {
+        if ($campaignId < 1 || $userId < 1) {
+            return;
+        }
+
+        try {
+            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())) {
+                return;
+            }
+
             EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaignId)
                 ->where('user_id', $userId)
@@ -99,8 +119,15 @@ class LogSentEmail
                 ])
                 ->update([
                     'status' => EmailCampaignRecipient::STATUS_DELIVERED,
-                    'email_log_id' => $log->id,
+                    'email_log_id' => $logId,
                 ]);
+        } catch (\Throwable $e) {
+            Log::warning('Campaign recipient log sync failed', [
+                'campaign_id' => $campaignId,
+                'user_id' => $userId,
+                'email_log_id' => $logId,
+                'error' => $e->getMessage(),
+            ]);
         }
     }
 

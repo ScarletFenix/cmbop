@@ -43,14 +43,18 @@ class SendEmailCampaignJob implements ShouldQueue
                 'campaign_id' => $campaign->id,
                 'error' => $e->getMessage(),
             ]);
-            $campaign->refresh();
-            if ($campaign->status !== EmailCampaign::STATUS_SENT) {
-                $campaign->update([
-                    'status' => EmailCampaign::STATUS_FAILED,
-                    'sent_at' => now(),
-                ]);
-            }
+            $this->markFailed($campaign);
         }
+    }
+
+    public function failed(?\Throwable $e): void
+    {
+        $campaign = EmailCampaign::query()->find($this->campaignId);
+        if (! $campaign) {
+            return;
+        }
+
+        $this->markFailed($campaign);
     }
 
     protected function processPending(EmailCampaign $campaign): void
@@ -97,10 +101,16 @@ class SendEmailCampaignJob implements ShouldQueue
 
             Mail::to($user->email)->send($mailable);
         } catch (\Throwable $e) {
-            $row->update([
-                'status' => EmailCampaignRecipient::STATUS_FAILED,
-                'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
-            ]);
+            $row->refresh();
+            if (! in_array($row->status, [
+                EmailCampaignRecipient::STATUS_DELIVERED,
+                EmailCampaignRecipient::STATUS_SKIPPED,
+            ], true)) {
+                $row->update([
+                    'status' => EmailCampaignRecipient::STATUS_FAILED,
+                    'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
+                ]);
+            }
             Log::warning('Campaign send failed', [
                 'campaign_id' => $campaign->id,
                 'user_id' => $user->id,
@@ -119,6 +129,20 @@ class SendEmailCampaignJob implements ShouldQueue
             'status' => $campaign->sent_count > 0
                 ? EmailCampaign::STATUS_SENT
                 : EmailCampaign::STATUS_FAILED,
+            'sent_at' => now(),
+        ]);
+    }
+
+    protected function markFailed(EmailCampaign $campaign): void
+    {
+        $campaign->refresh();
+        if (in_array($campaign->status, [EmailCampaign::STATUS_SENT, EmailCampaign::STATUS_FAILED], true)) {
+            return;
+        }
+
+        $campaign->recountRecipientTotals();
+        $campaign->update([
+            'status' => EmailCampaign::STATUS_FAILED,
             'sent_at' => now(),
         ]);
     }
