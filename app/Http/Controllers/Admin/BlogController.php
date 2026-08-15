@@ -3,6 +3,8 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Http\Requests\Admin\StoreBlogRequest;
+use App\Http\Requests\Admin\UpdateBlogRequest;
 use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\BlogHtmlSanitizer;
@@ -116,50 +118,9 @@ class BlogController extends Controller
     /**
      * Store a newly created blog.
      */
-    public function store(Request $request)
+    public function store(StoreBlogRequest $request)
     {
         try {
-            $this->hydrateLegacyTranslationInput($request);
-            $request->validate([
-                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'author' => 'nullable|string|max:120',
-                'tags' => 'nullable|string',
-                'status' => 'required|in:draft,published',
-                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-                'translations.en.title' => 'required|string|max:255',
-                'translations.en.slug' => 'nullable|string|max:255',
-                'translations.en.excerpt' => 'nullable|string|max:300',
-                'translations.en.meta_title' => 'nullable|string|max:70',
-                'translations.en.meta_description' => 'nullable|string|max:180',
-                'translations.en.content' => 'required|string',
-                'translations.en.is_published' => 'nullable|boolean',
-                'translations.de.title' => 'nullable|string|max:255',
-                'translations.de.slug' => 'nullable|string|max:255',
-                'translations.de.excerpt' => 'nullable|string|max:300',
-                'translations.de.meta_title' => 'nullable|string|max:70',
-                'translations.de.meta_description' => 'nullable|string|max:180',
-                'translations.de.content' => 'nullable|string',
-                'translations.de.is_published' => 'nullable|boolean',
-                'translations.fr.title' => 'nullable|string|max:255',
-                'translations.fr.slug' => 'nullable|string|max:255',
-                'translations.fr.excerpt' => 'nullable|string|max:300',
-                'translations.fr.meta_title' => 'nullable|string|max:70',
-                'translations.fr.meta_description' => 'nullable|string|max:180',
-                'translations.fr.content' => 'nullable|string',
-                'translations.fr.is_published' => 'nullable|boolean',
-                'translations.nl.title' => 'nullable|string|max:255',
-                'translations.nl.slug' => 'nullable|string|max:255',
-                'translations.nl.excerpt' => 'nullable|string|max:300',
-                'translations.nl.meta_title' => 'nullable|string|max:70',
-                'translations.nl.meta_description' => 'nullable|string|max:180',
-                'translations.nl.content' => 'nullable|string',
-                'translations.nl.is_published' => 'nullable|boolean',
-            ]);
-
-            if (! auth()->check()) {
-                throw new \Exception('You must be logged in to create a blog post.');
-            }
-
             $featuredImage = null;
             if ($request->hasFile('featured_image')) {
                 $featuredImage = $request->file('featured_image')->store('blogs/featured', 'public');
@@ -223,8 +184,6 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blog->title.'" created successfully!');
         } catch (ValidationException $e) {
-            Log::error('Validation failed for blog creation', ['errors' => $e->errors()]);
-
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
@@ -279,55 +238,10 @@ class BlogController extends Controller
     /**
      * Update the specified blog.
      */
-    public function update(Request $request, $id)
+    public function update(UpdateBlogRequest $request, $id)
     {
         try {
-            $this->hydrateLegacyTranslationInput($request);
-            Log::info('Blog update attempt', [
-                'blog_id' => $id,
-                'user_id' => auth()->id(),
-                'has_file' => $request->hasFile('featured_image'),
-                'request_data' => $request->except('_token', '_method', 'content'),
-            ]);
-
             $blog = Blog::findOrFail($id);
-
-            $request->validate([
-                'featured_image' => 'nullable|image|mimes:jpeg,png,jpg,gif,webp|max:5120',
-                'remove_featured_image' => 'nullable|boolean',
-                'author' => 'nullable|string|max:120',
-                'tags' => 'nullable|string',
-                'status' => 'required|in:draft,published',
-                'primary_locale' => 'nullable|string|in:'.implode(',', PublicI18n::supported()),
-                'translations.en.title' => 'required|string|max:255',
-                'translations.en.slug' => 'nullable|string|max:255',
-                'translations.en.excerpt' => 'nullable|string|max:300',
-                'translations.en.meta_title' => 'nullable|string|max:70',
-                'translations.en.meta_description' => 'nullable|string|max:180',
-                'translations.en.content' => 'required|string',
-                'translations.en.is_published' => 'nullable|boolean',
-                'translations.de.title' => 'nullable|string|max:255',
-                'translations.de.slug' => 'nullable|string|max:255',
-                'translations.de.excerpt' => 'nullable|string|max:300',
-                'translations.de.meta_title' => 'nullable|string|max:70',
-                'translations.de.meta_description' => 'nullable|string|max:180',
-                'translations.de.content' => 'nullable|string',
-                'translations.de.is_published' => 'nullable|boolean',
-                'translations.fr.title' => 'nullable|string|max:255',
-                'translations.fr.slug' => 'nullable|string|max:255',
-                'translations.fr.excerpt' => 'nullable|string|max:300',
-                'translations.fr.meta_title' => 'nullable|string|max:70',
-                'translations.fr.meta_description' => 'nullable|string|max:180',
-                'translations.fr.content' => 'nullable|string',
-                'translations.fr.is_published' => 'nullable|boolean',
-                'translations.nl.title' => 'nullable|string|max:255',
-                'translations.nl.slug' => 'nullable|string|max:255',
-                'translations.nl.excerpt' => 'nullable|string|max:300',
-                'translations.nl.meta_title' => 'nullable|string|max:70',
-                'translations.nl.meta_description' => 'nullable|string|max:180',
-                'translations.nl.content' => 'nullable|string',
-                'translations.nl.is_published' => 'nullable|boolean',
-            ]);
 
             $tags = null;
             if ($request->tags) {
@@ -413,8 +327,6 @@ class BlogController extends Controller
             return redirect()->route('admin.blogs.index')
                 ->with('success', 'Blog "'.$blog->title.'" updated successfully!');
         } catch (ValidationException $e) {
-            Log::error('Validation failed for blog update', ['errors' => $e->errors()]);
-
             return redirect()->back()
                 ->withErrors($e->errors())
                 ->withInput();
@@ -708,28 +620,6 @@ class BlogController extends Controller
             'meta_description' => filled($data['meta_description'] ?? null) ? $data['meta_description'] : null,
             'is_published' => (bool) ($data['is_published'] ?? true),
         ];
-    }
-
-    private function hydrateLegacyTranslationInput(Request $request): void
-    {
-        $translations = (array) $request->input('translations', []);
-        $en = (array) ($translations['en'] ?? []);
-
-        if (($en['title'] ?? '') === '' && filled($request->input('title'))) {
-            $en['title'] = (string) $request->input('title');
-        }
-        if (($en['slug'] ?? '') === '' && filled($request->input('slug'))) {
-            $en['slug'] = (string) $request->input('slug');
-        }
-        if (($en['excerpt'] ?? '') === '' && filled($request->input('excerpt'))) {
-            $en['excerpt'] = (string) $request->input('excerpt');
-        }
-        if (($en['content'] ?? '') === '' && filled($request->input('content'))) {
-            $en['content'] = (string) $request->input('content');
-        }
-
-        $translations['en'] = $en;
-        $request->merge(['translations' => $translations]);
     }
 
     private function uniqueTranslationSlug(string $slug, ?int $ignoreTranslationId = null): string
