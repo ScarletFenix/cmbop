@@ -334,11 +334,9 @@ class OrderRefundService
             $share = min($reserved, max(0, round($reserved * ($failedTotal / $pool), 2)));
         }
 
-        $thisRefBonus = app(CheckoutIntentService::class)->peekBonus($userId, $referenceCode, $fallbackBonus);
-        $otherOpenHoldsReserve = $this->otherOpenCheckoutExists($userId, $referenceCode);
-        if ($thisRefBonus > 0) {
-            $share = min($share, $thisRefBonus);
-        } elseif ($failed->isEmpty() || $otherOpenHoldsReserve) {
+        if ($peek > 0) {
+            $share = min($share, $peek);
+        } elseif ($failed->isEmpty() || $openTotal <= 0 || $this->otherOpenCheckoutExists($userId, $referenceCode)) {
             // Unknown bonus for this ref — do not unlock another checkout's reserve.
             $share = 0.0;
         }
@@ -361,6 +359,42 @@ class OrderRefundService
         }
 
         return $share;
+    }
+
+    /**
+     * Keep this reference's leftover peek in sync after a card refund.
+     * A stale full peek plus another checkout's reserved bonus let a later
+     * unpaid fail dump the other checkout's promo.
+     */
+    private function syncCheckoutBonusAfterLeftoverRestore(Order $order, float $restored): void
+    {
+        $userId = (int) $order->user_id;
+        $reference = (string) ($order->reference_code ?? '');
+        if ($userId <= 0 || $reference === '') {
+            return;
+        }
+
+        $intents = app(CheckoutIntentService::class);
+        $openTotal = $this->openCheckoutSiblingTotal($userId, $reference, [(int) $order->id]);
+        if ($openTotal <= 0) {
+            $intents->takeBonus($userId, $reference);
+
+            return;
+        }
+
+        $reduce = $restored;
+        if ($reduce <= 0) {
+            $peek = $intents->peekBonus($userId, $reference);
+            $amount = round((float) $order->total_amount, 2);
+            $pool = round($amount + $openTotal, 2);
+            $reduce = ($peek > 0 && $pool > 0)
+                ? min($peek, max(0, round($peek * ($amount / $pool), 2)))
+                : 0.0;
+        }
+
+        if ($reduce > 0) {
+            $intents->decrementBonus($userId, $reference, $reduce);
+        }
     }
 
     /**
