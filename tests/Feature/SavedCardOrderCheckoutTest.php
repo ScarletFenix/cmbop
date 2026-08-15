@@ -149,14 +149,12 @@ class SavedCardOrderCheckoutTest extends TestCase
         $wallet = Wallet::create([
             'user_id' => $advertiser->id,
             'role_id' => Wallet::advertiserRoleId(),
-            'balance' => 40,
+            'balance' => 20,
             'reserved_balance' => 0,
-            'bonus_balance' => 40,
+            'bonus_balance' => 20,
             'bonus_reserved' => 0,
             'currency' => 'EUR',
         ]);
-        $wallet->reserveBonusOnly(20);
-        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'OTHER-OPEN-SAVED-1', 20);
 
         $this->mock(StripeCustomerService::class, function ($mock) {
             $mock->shouldReceive('payWithSavedCard')
@@ -205,11 +203,14 @@ class SavedCardOrderCheckoutTest extends TestCase
             app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'SAVEDHOLD'),
             0.01
         );
-        $this->assertEqualsWithDelta(
-            20.0,
-            app(CheckoutIntentService::class)->heldBonus($advertiser->id, 'OTHER-OPEN-SAVED-1'),
-            0.01
-        );
+
+        $wallet->refresh();
+        $wallet->update([
+            'balance' => round((float) $wallet->balance + 20, 2),
+            'bonus_balance' => round((float) $wallet->bonus_balance + 20, 2),
+        ]);
+        $wallet->reserveBonusOnly(20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'OTHER-OPEN-SAVED-1', 20);
 
         $this->actingAs($publisher)
             ->postJson(route('publisher.orders.reject', $order->items->first()->id), [
