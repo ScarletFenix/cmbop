@@ -814,6 +814,14 @@ class ContentModerationService
             return ['ok' => false, 'submission' => null, 'message' => 'The linked article no longer exists.'];
         }
 
+        if ($submission?->isArchived()) {
+            return [
+                'ok' => false,
+                'submission' => $submission,
+                'message' => 'Archived articles cannot be overridden. Restore the article first. The scan log was left unchanged.',
+            ];
+        }
+
         return DB::transaction(function () use ($log, $admin, $notes, $submission) {
             if ($submission) {
                 $submission = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first() ?? $submission;
@@ -861,11 +869,18 @@ class ContentModerationService
             } catch (\Throwable) {
             }
 
-            $message = $submission
-                ? 'Article #'.$submission->id.' approved by override. Checkout will accept it until the advertiser edits the content.'
-                : 'Scan overridden as approved. No linked article was found to update.';
+            $fresh = $submission?->fresh();
+            if (! $fresh) {
+                $message = 'Scan overridden as approved. No linked article was found to update.';
+            } elseif ($fresh->isReadyForCheckout()) {
+                $message = 'Article #'.$fresh->id.' approved by override. Checkout will accept it until the advertiser edits the content.';
+            } elseif ($fresh->isUsableAfterStaffApproval()) {
+                $message = 'Article #'.$fresh->id.' approved by override. It stays on the open order and can be fulfilled.';
+            } else {
+                $message = 'Article #'.$fresh->id.' approved by override, but it is still not checkout-ready.';
+            }
 
-            return ['ok' => true, 'submission' => $submission?->fresh(), 'message' => $message];
+            return ['ok' => true, 'submission' => $fresh, 'message' => $message];
         });
     }
 
