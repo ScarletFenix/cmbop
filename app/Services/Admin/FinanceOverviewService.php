@@ -21,15 +21,17 @@ class FinanceOverviewService
     public function resolvePeriod(?string $period, ?string $dateFrom = null, ?string $dateTo = null): array
     {
         $end = now()->endOfDay();
+        $from = $this->parseDay($dateFrom, false);
+        $to = $this->parseDay($dateTo, true);
 
-        if ($dateFrom || $dateTo) {
-            $start = $dateFrom ? Carbon::parse($dateFrom)->startOfDay() : null;
-            $end = $dateTo ? Carbon::parse($dateTo)->endOfDay() : $end;
+        if ($from || $to) {
+            $start = $from;
+            $end = $to ?? $end;
 
             return [
                 'start' => $start,
                 'end' => $end,
-                'label' => trim(($dateFrom ?: '…').' → '.($dateTo ?: 'today')),
+                'label' => trim(($from?->toDateString() ?: '…').' → '.($to?->toDateString() ?: 'today')),
                 'key' => 'custom',
             ];
         }
@@ -76,7 +78,7 @@ class FinanceOverviewService
         $platform['margin'] = round(
             $platform['order_fees']
             + $platform['withdrawal_fees']
-            - $platform['refunds']
+            - $platform['refunded_order_fees']
             - $platform['bonuses_issued'],
             2
         );
@@ -93,6 +95,14 @@ class FinanceOverviewService
             'due_to_pay_now' => $liability['due_to_pay_now'],
             'in_publisher_wallets' => $liability['in_publisher_wallets'],
             'total_publisher_liability' => $liability['total_publisher_liability'],
+            'clocks' => [
+                'deposits' => 'approved_at',
+                'orders_paid' => 'paid_at',
+                'completed' => 'completed_at',
+                'refunds' => 'updated_at',
+                'withdrawals_paid' => 'processed_at',
+                'ledger' => 'created_at',
+            ],
         ];
     }
 
@@ -335,11 +345,7 @@ class FinanceOverviewService
         $earningsQuery = OrderItem::query()
             ->whereHas('order', function ($q) use ($start, $end) {
                 $q->where('status', 'completed')->where('payment_status', 'paid');
-                if ($start) {
-                    $q->whereBetween('updated_at', [$start, $end]);
-                } else {
-                    $q->where('updated_at', '<=', $end);
-                }
+                $this->applyCompletedWindow($q, $start, $end);
             });
 
         $earnings = (float) (clone $earningsQuery)->sum(OrderItem::publisherPayoutSqlExpression());
@@ -349,14 +355,7 @@ class FinanceOverviewService
         $this->applyCreatedWindow($ledgerEarnings, $start, $end);
 
         $paidWithdrawals = Withdrawal::where('status', 'completed');
-        if ($start) {
-            $paidWithdrawals->where(function ($q) use ($start, $end) {
-                $q->whereBetween('processed_at', [$start, $end])
-                    ->orWhere(function ($q2) use ($start, $end) {
-                        $q2->whereNull('processed_at')->whereBetween('updated_at', [$start, $end]);
-                    });
-            });
-        }
+        $this->applyCoalesceWindow($paidWithdrawals, $start, $end, 'processed_at', 'updated_at');
 
         $openWithdrawals = Withdrawal::whereIn('status', ['pending', 'processing']);
 
@@ -387,34 +386,27 @@ class FinanceOverviewService
         $feeItems = OrderItem::query()
             ->whereHas('order', function ($q) use ($start, $end) {
                 $q->where('status', 'completed')->where('payment_status', 'paid');
-                if ($start) {
-                    $q->whereBetween('updated_at', [$start, $end]);
-                } else {
-                    $q->where('updated_at', '<=', $end);
-                }
+                $this->applyCompletedWindow($q, $start, $end);
             });
 
         $orderFees = (float) (clone $feeItems)->sum(OrderItem::platformFeeSqlExpression());
-        $gmvCompleted = (float) Order::where('status', 'completed')
-            ->where('payment_status', 'paid')
-            ->when($start, fn ($q) => $q->whereBetween('updated_at', [$start, $end]))
-            ->when(! $start, fn ($q) => $q->where('updated_at', '<=', $end))
-            ->sum('total_amount');
+        $completedPaid = Order::where('status', 'completed')->where('payment_status', 'paid');
+        $this->applyCompletedWindow($completedPaid, $start, $end);
+        $gmvCompleted = (float) $completedPaid->sum('total_amount');
 
         $withdrawalFees = Withdrawal::where('status', 'completed');
-        if ($start) {
-            $withdrawalFees->where(function ($q) use ($start, $end) {
-                $q->whereBetween('processed_at', [$start, $end])
-                    ->orWhere(function ($q2) use ($start, $end) {
-                        $q2->whereNull('processed_at')->whereBetween('updated_at', [$start, $end]);
-                    });
-            });
-        }
+        $this->applyCoalesceWindow($withdrawalFees, $start, $end, 'processed_at', 'updated_at');
         $withdrawalFeeSum = (float) (clone $withdrawalFees)->sum('fee');
 
         $refundOrders = Order::where('payment_status', 'refunded');
-        $this->applyPaidWindow($refundOrders, $start, $end, 'updated_at');
+        $this->applyRefundWindow($refundOrders, $start, $end);
         $refundOrderSum = (float) (clone $refundOrders)->sum('total_amount');
+        $refundedFeeItems = OrderItem::query()
+            ->whereHas('order', function ($q) use ($start, $end) {
+                $q->where('payment_status', 'refunded');
+                $this->applyRefundWindow($q, $start, $end);
+            });
+        $refundedOrderFees = (float) (clone $refundedFeeItems)->sum(OrderItem::platformFeeSqlExpression());
 
         $walletRefunds = WalletTransaction::where('type', WalletTransaction::TYPE_REFUND);
         $this->applyCreatedWindow($walletRefunds, $start, $end);
@@ -428,6 +420,7 @@ class FinanceOverviewService
             'withdrawal_fees' => round($withdrawalFeeSum, 2),
             'withdrawal_fee_percent' => (float) config('billing.withdrawal_fee_percent', 0),
             'refunds' => round($refundOrderSum, 2),
+            'refunded_order_fees' => round($refundedOrderFees, 2),
             'refund_orders_count' => (clone $refundOrders)->count(),
             'wallet_refunds' => (float) (clone $walletRefunds)->sum('amount'),
             'bonuses_issued' => (float) (clone $bonuses)->sum('amount'),
@@ -457,16 +450,9 @@ class FinanceOverviewService
             2
         );
 
-        $cashOut = (float) Withdrawal::where('status', 'completed')
-            ->when($start, function ($q) use ($start, $end) {
-                $q->where(function ($q2) use ($start, $end) {
-                    $q2->whereBetween('processed_at', [$start, $end])
-                        ->orWhere(function ($q3) use ($start, $end) {
-                            $q3->whereNull('processed_at')->whereBetween('updated_at', [$start, $end]);
-                        });
-                });
-            })
-            ->sum('net_amount');
+        $cashOutQuery = Withdrawal::where('status', 'completed');
+        $this->applyCoalesceWindow($cashOutQuery, $start, $end, 'processed_at', 'updated_at');
+        $cashOut = (float) $cashOutQuery->sum('net_amount');
 
         return [
             'cash_in_bank' => $cashIn,
@@ -571,6 +557,7 @@ class FinanceOverviewService
             ['section' => 'platform', 'metric' => 'order_fees', 'value' => $data['platform']['order_fees']],
             ['section' => 'platform', 'metric' => 'withdrawal_fees', 'value' => $data['platform']['withdrawal_fees']],
             ['section' => 'platform', 'metric' => 'refunds', 'value' => $data['platform']['refunds']],
+            ['section' => 'platform', 'metric' => 'refunded_order_fees', 'value' => $data['platform']['refunded_order_fees']],
             ['section' => 'platform', 'metric' => 'bonuses_issued', 'value' => $data['platform']['bonuses_issued']],
             ['section' => 'platform', 'metric' => 'margin', 'value' => $data['platform']['margin']],
             ['section' => 'cash_split', 'metric' => 'cash_in_bank', 'value' => $data['cash_split']['cash_in_bank']],
@@ -597,41 +584,72 @@ class FinanceOverviewService
         }
     }
 
-    private function applyPaidWindow($query, ?Carbon $start, Carbon $end, string $fallback = 'paid_at'): void
+    private function applyPaidWindow($query, ?Carbon $start, Carbon $end): void
     {
-        $column = Schema::hasColumn('orders', 'paid_at') ? 'paid_at' : $fallback;
-        if ($start) {
-            $query->where(function ($q) use ($start, $end, $column, $fallback) {
-                $q->whereBetween($column, [$start, $end]);
-                if ($column === 'paid_at') {
-                    $q->orWhere(function ($q2) use ($start, $end, $fallback) {
-                        $q2->whereNull('paid_at')->whereBetween($fallback === 'paid_at' ? 'created_at' : $fallback, [$start, $end]);
-                    });
-                }
-            });
+        if ($this->ordersHaveColumn('paid_at')) {
+            $this->applyCoalesceWindow($query, $start, $end, 'paid_at', 'created_at');
         } else {
-            $query->where(function ($q) use ($end, $column) {
-                $q->where($column, '<=', $end)->orWhereNull($column);
-            });
+            $this->applyCreatedWindow($query, $start, $end);
         }
+    }
+
+    private function applyCompletedWindow($query, ?Carbon $start, Carbon $end): void
+    {
+        if ($this->ordersHaveColumn('completed_at')) {
+            $this->applyCoalesceWindow($query, $start, $end, 'completed_at', 'updated_at');
+        } else {
+            $this->applyCoalesceWindow($query, $start, $end, 'updated_at', 'updated_at');
+        }
+    }
+
+    private function applyRefundWindow($query, ?Carbon $start, Carbon $end): void
+    {
+        $this->applyCoalesceWindow($query, $start, $end, 'updated_at', 'updated_at');
     }
 
     private function applyCreatedOrPaidWindow($query, ?Carbon $start, Carbon $end, string $preferred): void
     {
+        $this->applyCoalesceWindow($query, $start, $end, $preferred, 'created_at');
+    }
+
+    /**
+     * Bound a timestamp with COALESCE(preferred, fallback) so a null preferred
+     * date does not pull the row into every period.
+     */
+    private function applyCoalesceWindow($query, ?Carbon $start, Carbon $end, string $preferred, string $fallback): void
+    {
+        $expr = $preferred === $fallback
+            ? $preferred
+            : 'COALESCE('.$preferred.', '.$fallback.')';
+
         if ($start) {
-            $query->where(function ($q) use ($start, $end, $preferred) {
-                $q->whereBetween($preferred, [$start, $end])
-                    ->orWhere(function ($q2) use ($start, $end, $preferred) {
-                        $q2->whereNull($preferred)->whereBetween('created_at', [$start, $end]);
-                    });
-            });
+            $query->whereRaw($expr.' BETWEEN ? AND ?', [$start, $end]);
         } else {
-            $query->where(function ($q) use ($end, $preferred) {
-                $q->where($preferred, '<=', $end)
-                    ->orWhere(function ($q2) use ($end, $preferred) {
-                        $q2->whereNull($preferred)->where('created_at', '<=', $end);
-                    });
-            });
+            $query->whereRaw($expr.' <= ?', [$end]);
+        }
+    }
+
+    private function parseDay(?string $value, bool $endOfDay): ?Carbon
+    {
+        if (! is_string($value) || trim($value) === '') {
+            return null;
+        }
+
+        try {
+            $day = Carbon::parse(trim($value));
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return $endOfDay ? $day->endOfDay() : $day->startOfDay();
+    }
+
+    private function ordersHaveColumn(string $column): bool
+    {
+        try {
+            return Schema::hasColumn('orders', $column);
+        } catch (\Throwable) {
+            return false;
         }
     }
 }

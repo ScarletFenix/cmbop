@@ -23,10 +23,11 @@ class FinanceController extends Controller
      */
     public function index(Request $request)
     {
+        $input = $this->validatedPeriodInput($request);
         $period = $this->finance->resolvePeriod(
-            $request->get('period'),
-            $request->get('date_from'),
-            $request->get('date_to')
+            $input['period'] ?? null,
+            $input['date_from'] ?? null,
+            $input['date_to'] ?? null
         );
 
         $data = $this->finance->overview($period);
@@ -34,8 +35,8 @@ class FinanceController extends Controller
         return view('admin.finance', [
             'data' => $data,
             'periodKey' => $period['key'],
-            'dateFrom' => $request->get('date_from'),
-            'dateTo' => $request->get('date_to'),
+            'dateFrom' => $input['date_from'] ?? null,
+            'dateTo' => $input['date_to'] ?? null,
         ]);
     }
 
@@ -142,10 +143,11 @@ class FinanceController extends Controller
      */
     public function export(Request $request): StreamedResponse
     {
+        $input = $this->validatedPeriodInput($request);
         $period = $this->finance->resolvePeriod(
-            $request->get('period'),
-            $request->get('date_from'),
-            $request->get('date_to')
+            $input['period'] ?? null,
+            $input['date_from'] ?? null,
+            $input['date_to'] ?? null
         );
         $rows = $this->finance->exportRows($period);
         $filename = 'finance-'.$period['key'].'-'.now()->format('Y-m-d-His').'.csv';
@@ -164,6 +166,18 @@ class FinanceController extends Controller
             fclose($out);
         }, $filename, [
             'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
+    }
+
+    /**
+     * @return array{period?: string|null, date_from?: string|null, date_to?: string|null}
+     */
+    private function validatedPeriodInput(Request $request): array
+    {
+        return $request->validate([
+            'period' => 'nullable|in:week,month,all',
+            'date_from' => 'nullable|date',
+            'date_to' => 'nullable|date|after_or_equal:date_from',
         ]);
     }
 }

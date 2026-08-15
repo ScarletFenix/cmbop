@@ -13,6 +13,7 @@ use App\Models\WalletTransaction;
 use App\Models\Withdrawal;
 use App\Services\Admin\FinanceOverviewService;
 use App\Services\Wallet\WalletLedgerService;
+use Carbon\Carbon;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -79,6 +80,7 @@ class AdminFinanceHubTest extends TestCase
             'payment_status' => 'paid',
             'status' => 'completed',
             'paid_at' => now(),
+            'completed_at' => now(),
         ]);
 
         $site = Site::create([
@@ -232,6 +234,7 @@ class AdminFinanceHubTest extends TestCase
             ->streamedContent();
 
         $this->assertStringContainsString('order_fees', $csv);
+        $this->assertStringContainsString('refunded_order_fees', $csv);
         $this->assertStringContainsString('payable_now', $csv);
         $this->assertStringContainsString('cash_in_bank', $csv);
     }
@@ -262,5 +265,193 @@ class AdminFinanceHubTest extends TestCase
             'amount' => 25,
             'reference' => 'OI-1',
         ]);
+    }
+
+    public function test_invalid_custom_dates_do_not_five_hundred(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->from(route('admin.finance'))
+            ->get(route('admin.finance', ['date_from' => 'nope']))
+            ->assertRedirect(route('admin.finance'))
+            ->assertSessionHasErrors('date_from');
+
+        $this->actingAs($admin)
+            ->from(route('admin.finance'))
+            ->get(route('admin.finance', [
+                'date_from' => '2026-08-10',
+                'date_to' => '2026-08-01',
+            ]))
+            ->assertRedirect(route('admin.finance'))
+            ->assertSessionHasErrors('date_to');
+    }
+
+    public function test_paid_and_completed_clocks_differ(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-08-10 12:00:00'),
+        ]);
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(115.0, $july['money_in']['orders_paid']['gmv']);
+        $this->assertEquals(0.0, $july['platform']['gmv_completed']);
+        $this->assertEquals(0.0, $july['platform']['order_fees']);
+        $this->assertEquals(0.0, $august['money_in']['orders_paid']['gmv']);
+        $this->assertEquals(115.0, $august['platform']['gmv_completed']);
+        $this->assertEquals(15.0, $august['platform']['order_fees']);
+        $this->assertEquals(100.0, $august['money_out']['earnings_credited']['amount']);
+    }
+
+    public function test_refunds_use_refund_date_and_fee_margin(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $order = $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => Carbon::parse('2026-07-15 12:00:00'),
+            'completed_at' => Carbon::parse('2026-07-20 12:00:00'),
+        ]);
+
+        $order->forceFill([
+            'payment_status' => 'refunded',
+            'updated_at' => Carbon::parse('2026-08-10 12:00:00'),
+        ])->save();
+
+        $july = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-07-01', '2026-07-31')
+        );
+        $august = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, '2026-08-01', '2026-08-31')
+        );
+
+        $this->assertEquals(0.0, $july['platform']['refunds']);
+        $this->assertEquals(0.0, $july['platform']['refunded_order_fees']);
+        $this->assertEquals(115.0, $august['platform']['refunds']);
+        $this->assertEquals(15.0, $august['platform']['refunded_order_fees']);
+        $this->assertEquals(-15.0, $august['platform']['margin']);
+    }
+
+    public function test_null_paid_at_does_not_enter_every_period(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $this->seedCompletedPaidOrder($advertiser, $publisher, [
+            'paid_at' => null,
+            'completed_at' => Carbon::parse('2026-08-10 12:00:00'),
+            'created_at' => Carbon::parse('2026-08-10 12:00:00'),
+        ]);
+
+        $throughAugust1 = app(FinanceOverviewService::class)->overview(
+            app(FinanceOverviewService::class)->resolvePeriod(null, null, '2026-08-01')
+        );
+
+        $this->assertEquals(0.0, $throughAugust1['money_in']['orders_paid']['gmv']);
+    }
+
+    public function test_finance_nav_is_not_active_on_ledger(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.finance.ledger'))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertMatchesRegularExpression(
+            '/href="[^"]*\/admin\/finance\/ledger"[^>]*\bactive\b/',
+            $html
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/href="[^"]*\/admin\/finance"(?:\/)?(?:\?[^"]*)?"[^>]*\bactive\b/',
+            $html
+        );
+
+        $blade = file_get_contents(resource_path('views/admin/layouts/app.blade.php'));
+        $this->assertStringNotContainsString("routeIs('admin.finance.*')", $blade);
+        $this->assertStringContainsString("routeIs('admin.finance.user')", $blade);
+    }
+
+    public function test_finance_page_uses_fee_margin_copy(): void
+    {
+        $admin = $this->makeUser('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.finance'))
+            ->assertOk()
+            ->assertSee('Est. fee margin', false)
+            ->assertSee('Dated by paid date', false)
+            ->assertSee('Dated by completed date', false)
+            ->assertSee('Dated by refund date', false);
+    }
+
+    /**
+     * @param  array<string, mixed>  $timestamps
+     */
+    private function seedCompletedPaidOrder(User $advertiser, User $publisher, array $timestamps = []): Order
+    {
+        $order = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => 'ORD-FIN-'.uniqid(),
+            'subtotal' => 115,
+            'tax' => 0,
+            'total_amount' => 115,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'paid_at' => array_key_exists('paid_at', $timestamps) ? $timestamps['paid_at'] : now(),
+            'completed_at' => array_key_exists('completed_at', $timestamps) ? $timestamps['completed_at'] : now(),
+        ]);
+
+        if (array_key_exists('created_at', $timestamps) || array_key_exists('updated_at', $timestamps)) {
+            $order->forceFill(array_filter([
+                'created_at' => $timestamps['created_at'] ?? null,
+                'updated_at' => $timestamps['updated_at'] ?? null,
+            ], fn ($value) => $value !== null))->save();
+        }
+
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Fee Site',
+            'site_url' => 'https://fee-site.test',
+            'domain' => 'fee-site-'.uniqid().'.test',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'de',
+            'language' => 'de',
+            'category' => 'Technology',
+            'price' => 100,
+            'publication_time' => 'permanent',
+            'link_type' => 'dofollow',
+            'description' => 'Finance hub test site description text.',
+            'verified' => true,
+            'active' => true,
+        ]);
+
+        OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'price' => 115,
+            'additional_price' => 0,
+            'publisher_price' => 100,
+            'platform_fee_percent' => 15,
+            'platform_fee_amount' => 15,
+        ]);
+
+        return $order->fresh();
     }
 }
