@@ -87,10 +87,12 @@ class AdminBlogPublishTest extends TestCase
             $created->translations()->where('locale', 'en')->value('slug')
         );
 
-        $this->get(route('blog.show', ['slug' => 'shared-public-slug']))
+        $html = $this->get(route('blog.show', ['slug' => 'shared-public-slug']))
             ->assertOk()
-            ->assertSee('Legacy Shared Slug', false)
-            ->assertDontSee('New Shared Slug', false);
+            ->getContent();
+
+        $this->assertMatchesRegularExpression('/<h1[^>]*>\s*Legacy Shared Slug\s*<\/h1>/', $html);
+        $this->assertDoesNotMatchRegularExpression('/<h1[^>]*>\s*New Shared Slug\s*<\/h1>/', $html);
     }
 
     public function test_republish_keeps_original_published_at(): void
