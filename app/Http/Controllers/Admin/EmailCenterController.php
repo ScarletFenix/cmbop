@@ -249,11 +249,13 @@ class EmailCenterController extends Controller
             'meta' => ['source' => 'email_center_test'],
         ];
 
-        $existing = EmailLog::findOpenByDedupe($dedupe);
-        if ($existing) {
-            $existing->fill($payload);
-            $existing->attempts = max(1, (int) $existing->attempts) + 1;
-            $existing->save();
+        $open = EmailLog::openByDedupe($dedupe);
+        if ($open->isNotEmpty()) {
+            foreach ($open as $existing) {
+                $existing->fill($payload);
+                $existing->attempts = max(1, (int) $existing->attempts) + 1;
+                $existing->save();
+            }
 
             return;
         }

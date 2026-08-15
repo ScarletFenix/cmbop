@@ -236,15 +236,7 @@ class SendEmailCampaignJob implements ShouldQueue
     protected function finalize(EmailCampaign $campaign): void
     {
         $campaign->refresh();
-        $campaign->recountRecipientTotals();
-        $campaign->refresh();
-
-        $campaign->update([
-            'status' => $campaign->sent_count > 0
-                ? EmailCampaign::STATUS_SENT
-                : EmailCampaign::STATUS_FAILED,
-            'sent_at' => now(),
-        ]);
+        $campaign->finalizeIfIdle();
     }
 
     protected function markFailed(EmailCampaign $campaign): void

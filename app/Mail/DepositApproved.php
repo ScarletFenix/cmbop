@@ -51,7 +51,7 @@ class DepositApproved extends PlatformMailable
                 'walletBalance' => (float) ($advertiserWallet?->balance ?? 0),
                 'balanceUrl' => route('advertiser.balance'),
                 'downloadReceiptUrl' => $receipt
-                    ? route('advertiser.billing.download', $receipt)
+                    ? $this->advertiserBillingDownloadUrl($receipt)
                     : null,
             ]);
 

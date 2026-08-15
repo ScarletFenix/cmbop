@@ -47,6 +47,19 @@ class MailJobPayload
         return self::emails($payload) !== [];
     }
 
+    public static function dedupeKey(string $payload): ?string
+    {
+        if (preg_match('/s:9:"dedupeKey";s:\d+:"([^"]+)"/', $payload, $matches)) {
+            return $matches[1];
+        }
+
+        if (preg_match('/s:10:"dedupe_key";s:\d+:"([^"]+)"/', $payload, $matches)) {
+            return $matches[1];
+        }
+
+        return null;
+    }
+
     /**
      * @return list<string>
      */

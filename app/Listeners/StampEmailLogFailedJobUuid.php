@@ -33,10 +33,22 @@ class StampEmailLogFailedJobUuid
         }
 
         $emails = MailJobPayload::emails($payload);
+        $dedupe = MailJobPayload::dedupeKey($payload);
+        $hours = max(
+            1,
+            (int) config('email_notifications.max_age_hours', 24),
+            (int) config('email_notifications.campaign_max_age_hours', 72)
+        );
+        $since = now()->subHours($hours);
+
         $matches = EmailLog::query()
             ->whereIn('status', [EmailLog::STATUS_FAILED, EmailLog::STATUS_PENDING])
-            ->where('updated_at', '>=', now()->subHour())
-            ->when($emails !== [], fn ($q) => $q->whereIn('to_email', $emails))
+            ->when(
+                $dedupe,
+                fn ($q) => $q->where('dedupe_key', $dedupe),
+                fn ($q) => $q->where('updated_at', '>=', $since)
+                    ->when($emails !== [], fn ($emailQuery) => $emailQuery->whereIn('to_email', $emails))
+            )
             ->latest('id')
             ->limit(50)
             ->get()

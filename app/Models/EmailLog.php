@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 
 class EmailLog extends Model
@@ -56,17 +57,28 @@ class EmailLog extends Model
         return $query->where('status', self::STATUS_FAILED);
     }
 
-    public static function findOpenByDedupe(?string $key): ?self
+    /**
+     * Open rows for a dedupe key, newest first. A retry can leave more than
+     * one pending/failed row; callers that close a send must update all of them.
+     *
+     * @return Collection<int, self>
+     */
+    public static function openByDedupe(?string $key)
     {
         if (! filled($key)) {
-            return null;
+            return static::query()->whereRaw('0 = 1')->get();
         }
 
         return static::query()
             ->where('dedupe_key', $key)
             ->whereIn('status', [self::STATUS_PENDING, self::STATUS_FAILED])
-            ->latest('id')
-            ->first();
+            ->orderByDesc('id')
+            ->get();
+    }
+
+    public static function findOpenByDedupe(?string $key): ?self
+    {
+        return static::openByDedupe($key)->first();
     }
 
     /**
