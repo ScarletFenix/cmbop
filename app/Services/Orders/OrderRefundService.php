@@ -103,7 +103,7 @@ class OrderRefundService
      * Move funds back to the advertiser wallet. Must run inside a transaction with
      * the order already locked; throws so the caller's transaction rolls back.
      */
-    public function refundToAdvertiser(Order $order, float $amount, ?string $reason = null): bool
+    public function refundToAdvertiser(Order $order, float $amount, ?string $reason = null, ?float $maxBonusShare = null): bool
     {
         $amount = round($amount, 2);
         if ($amount <= 0) {
@@ -127,7 +127,12 @@ class OrderRefundService
             // Card / Wise / bank / crypto may still hold leftover checkout bonus
             // in reserved. Restore only this line's share so a sibling reject
             // cannot unlock the whole checkout promo while other paid rows remain.
+            // An explicit cap (this reference's leftover) also stops a second
+            // in-flight checkout on the same wallet from being stolen.
             $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount);
+            if ($maxBonusShare !== null) {
+                $bonusShare = min($bonusShare, max(0, round($maxBonusShare, 2)));
+            }
             $cashShare = round($amount - $bonusShare, 2);
             if ($bonusShare > 0) {
                 $bonusReservedBefore = (float) $wallet->bonus_reserved;

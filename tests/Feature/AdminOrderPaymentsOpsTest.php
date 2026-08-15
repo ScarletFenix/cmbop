@@ -8,6 +8,8 @@ use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
 use App\Models\Wallet;
+use App\Services\CheckoutIntentService;
+use App\Services\InAppNotificationService;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -303,6 +305,177 @@ class AdminOrderPaymentsOpsTest extends TestCase
         $this->assertSame('cancelled', $order->status);
         $this->assertNull($order->paid_at);
         $this->assertSame('Transfer reversed', $order->admin_notes);
+    }
+
+    public function test_scheduled_filter_uses_publication_mode_not_status_column(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $site = $this->makeSite($this->makeUser('publisher'), 'sched');
+        $live = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-SCHED-LIVE',
+            'status' => 'pending',
+            'publication_mode' => 'scheduled',
+            'scheduled_publish_at' => now()->addDay(),
+        ]);
+        $legacy = $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-SCHED-LEGACY',
+            'status' => 'scheduled',
+            'publication_mode' => 'immediate',
+            'scheduled_publish_at' => now()->addDay(),
+        ]);
+        $this->makeOrder($advertiser, $site, [
+            'order_number' => 'PAY-SCHED-PLAIN',
+            'status' => 'pending',
+            'publication_mode' => 'immediate',
+        ]);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['status' => 'scheduled']))
+            ->assertOk()
+            ->assertJsonFragment(['order_number' => $live->order_number])
+            ->assertJsonFragment(['order_number' => $legacy->order_number])
+            ->assertJsonMissing(['order_number' => 'PAY-SCHED-PLAIN']);
+    }
+
+    public function test_failed_paid_card_can_later_be_refunded(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 5,
+            'reserved_balance' => 20,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 20,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'fail-refund'), [
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 80,
+            'reference_code' => 'PAY-FAIL-THEN-REFUND',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $order->reference_code, 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'failed',
+                'notes' => 'Clicked failed by mistake',
+            ])
+            ->assertOk();
+
+        $order->refresh();
+        $this->assertSame('failed', $order->payment_status);
+        $this->assertSame('cancelled', $order->status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(85.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+
+        $this->actingAs($admin)
+            ->getJson(route('admin.payments.data', ['search' => $order->order_number]))
+            ->assertOk()
+            ->assertJsonPath('data.0.allowed_statuses', ['refunded']);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'refunded',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $order->refresh();
+        $this->assertSame('refunded', $order->payment_status);
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(85.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
+    }
+
+    public function test_refund_does_not_steal_another_checkout_leftover_bonus(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 0,
+            'reserved_balance' => 40,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 40,
+            'currency' => 'EUR',
+        ]);
+        $site = $this->makeSite($this->makeUser('publisher'), 'bonus-iso');
+        $order = $this->makeOrder($advertiser, $site, [
+            'payment_method' => 'wise',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 80,
+            'reference_code' => 'PAY-BONUS-THIS',
+        ]);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, $order->reference_code, 20);
+        app(CheckoutIntentService::class)->rememberBonus($advertiser->id, 'PAY-BONUS-OTHER', 20);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'refunded',
+            ])
+            ->assertOk();
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(
+            20.0,
+            app(CheckoutIntentService::class)->peekBonus($advertiser->id, 'PAY-BONUS-OTHER'),
+            0.01
+        );
+    }
+
+    public function test_refund_still_succeeds_when_post_commit_notification_throws(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 10,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+        $order = $this->makeOrder($advertiser, $this->makeSite($this->makeUser('publisher'), 'post-commit'), [
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+            'total_amount' => 80,
+        ]);
+
+        $this->mock(InAppNotificationService::class, function ($mock) {
+            $mock->shouldReceive('notifyRefundCredited')
+                ->once()
+                ->andThrow(new \RuntimeException('bell down'));
+        });
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.payments.updateStatus', $order->id), [
+                'payment_status' => 'refunded',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame('refunded', $order->fresh()->payment_status);
+        $this->assertEqualsWithDelta(90.0, (float) $wallet->fresh()->balance, 0.01);
     }
 
     public function test_search_and_update_survive_missing_payment_columns(): void

@@ -404,7 +404,7 @@ $(document).ready(function() {
     $(document).on('click', '.update-payment-btn', function() {
         var orderId = $(this).data('id');
         var orderNumber = $(this).data('order');
-        var currentStatus = $(this).data('status');
+        var currentStatus = String($(this).data('status') || '');
         var allowed = $(this).data('allowed') || [];
         if (typeof allowed === 'string') {
             try { allowed = JSON.parse(allowed); } catch (e) { allowed = []; }
@@ -412,7 +412,9 @@ $(document).ready(function() {
 
         $('#update_order_id').val(orderId);
         $('#update_order_number').val(orderNumber);
-        $('#update_current_status').val(currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1));
+        $('#update_current_status').val(currentStatus
+            ? currentStatus.charAt(0).toUpperCase() + currentStatus.slice(1)
+            : '');
         $('#update_payment_method').val($(this).data('method') || '');
         $('#update_order_status').val($(this).data('order-status') || '');
         $('#update_amount').val($(this).data('amount') || '');
