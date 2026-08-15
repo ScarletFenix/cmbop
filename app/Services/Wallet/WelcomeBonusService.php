@@ -10,6 +10,7 @@ use Illuminate\Database\UniqueConstraintViolationException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cookie;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\IpUtils;
 
@@ -30,13 +31,18 @@ class WelcomeBonusService
         return round(max(0, (float) config('welcome_bonus.amount', 20)), 2);
     }
 
+    public function canGrant(): bool
+    {
+        return $this->isEnabled() && $this->claimsTableReady();
+    }
+
     /**
      * Preview the grant for this request. Does not write a claim.
      * Call recordClaim() inside the signup transaction before crediting the wallet.
      */
     public function amountFor(Request $request, string $role): float
     {
-        if (! $this->isEnabled()) {
+        if (! $this->canGrant()) {
             return 0.0;
         }
 
@@ -66,7 +72,7 @@ class WelcomeBonusService
     /**
      * Persist the claim. Must run inside the same DB transaction as the wallet credit.
      * Returns false when this IP (or user) already claimed — caller must grant 0.
-     * Missing table: fail open (return true) so Hostinger drift cannot block signup.
+     * Missing or unwritable claims table: refuse the grant. Signup still succeeds.
      */
     public function recordClaim(User $user, Request $request, float $amount, string $source): bool
     {
@@ -75,12 +81,8 @@ class WelcomeBonusService
         }
 
         $write = function () use ($user, $request, $amount, $source): bool {
-            if (! WelcomeBonusSetting::isEnabledForGrant()) {
+            if (! $this->claimsTableReady() || ! WelcomeBonusSetting::isEnabledForGrant()) {
                 return false;
-            }
-
-            if (! Schema::hasTable((new WelcomeBonusClaim)->getTable())) {
-                return true;
             }
 
             $ip = $this->normalizedIp($request);
@@ -105,7 +107,12 @@ class WelcomeBonusService
                     return false;
                 }
 
-                throw $e;
+                Log::warning('Welcome bonus claim write failed; skipping grant', [
+                    'user_id' => $user->id,
+                    'error' => $e->getMessage(),
+                ]);
+
+                return false;
             }
         };
 
@@ -193,11 +200,24 @@ class WelcomeBonusService
 
     public function ipAlreadyClaimed(string $ip): bool
     {
-        if (! Schema::hasTable((new WelcomeBonusClaim)->getTable())) {
-            return false;
+        if (! $this->claimsTableReady()) {
+            return true;
         }
 
-        return WelcomeBonusClaim::query()->where('ip_address', $ip)->exists();
+        try {
+            return WelcomeBonusClaim::query()->where('ip_address', $ip)->exists();
+        } catch (\Throwable) {
+            return true;
+        }
+    }
+
+    private function claimsTableReady(): bool
+    {
+        try {
+            return Schema::hasTable((new WelcomeBonusClaim)->getTable());
+        } catch (\Throwable) {
+            return false;
+        }
     }
 
     private function isUniqueViolation(QueryException $e): bool

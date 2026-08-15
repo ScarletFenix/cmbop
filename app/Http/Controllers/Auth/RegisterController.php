@@ -26,7 +26,7 @@ class RegisterController extends Controller
     public function show(WelcomeBonusService $welcomeBonus)
     {
         $roles = ['advertiser' => 'Advertiser', 'publisher' => 'Publisher'];
-        $welcomeBonusEnabled = $welcomeBonus->isEnabled();
+        $welcomeBonusEnabled = $welcomeBonus->canGrant();
         $welcomeBonusAmount = $welcomeBonus->amount();
 
         return view('auth.register', compact('roles', 'welcomeBonusEnabled', 'welcomeBonusAmount'));

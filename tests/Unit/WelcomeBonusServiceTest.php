@@ -8,6 +8,7 @@ use App\Models\WelcomeBonusSetting;
 use App\Services\Wallet\WelcomeBonusService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Schema;
 use Tests\TestCase;
 
 class WelcomeBonusServiceTest extends TestCase
@@ -85,6 +86,21 @@ class WelcomeBonusServiceTest extends TestCase
         $user = User::factory()->create();
         $this->assertFalse($this->service->recordClaim($user, $request, 20.0, 'registration'));
         $this->assertSame(0, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_missing_claims_table_does_not_grant(): void
+    {
+        Schema::dropIfExists('welcome_bonus_claims');
+        $this->assertFalse(Schema::hasTable('welcome_bonus_claims'));
+
+        $this->assertFalse($this->service->canGrant());
+        $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('1.2.3.4'),
+            20.0,
+            'registration'
+        ));
     }
 
     public function test_forwarded_for_header_cannot_spoof_the_claim_ip(): void
