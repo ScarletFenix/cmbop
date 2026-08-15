@@ -60,9 +60,9 @@ class BlogTranslationFeatureTest extends TestCase
             ->assertSee('Deutscher Inhalt', false)
             ->assertSee('hreflang="de"', false)
             ->assertSee('hreflang="en-GB"', false)
-            ->assertSee(url('/blog/english-title'), false)
-            ->assertSee(url('/de/blog/deutscher-titel'), false)
-            ->assertDontSee(url('/blog/deutscher-titel'), false);
+            ->assertSee('hreflang="en-GB" href="'.url('/blog/english-title').'"', false)
+            ->assertSee('hreflang="de" href="'.url('/de/blog/deutscher-titel').'"', false)
+            ->assertDontSee('hreflang="en-GB" href="'.url('/blog/deutscher-titel').'"', false);
     }
 
     public function test_missing_locale_translation_falls_back_to_english_notice(): void

@@ -29,13 +29,18 @@ class BlogHtmlSanitizer
     ];
 
     /**
-     * True when Quill (or a similar editor) submitted an unused/empty locale tab.
+     * True when Quill submitted an unused locale tab (`<p><br></p>`), not when
+     * the body is image- or embed-only.
      */
     public static function isBlank(?string $html): bool
     {
         $html = trim((string) $html);
         if ($html === '' || $html === '<p><br></p>' || $html === '<p></p>') {
             return true;
+        }
+
+        if (preg_match('/<(img|iframe|video|figure|hr)\b/i', $html)) {
+            return false;
         }
 
         $text = trim(html_entity_decode(strip_tags($html), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
@@ -46,7 +51,7 @@ class BlogHtmlSanitizer
     public function sanitize(?string $html): string
     {
         $html = trim((string) $html);
-        if (self::isBlank($html)) {
+        if ($html === '' || $html === '<p><br></p>' || $html === '<p></p>') {
             return '';
         }
 
