@@ -421,20 +421,12 @@ class EmailCampaign extends Model
             return 0;
         }
 
-        $holdUserIds = $inFlight;
-        try {
-            $prefix = 'audience_campaign:'.(int) $campaign->id.':user:';
-            foreach (EmailLog::query()
-                ->where('status', EmailLog::STATUS_PENDING)
-                ->where('dedupe_key', 'like', $prefix.'%')
-                ->pluck('dedupe_key') as $key) {
-                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
-                    $holdUserIds[] = (int) $matches[1];
-                }
-            }
-        } catch (\Throwable) {
+        $pendingHold = self::pendingLogUserIdsForCampaign((int) $campaign->id);
+        if ($pendingHold === null) {
             return 0;
         }
+
+        $holdUserIds = array_merge($inFlight, $pendingHold);
 
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
@@ -450,6 +442,53 @@ class EmailCampaign extends Model
             'status' => EmailCampaignRecipient::STATUS_PENDING,
             'skip_reason' => null,
         ]);
+    }
+
+    /**
+     * Recipients with a pending Email Center row for this campaign.
+     * Includes leftover generic-key retries that only store the pair in meta.
+     * Null means the log table could not be read — callers must not treat
+     * that as "no pending retries".
+     *
+     * @return list<int>|null
+     */
+    protected static function pendingLogUserIdsForCampaign(int $campaignId): ?array
+    {
+        if ($campaignId < 1) {
+            return [];
+        }
+
+        $ids = [];
+        $prefix = 'audience_campaign:'.$campaignId.':user:';
+
+        try {
+            foreach (EmailLog::query()
+                ->where('status', EmailLog::STATUS_PENDING)
+                ->where(function ($query) use ($prefix) {
+                    $query->where('dedupe_key', 'like', $prefix.'%')
+                        ->orWhere('notification_type', 'audience_campaign')
+                        ->orWhere('template_key', 'audience_campaign')
+                        ->orWhere('mailable', 'like', '%AudienceCampaignMail%')
+                        ->orWhere('dedupe_key', 'like', 'audience_campaign|%');
+                })
+                ->get(['id', 'dedupe_key', 'meta', 'notification_type', 'template_key', 'mailable']) as $log) {
+                $userId = 0;
+                $foundCampaign = (int) data_get($log->meta, 'campaign_id');
+                $foundUser = (int) data_get($log->meta, 'user_id');
+                if ($foundCampaign === $campaignId && $foundUser > 0) {
+                    $userId = $foundUser;
+                } elseif (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $log->dedupe_key, $matches)) {
+                    $userId = (int) $matches[1];
+                }
+                if ($userId > 0) {
+                    $ids[$userId] = true;
+                }
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        return array_map('intval', array_keys($ids));
     }
 
     /**
@@ -1036,10 +1075,21 @@ class EmailCampaign extends Model
             // queued a second job beside the backlogged one.
             // failed_jobs is not a live backlog: reclaim still holds
             // those users, but expire must close the 72h orphan.
+            // A pending Email Center log is a just-retried mailable.
+            // Reclaim already holds those users; expire used to skip-stale
+            // them and fail the pending row when the jobs-table scan
+            // missed the retried job — a second retry doubled the send.
+            $pendingHold = self::pendingLogUserIdsForCampaign($campaignId);
+            if ($pendingHold === null) {
+                continue;
+            }
             $blocked = $inFlight === null ? [] : array_fill_keys($inFlight, true);
+            foreach ($pendingHold as $userId) {
+                $blocked[$userId] = true;
+            }
 
             foreach ($group as $row) {
-                if ($inFlight !== null && isset($blocked[(int) $row->user_id])) {
+                if (isset($blocked[(int) $row->user_id])) {
                     continue;
                 }
 

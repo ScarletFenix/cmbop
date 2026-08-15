@@ -2260,6 +2260,96 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
+    public function test_expire_does_not_skip_queued_recipient_with_a_pending_email_log(): void
+    {
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Retry hold expire',
+            'subject' => 'Retry hold expire',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id),
+            'to_email' => $advertiser->email,
+            'subject' => 'Retry hold expire',
+            'status' => EmailLog::STATUS_PENDING,
+        ]);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+        $campaign->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+        $this->assertSame(EmailCampaign::STATUS_SENDING, $campaign->fresh()->status);
+    }
+
+    public function test_expire_does_not_skip_queued_recipient_with_a_generic_pending_log(): void
+    {
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Generic expire hold',
+            'subject' => 'Generic expire hold',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $log = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'notification_type' => 'audience_campaign',
+            'dedupe_key' => 'audience_campaign|'.$advertiser->email.'|AudienceCampaignMail',
+            'to_email' => $advertiser->email,
+            'subject' => 'Generic expire hold',
+            'status' => EmailLog::STATUS_PENDING,
+            'meta' => [
+                'campaign_id' => $campaign->id,
+                'user_id' => $advertiser->id,
+            ],
+        ]);
+        $row->forceFill(['updated_at' => now()->subHours(80)])->save();
+        $campaign->forceFill(['updated_at' => now()->subHours(80)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $row->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_PENDING, $log->fresh()->status);
+    }
+
     public function test_queued_recipient_with_a_failed_log_fk_is_reconciled_to_failed(): void
     {
         $admin = $this->makeUser('admin');
