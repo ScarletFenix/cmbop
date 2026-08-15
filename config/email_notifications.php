@@ -110,6 +110,17 @@ return [
     'max_age_hours' => (int) env('MAIL_MAX_AGE_HOURS', 24),
 
     /*
+    | Campaign mail may sit behind a longer backlog than transactional mail.
+    | 0 disables the campaign-specific cap (falls through to not dropping).
+    */
+    'campaign_max_age_hours' => (int) env('MAIL_CAMPAIGN_MAX_AGE_HOURS', 72),
+
+    /*
+    | Signed marketing unsubscribe links (GET confirm + POST one-click).
+    */
+    'unsubscribe_expire_days' => (int) env('MAIL_UNSUBSCRIBE_EXPIRE_DAYS', 30),
+
+    /*
     | Preference keys users can toggle (security cannot be disabled).
     */
     'preference_keys' => [

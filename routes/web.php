@@ -57,6 +57,7 @@ use App\Http\Controllers\Auth\SocialiteController;
 use App\Http\Controllers\BannerClickController;
 use App\Http\Controllers\BlogController;
 use App\Http\Controllers\ChatController;
+use App\Http\Controllers\EmailUnsubscribeController;
 use App\Http\Controllers\FeedbackController;
 use App\Http\Controllers\InvoiceController;
 use App\Http\Controllers\Marketing\PanelController as MarketingPanelController;
@@ -346,6 +347,12 @@ Route::get('/email/verify/{id}/{hash}', function (Request $request, $id, $hash) 
         'Email verified successfully. Please sign in to continue.'
     );
 })->middleware('throttle:6,1')->name('verification.verify');
+
+// Marketing unsubscribe (signed GET confirm + POST one-click). Same route name
+// so one signature works for both methods. CSRF is excepted for Gmail POSTs.
+Route::match(['get', 'post'], '/email/unsubscribe/{user}', EmailUnsubscribeController::class)
+    ->middleware('throttle:30,1')
+    ->name('email.unsubscribe');
 
 // Resend verification email (requires login)
 Route::post('/email/verification-notification', function (Request $request) {

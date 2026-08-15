@@ -3,14 +3,14 @@
 namespace App\Http\Controllers\Admin;
 
 use App\Http\Controllers\Controller;
+use App\Jobs\SendEmailCampaignJob;
 use App\Mail\AudienceCampaignMail;
 use App\Models\EmailCampaign;
-use App\Models\EmailNotificationPreference;
+use App\Models\EmailCampaignRecipient;
+use App\Services\ActivityLogger;
 use App\Services\AudienceInventoryService;
 use App\Support\CampaignHtml;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use Illuminate\Support\Facades\Mail;
 use Illuminate\Validation\Rule;
 
 class CampaignController extends Controller
@@ -104,12 +104,15 @@ class CampaignController extends Controller
         }
 
         $includeUnverified = $request->boolean('include_unverified');
-        $recipients = $inventory->collect($data['audience'], $data['user_ids'] ?? [], $includeUnverified);
+        $recipients = $inventory->collect($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
+            ->unique('id')
+            ->values();
         if ($recipients->isEmpty()) {
             return back()->withInput()->with('error', 'No recipients found for that audience.');
         }
 
         $respectPrefs = $request->boolean('respect_preferences');
+        $count = $recipients->count();
 
         $campaign = EmailCampaign::create([
             'name' => ($data['name'] ?? null) ?: $data['subject'],
@@ -119,55 +122,41 @@ class CampaignController extends Controller
             'selected_user_ids' => $data['audience'] === 'selected' ? array_values($data['user_ids'] ?? []) : null,
             'cta_label' => $data['cta_label'] ?? null,
             'cta_url' => $this->safeCtaUrl($data['cta_url'] ?? null),
-            'recipients_count' => $recipients->count(),
-            'status' => EmailCampaign::STATUS_SENDING,
+            'recipients_count' => $count,
+            'sent_count' => 0,
+            'skipped_count' => 0,
+            'status' => EmailCampaign::STATUS_QUEUED,
             'respect_preferences' => $respectPrefs,
             'created_by' => auth()->id(),
         ]);
 
-        $sent = 0;
-        $skipped = 0;
-
-        foreach ($recipients as $user) {
-            if ($respectPrefs && ! EmailNotificationPreference::allows($user, 'marketing_emails')) {
-                $skipped++;
-
-                continue;
-            }
-
-            try {
-                $mailable = new AudienceCampaignMail($campaign, $user);
-                $mailable->notificationType = 'audience_campaign';
-                $mailable->dedupeKey = 'audience_campaign:'.$campaign->id.':user:'.$user->id;
-                $mailable->skipUserPreference = true; // already checked above
-
-                Mail::to($user->email)->send($mailable);
-                $sent++;
-            } catch (\Throwable $e) {
-                $skipped++;
-                Log::warning('Campaign send failed', [
-                    'campaign_id' => $campaign->id,
-                    'user_id' => $user->id,
-                    'error' => $e->getMessage(),
-                ]);
-            }
+        $now = now();
+        foreach ($recipients->chunk(200) as $chunk) {
+            EmailCampaignRecipient::query()->insert($chunk->map(fn ($user) => [
+                'email_campaign_id' => $campaign->id,
+                'user_id' => $user->id,
+                'email' => $user->email,
+                'status' => EmailCampaignRecipient::STATUS_PENDING,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ])->all());
         }
 
-        $campaign->update([
-            'sent_count' => $sent,
-            'skipped_count' => $skipped,
-            'status' => $sent > 0 ? EmailCampaign::STATUS_SENT : EmailCampaign::STATUS_FAILED,
-            'sent_at' => now(),
-        ]);
+        SendEmailCampaignJob::dispatch($campaign->id);
 
-        $msg = "Queued for {$sent} recipient(s).";
-        if ($skipped > 0) {
-            $msg .= " Skipped {$skipped} (preferences or errors).";
-        }
+        ActivityLogger::log(
+            'campaign.queued',
+            "Queued campaign \"{$campaign->name}\" for {$count} recipient(s).",
+            $campaign,
+            [
+                'audience' => $campaign->audience,
+                'recipients' => $count,
+            ]
+        );
 
         return redirect()
             ->route('admin.campaigns.index')
-            ->with($sent > 0 ? 'success' : 'error', $msg);
+            ->with('success', "Campaign queued for {$count} recipient(s).");
     }
 
     /**

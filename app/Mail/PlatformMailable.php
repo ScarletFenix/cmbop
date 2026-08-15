@@ -2,6 +2,7 @@
 
 namespace App\Mail;
 
+use App\Models\EmailCampaign;
 use App\Models\EmailLog;
 use App\Models\EmailNotificationPreference;
 use App\Models\EmailNotificationSetting;
@@ -140,12 +141,21 @@ abstract class PlatformMailable extends Mailable implements ShouldQueue
             }
         });
 
-        app()->instance('platform.mail.meta', [
+        $meta = [
             'notification_type' => $this->notificationType,
             'dedupe_key' => $this->dedupeKey,
             'audience' => property_exists($this, 'audience') ? $this->audience : null,
             'mailable' => static::class,
-        ]);
+        ];
+        if (isset($this->campaign) && $this->campaign instanceof EmailCampaign && $this->campaign->id) {
+            $meta['campaign_id'] = (int) $this->campaign->id;
+        }
+        $logUser = $this->recipientUser
+            ?? ((isset($this->recipient) && $this->recipient instanceof User) ? $this->recipient : null);
+        if ($logUser?->id) {
+            $meta['user_id'] = (int) $logUser->id;
+        }
+        app()->instance('platform.mail.meta', $meta);
 
         try {
             return parent::send($mailer);

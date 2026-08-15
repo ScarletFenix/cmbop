@@ -277,7 +277,11 @@
                                     <tr>
                                         <td>
                                             <div class="fw-semibold small">{{ \Illuminate\Support\Str::limit($campaign->subject, 36) }}</div>
-                                            <div class="text-muted" style="font-size:.75rem;">{{ optional($campaign->sent_at)->format('M j, g:ia') ?: '—' }}</div>
+                                            <div class="text-muted" style="font-size:.75rem;">
+                                                {{ ucfirst($campaign->status) }}
+                                                ·
+                                                {{ optional($campaign->sent_at)->format('M j, g:ia') ?: '—' }}
+                                            </div>
                                         </td>
                                         <td class="small">{{ $campaign->audienceLabel() }}</td>
                                         <td class="small">

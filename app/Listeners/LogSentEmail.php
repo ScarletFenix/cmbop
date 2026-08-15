@@ -3,6 +3,7 @@
 namespace App\Listeners;
 
 use App\Mail\PlatformMailable;
+use App\Models\EmailCampaignRecipient;
 use App\Models\EmailLog;
 use App\Support\EmailCatalog;
 use Illuminate\Mail\Events\MessageSent;
@@ -57,7 +58,19 @@ class LogSentEmail
             $audience = config("email_notifications.types.{$notificationType}.audience");
         }
 
-        EmailLog::create([
+        $logMeta = [
+            'mailer' => config('mail.default'),
+        ];
+        $campaignId = isset($meta['campaign_id']) ? (int) $meta['campaign_id'] : 0;
+        $userId = isset($meta['user_id']) ? (int) $meta['user_id'] : 0;
+        if ($campaignId > 0) {
+            $logMeta['campaign_id'] = $campaignId;
+        }
+        if ($userId > 0) {
+            $logMeta['user_id'] = $userId;
+        }
+
+        $log = EmailLog::create([
             'uuid' => (string) Str::uuid(),
             'mailable' => $mailable,
             'template_key' => $templateKey,
@@ -70,11 +83,23 @@ class LogSentEmail
             'subject' => $subject,
             'status' => EmailLog::STATUS_DELIVERED,
             'attempts' => 1,
-            'meta' => [
-                'mailer' => config('mail.default'),
-            ],
+            'meta' => $logMeta,
             'sent_at' => now(),
         ]);
+
+        if ($campaignId > 0 && $userId > 0) {
+            EmailCampaignRecipient::query()
+                ->where('email_campaign_id', $campaignId)
+                ->where('user_id', $userId)
+                ->whereIn('status', [
+                    EmailCampaignRecipient::STATUS_PENDING,
+                    EmailCampaignRecipient::STATUS_QUEUED,
+                ])
+                ->update([
+                    'status' => EmailCampaignRecipient::STATUS_DELIVERED,
+                    'email_log_id' => $log->id,
+                ]);
+        }
     }
 
     protected function header($headers, string $name): ?string
