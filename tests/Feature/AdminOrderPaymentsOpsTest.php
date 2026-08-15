@@ -611,7 +611,7 @@ class AdminOrderPaymentsOpsTest extends TestCase
 
         $wallet->refresh();
         $this->assertSame('failed', $order->fresh()->payment_status);
-        $this->assertSame('pending', $order->fresh()->status);
+        $this->assertSame('cancelled', $order->fresh()->status);
         $this->assertEqualsWithDelta(0.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->reserved_balance, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
