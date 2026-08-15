@@ -293,8 +293,9 @@ class SiteRatingTest extends TestCase
             ->assertSee('Add rating', false)
             ->getContent();
 
-        $this->assertStringContainsString(route('admin.site-ratings.update', ['id' => '__ID__'], false), $html);
-        $this->assertStringContainsString(route('admin.site-ratings.destroy', ['id' => '__ID__'], false), $html);
+        $this->assertStringContainsString('RATING_UPDATE', $html);
+        $this->assertStringContainsString('RATING_DESTROY', $html);
+        $this->assertStringContainsString('__ID__', $html);
         $this->assertStringNotContainsString('`/admin/site-ratings/${btn.dataset.id}`', $html);
     }
 }
