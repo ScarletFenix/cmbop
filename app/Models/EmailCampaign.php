@@ -377,6 +377,10 @@ class EmailCampaign extends Model
      * Reset queued rows that have no email log and no matching mailable
      * in the jobs table. A missing/unreadable jobs table must not look
      * empty — that would double-send mail that is already in flight.
+     *
+     * Email Center retry pending-marks the log and leaves the recipient
+     * queued. A missed jobs-table scan must not reclaim that row and
+     * dispatch a send job beside the retried mailable.
      */
     protected static function reclaimOrphanedQueuedRecipients(self $campaign): int
     {
@@ -385,13 +389,29 @@ class EmailCampaign extends Model
             return 0;
         }
 
+        $holdUserIds = $inFlight;
+        try {
+            $prefix = 'audience_campaign:'.(int) $campaign->id.':user:';
+            foreach (EmailLog::query()
+                ->where('status', EmailLog::STATUS_PENDING)
+                ->where('dedupe_key', 'like', $prefix.'%')
+                ->pluck('dedupe_key') as $key) {
+                if (preg_match('/^'.preg_quote($prefix, '/').'(\d+)$/', (string) $key, $matches)) {
+                    $holdUserIds[] = (int) $matches[1];
+                }
+            }
+        } catch (\Throwable) {
+            return 0;
+        }
+
         $query = EmailCampaignRecipient::query()
             ->where('email_campaign_id', $campaign->id)
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNull('email_log_id');
 
-        if ($inFlight !== []) {
-            $query->whereNotIn('user_id', $inFlight);
+        $holdUserIds = array_values(array_unique(array_filter($holdUserIds)));
+        if ($holdUserIds !== []) {
+            $query->whereNotIn('user_id', $holdUserIds);
         }
 
         return $query->update([

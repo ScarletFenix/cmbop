@@ -40,6 +40,7 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('must still reclaim even if the unused', $body);
         $this->assertStringContainsString('second retry doubles the send', $body);
         $this->assertStringContainsString('must **not** skip a recipient whose', $body);
+        $this->assertStringContainsString('queued row with a pending Email Center log', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);

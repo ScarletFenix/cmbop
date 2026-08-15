@@ -2502,6 +2502,50 @@ class AdminCampaignsTest extends TestCase
         Queue::assertPushed(SendEmailCampaignJob::class, fn (SendEmailCampaignJob $job) => $job->campaignId === $campaign->id);
     }
 
+    public function test_stall_recovery_does_not_reclaim_queued_row_with_a_pending_email_log(): void
+    {
+        Queue::fake();
+        $this->useDatabaseMailQueue();
+
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Retry hold',
+            'subject' => 'Retry hold',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id),
+            'to_email' => $advertiser->email,
+            'subject' => 'Retry hold',
+            'status' => EmailLog::STATUS_PENDING,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $this->assertSame(0, EmailCampaign::recoverStalled());
+        $this->assertSame(
+            EmailCampaignRecipient::STATUS_QUEUED,
+            $campaign->recipients()->where('user_id', $advertiser->id)->value('status')
+        );
+        Queue::assertNothingPushed();
+    }
+
     public function test_stall_recovery_does_not_reclaim_queued_row_for_another_campaign_mailable(): void
     {
         Queue::fake();
