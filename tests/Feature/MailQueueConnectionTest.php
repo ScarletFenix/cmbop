@@ -99,7 +99,7 @@ class MailQueueConnectionTest extends TestCase
         ]);
 
         $this->artisan('mail:drain-queue')
-            ->expectsOutputToContain('is not ready')
+            ->expectsOutputToContain('there is no queue to drain')
             ->assertSuccessful();
     }
 
