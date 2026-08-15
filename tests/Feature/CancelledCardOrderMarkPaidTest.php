@@ -186,4 +186,193 @@ class CancelledCardOrderMarkPaidTest extends TestCase
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
     }
+
+    public function test_new_checkout_replaces_abandoned_wise_leftover(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $submission = $this->createApprovedSubmission(
+            $advertiser,
+            $site->id,
+            0,
+            'wise leftover anchor',
+            'https://example.com/target'
+        );
+
+        $stale = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STALE-WISE',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $stale->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $stale->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->assertFalse($submission->fresh()->isReadyForCheckout());
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-NEW-WALLET-WISE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $stale->refresh();
+        $this->assertSame('cancelled', $stale->status);
+        $this->assertSame('failed', $stale->payment_status);
+
+        $paid = Order::query()->where('reference_code', 'REF-NEW-WALLET-WISE')->first();
+        $this->assertNotNull($paid);
+        $this->assertSame($paid->id, (int) $submission->fresh()->order_id);
+    }
+
+    public function test_order_from_library_releases_abandoned_wise_leftover(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser);
+        $stale = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-STALE-WISE-LIB',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_status' => 'pending',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $stale->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $stale->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->get(route('advertiser.content-library.order', $submission))
+            ->assertRedirect(route('advertiser.catalog', [
+                'content_submission_id' => $submission->id,
+            ]));
+
+        $stale->refresh();
+        $this->assertSame('cancelled', $stale->status);
+        $this->assertNull($submission->fresh()->order_id);
+        $this->assertTrue($submission->fresh()->isReadyForCheckout());
+    }
+
+    public function test_failed_card_leftover_is_kept_for_pay_again(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher);
+
+        Wallet::create([
+            'user_id' => $advertiser->id,
+            'role_id' => Wallet::advertiserRoleId(),
+            'balance' => 100,
+            'reserved_balance' => 0,
+            'bonus_balance' => 0,
+            'bonus_reserved' => 0,
+            'currency' => 'EUR',
+        ]);
+
+        $submission = $this->createApprovedSubmission($advertiser);
+        $leftover = Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-FAILED-CARD',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'failed',
+            'status' => 'pending',
+        ]);
+        $item = OrderItem::create([
+            'order_id' => $leftover->id,
+            'site_id' => $site->id,
+            'site_name' => $site->site_name,
+            'site_url' => $site->site_url,
+            'content_link' => 'https://example.com/article',
+            'content_submission_id' => $submission->id,
+            'price' => 80,
+        ]);
+        $submission->update([
+            'order_id' => $leftover->id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [
+                    ['id' => $site->id, 'name' => $site->site_name, 'quantity' => 1],
+                ],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'REF-SHOULD-NOT-REPLACE',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ])
+            ->assertStatus(422);
+
+        $leftover->refresh();
+        $this->assertSame('pending', $leftover->status);
+        $this->assertSame('failed', $leftover->payment_status);
+        $this->assertSame($leftover->id, (int) $submission->fresh()->order_id);
+        $this->assertNull(Order::query()->where('reference_code', 'REF-SHOULD-NOT-REPLACE')->first());
+    }
 }

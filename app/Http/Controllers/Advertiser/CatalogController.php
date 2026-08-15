@@ -2033,6 +2033,14 @@ class CatalogController extends Controller
             $paymentMethod = $request->payment_method;
             $userReferenceCode = $request->reference_code;
 
+            // Unlock articles claimed by this advertiser's unpaid leftovers
+            // before readiness — otherwise the claim keeps the line deferred
+            // and the replace never runs.
+            $this->cancelConflictingUnpaidCardOrders(
+                (int) $userId,
+                $this->collectSubmissionIdsFromRequest($cart, $request)
+            );
+
             // Only charge sites that are ready for checkout (approved article) and need payment.
             $partition = $this->partitionCartByCheckoutReadiness(
                 $cart,
@@ -2048,12 +2056,6 @@ class CatalogController extends Controller
                     'message' => 'No websites are ready for checkout yet. Assign an approved article to at least one site, then pay.',
                 ], 422);
             }
-
-            // If a previous Stripe attempt linked the article, unlock it before re-resolving content.
-            $this->cancelConflictingUnpaidCardOrders(
-                (int) $userId,
-                $this->collectSubmissionIdsFromRequest($payableCart, $request)
-            );
 
             // Resolve approved library articles + schedule (session fallback from Content Library)
             $sessionSchedule = session('checkout_schedule', []);
@@ -5261,51 +5263,7 @@ class CatalogController extends Controller
      */
     private function cancelConflictingUnpaidCardOrders(int $userId, array $submissionIds): void
     {
-        $submissionIds = array_values(array_unique(array_filter(array_map('intval', $submissionIds))));
-        if ($submissionIds === []) {
-            return;
-        }
-
-        // Legacy Hostinger DBs may not have run the content-upload migration yet.
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            Log::warning('Skipping conflicting card-order cleanup: order_items.content_submission_id missing');
-
-            return;
-        }
-
-        $orderIds = OrderItem::query()
-            ->whereIn('content_submission_id', $submissionIds)
-            ->whereHas('order', function ($q) use ($userId) {
-                $q->where('user_id', $userId)
-                    ->where('payment_method', 'card')
-                    ->where('payment_status', 'pending')
-                    ->where('status', 'pending');
-            })
-            ->pluck('order_id')
-            ->unique()
-            ->all();
-
-        if ($orderIds === []) {
-            return;
-        }
-
-        $orders = Order::with('items')->whereIn('id', $orderIds)->get();
-        $paymentService = app(OrderPaymentService::class);
-        foreach ($orders->pluck('reference_code')->unique()->filter() as $referenceCode) {
-            $paymentService->markOrdersFailedFromReference(
-                (string) $referenceCode,
-                'Replaced by a new checkout',
-                $userId
-            );
-        }
-
-        foreach ($orders as $order) {
-            $this->releaseContentSubmissionsForOrder($order);
-            $fresh = $order->fresh();
-            if ($fresh && $fresh->status !== 'cancelled') {
-                $fresh->update(['status' => 'cancelled']);
-            }
-        }
+        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions($userId, $submissionIds);
     }
 
     /**
