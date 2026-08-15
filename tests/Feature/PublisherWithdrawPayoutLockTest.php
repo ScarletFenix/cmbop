@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\PayoutProfileUpdatedBySupport;
+use App\Models\ActivityLog;
 use App\Models\Role;
 use App\Models\User;
 use App\Models\Wallet;
@@ -227,5 +228,19 @@ class PublisherWithdrawPayoutLockTest extends TestCase
 
         $this->assertSame('new@example.com', $publisher->fresh()->payout_paypal_email);
         Mail::assertQueued(PayoutProfileUpdatedBySupport::class);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'user.payout_profile_updated')->count());
+
+        Mail::fake();
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.users.updatePayoutProfile', $publisher->id), [
+                'payment_method' => 'paypal',
+                'paypal_email' => 'new@example.com',
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        Mail::assertNothingOutgoing();
+        $this->assertSame(1, ActivityLog::query()->where('action', 'user.payout_profile_updated')->count());
     }
 }

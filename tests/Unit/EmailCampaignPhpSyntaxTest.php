@@ -67,6 +67,19 @@ class EmailCampaignPhpSyntaxTest extends TestCase
         $this->assertStringContainsString('$scanFailed = true;', $matches[1]);
         $this->assertStringContainsString('$scannedOk = true;', $matches[1]);
         $this->assertStringContainsString('return $scanFailed && ! $scannedOk;', $matches[1]);
+
+        $this->assertTrue((bool) preg_match(
+            '/protected static function inFlightCampaignMailUserIds\(int \$campaignId(?:, bool \$includeFailedJobs = true)?\): \?array\s*\{(.*?)\n    protected static function collectCampaignMailUserIdsFromTable/s',
+            $source,
+            $inFlight
+        ));
+        $this->assertStringContainsString('$mailScannedOk = true;', $inFlight[1]);
+        $this->assertStringContainsString('if ($mailNeedsScan && ! $mailScannedOk)', $inFlight[1]);
+        $this->assertStringNotContainsString('$mailFailed', $inFlight[1]);
+        $this->assertDoesNotMatchRegularExpression(
+            '/hasColumn\(\$table, \'payload\'\)\) \{\s*return null;/',
+            $inFlight[1]
+        );
     }
 
     public function test_merge_sensitive_campaign_files_parse_without_duplicate_methods(): void

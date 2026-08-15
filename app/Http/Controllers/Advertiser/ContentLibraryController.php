@@ -11,7 +11,6 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
-use App\Services\OrderPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -503,6 +502,17 @@ class ContentLibraryController extends Controller
         abort_unless((int) $submission->user_id === (int) auth()->id(), 403);
 
         if (! $submission->isContentReadyForOrder()) {
+            // Expired leftovers can still Pay again on the open order, but they
+            // cannot start a new catalog checkout. Unready leftovers (links /
+            // rights) stay in the library so the advertiser can fix them first.
+            if ($submission->isExpired()
+                && $submission->hasFulfillableContent()
+                && ($submission->canReplaceUnpaidLeftover() || $submission->activeClaimOrderId())) {
+                return redirect()
+                    ->route('advertiser.orders')
+                    ->with('error', 'This article is still on an open order. Use Pay again there. Expired articles cannot start a new catalog order.');
+            }
+
             $message = $submission->isExpired()
                 ? 'Expired articles are preview only and cannot be ordered.'
                 : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
@@ -512,6 +522,12 @@ class ContentLibraryController extends Controller
             return redirect()
                 ->route('advertiser.content-library')
                 ->with('error', $message);
+        }
+
+        if ($submission->isLockedByPaidOrder()) {
+            return redirect()
+                ->route('advertiser.orders')
+                ->with('error', ContentSubmission::PAID_ORDER_CLAIM_MESSAGE);
         }
 
         if (! $submission->canOrderFromLibrary()) {
@@ -521,25 +537,8 @@ class ContentLibraryController extends Controller
                     ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-            (int) auth()->id(),
-            [(int) $submission->id]
-        );
-        $submission = $submission->fresh() ?? $submission;
-
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
-            $message = $submission->isExpired()
-                ? 'Expired articles are preview only and cannot be ordered.'
-                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
-                    ? ContentUploadService::imageRightsRequiredMessage()
-                    : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
-
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $message);
-        }
-
-        // Keep existing cart sites and any publication date already chosen at checkout.
+        // Keep Pay again until the advertiser actually assigns this article
+        // or a checkout is about to charge. Opening Catalog is not a replace.
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('ordering_from_library', true);
 

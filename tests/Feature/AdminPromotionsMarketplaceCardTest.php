@@ -84,6 +84,40 @@ class AdminPromotionsMarketplaceCardTest extends TestCase
             ->assertDontSee('Inactive Featured Site', false);
     }
 
+    public function test_hub_lists_featured_site_when_archived_at_is_unparseable(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $publisherRole = Role::where('name', 'publisher')->firstOrFail();
+        $publisher = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $publisherRole->id,
+        ]);
+        $publisher->roles()->attach($publisherRole->id);
+
+        $site = $this->makeSite($publisher, 'Leftover Archived Featured');
+        $this->assertTrue(Schema::hasColumn('sites', 'featured_until'));
+        $site->update(['featured_until' => now()->addDays(3)]);
+        DB::table('sites')->where('id', $site->id)->update([
+            'archived_at' => 'not-a-date',
+        ]);
+
+        $this->assertFalse($site->fresh()->isArchived());
+        $this->assertTrue($site->fresh()->isFeatured());
+
+        $this->actingAs($admin)
+            ->get(route('admin.promotions.index'))
+            ->assertOk()
+            ->assertSee('Leftover Archived Featured', false)
+            ->assertDontSee('Something went wrong');
+    }
+
     public function test_hub_ok_when_featured_until_is_unparseable(): void
     {
         $this->seed(RolesTableSeeder::class);

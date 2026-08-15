@@ -411,6 +411,20 @@ class ContentUploadService
             ? 'approved'
             : $moderationStatus;
 
+        if (! empty($result['approved']) && ! $submission->isReadyForCheckout()) {
+            $params = $submission->staffApprovalLibraryParams();
+            if ($params !== []) {
+                $result['action_url'] = route('advertiser.content-library', $params, false);
+            }
+            if ($submission->isUsableAfterStaffApproval() || $submission->activeClaimOrderId()) {
+                $result['approved_leftover'] = true;
+                if (trim((string) ($result['message'] ?? '')) === '') {
+                    $result['message'] = $submission->editorNotice()
+                        ?: ContentSubmission::ACTIVE_ORDER_CLAIM_MESSAGE;
+                }
+            }
+        }
+
         return $result;
     }
 

@@ -5,6 +5,7 @@ namespace App\Services\Catalog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -30,8 +31,8 @@ use Illuminate\Support\Str;
  * strike reset the watermark advances so a second full wave is required.
  *
  * A table-cell copy often includes a trailing newline, and a multi-select
- * dump includes several hosts. Those still count (capped) — rejecting the
- * whole clipboard was a harvest bypass.
+ * or CSV dump includes several hosts. Those still count (capped) — rejecting
+ * the whole clipboard was a harvest bypass.
  */
 class CatalogCopyStrikeGuard
 {
@@ -72,10 +73,15 @@ class CatalogCopyStrikeGuard
                 $siteId = null;
             } elseif ($hosts === []) {
                 // Row id known but selection was messy — fall back to listing URL.
-                $fallback = $this->normalizeHost((string) $site->site_url);
+                $fallback = $this->listingHosts($site)[0] ?? '';
                 if ($fallback !== '') {
                     $hosts = [$fallback];
                 }
+            } elseif (count($hosts) === 1 && ! in_array($hosts[0], $this->listingHosts($site), true)) {
+                // A scripted client can reuse one valid site_id with rotating
+                // hosts. Pinning those rows to the listing makes insertIfNew
+                // OR-dedupe on site_id and distinctCount collapse to 1.
+                $siteId = null;
             }
         }
 
@@ -124,9 +130,6 @@ class CatalogCopyStrikeGuard
                 // inserts/counts only ids above this cutoff so the same
                 // listings cannot restage the burst.
                 self::watermarkEvents($locked);
-                if (! $this->afterIdColumnReady()) {
-                    CatalogCopyEvent::query()->where('user_id', $locked->id)->delete();
-                }
                 $locked->save();
 
                 $fresh = $locked->fresh();
@@ -161,11 +164,13 @@ class CatalogCopyStrikeGuard
         });
 
         if (in_array($result['status'], [self::STATUS_WARNING, self::STATUS_HIDE_MODE], true)) {
+            $subject = User::query()->find($user->id) ?? $user;
             $this->announce(
-                User::query()->find($user->id) ?? $user,
+                $subject,
                 $result['status'],
                 (int) $result['distinct_in_window']
             );
+            $this->logEnforcement($subject, $result);
         }
 
         return $result;
@@ -173,9 +178,7 @@ class CatalogCopyStrikeGuard
 
     public function inHideMode(User $user): bool
     {
-        $until = $user->catalog_hide_until ?? null;
-
-        return $until !== null && $until->isFuture();
+        return $user->inCatalogHideMode();
     }
 
     public function hideModeUserMessage(?int $hours = null): string
@@ -207,7 +210,10 @@ class CatalogCopyStrikeGuard
             return [];
         }
 
-        $tokens = preg_split('/\s+/u', $raw) ?: [];
+        // Newlines, tabs, commas, semicolons, and pipes are all dump
+        // separators. Counting only whitespace let a CSV paste (or one
+        // POST of host1,host2,host3) collapse to a single event.
+        $tokens = preg_split('/[\s,;|]+/u', $raw) ?: [];
         $hosts = [];
 
         foreach ($tokens as $token) {
@@ -260,6 +266,24 @@ class CatalogCopyStrikeGuard
         }
 
         return $host;
+    }
+
+    /**
+     * Hosts that belong to this listing (site_url and domain column).
+     *
+     * @return list<string>
+     */
+    private function listingHosts(Site $site): array
+    {
+        $hosts = [];
+        foreach ([(string) $site->site_url, (string) ($site->domain ?? '')] as $raw) {
+            $host = $this->normalizeHost($raw);
+            if ($host !== '') {
+                $hosts[$host] = $host;
+            }
+        }
+
+        return array_values($hosts);
     }
 
     /**
@@ -317,13 +341,12 @@ class CatalogCopyStrikeGuard
         $exists = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
-            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
-            ->where(function ($q) use ($siteId, $host) {
-                $q->where('normalized_host', $host);
-                if ($siteId !== null) {
-                    $q->orWhere('site_id', $siteId);
-                }
-            })
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
+            ->when(
+                $siteId !== null,
+                fn ($q) => $q->where('site_id', $siteId),
+                fn ($q) => $q->where('normalized_host', $host)->whereNull('site_id')
+            )
             ->exists();
 
         if ($exists) {
@@ -347,7 +370,7 @@ class CatalogCopyStrikeGuard
         $withSite = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
-            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNotNull('site_id')
             ->distinct()
             ->count('site_id');
@@ -355,7 +378,7 @@ class CatalogCopyStrikeGuard
         $hostOnly = CatalogCopyEvent::query()
             ->where('user_id', $user->id)
             ->where('created_at', '>=', $since)
-            ->when($afterId > 0, fn ($q) => $q->where('id', '>', $afterId))
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNull('site_id')
             ->distinct()
             ->count('normalized_host');
@@ -391,6 +414,28 @@ class CatalogCopyStrikeGuard
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * @param  array{status:string, distinct_in_window:int, hide_until?:string|null, strike_count?:int}  $result
+     */
+    private function logEnforcement(User $user, array $result): void
+    {
+        $hide = $result['status'] === self::STATUS_HIDE_MODE;
+
+        ActivityLogger::tryLog(
+            $hide ? 'catalog_hide_applied' : 'catalog_copy_warned',
+            $hide
+                ? 'Catalog hide mode applied for '.$user->email.' after a second copy-harvest wave.'
+                : 'Catalog copy-harvest warning issued to '.$user->email.'.',
+            $user,
+            [
+                'strikes' => (int) ($user->catalog_copy_strike_count ?? $result['strike_count'] ?? 0),
+                'distinct_in_window' => (int) $result['distinct_in_window'],
+                'hide_until' => $result['hide_until'] ?? $user->catalog_hide_until?->toIso8601String(),
+            ],
+            $user->email
+        );
     }
 
     private function announce(User $user, string $status, int $distinct): void

@@ -185,14 +185,6 @@ class SitePromotionController extends Controller
             }
 
             if ($result['success'] ?? false) {
-                ActivityLogger::log(
-                    'site.featured_stripe',
-                    auth()->user()->name.' featured "'.$site->site_name.'" via Stripe',
-                    $site,
-                    ['session_id' => $sessionId, 'days' => $this->promotions->featureDays()],
-                    $site->site_name
-                );
-
                 $message = $result['message'] ?? 'Website featured successfully.';
                 if ($site->isArchived()) {
                     $message .= ' Restore the site from Archive to show the feature in the catalog.';
@@ -249,11 +241,26 @@ class SitePromotionController extends Controller
         ]);
 
         $alreadyJoined = $site->joinsBulkDiscount();
+        $previousPercent = $alreadyJoined ? (float) $site->bulk_discount_percent : null;
         $site = $this->promotions->joinBulkDiscount($site, (float) $data['percent']);
-        $pct = rtrim(rtrim(number_format((float) $site->bulk_discount_percent, 2), '0'), '.');
+        $newPercent = (float) $site->bulk_discount_percent;
+        $pct = rtrim(rtrim(number_format($newPercent, 2), '0'), '.');
         $lead = $alreadyJoined
             ? 'Updated bulk discount to '.$pct.'% on 3–5 articles.'
             : 'Joined bulk discount programme ('.$pct.'% on 3–5 articles).';
+
+        if (! $alreadyJoined || abs(($previousPercent ?? 0) - $newPercent) >= 0.001) {
+            ActivityLogger::tryLog(
+                $alreadyJoined ? 'site.bulk_discount_updated' : 'site.bulk_discount_joined',
+                auth()->user()->name.' '.$lead,
+                $site,
+                [
+                    'percent' => $newPercent,
+                    'from' => $previousPercent,
+                ],
+                $site->site_name
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -265,7 +272,19 @@ class SitePromotionController extends Controller
     public function leaveBulk(int $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $wasJoined = $site->joinsBulkDiscount();
+        $previousPercent = $wasJoined ? (float) $site->bulk_discount_percent : null;
         $site = $this->promotions->leaveBulkDiscount($site);
+
+        if ($wasJoined) {
+            ActivityLogger::tryLog(
+                'site.bulk_discount_left',
+                auth()->user()->name.' left the bulk discount programme on "'.$site->site_name.'"',
+                $site,
+                ['from' => $previousPercent],
+                $site->site_name
+            );
+        }
 
         return response()->json([
             'success' => true,
@@ -307,7 +326,23 @@ class SitePromotionController extends Controller
     public function clearDiscount(int $id)
     {
         $site = Site::where('publisher_id', auth()->id())->findOrFail($id);
+        $hadDiscount = $site->custom_discount_percent !== null
+            || $site->custom_discount_starts_at !== null
+            || $site->custom_discount_ends_at !== null;
+        $previousPercent = $site->custom_discount_percent !== null
+            ? (float) $site->custom_discount_percent
+            : null;
         $site = $this->promotions->clearCustomDiscount($site);
+
+        if ($hadDiscount) {
+            ActivityLogger::tryLog(
+                'site.discount_cleared',
+                auth()->user()->name.' cleared the custom discount on "'.$site->site_name.'"',
+                $site,
+                ['from' => $previousPercent],
+                $site->site_name
+            );
+        }
 
         return response()->json([
             'success' => true,
