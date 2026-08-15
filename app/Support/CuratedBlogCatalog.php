@@ -156,19 +156,19 @@ class CuratedBlogCatalog
             if (! is_string($catalogSlug) || $catalogSlug === '') {
                 continue;
             }
-            $from[] = preg_quote($catalogSlug, '#');
+            $from[] = preg_quote($catalogSlug, '~');
         }
         if ($from === []) {
             return $html;
         }
 
         $locales = implode('|', array_map(
-            static fn (string $locale): string => preg_quote($locale, '#'),
+            static fn (string $locale): string => preg_quote($locale, '~'),
             PublicI18n::prefixed()
         ));
 
         $rewritten = preg_replace_callback(
-            '#((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(?=["\'?#\s>]|$)#i',
+            '~((?:https?://[^"\'\s>]+)?)((?:/(?:'.$locales.'))?)(/blog/)('.implode('|', $from).')(?=["\'?#\s>]|$)~i',
             static function (array $matches) use ($map): string {
                 $catalog = $matches[4];
                 $public = $map[$catalog] ?? $catalog;
