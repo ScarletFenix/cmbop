@@ -2203,7 +2203,17 @@ class CatalogController extends Controller
                 $schema = app(CheckoutSchemaService::class);
                 $created = collect();
                 DB::beginTransaction();
-                foreach ($checkoutContent['lines'] as $line) {
+                $fulfillableLines = $this->fulfillableCheckoutLines($checkoutContent, (int) $userId);
+                if ($fulfillableLines === []) {
+                    DB::rollBack();
+                    $this->refundCheckoutBonus((int) $userId, (string) $referenceCode);
+
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Those listings left the catalog before checkout finished. Your bonus was not spent.',
+                    ], 422);
+                }
+                foreach ($fulfillableLines as $line) {
                     $orderItem = $line['orderItem'];
                     $submission = $line['submission'];
                     $site = $orderItem['site'];
@@ -2586,8 +2596,6 @@ class CatalogController extends Controller
     private function processWalletPayment($cart, array $checkoutContent, $referenceCode, $userId, bool $useBonus = false)
     {
         try {
-            $expandedOrders = array_column($checkoutContent['lines'], 'orderItem');
-            $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
             $schedule = $checkoutContent['schedule'];
 
             $advertiserRoleId = Wallet::advertiserRoleId();
@@ -2605,6 +2613,19 @@ class CatalogController extends Controller
             $advertiserWallet->repairOrphanedWelcomeBonus();
             $advertiserWallet->reconcileInflatedBonusBalance();
             $advertiserWallet->refresh();
+
+            $fulfillableLines = $this->fulfillableCheckoutLines($checkoutContent, (int) $userId);
+            if ($fulfillableLines === []) {
+                DB::rollBack();
+
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Those listings left the catalog before checkout finished. No funds were reserved.',
+                ], 422);
+            }
+
+            $expandedOrders = array_column($fulfillableLines, 'orderItem');
+            $totalAmount = round(array_sum(array_column($expandedOrders, 'price')), 2);
 
             $spendable = round((float) $advertiserWallet->balance, 2);
             $cashAvailable = $advertiserWallet->withdrawableBalance();
@@ -2653,7 +2674,7 @@ class CatalogController extends Controller
             $schema = app(CheckoutSchemaService::class);
             $schema->ensureCheckoutTables();
 
-            foreach ($checkoutContent['lines'] as $line) {
+            foreach ($fulfillableLines as $line) {
                 $orderItem = $line['orderItem'];
                 $submission = $line['submission'];
                 $site = $orderItem['site'];
@@ -4729,6 +4750,40 @@ class CatalogController extends Controller
             ->where('user_id', auth()->id())
             ->orderable()
             ->first();
+    }
+
+    /**
+     * Re-lock listings inside the payment transaction so a concurrent bulk
+     * cancel cannot create paid orders for a leftover that left the catalog.
+     *
+     * @param  array{lines: array<int, array{orderItem: array, submission: mixed}>}  $checkoutContent
+     * @return array<int, array{orderItem: array, submission: mixed}>
+     */
+    private function fulfillableCheckoutLines(array $checkoutContent, int $userId): array
+    {
+        $buyer = $userId > 0 ? User::query()->find($userId) : null;
+        $lines = [];
+        foreach ($checkoutContent['lines'] ?? [] as $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $orderItem = is_array($line['orderItem'] ?? null) ? $line['orderItem'] : [];
+            $site = $orderItem['site'] ?? null;
+            $siteId = $site instanceof Site ? (int) $site->id : 0;
+            $locked = $siteId > 0
+                ? Site::query()->whereKey($siteId)->lockForUpdate()->first()
+                : null;
+            if ($siteId > 0 && (! $locked || ! $locked->isCatalogVisible() || ($buyer && $locked->isOwnedBy($buyer)))) {
+                continue;
+            }
+            if ($locked) {
+                $orderItem['site'] = $locked;
+                $line['orderItem'] = $orderItem;
+            }
+            $lines[] = $line;
+        }
+
+        return $lines;
     }
 
     private function checkoutBonusCacheKey(int $userId, string $referenceCode): string

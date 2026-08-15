@@ -404,6 +404,50 @@ class CheckoutReadySitesOnlyTest extends TestCase
         $this->assertSame(0, Order::where('reference_code', 'ZERO01')->count());
     }
 
+    public function test_wallet_payment_aborts_when_listing_leaves_catalog_during_checkout(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisher = $this->publisher();
+        $site = $this->activeSite($publisher, 'wallet-toctou', 40);
+        $sub = $this->createApprovedSubmission($advertiser, $site->id);
+        $wallet = $this->advertiserWallet($advertiser, 500);
+        $hidden = false;
+        Wallet::retrieved(function () use ($site, &$hidden) {
+            if ($hidden) {
+                return;
+            }
+            $hidden = true;
+            $site->update(['verified' => false, 'active' => false]);
+        });
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'content_submission_id' => $sub->id,
+                    'language' => 'en',
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'wallet',
+                'reference_code' => 'TOCTOU1',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$sub->id],
+                ],
+            ]);
+
+        $response->assertStatus(422)->assertJsonPath('success', false);
+        $this->assertSame(0, Order::where('reference_code', 'TOCTOU1')->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(500.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->reserved_balance, 0.01);
+    }
+
     private function formatMoney(float $amount): string
     {
         return number_format($amount, 2);

@@ -478,8 +478,12 @@ class OrderPaymentService
         }
 
         $reference = self::unfulfilledCardCreditReference($referenceCode, $settlementKey);
+        $aliases = [$reference];
+        if (is_string($settlementKey) && $settlementKey !== '') {
+            $aliases[] = self::unfulfilledCardCreditReference($referenceCode);
+        }
 
-        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode) {
+        return (float) DB::transaction(function () use ($userId, $roleId, $amount, $reference, $referenceCode, $aliases) {
             if (! User::query()->whereKey($userId)->exists()) {
                 Log::warning('Cannot credit unfulfilled card capture; user missing', [
                     'user_id' => $userId,
@@ -494,7 +498,7 @@ class OrderPaymentService
             if (Schema::hasTable((new WalletTransaction)->getTable())
                 && WalletTransaction::query()
                     ->where('wallet_id', $wallet->id)
-                    ->where('reference', $reference)
+                    ->whereIn('reference', $aliases)
                     ->exists()) {
                 return 0.0;
             }
@@ -753,7 +757,13 @@ class OrderPaymentService
         if ($userId > 0 && $bonusNeeded > 0.009) {
             $held = $this->ensureCheckoutBonusReserved($userId, $referenceCode, $bonusNeeded);
             if ($held + 0.009 < $bonusNeeded) {
-                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $expected);
+                $sessionId = (string) ($session->id ?? '');
+                $this->creditUnfulfilledCardCapture(
+                    $userId,
+                    $referenceCode,
+                    $expected,
+                    $sessionId !== '' ? $sessionId : null
+                );
                 $this->forgetPendingCheckout($referenceCode);
                 Log::warning('Stripe-first paid after bonus was released and could not be re-reserved', [
                     'reference_code' => $referenceCode,
@@ -948,7 +958,13 @@ class OrderPaymentService
                     round((float) ($package['bonus_applied'] ?? 0), 2)
                 );
                 $unfulfilled = round(max(0, $expected - $refundedInFinalize), 2);
-                $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
+                $sessionId = (string) ($session->id ?? '');
+                $this->creditUnfulfilledCardCapture(
+                    $userId,
+                    $referenceCode,
+                    $unfulfilled,
+                    $sessionId !== '' ? $sessionId : null
+                );
             }
             $this->forgetPendingCheckout($referenceCode);
             Log::warning('Stripe-first checkout paid but no catalog-visible lines to materialize', [
@@ -964,7 +980,13 @@ class OrderPaymentService
         $fulfilled = round((float) $created->sum(fn (Order $order) => (float) $order->total_amount), 2);
         $unfulfilled = round(max(0, $expected - $fulfilled - $refundedInFinalize), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
-            $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
+            $sessionId = (string) ($session->id ?? '');
+            $this->creditUnfulfilledCardCapture(
+                $userId,
+                $referenceCode,
+                $unfulfilled,
+                $sessionId !== '' ? $sessionId : null
+            );
         }
 
         if ($userId > 0) {

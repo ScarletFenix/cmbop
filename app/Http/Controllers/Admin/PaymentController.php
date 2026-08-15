@@ -217,6 +217,13 @@ class PaymentController extends Controller
                         'This order cannot be marked paid. Cancelled, completed, or refunded payments have to stay settled.'
                     );
                 }
+                if (! $order->hasCatalogVisibleFulfillment()) {
+                    return $this->abortPaymentUpdate(
+                        (int) $id,
+                        $sendNotification,
+                        'This order cannot be marked paid. The listing left the catalog and is no longer fulfillable.'
+                    );
+                }
             }
 
             if ($oldStatus === 'paid' && $newStatus === 'pending') {
@@ -808,6 +815,22 @@ class PaymentController extends Controller
         }
 
         app(CheckoutSchemaService::class)->ensureCheckoutTables();
+    }
+
+    /**
+     * @param  Collection<int, Order>  $orders
+     */
+    private function attachInvoiceDocuments($orders): void
+    {
+        $links = app(AdminInvoiceLinks::class);
+        $byOrder = $links->forOrders($orders);
+
+        foreach ($orders as $order) {
+            $documents = $byOrder->get((int) $order->id, []);
+            $order->setAttribute('invoice_documents', $documents);
+            $primary = $links->primary($documents);
+            $order->setAttribute('invoice_url', $primary['url'] ?? null);
+        }
     }
 
     private function abortPaymentUpdate(int $orderId, bool $sendNotification, string $message)

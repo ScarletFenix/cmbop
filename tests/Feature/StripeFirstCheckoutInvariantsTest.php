@@ -1361,4 +1361,42 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
         $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
     }
+
+    public function test_unfulfilled_credit_is_not_doubled_on_success_url_after_webhook(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $hidden = $this->makeSite($publisher, 'double-credit.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'DOUBLE-CREDIT-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($hidden, 80),
+        ], 80));
+        $hidden->update(['verified' => false, 'active' => false]);
+
+        $session = $this->paidSession($ref, 80, 'cs_double_credit');
+        $this->assertCount(0, $payments->finalizeStripeFirstCheckout($ref, $session));
+        $this->assertCount(0, $payments->finalizeStripeFirstCheckout($ref, $session));
+
+        $this->assertSame(0, Order::query()->where('reference_code', $ref)->count());
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(80.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(80.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
+
+    public function test_suffixed_unfulfilled_credit_does_not_stack_on_legacy_unsuffixed_row(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $wallet = $this->advertiserWallet($advertiser, 0);
+        $ref = 'LEGACY-UNFULFILLED-1';
+        $payments = app(OrderPaymentService::class);
+
+        $this->assertEqualsWithDelta(60.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 60), 0.01);
+        $this->assertEqualsWithDelta(0.0, $payments->creditUnfulfilledCardCapture($advertiser->id, $ref, 60, 'cs_legacy_unfulfilled'), 0.01);
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(60.0, (float) $wallet->balance, 0.01);
+        $this->assertEqualsWithDelta(60.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
 }
