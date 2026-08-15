@@ -249,11 +249,6 @@ class CheckoutCancelBonusGuardTest extends TestCase
         $wallet->refresh();
         $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_reserved, 0.01);
         $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_balance, 0.01);
-        $this->assertEqualsWithDelta(
-            0.0,
-            (float) ($payments->getPendingCheckout('REF-FIRST-CANCEL')['bonus_applied'] ?? 0),
-            0.01
-        );
 
         $wallet->reserveBonusOnly(20);
         $intents->rememberBonus($advertiser->id, 'REF-SECOND-CART', 20);

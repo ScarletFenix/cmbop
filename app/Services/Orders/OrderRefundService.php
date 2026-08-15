@@ -130,15 +130,10 @@ class OrderRefundService
                 $bonusShare = min($bonusShare, round($maxBonusShare, 2));
             }
         } else {
-            $poolCap = $maxBonusShare;
-            if ($poolCap === null) {
-                // 0 is a real cap: a stale package snapshot must not unlock
-                // another checkout's reserved promo.
-                $poolCap = app(CheckoutIntentService::class)->heldBonus(
-                    (int) $order->user_id,
-                    (string) ($order->reference_code ?? '')
-                );
-            }
+            $poolCap = $maxBonusShare ?? $this->cardLeftoverBonusCap(
+                (int) $order->user_id,
+                (string) ($order->reference_code ?? '')
+            );
             $bonusShare = $this->checkoutBonusShare($wallet, $order, $amount, $poolCap);
         }
 
@@ -218,11 +213,15 @@ class OrderRefundService
             return;
         }
 
-        $held = app(CheckoutIntentService::class)->heldBonus(
-            (int) $order->user_id,
-            (string) ($order->reference_code ?? '')
+        $bonusShare = $this->checkoutBonusShare(
+            $wallet,
+            $order,
+            $total,
+            $this->cardLeftoverBonusCap(
+                (int) $order->user_id,
+                (string) ($order->reference_code ?? '')
+            )
         );
-        $bonusShare = $this->checkoutBonusShare($wallet, $order, $total, $held);
 
         if ($bonusShare > 0) {
             $wallet->consumeReserved($bonusShare, $bonusShare);
@@ -414,6 +413,20 @@ class OrderRefundService
         if ($reduce > 0) {
             $intents->decrementBonus($userId, $reference, $reduce);
         }
+    }
+
+    /**
+     * Card leftover share after finalize may have no intent row left.
+     * Uncapped (null) is safe only when no other checkout holds promo.
+     */
+    public function cardLeftoverBonusCap(int $userId, string $referenceCode): ?float
+    {
+        $held = app(CheckoutIntentService::class)->heldBonus($userId, $referenceCode);
+        if ($held > 0.009) {
+            return $held;
+        }
+
+        return $this->otherLiveCheckoutBonusExists($userId, $referenceCode) ? 0.0 : null;
     }
 
     /**

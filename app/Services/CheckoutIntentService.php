@@ -120,11 +120,16 @@ class CheckoutIntentService
 
     /**
      * Pull the reserved bonus for this reference (cache, durable row, then fallback).
+     * Leaves package.bonus_applied intact so a late paid webhook can re-reserve.
      */
     public function takeBonus(int $userId, string $referenceCode, ?float $fallback = null): float
     {
         $bonus = $this->peekBonus($userId, $referenceCode, $fallback);
-        $this->writeLiveBonus($userId, $referenceCode, 0);
+        Cache::forget(self::bonusCacheKey($userId, $referenceCode));
+        $intent = $this->findIntent($referenceCode);
+        if ($intent && (float) $intent->bonus_applied > 0) {
+            $intent->update(['bonus_applied' => 0]);
+        }
 
         return $bonus;
     }
@@ -140,12 +145,26 @@ class CheckoutIntentService
         }
 
         $left = max(0, round($this->heldBonus($userId, $referenceCode) - $amount, 2));
-        $this->writeLiveBonus($userId, $referenceCode, $left);
+        $intent = $this->findIntent($referenceCode);
+        if ($intent) {
+            $intent->update(['bonus_applied' => $left]);
+        }
+
+        $key = self::bonusCacheKey($userId, $referenceCode);
+        if ($left > 0) {
+            Cache::put($key, $left, now()->addHours(720));
+        } else {
+            Cache::forget($key);
+        }
     }
 
     public function forgetBonus(int $userId, string $referenceCode): void
     {
-        $this->writeLiveBonus($userId, $referenceCode, 0);
+        Cache::forget(self::bonusCacheKey($userId, $referenceCode));
+        $intent = $this->findIntent($referenceCode);
+        if ($intent && (float) $intent->bonus_applied > 0) {
+            $intent->update(['bonus_applied' => 0]);
+        }
     }
 
     public function forget(string $referenceCode, ?int $userId = null): void
@@ -193,41 +212,6 @@ class CheckoutIntentService
                 'reference_code' => $referenceCode,
                 'error' => $e->getMessage(),
             ]);
-        }
-    }
-
-    /**
-     * Persist the live hold and scrub package.bonus_applied so cancel/refund
-     * fallbacks cannot re-read a released snapshot.
-     */
-    private function writeLiveBonus(int $userId, string $referenceCode, float $amount): void
-    {
-        $amount = round(max(0, $amount), 2);
-        $key = self::bonusCacheKey($userId, $referenceCode);
-        if ($amount > 0) {
-            Cache::put($key, $amount, now()->addHours(720));
-        } else {
-            Cache::forget($key);
-        }
-
-        $intent = $this->findIntent($referenceCode);
-        if ($intent) {
-            $attrs = ['bonus_applied' => $amount];
-            if (is_array($intent->package)) {
-                $package = $intent->package;
-                $package['bonus_applied'] = $amount;
-                $attrs['package'] = $package;
-            }
-            $intent->update($attrs);
-        }
-
-        $cached = Cache::get(self::pendingCheckoutCacheKey($referenceCode));
-        if (is_array($cached)) {
-            $cached['bonus_applied'] = $amount;
-            $ttl = $intent?->expires_at ? (int) now()->diffInSeconds($intent->expires_at, false) : 3600;
-            if ($ttl > 0) {
-                Cache::put(self::pendingCheckoutCacheKey($referenceCode), $cached, now()->addSeconds($ttl));
-            }
         }
     }
 
