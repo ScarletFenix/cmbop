@@ -366,10 +366,23 @@ class OrderDisputeClawbackTest extends TestCase
         $this->assertFalse($released->isClaimedByAnotherOrder());
         $this->assertFalse($released->isLockedByPaidOrder());
         $this->assertTrue($released->isReadyForCheckout());
+        $this->assertSame('available', $released->libraryAvailability());
         $this->assertTrue(
             ContentSubmission::query()->whereKey($disputedArticle->id)->checkoutReady()->exists()
         );
         $this->assertFalse($siblingArticle->fresh()->isReadyForCheckout());
+
+        $this->actingAs($advertiser)
+            ->deleteJson(route('advertiser.content-submissions.destroy', $disputedArticle))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+        $this->assertDatabaseMissing('content_submissions', ['id' => $disputedArticle->id]);
+
+        $this->actingAs($advertiser)
+            ->deleteJson(route('advertiser.content-submissions.destroy', $siblingArticle))
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+        $this->assertDatabaseHas('content_submissions', ['id' => $siblingArticle->id]);
     }
 
     public function test_advertiser_can_report_a_sibling_placement_and_must_choose_a_line(): void

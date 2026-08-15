@@ -402,6 +402,68 @@ class ContentSubmission extends Model
     }
 
     /**
+     * SQL mirror of imageRightsCoverContent() — no images, or a covering claim.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithImageRightsCover($query)
+    {
+        return $query->where(function ($q) {
+            $q->where(function ($noImages) {
+                $noImages->whereNull('preview_html')
+                    ->orWhere('preview_html', 'not like', '%<img%');
+            })->orWhere('image_rights', self::IMAGE_RIGHTS_OWN)
+                ->orWhere(function ($licensed) {
+                    $licensed->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
+                        ->whereNotNull('image_rights_source')
+                        ->where('image_rights_source', '!=', '');
+                });
+        });
+    }
+
+    /**
+     * SQL negation of imageRightsCoverContent() for Needs corrections.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeWithoutImageRightsCover($query)
+    {
+        return $query->where(function ($img) {
+            $img->where('preview_html', 'like', '%<img%')
+                ->orWhere('preview_html', 'like', '%<IMG%');
+        })->where(function ($claim) {
+            $claim->whereNull('image_rights')
+                ->orWhereNotIn('image_rights', [
+                    self::IMAGE_RIGHTS_OWN,
+                    self::IMAGE_RIGHTS_LICENSED,
+                ])
+                ->orWhere(function ($licensedNoSource) {
+                    $licensedNoSource->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
+                        ->where(function ($src) {
+                            $src->whereNull('image_rights_source')
+                                ->orWhere('image_rights_source', '');
+                        });
+                });
+        });
+    }
+
+    /**
+     * SQL mirror of libraryAvailability() === 'in_progress'.
+     *
+     * @param  Builder<static>  $query
+     * @return Builder<static>
+     */
+    public function scopeInProgressInLibrary($query)
+    {
+        return $query->withOpenOwnerOrder()
+            ->hasCheckoutReadyLinks()
+            ->withImageRightsCover()
+            ->withoutCurrentLivePlacement();
+    }
+
+    /**
      * Current owner line is live. Historical live URLs on cancelled leftovers
      * must not keep a reused or released article in Completed.
      *
@@ -445,31 +507,19 @@ class ContentSubmission extends Model
                 ])->orWhere(function ($rights) {
                     $rights->where('moderation_status', self::STATUS_APPROVED)
                         ->whereNull('order_id')
-                        ->where(function ($img) {
-                            $img->where('preview_html', 'like', '%<img%')
-                                ->orWhere('preview_html', 'like', '%<IMG%');
-                        })
-                        ->where(function ($claim) {
-                            $claim->whereNull('image_rights')
-                                ->orWhereNotIn('image_rights', [
-                                    self::IMAGE_RIGHTS_OWN,
-                                    self::IMAGE_RIGHTS_LICENSED,
-                                ])
-                                ->orWhere(function ($licensedNoSource) {
-                                    $licensedNoSource->where('image_rights', self::IMAGE_RIGHTS_LICENSED)
-                                        ->where(function ($src) {
-                                            $src->whereNull('image_rights_source')
-                                                ->orWhere('image_rights_source', '');
-                                        });
-                                });
-                        });
+                        ->withoutImageRightsCover();
                 })->orWhere(function ($links) {
                     $links->orderable()->withoutCheckoutReadyLinks();
                 })->orWhere(function ($ownedUnready) {
                     $ownedUnready->where('moderation_status', self::STATUS_APPROVED)
                         ->withOpenOwnerOrder()
                         ->whereNull('archived_at')
-                        ->withoutCheckoutReadyLinks();
+                        ->where(function ($unready) {
+                            $unready->withoutCheckoutReadyLinks()
+                                ->orWhere(function ($rights) {
+                                    $rights->withoutImageRightsCover();
+                                });
+                        });
                 })->orWhere(function ($leftover) {
                     $leftover->where('moderation_status', self::STATUS_APPROVED)
                         ->withoutOpenOwnerOrder()

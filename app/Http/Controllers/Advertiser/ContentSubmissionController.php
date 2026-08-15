@@ -702,18 +702,7 @@ class ContentSubmissionController extends Controller
     public function destroy(ContentSubmission $submission)
     {
         $this->authorizeSubmission($submission);
-        if ($submission->isInUse()) {
-            return response()->json(['success' => false, 'message' => 'Cannot delete a submission linked to an order.'], 422);
-        }
-
-        $inFlight = OrderItem::query()
-            ->where('content_submission_id', $submission->id)
-            ->whereHas('order', function ($q) {
-                $q->where('status', '!=', 'cancelled')
-                    ->where('payment_status', '!=', 'refunded');
-            })
-            ->exists();
-        if ($inFlight) {
+        if ($submission->isInUse() || $submission->isClaimedByAnotherOrder()) {
             return response()->json(['success' => false, 'message' => 'Cannot delete a submission linked to an order.'], 422);
         }
 
