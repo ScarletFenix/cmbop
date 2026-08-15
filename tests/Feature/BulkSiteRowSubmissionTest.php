@@ -53,7 +53,12 @@ class BulkSiteRowSubmissionTest extends TestCase
         $this->assertStringContainsString("document.createElement('details')", $script);
         $this->assertStringContainsString('function syncRowSummary', $script);
         $this->assertStringContainsString('function focusFirstInvalidBulkRow', $script);
+        $this->assertStringContainsString('function classifyUrlPriceRow', $script);
         $this->assertStringContainsString('closest(\'.bulk-url-price-row\')', $script);
+        $this->assertStringContainsString('novalidate', $script);
+        $this->assertStringContainsString('bulkUrlPriceError', $script);
+        $this->assertStringNotContainsString('placeholder="https://example.com" required', $script);
+        $this->assertStringNotContainsString('placeholder="99" required', $script);
     }
 
     public function test_reindexing_does_not_require_an_existing_name(): void

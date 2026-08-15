@@ -147,8 +147,11 @@ class BulkSiteGuidedWorkflowTest extends TestCase
             ->assertSee('name="sites[0][url]"', false)
             ->assertSee('name="sites[0][price]"', false)
             ->assertSee('id="bulkRequestModal"', false)
+            ->assertSee('id="bulkRequestForm"', false)
+            ->assertSee('id="bulkUrlPriceError"', false)
             ->getContent();
 
+        $this->assertMatchesRegularExpression('/id="bulkRequestForm"[^>]*novalidate/', $html);
         $this->assertMatchesRegularExpression('/<details class="bulk-url-price-row"\s+open/', $html);
         $css = file_get_contents(public_path('assets/css/publisher-websites.css'));
         $this->assertStringContainsString('#bulkRequestModal .bulk-url-price-row__fields', $css);

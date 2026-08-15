@@ -22,8 +22,19 @@
             // 50-row import silently saved 2.
             const url = tr.querySelector('input[name*="[url]"]') || tr.querySelector('input[type="url"]');
             const price = tr.querySelector('input[name*="[price]"]') || tr.querySelector('input[type="number"]');
-            if (url) url.name = 'sites[' + i + '][url]';
-            if (price) price.name = 'sites[' + i + '][price]';
+            if (url) {
+                url.name = 'sites[' + i + '][url]';
+                url.id = 'bulk-url-' + i;
+            }
+            if (price) {
+                price.name = 'sites[' + i + '][price]';
+                price.id = 'bulk-price-' + i;
+            }
+            const fields = tr.querySelectorAll('.bulk-url-price-field');
+            const urlLabel = fields[0] && fields[0].querySelector('label');
+            const priceLabel = fields[1] && fields[1].querySelector('label');
+            if (urlLabel) urlLabel.setAttribute('for', 'bulk-url-' + i);
+            if (priceLabel) priceLabel.setAttribute('for', 'bulk-price-' + i);
         });
     }
 
@@ -79,11 +90,11 @@
                 '<div class="bulk-url-price-row__fields">' +
                     '<div class="bulk-url-price-field">' +
                         '<label class="form-label">Website URL <span class="text-danger">*</span></label>' +
-                        '<input type="url" name="sites[' + seq + '][url]" class="form-control" placeholder="https://example.com" required>' +
+                        '<input type="url" name="sites[' + seq + '][url]" class="form-control" placeholder="https://example.com">' +
                     '</div>' +
                     '<div class="bulk-url-price-field bulk-url-price-field--price">' +
                         '<label class="form-label">Price (€) <span class="text-danger">*</span></label>' +
-                        '<input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control" placeholder="99" required>' +
+                        '<input type="number" name="sites[' + seq + '][price]" step="0.01" min="0" class="form-control" placeholder="99">' +
                     '</div>' +
                 '</div>' +
                 '<button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">Remove</button>' +
@@ -434,6 +445,54 @@
         const row = invalid.closest('.bulk-url-price-row');
         if (row) row.open = true;
         if (typeof invalid.focus === 'function') invalid.focus();
+    }
+
+    function showRowError(msg) {
+        const el = document.getElementById('bulkUrlPriceError');
+        if (!el) return;
+        el.textContent = msg || '';
+        el.classList.toggle('d-none', !msg);
+    }
+
+    function classifyUrlPriceRow(row) {
+        const url = String((rowUrlInput(row) && rowUrlInput(row).value) || '').trim();
+        const price = String((rowPriceInput(row) && rowPriceInput(row).value) || '').trim();
+        if (!url && !price) return 'empty';
+        if (url && price) return 'complete';
+        return 'partial';
+    }
+
+    function firstMissingUrlPriceField(row) {
+        const url = rowUrlInput(row);
+        if (url && !String(url.value || '').trim()) return url;
+        return rowPriceInput(row);
+    }
+
+    const form = body.closest('form');
+    if (form) {
+        form.addEventListener('submit', function (e) {
+            const complete = [];
+            const partial = [];
+            body.querySelectorAll('.bulk-url-price-row').forEach(function (row) {
+                const fill = classifyUrlPriceRow(row);
+                if (fill === 'complete') complete.push(row);
+                if (fill === 'partial') partial.push(row);
+            });
+            if (partial.length === 0 && complete.length >= 2) {
+                showRowError('');
+                return;
+            }
+            e.preventDefault();
+            const target = partial[0] || body.querySelector('.bulk-url-price-row');
+            if (target) {
+                target.open = true;
+                const field = firstMissingUrlPriceField(target);
+                if (field && typeof field.focus === 'function') field.focus();
+            }
+            showRowError(partial.length
+                ? 'Finish or clear incomplete rows. Each started site needs a URL and a price.'
+                : 'Add at least two websites with URL and price.');
+        });
     }
 
     addBtn.addEventListener('click', function () {

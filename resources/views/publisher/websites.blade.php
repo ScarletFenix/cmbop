@@ -714,7 +714,7 @@
     {{-- Guided bulk: publisher submits URL + price only (marketing fills metrics) --}}
     <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">
         <div class="modal-dialog modal-xl modal-dialog-scrollable">
-            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm">
+            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm" novalidate>
                 @csrf
                 <div class="modal-header">
                     <h5 class="modal-title">Add many websites</h5>
@@ -822,8 +822,7 @@
                                                        name="sites[{{ $i }}][url]"
                                                        class="form-control @error('sites.'.$i.'.url') is-invalid @enderror"
                                                        placeholder="https://example.com"
-                                                       value="{{ $oldUrl }}"
-                                                       required>
+                                                       value="{{ $oldUrl }}">
                                                 @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                             </div>
                                             <div class="bulk-url-price-field bulk-url-price-field--price">
@@ -835,8 +834,7 @@
                                                        min="0"
                                                        class="form-control @error('sites.'.$i.'.price') is-invalid @enderror"
                                                        placeholder="99"
-                                                       value="{{ $oldPrice }}"
-                                                       required>
+                                                       value="{{ $oldPrice }}">
                                                 @error('sites.'.$i.'.price')<div class="invalid-feedback">{{ $message }}</div>@enderror
                                             </div>
                                         </div>
@@ -845,6 +843,7 @@
                                 </details>
                             @endforeach
                         </div>
+                        <div class="small text-danger mt-2 d-none" id="bulkUrlPriceError" role="alert"></div>
                     </div>
                     <div class="form-text mb-3">Minimum 2 sites. One open bulk request at a time. For a single site, use <strong>Add New Website</strong>. Agencies with full CSV data can use <strong>Bulk Import (Agency)</strong>.</div>
 
