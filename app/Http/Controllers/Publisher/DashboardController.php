@@ -261,12 +261,14 @@ class DashboardController extends Controller
             // Of finished work only — not completed/total (that is completion_rate).
             'success_rate' => $successRate,
             'total_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
+                ->recognizedForFinance()
                 ->whereHas('order', function ($q) {
                     $q->where('status', 'completed')
                         ->where('payment_status', 'paid');
                 })
                 ->sum(OrderItem::publisherPayoutSqlExpression()), 2),
             'pending_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
+                ->recognizedForFinance()
                 ->whereHas('order', function ($q) {
                     $q->where('status', 'review')
                         ->where('payment_status', 'paid');
@@ -411,6 +413,7 @@ class DashboardController extends Controller
     private function completedEarningsQuery(array $siteIds)
     {
         return OrderItem::query()
+            ->recognizedForFinance()
             ->whereIn('order_items.site_id', $siteIds)
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('orders.status', 'completed')

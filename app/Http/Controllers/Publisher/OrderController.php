@@ -50,6 +50,7 @@ class OrderController extends Controller
     {
         $allowed = OrderItem::query()
             ->where('content_submission_id', $submission->id)
+            ->withoutClawback()
             ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
             ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
             ->exists();
@@ -98,7 +99,7 @@ class OrderController extends Controller
             }
 
             // Only paid orders — bank/Wise/crypto fund the wallet first; unpaid card checkouts stay hidden.
-            $query = OrderItem::with(['order.user', 'site'])
+            $query = OrderItem::with(['order.user', 'site', 'disputes'])
                 ->whereIn('site_id', $siteIds)
                 ->whereHas('order', function ($q) {
                     $q->where('payment_status', 'paid');
@@ -209,10 +210,8 @@ class OrderController extends Controller
                     'homepage_price' => (float) ($item->homepage_price ?? 0),
                     'social_channels' => $item->enabledSocialChannels(),
                     'social_post_urls' => $item->socialPostUrls(),
-                    'content_link' => $item->content_link,
-                    'content_download_url' => $item->content_submission_id
-                        ? route('publisher.content.download', $item->content_submission_id)
-                        : $item->content_link,
+                    'content_link' => $item->publisherContentLink(),
+                    'content_download_url' => $item->publisherContentDownloadUrl(),
                     'content_original_name' => $item->content_original_name,
                     'anchor_text' => $item->anchor_text,
                     'target_url' => $item->target_url,
@@ -329,7 +328,7 @@ class OrderController extends Controller
 
             $userId = auth()->id();
 
-            $orderItem = OrderItem::with(['order', 'contentSubmission'])->findOrFail($id);
+            $orderItem = OrderItem::with(['order', 'contentSubmission', 'disputes'])->findOrFail($id);
 
             // Verify this order belongs to a site owned by the publisher
             $site = Site::where('id', $orderItem->site_id)->where('publisher_id', $userId)->first();
@@ -362,10 +361,8 @@ class OrderController extends Controller
                 'homepage_price' => (float) ($orderItem->homepage_price ?? 0),
                 'social_channels' => $orderItem->enabledSocialChannels(),
                 'social_post_urls' => $orderItem->socialPostUrls(),
-                'content_link' => $orderItem->content_link,
-                'content_download_url' => $orderItem->content_submission_id
-                    ? route('publisher.content.download', $orderItem->content_submission_id)
-                    : $orderItem->content_link,
+                'content_link' => $orderItem->publisherContentLink(),
+                'content_download_url' => $orderItem->publisherContentDownloadUrl(),
                 'content_original_name' => $orderItem->content_original_name,
                 'anchor_text' => $orderItem->anchor_text,
                 'target_url' => $orderItem->target_url,
@@ -1366,6 +1363,7 @@ class OrderController extends Controller
                 'completed_orders' => Order::whereIn('id', $orderIds)->where('status', 'completed')->count(),
                 'rejected_orders' => Order::whereIn('id', $orderIds)->where('status', 'cancelled')->count(),
                 'total_earnings' => round((float) OrderItem::whereIn('site_id', $siteIds)
+                    ->recognizedForFinance()
                     ->whereHas('order', function ($q) {
                         $q->where('status', 'completed')
                             ->where('payment_status', 'paid');
@@ -1441,6 +1439,14 @@ class OrderController extends Controller
      */
     protected function articlePreviewFields(OrderItem $item): array
     {
+        if ($item->isClawedBack()) {
+            return [
+                'article_title' => $item->content_original_name ?: null,
+                'preview_html' => null,
+                'detected_links' => [],
+            ];
+        }
+
         $submission = $item->relationLoaded('contentSubmission')
             ? $item->contentSubmission
             : ($item->content_submission_id ? $item->contentSubmission()->first() : null);

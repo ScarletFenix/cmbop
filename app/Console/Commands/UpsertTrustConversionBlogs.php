@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Blog;
-use App\Models\BlogTranslation;
 use App\Models\User;
 use App\Services\CuratedBlogWriter;
 use App\Support\AiAeoGuestPostsBlogPost;
@@ -12,10 +10,8 @@ use App\Support\ChoosePublisherSiteBlogPost;
 use App\Support\GuestPostBriefBlogPost;
 use App\Support\LiveLinkRemovedBlogPost;
 use App\Support\MarketplaceVsOutreachBlogPost;
-use App\Support\PublicI18n;
 use App\Support\WalletEscrowRefundsBlogPost;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Publish/update the English trust + conversion pillar posts.
@@ -52,10 +48,6 @@ class UpsertTrustConversionBlogs extends Command
                 continue;
             }
 
-            if (! $blog->manually_edited_at) {
-                $this->syncPrimaryTranslation($blog);
-            }
-
             $this->info('Upserted blog #'.$blog->id.' ('.$blog->slug.')');
             $ok++;
         }
@@ -89,30 +81,5 @@ class UpsertTrustConversionBlogs extends Command
         if (! BlogInlineImages::publishFeatured($class::FEATURED_STORAGE, $class::FEATURED_ASSET)) {
             $this->warn('Featured asset missing: '.public_path($class::FEATURED_ASSET));
         }
-    }
-
-    private function syncPrimaryTranslation(Blog $blog): void
-    {
-        if (! Schema::hasTable('blog_translations')) {
-            return;
-        }
-
-        $locale = PublicI18n::isSupported($blog->primary_locale)
-            ? $blog->primary_locale
-            : 'en';
-
-        BlogTranslation::query()->updateOrCreate(
-            [
-                'blog_id' => $blog->id,
-                'locale' => $locale,
-            ],
-            [
-                'title' => $blog->title,
-                'slug' => $blog->slug,
-                'excerpt' => $blog->excerpt,
-                'content' => $blog->content,
-                'is_published' => $blog->status === 'published',
-            ]
-        );
     }
 }

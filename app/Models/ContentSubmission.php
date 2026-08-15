@@ -1019,6 +1019,10 @@ class ContentSubmission extends Model
         }
 
         return $items->first(function (OrderItem $item) {
+            if ($item->isClawedBack()) {
+                return false;
+            }
+
             $order = $item->relationLoaded('order')
                 ? $item->order
                 : $item->order()->first();
@@ -1029,6 +1033,10 @@ class ContentSubmission extends Model
 
     public function liveUrl(): ?string
     {
+        if (! $this->isInUse()) {
+            return null;
+        }
+
         $item = $this->placementItem();
         if (! $item || ! $item->hasLiveUrl()) {
             return null;

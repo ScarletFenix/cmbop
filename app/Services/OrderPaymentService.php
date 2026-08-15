@@ -1035,7 +1035,10 @@ class OrderPaymentService
             if ($existing->isNotEmpty()) {
                 $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
                 if ($marked->isNotEmpty()) {
-                    $this->forgetPendingCheckout($referenceCode);
+                    $this->forgetSettledCheckoutKeepLeftoverHold(
+                        $referenceCode,
+                        (int) ($marked->first()->user_id ?? $package['user_id'] ?? 0)
+                    );
 
                     return $marked;
                 }
@@ -1096,7 +1099,7 @@ class OrderPaymentService
             $this->rereserveReleasedCheckoutBonus($userId, $referenceCode, $bonusKeep);
         }
 
-        $this->forgetPendingCheckout($referenceCode);
+        $this->forgetSettledCheckoutKeepLeftoverHold($referenceCode, $userId);
 
         Log::info('Materialized Stripe-first card orders after payment', [
             'reference_code' => $referenceCode,

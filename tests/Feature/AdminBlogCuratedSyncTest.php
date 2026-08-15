@@ -323,4 +323,43 @@ class AdminBlogCuratedSyncTest extends TestCase
 
         $this->assertSame('draft', $blog->fresh()->status);
     }
+
+    public function test_upsert_preserves_draft_without_manually_edited_at(): void
+    {
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $blog = Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->firstOrFail();
+        $blog->forceFill([
+            'status' => 'draft',
+            'manually_edited_at' => null,
+        ])->save();
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertSame('draft', $blog->fresh()->status);
+    }
+
+    public function test_upsert_prefers_curated_key_when_another_post_took_the_slug(): void
+    {
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $pillar = Blog::query()->where('slug', LiveLinkChecklistBlogPost::SLUG)->firstOrFail();
+        $pillar->forceFill([
+            'slug' => 'live-link-checklist-renamed',
+            'manually_edited_at' => null,
+        ])->save();
+
+        $intruder = Blog::factory()->published()->create([
+            'title' => 'Custom Hijack',
+            'slug' => LiveLinkChecklistBlogPost::SLUG,
+            'content' => '<p>Do not overwrite me.</p>',
+        ]);
+
+        $this->artisan('blog:upsert-live-link-checklist')->assertSuccessful();
+
+        $this->assertSame('Custom Hijack', $intruder->fresh()->title);
+        $this->assertSame(LiveLinkChecklistBlogPost::SLUG, $intruder->fresh()->slug);
+        $this->assertSame('live-link-checklist-renamed', $pillar->fresh()->slug);
+        $this->assertSame(1, Blog::query()->where('curated_key', LiveLinkChecklistBlogPost::SLUG)->count());
+    }
 }
