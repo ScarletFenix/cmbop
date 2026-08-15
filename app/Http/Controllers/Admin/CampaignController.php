@@ -107,19 +107,19 @@ class CampaignController extends Controller
             return back()->withInput()->with('error', 'Select at least one user for a custom audience.');
         }
 
+        $bodyHtml = CampaignHtml::sanitize($data['body_html']);
+        if (CampaignHtml::isBlank($data['body_html'])) {
+            return back()->withInput()->withErrors([
+                'body_html' => 'Write a message before sending.',
+            ]);
+        }
+
         $includeUnverified = $request->boolean('include_unverified');
         $recipients = $inventory->collectRecipientRows($data['audience'], $data['user_ids'] ?? [], $includeUnverified)
             ->unique('id')
             ->values();
         if ($recipients->isEmpty()) {
             return back()->withInput()->with('error', 'No recipients found for that audience.');
-        }
-
-        $bodyHtml = CampaignHtml::sanitize($data['body_html']);
-        if (CampaignHtml::isBlank($data['body_html'])) {
-            return back()->withInput()->withErrors([
-                'body_html' => 'Write a message before sending.',
-            ]);
         }
 
         $respectPrefs = $request->boolean('respect_preferences');
@@ -183,6 +183,13 @@ class CampaignController extends Controller
                 'campaign_id' => $campaign->id,
                 'error' => $e->getMessage(),
             ]);
+            $campaign->refresh()->recountRecipientTotals();
+            if ($campaign->status === EmailCampaign::STATUS_SENT) {
+                return redirect()
+                    ->route('admin.campaigns.index')
+                    ->with('success', "Campaign queued for {$count} recipient(s).");
+            }
+
             EmailCampaignRecipient::query()
                 ->where('email_campaign_id', $campaign->id)
                 ->where('status', EmailCampaignRecipient::STATUS_PENDING)
@@ -190,11 +197,13 @@ class CampaignController extends Controller
                     'status' => EmailCampaignRecipient::STATUS_FAILED,
                     'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
                 ]);
-            $campaign->refresh()->recountRecipientTotals();
+            // Terminal first so recount can still promote FAILED → SENT
+            // when some recipients already delivered.
             $campaign->update([
                 'status' => EmailCampaign::STATUS_FAILED,
                 'sent_at' => now(),
             ]);
+            $campaign->refresh()->recountRecipientTotals();
 
             return back()->withInput()->with('error', 'Campaign was saved but could not be queued. Try again.');
         }

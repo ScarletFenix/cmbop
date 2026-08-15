@@ -512,6 +512,7 @@ class AdminContentLibraryTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
         $this->assertTrue((bool) $log->fresh()->admin_override);
         $this->assertTrue((bool) $log->fresh()->passed);
+        $this->assertNotEmpty($log->fresh()->signals['override_fingerprint'] ?? null);
         $this->assertTrue($submission->fresh()->isReadyForCheckout());
         $this->assertTrue(app(ContentModerationService::class)->usableAdminOverride($submission->fresh()->load('moderationLog')));
     }

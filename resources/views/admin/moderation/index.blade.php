@@ -278,7 +278,7 @@
                                                     {{ $log->articleUrlIsExternal() ? 'Doc' : 'Article' }}
                                                 </a>
                                             @endif
-                                            @if(! $log->passed && $log->status === 'rejected' && ! $log->admin_override)
+                                            @if($log->isOverridable($log->submission))
                                                 <form method="POST" action="{{ route('admin.moderation.override', $log) }}" class="d-inline-block mt-1 text-start"
                                                       data-slb-confirm="Approve this submission via admin override?"
                                                       data-slb-confirm-title="Override moderation?"

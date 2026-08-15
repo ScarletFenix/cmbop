@@ -20,11 +20,9 @@ or marketing, even if that staff account also has a marketplace role.
    queue. Flash: **Campaign queued for N recipient(s).**
 4. The job claims a `queued` row (`queued` → `sending`) or continues an
    already-`sending` campaign. Each handle processes at most **20** pending
-   rows (fits the web-drain 30s worker timeout), or **5** when the send job
-   is on a worker but mail itself is inline (`MAIL_QUEUE_CONNECTION=sync`,
-   or a database mail queue whose `jobs` table is missing — the same
-   fallback `PlatformMailable` uses). 20 inline SMTP sends miss the 25s
-   job timeout. It re-dispatches itself when more remain. Recipients are claimed `pending` → `queued` atomically so two
+   rows when `Mail::send()` only enqueues, or **5** when mail is inline SMTP
+   on a worker (20 sync sends blow the 25s timeout mid-batch). It
+   re-dispatches itself when more remain. Recipients are claimed `pending` → `queued` atomically so two
    workers cannot double-send. A thrown handle still fails leftover **pending**
    rows only after **3** failed batches (`failStreak`). Give-up sets the
    campaign `failed` first, then recounts: a real delivery leaves it
@@ -62,8 +60,10 @@ or marketing, even if that staff account also has a marketplace role.
    instead of counting as a fake send. Leftovers older than
    `MAIL_CAMPAIGN_MAX_AGE_HOURS` are skipped (`stale`) — a timeout can
    claim `pending` → `queued` and die before `Mail::send()` inserts the
-   mailable. A later send suppressed as a duplicate marks the recipient
-   `delivered` (it already went out).
+   mailable. A later SMTP success or a send suppressed as a duplicate
+   still marks the recipient `delivered` (it already went out), including
+   when expire already flipped the row to skipped stale. Recover also
+   attaches a delivered `email_logs` row to those leftovers.
 5. Individual `AudienceCampaignMail` failures mark that recipient `failed`
    (`error`) and recount. If a `sent` campaign later has no queued/delivered
    rows left, status is downgraded to `failed`. A late `marketing_emails`
@@ -73,17 +73,23 @@ or marketing, even if that staff account also has a marketplace role.
    campaign ends `failed`.
 6. Preview renders a catalog stand-in (not the admin) and a placeholder
    unsubscribe URL. The preview iframe is sandboxed so a click cannot opt
-   the operator out. A dispatch exception marks the campaign `failed` instead
-   of leaving it stuck `queued`. Do **not** use `ShouldBeUnique` on the send
+   the operator out.    A dispatch exception marks the campaign `failed` instead
+   of leaving it stuck `queued`, but must not overwrite `sent` if a sync
+   job already delivered. Do **not** use `ShouldBeUnique` on the send
    job — a stale unique lock silently drops the only dispatch. The `queued` →
    `sending` claim plus per-row `pending` → `queued` is the mutex. Send
    hydrates `id`+`email` only (`collectRecipientRows` via
-   `recipientBuilder` / `queryForAudienceKey`) so a large audience cannot
-   OOM the compose request and a new inventory key cannot count N then
-   send nobody. A live user email that is blank or whitespace is failed
-   at send instead of `Mail::to('')`. Email Center retry of a failed
-   campaign mailable clears `email_log_id` so a lost retry can still
-   expire as stale.
+   `recipientRowQuery` / `recipientBuilder` / `queryForAudienceKey`) so a
+   large audience cannot OOM the compose request and a new inventory key
+   cannot count N then send nobody. `recipientRowQuery` must exist —
+   calling it after a merge that deleted the helper 500s the send after
+   the count succeeded. A live user email that is blank, whitespace, or
+   missing `@` is dropped from count/collect (MySQL `TRIM` does not strip
+   tabs) and failed at send instead of `Mail::to('')`. Stall recovery
+   wraps **each** queue connection in its own try/catch so a broken first
+   connection cannot hide a job on the other (and must stay valid PHP).
+   Email Center retry of a failed campaign mailable clears `email_log_id`
+   so a lost retry can still expire as stale.
    `user_ids` are integers capped at
    `PICKER_LIMIT * 2` (no `exists:users,id` — a deleted picker row must not
    422 the whole send).

@@ -128,19 +128,11 @@ class AdminLibraryStaffActions
                 ]);
         }
 
-        try {
-            ActivityLogger::log(
-                'content_library.override',
-                ($admin->name ?: 'Admin').' '.$decision.' article #'.$submission->id,
-                $submission,
-                [
-                    'decision' => $decision,
-                    'notes' => $notes,
-                    'advertiser_id' => $submission->user_id,
-                ],
-                $submission->title ?: $submission->original_filename
-            );
-        } catch (\Throwable) {
+        $submission = $result['submission'] ?? $submission->fresh();
+        if (! $submission) {
+            throw ValidationException::withMessages([
+                'submission' => $result['message'] ?: 'Override failed.',
+            ]);
         }
 
         $fresh = $submission->fresh();
