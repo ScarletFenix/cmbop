@@ -10,6 +10,7 @@ use App\Services\Wallet\ManualWithdrawalInvalidTransitionException;
 use App\Services\Wallet\ManualWithdrawalSettlementService;
 use App\Services\Wallet\ManualWithdrawalUnknownWalletException;
 use App\Support\UserFacingError;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -31,50 +32,8 @@ class AdminWithdrawalController extends Controller
     {
         try {
             $query = Withdrawal::with('user:id,name,email');
-
-            // Default: open payout queue (pending + processing), oldest first.
-            $queue = $request->get('queue', 'open');
-            if ($request->filled('status')) {
-                $query->where('status', $request->status);
-            } elseif ($queue === 'open') {
-                $query->whereIn('status', ['pending', 'processing']);
-            } elseif ($queue === 'history') {
-                $query->whereIn('status', ['completed', 'cancelled']);
-            }
-
-            $search = search_text($request->input('search'));
-            if ($search !== '') {
-                $query->where(function ($q) use ($search) {
-                    $q->where('id', 'like', "%{$search}%")
-                        ->orWhereHas('user', function ($sub) use ($search) {
-                            $sub->where('name', 'like', "%{$search}%")
-                                ->orWhere('email', 'like', "%{$search}%");
-                        });
-                });
-            }
-
-            if ($request->filled('payment_method')) {
-                $query->where('payment_method', $request->payment_method);
-            }
-
-            $dateFrom = search_text($request->input('date_from'));
-            if ($dateFrom !== '') {
-                $query->whereDate('created_at', '>=', $dateFrom);
-            }
-            $dateTo = search_text($request->input('date_to'));
-            if ($dateTo !== '') {
-                $query->whereDate('created_at', '<=', $dateTo);
-            }
-
-            // Open queue: oldest unpaid first. History: newest first.
-            if ($request->filled('status') && in_array($request->status, ['completed', 'cancelled'], true)) {
-                $query->orderBy('created_at', 'desc');
-            } elseif ($queue === 'history') {
-                $query->orderBy('created_at', 'desc');
-            } else {
-                $query->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'processing' THEN 1 ELSE 2 END")
-                    ->orderBy('created_at', 'asc');
-            }
+            $filters = $this->applyWithdrawalFilters($query, $request);
+            $this->applyWithdrawalOrder($query, $filters['queue'], $filters['status']);
 
             $perPage = (int) $request->get('per_page', 20);
             $withdrawals = $query->paginate(max(1, min($perPage, 100)));
@@ -262,21 +221,7 @@ class AdminWithdrawalController extends Controller
     public function exportCsv(Request $request): StreamedResponse
     {
         $query = Withdrawal::with('user:id,name,email');
-
-        if ($request->filled('status')) {
-            $query->where('status', $request->status);
-        } else {
-            $query->whereIn('status', ['pending', 'processing']);
-        }
-
-        if ($request->filled('payment_method')) {
-            $query->where('payment_method', $request->payment_method);
-        }
-
-        if ($request->filled('ids') && is_array($request->ids)) {
-            $query->whereIn('id', $request->ids);
-        }
-
+        $this->applyWithdrawalFilters($query, $request);
         $rows = $query->orderBy('payment_method')->orderBy('created_at')->get();
 
         $filename = 'withdrawals-export-'.now()->format('Y-m-d-His').'.csv';
@@ -393,6 +338,133 @@ class AdminWithdrawalController extends Controller
                 'message' => 'Failed to fetch statistics',
             ]);
         }
+    }
+
+    /**
+     * Shared list/export filters. Arrays and junk dates are ignored (same as Payments).
+     *
+     * @param  Builder<Withdrawal>  $query
+     * @return array{queue: string, status: string}
+     */
+    private function applyWithdrawalFilters(Builder $query, Request $request): array
+    {
+        $status = search_text($request->input('status'));
+        $allowedStatuses = ['pending', 'processing', 'completed', 'cancelled'];
+        if (! in_array($status, $allowedStatuses, true)) {
+            $status = '';
+        }
+
+        $queue = search_text($request->input('queue'));
+        if (! in_array($queue, ['open', 'history', 'all'], true)) {
+            $queue = 'open';
+        }
+
+        if ($status !== '') {
+            $query->where('status', $status);
+        } elseif ($queue === 'open') {
+            $query->whereIn('status', ['pending', 'processing']);
+        } elseif ($queue === 'history') {
+            $query->whereIn('status', ['completed', 'cancelled']);
+        }
+
+        $this->applyWithdrawalSearch($query, search_text($request->input('search')));
+
+        $paymentMethod = search_text($request->input('payment_method'));
+        $allowedMethods = ['bank', 'paypal', 'wise', 'crypto'];
+        if (in_array($paymentMethod, $allowedMethods, true)) {
+            $query->where('payment_method', $paymentMethod);
+        }
+
+        $dates = validator(
+            [
+                'date_from' => search_text($request->input('date_from')) ?: null,
+                'date_to' => search_text($request->input('date_to')) ?: null,
+            ],
+            [
+                'date_from' => 'nullable|date',
+                'date_to' => 'nullable|date|after_or_equal:date_from',
+            ]
+        )->valid();
+        if (! empty($dates['date_from'])) {
+            $query->whereDate('created_at', '>=', $dates['date_from']);
+        }
+        if (! empty($dates['date_to'])) {
+            $query->whereDate('created_at', '<=', $dates['date_to']);
+        }
+
+        $ids = $this->withdrawalExportIds($request->input('ids'));
+        if ($ids !== []) {
+            $query->whereIn('id', $ids);
+        }
+
+        return [
+            'queue' => $queue,
+            'status' => $status,
+        ];
+    }
+
+    /**
+     * @param  Builder<Withdrawal>  $query
+     */
+    private function applyWithdrawalSearch(Builder $query, string $search): void
+    {
+        if ($search === '') {
+            return;
+        }
+
+        if (preg_match('/^#?WD-?(\d+)$/i', $search, $matches) === 1) {
+            $query->whereKey((int) $matches[1]);
+
+            return;
+        }
+
+        $query->where(function (Builder $inner) use ($search) {
+            if (ctype_digit($search)) {
+                $inner->whereKey((int) $search);
+            }
+
+            $inner->orWhereHas('user', function ($sub) use ($search) {
+                $sub->where('name', 'like', '%'.$search.'%')
+                    ->orWhere('email', 'like', '%'.$search.'%');
+            });
+        });
+    }
+
+    /**
+     * @param  Builder<Withdrawal>  $query
+     */
+    private function applyWithdrawalOrder(Builder $query, string $queue, string $status): void
+    {
+        if (in_array($status, ['completed', 'cancelled'], true) || $queue === 'history') {
+            $query->orderBy('created_at', 'desc');
+
+            return;
+        }
+
+        $query->orderByRaw("CASE status WHEN 'pending' THEN 0 WHEN 'processing' THEN 1 ELSE 2 END")
+            ->orderBy('created_at', 'asc');
+    }
+
+    /**
+     * @return list<int>
+     */
+    private function withdrawalExportIds(mixed $ids): array
+    {
+        if (! is_array($ids)) {
+            return [];
+        }
+
+        $normalized = [];
+        foreach ($ids as $id) {
+            if (is_int($id) || (is_string($id) && ctype_digit($id))) {
+                $n = (int) $id;
+                if ($n > 0) {
+                    $normalized[] = $n;
+                }
+            }
+        }
+
+        return array_values(array_unique($normalized));
     }
 
     /**

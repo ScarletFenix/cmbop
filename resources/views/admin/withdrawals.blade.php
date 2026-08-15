@@ -630,10 +630,14 @@ $('#batchRejectBtn').on('click', () => runBatch('cancelled', 'Reject selected & 
 
 function buildExportUrl(extra = {}) {
     const params = new URLSearchParams();
-    const status = $('#statusFilter').val();
-    const method = $('#paymentMethodFilter').val();
-    if (status) params.set('status', status);
-    if (method) params.set('payment_method', method);
+    const filters = filterParams();
+    Object.keys(filters).forEach(function (key) {
+        if (key === 'page') return;
+        const value = filters[key];
+        if (value != null && String(value).trim() !== '') {
+            params.set(key, value);
+        }
+    });
     Object.keys(extra).forEach(k => {
         if (Array.isArray(extra[k])) {
             extra[k].forEach(v => params.append(k + '[]', v));
