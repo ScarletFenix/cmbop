@@ -4,6 +4,14 @@
 @php
     $d = $data;
     $euro = fn ($n) => '€'.number_format((float) $n, 2);
+    $keepQuery = fn ($value) => $value !== null && $value !== '';
+    $exportQuery = array_filter([
+        'date_from' => $dateFrom ?: null,
+        'date_to' => $dateTo ?: null,
+        'period' => (! $dateFrom && ! $dateTo && in_array($periodKey, ['week', 'month', 'all'], true))
+            ? $periodKey
+            : null,
+    ], $keepQuery);
 @endphp
 <div class="container-fluid py-3">
     <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-3">
@@ -14,7 +22,7 @@
             </p>
         </div>
         <div class="admin-finance-toolbar d-flex flex-wrap align-items-end gap-2">
-            <form method="GET" action="{{ route('admin.finance') }}" class="d-flex flex-wrap align-items-end gap-2">
+            <form method="GET" action="{{ route('admin.finance') }}" class="admin-finance-toolbar__form d-flex flex-nowrap align-items-end gap-2">
                 @if($dateFrom)
                     <input type="hidden" name="date_from" value="{{ $dateFrom }}">
                 @endif
@@ -46,7 +54,7 @@
             </div>
             <div class="admin-finance-toolbar__action">
                 <span class="form-label fw-semibold small text-muted mb-1" aria-hidden="true">&nbsp;</span>
-                <a id="adminFinanceExport" href="{{ route('admin.finance.export', request()->query()) }}" class="btn btn-sm btn-outline-primary">
+                <a id="adminFinanceExport" href="{{ route('admin.finance.export', $exportQuery) }}" class="btn btn-sm btn-outline-primary">
                     <i class="fa fa-file-csv me-1"></i> Export period CSV
                 </a>
             </div>
@@ -68,7 +76,7 @@
                             <a href="{{ route('admin.finance', array_filter([
                                     'period' => $key,
                                     'q' => $userQuery !== '' ? $userQuery : null,
-                                ])) }}"
+                                ], $keepQuery)) }}"
                                class="btn {{ $periodKey === $key && !$dateFrom && !$dateTo ? 'btn-primary' : 'btn-outline-secondary' }}">
                                 {{ $label }}
                             </a>
