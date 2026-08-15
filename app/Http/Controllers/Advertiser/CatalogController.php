@@ -3354,11 +3354,33 @@ class CatalogController extends Controller
     /**
      * Re-run live URL reachability check for an order item (advertiser).
      */
-    public function recheckLiveUrl(int $id)
+    public function recheckLiveUrl(Request $request, int $id)
     {
+        $data = $request->validate([
+            'order_item_id' => 'nullable|integer',
+        ]);
+
         $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-        $item = $order->items->first();
-        if (! $item || ! filled($item->live_url)) {
+        $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
+        if ($requestedItemId) {
+            $item = $order->items->firstWhere('id', $requestedItemId);
+        } else {
+            $withLiveUrl = $order->items->filter(fn ($line) => filled($line->live_url));
+            $item = $withLiveUrl->count() === 1
+                ? $withLiveUrl->first()
+                : ($order->items->count() === 1 ? $order->items->first() : null);
+        }
+
+        if (! $item instanceof OrderItem) {
+            return response()->json([
+                'success' => false,
+                'message' => $order->items->count() > 1
+                    ? 'Please choose which placement to recheck.'
+                    : 'No live URL to check yet.',
+            ], 422);
+        }
+
+        if (! filled($item->live_url)) {
             return response()->json([
                 'success' => false,
                 'message' => 'No live URL to check yet.',

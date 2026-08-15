@@ -51,6 +51,7 @@ class OrderController extends Controller
         $allowed = OrderItem::query()
             ->where('content_submission_id', $submission->id)
             ->whereHas('site', fn ($q) => $q->where('publisher_id', auth()->id()))
+            ->whereHas('order', fn ($q) => $q->where('payment_status', 'paid'))
             ->exists();
 
         abort_unless($allowed, 403);

@@ -480,12 +480,14 @@ function bootAdvertiserOrdersPage() {
         }
     };
 
-    window.recheckLiveUrl = function(orderId) {
-        const btn = document.getElementById('recheckLiveUrlBtn');
+    window.recheckLiveUrl = function(orderId, itemId) {
+        const btn = document.getElementById(itemId ? ('recheckLiveUrlBtn-' + itemId) : 'recheckLiveUrlBtn');
         if (btn) {
             btn.disabled = true;
             btn.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i>Checking…';
         }
+        const payload = {};
+        if (itemId) payload.order_item_id = itemId;
         fetch(ordersUrl(`/${orderId}/recheck-live-url`), {
             method: 'POST',
             headers: {
@@ -494,6 +496,7 @@ function bootAdvertiserOrdersPage() {
                 'Content-Type': 'application/json',
             },
             credentials: 'same-origin',
+            body: JSON.stringify(payload),
         })
         .then(r => r.json())
         .then(data => {
@@ -1508,9 +1511,9 @@ function bootAdvertiserOrdersPage() {
                     <div class="d-flex flex-wrap align-items-center gap-2 mt-1">
                         ${liveUrlHealthBadge(it)}
                         <span class="small text-muted">Public reachability check${http}${checked}</span>
-                        ${idx === 0 ? `<button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn" onclick="recheckLiveUrl(${order.id})">
+                        <button type="button" class="btn btn-sm btn-outline-secondary py-0 px-2" id="recheckLiveUrlBtn-${it.id || idx}" onclick="recheckLiveUrl(${order.id}, ${it.id || 'null'})">
                             <i class="fa fa-refresh me-1"></i>Recheck
-                        </button>` : ''}
+                        </button>
                     </div>`;
             }
             const liveUrlHtml = liveUrl
