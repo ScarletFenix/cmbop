@@ -266,8 +266,8 @@ class ContentRevisionService
                 }
 
                 $sameAsCurrent = (int) $item->content_submission_id === (int) $submission->id;
-                $linkedElsewhere = $submission->order_id
-                    && (int) $submission->order_id !== (int) $lockedOrder->id;
+                $linkedElsewhere = $submission->isInUse()
+                    && (int) ($submission->order_id ?? 0) !== (int) $lockedOrder->id;
                 $usedBySibling = OrderItem::query()
                     ->where('order_id', $lockedOrder->id)
                     ->where('id', '!=', $item->id)
@@ -284,7 +284,9 @@ class ContentRevisionService
                     ]);
                 }
 
-                if (! $sameAsCurrent && $submission->order_id === null && ! $submission->canBeOrdered()) {
+                if (! $sameAsCurrent
+                    && (int) ($submission->order_id ?? 0) !== (int) $lockedOrder->id
+                    && ! $submission->canBeOrdered()) {
                     throw ValidationException::withMessages([
                         'content_submission_id' => 'That Content Library article is not available to attach.',
                     ]);
@@ -521,7 +523,7 @@ class ContentRevisionService
             'timezone' => $order->schedule_timezone ?: $submission->timezone,
         ];
 
-        if (! $submission->order_id || (int) $submission->order_id === (int) $order->id) {
+        if ($submission->shouldAdoptOwnerOrder((int) $order->id)) {
             $payload['order_id'] = $order->id;
             $payload['order_item_id'] = $item->id;
         }

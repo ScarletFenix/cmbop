@@ -914,6 +914,56 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertSame('https://docs.example/waiting-fixed', $waiting->fresh()->content_link);
     }
 
+    public function test_can_attach_library_article_whose_owner_order_was_cancelled(): void
+    {
+        $cancelled = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'wise',
+            'payment_status' => 'failed',
+            'status' => 'cancelled',
+        ]);
+
+        $current = $this->createApprovedSubmission($this->advertiser);
+        $replacement = $this->createApprovedSubmission($this->advertiser);
+        $replacement->update([
+            'title' => 'Cancelled Owner Piece',
+            'order_id' => $cancelled->id,
+        ]);
+
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_submission_id' => $current->id,
+            'content_original_name' => $current->original_filename,
+            'content_disk' => $current->disk,
+            'content_path' => $current->path,
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please attach a replacement from the library.',
+        ]);
+        $current->update([
+            'order_id' => $item->order_id,
+            'order_item_id' => $item->id,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_submission_id' => $replacement->id,
+                'order_item_id' => $item->id,
+            ])
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $this->assertSame($item->order_id, (int) $replacement->fresh()->order_id);
+        $this->assertSame($replacement->id, (int) $item->fresh()->content_submission_id);
+        $this->assertNull($current->fresh()->order_id);
+        $this->assertTrue($replacement->fresh()->isLockedByPaidOrder());
+    }
+
     public function test_cannot_reattach_library_article_used_by_sibling_line(): void
     {
         $firstSubmission = $this->createApprovedSubmission($this->advertiser);

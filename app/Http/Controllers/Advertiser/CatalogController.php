@@ -4748,7 +4748,7 @@ class CatalogController extends Controller
             'timezone' => $order->schedule_timezone ?: $locked->timezone,
         ];
 
-        if (! $locked->order_id) {
+        if ($locked->shouldAdoptOwnerOrder((int) $order->id)) {
             $payload['order_id'] = $order->id;
             $payload['order_item_id'] = $item->id;
         }

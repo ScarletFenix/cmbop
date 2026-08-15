@@ -167,7 +167,7 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->order_id) {
+        if ($submission->isLockedByPaidOrder()) {
             return response()->json(['success' => false, 'message' => 'This article is already linked to an order.'], 422);
         }
 
@@ -309,7 +309,7 @@ class ContentSubmissionController extends Controller
         $submission = ContentSubmission::query()->findOrFail((int) $request->input('content_submission_id'));
         $this->authorizeSubmission($submission);
 
-        if ($submission->order_id) {
+        if ($submission->isLockedByPaidOrder()) {
             return response()->json([
                 'success' => false,
                 'message' => 'This article is already linked to an order and cannot be edited.',
@@ -366,7 +366,7 @@ class ContentSubmissionController extends Controller
     {
         $this->authorizeSubmission($submission);
 
-        if ($submission->order_id) {
+        if ($submission->isLockedByPaidOrder()) {
             return response()->json(['success' => false, 'message' => 'This submission is already linked to an order.'], 422);
         }
 
@@ -696,7 +696,7 @@ class ContentSubmissionController extends Controller
     public function destroy(ContentSubmission $submission)
     {
         $this->authorizeSubmission($submission);
-        if ($submission->order_id) {
+        if ($submission->isInUse()) {
             return response()->json(['success' => false, 'message' => 'Cannot delete a submission linked to an order.'], 422);
         }
 
