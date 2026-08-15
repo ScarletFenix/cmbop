@@ -293,6 +293,8 @@ class EmailCenterController extends Controller
             return back()->with('error', 'Could not retry mail jobs. Please try again.');
         }
 
+        $this->markRetriedMailLogsPending($uuids);
+
         return back()->with('success', 'Retried '.count($uuids).' failed mail job(s). Other failed jobs were left untouched.');
     }
 
@@ -369,6 +371,37 @@ class EmailCenterController extends Controller
 
             return back()->with('error', UserFacingError::message($e, 'Failed to retry the test email. Please try again.'));
         }
+    }
+
+    /**
+     * @param  list<string>  $uuids
+     */
+    protected function markRetriedMailLogsPending(array $uuids): void
+    {
+        if ($uuids === []) {
+            return;
+        }
+
+        $lookup = array_flip($uuids);
+
+        EmailLog::query()
+            ->where('status', EmailLog::STATUS_FAILED)
+            ->latest('id')
+            ->limit(500)
+            ->get()
+            ->each(function (EmailLog $log) use ($lookup) {
+                $stored = data_get($log->meta, 'failed_job_uuid');
+                if (! is_string($stored) || $stored === '' || ! isset($lookup[$stored])) {
+                    return;
+                }
+
+                $log->update([
+                    'status' => EmailLog::STATUS_PENDING,
+                    'error' => null,
+                    'attempts' => max(1, (int) $log->attempts) + 1,
+                ]);
+                $this->requeueFailedCampaignRecipient($log);
+            });
     }
 
     protected function requeueFailedCampaignRecipient(EmailLog $log): void
