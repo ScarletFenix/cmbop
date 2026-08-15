@@ -603,7 +603,7 @@ class OrderPaymentService
         $paidTotal = round((float) $orders
             ->filter(fn (Order $order) => $order->payment_status === 'paid')
             ->sum(fn (Order $order) => (float) $order->total_amount), 2);
-        $expected = $this->expectedStripeEurosForOrders($orders, $meta);
+        $expected = $this->capturedStripeEurosForCredit($orders, $meta);
         $unfulfilled = round(max(0, $expected - $paidTotal), 2);
         if ($userId > 0 && $unfulfilled > 0.009) {
             $this->creditUnfulfilledCardCapture($userId, $referenceCode, $unfulfilled);
@@ -1131,6 +1131,23 @@ class OrderPaymentService
         $bonus = round((float) ($meta['bonus_applied'] ?? 0), 2);
 
         return round(max(0, $total - $bonus), 2);
+    }
+
+    /**
+     * Card cash to return for hidden leftover rows. Prefer the session's
+     * captured expected_amount so a full charge is not reduced by leftover
+     * bonus metadata; fall back to current order totals minus bonus.
+     *
+     * @param  Collection<int, Order>  $orders
+     * @param  array<string, mixed>  $meta
+     */
+    private function capturedStripeEurosForCredit(Collection $orders, array $meta): float
+    {
+        if (isset($meta['expected_amount']) && $meta['expected_amount'] !== '') {
+            return round((float) $meta['expected_amount'], 2);
+        }
+
+        return $this->expectedStripeEurosForOrders($orders, $meta);
     }
 
     /**
