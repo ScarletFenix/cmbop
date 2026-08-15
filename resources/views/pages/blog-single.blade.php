@@ -8,30 +8,7 @@
     $resolvedContent = $activeTranslation?->content ?: $blog->content;
     $blogCanonical = $canonicalUrl ?? $blog->canonicalUrl($activeTranslation?->locale ?: app()->getLocale(), 'en');
     $blogDescription = $resolvedExcerpt ?: \Illuminate\Support\Str::limit(strip_tags($resolvedContent ?? ''), 160);
-    $blogFaq = match ($resolvedSlug) {
-        \App\Support\BacklinksAufbauenBlogPost::SLUG => \App\Support\BacklinksAufbauenBlogPost::faqItems(),
-        \App\Support\GastbeitraegeEuropaBlogPost::SLUG => \App\Support\GastbeitraegeEuropaBlogPost::faqItems(),
-        \App\Support\LiveLinkChecklistBlogPost::SLUG => \App\Support\LiveLinkChecklistBlogPost::faqItems(),
-        \App\Support\AdvertiserPlatformGuideBlogPost::SLUG => \App\Support\AdvertiserPlatformGuideBlogPost::faqItems(),
-        \App\Support\PublisherPlatformGuideBlogPost::SLUG => \App\Support\PublisherPlatformGuideBlogPost::faqItems(),
-        \App\Support\DofollowNofollowAnkertexteBlogPost::SLUG => \App\Support\DofollowNofollowAnkertexteBlogPost::faqItems(),
-        \App\Support\ChoosePublisherSiteBlogPost::SLUG => \App\Support\ChoosePublisherSiteBlogPost::faqItems(),
-        \App\Support\WalletEscrowRefundsBlogPost::SLUG => \App\Support\WalletEscrowRefundsBlogPost::faqItems(),
-        \App\Support\LiveLinkRemovedBlogPost::SLUG => \App\Support\LiveLinkRemovedBlogPost::faqItems(),
-        \App\Support\GuestPostBriefBlogPost::SLUG => \App\Support\GuestPostBriefBlogPost::faqItems(),
-        \App\Support\MarketplaceVsOutreachBlogPost::SLUG => \App\Support\MarketplaceVsOutreachBlogPost::faqItems(),
-        \App\Support\AiAeoGuestPostsBlogPost::SLUG => \App\Support\AiAeoGuestPostsBlogPost::faqItems(),
-        \App\Support\GuestPostsEuropeEnBlogPost::SLUG => \App\Support\GuestPostsEuropeEnBlogPost::faqItems(),
-        \App\Support\DofollowNofollowAnchorsEnBlogPost::SLUG => \App\Support\DofollowNofollowAnchorsEnBlogPost::faqItems(),
-        \App\Support\AdvertiserGuideDeBlogPost::SLUG => \App\Support\AdvertiserGuideDeBlogPost::faqItems(),
-        \App\Support\PublisherGuideDeBlogPost::SLUG => \App\Support\PublisherGuideDeBlogPost::faqItems(),
-        \App\Support\AcheterGuestPostsFrBlogPost::SLUG => \App\Support\AcheterGuestPostsFrBlogPost::faqItems(),
-        \App\Support\ChoisirEditeurFrBlogPost::SLUG => \App\Support\ChoisirEditeurFrBlogPost::faqItems(),
-        \App\Support\GastpostsKopenNlBlogPost::SLUG => \App\Support\GastpostsKopenNlBlogPost::faqItems(),
-        \App\Support\UitgeversKiezenNlBlogPost::SLUG => \App\Support\UitgeversKiezenNlBlogPost::faqItems(),
-        \App\Support\GuestPostsUkUsBlogPost::SLUG => \App\Support\GuestPostsUkUsBlogPost::faqItems(),
-        default => [],
-    };
+    $blogFaq = \App\Support\CuratedBlogCatalog::faqForSlug($resolvedSlug);
 @endphp
 
 @section('title', ($resolvedTitle ?? 'Blog').' — SEOLinkBuildings')
