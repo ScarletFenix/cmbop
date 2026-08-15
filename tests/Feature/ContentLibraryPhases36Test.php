@@ -185,6 +185,15 @@ class ContentLibraryPhases36Test extends TestCase
 
         $this->actingAs($publisher)
             ->get(route('publisher.content.download', $linked))
+            ->assertForbidden();
+
+        $order->update([
+            'payment_status' => 'paid',
+            'paid_at' => now(),
+        ]);
+
+        $this->actingAs($publisher)
+            ->get(route('publisher.content.download', $linked))
             ->assertOk();
 
         $this->actingAs($advertiser)

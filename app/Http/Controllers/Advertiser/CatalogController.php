@@ -741,7 +741,7 @@ class CatalogController extends Controller
             return null;
         }
 
-        $id = (int) $request->query('content_submission_id', 0);
+        $id = (int) scalar_text($request->query('content_submission_id', 0));
         if ($id <= 0 && session('ordering_from_library')) {
             $id = (int) session('checkout_content_submission_id', 0);
         }
@@ -2725,7 +2725,9 @@ class CatalogController extends Controller
 
             $message = $e->getMessage() === 'Insufficient balance to reserve'
                 ? 'Insufficient wallet balance for this order.'
-                : 'Unable to process wallet payment. Please try again.';
+                : ($e->getMessage() === ContentSubmission::UNAVAILABLE_MESSAGE
+                    ? 'That Content Library article was already purchased. Please choose another article.'
+                    : 'Unable to process wallet payment. Please try again.');
 
             return response()->json([
                 'success' => false,
@@ -3120,13 +3122,20 @@ class CatalogController extends Controller
                 'reason' => 'required|string|min:10',
             ]);
 
-            $order = Order::with('items')->findOrFail($id);
+            $order = Order::with(['items.site.publisher'])->findOrFail($id);
 
             if ($order->user_id !== auth()->id()) {
                 return response()->json([
                     'success' => false,
                     'message' => 'Unauthorized',
                 ], 403);
+            }
+
+            if ($order->payment_status !== 'paid') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'This order cannot be changed because payment is not complete.',
+                ], 422);
             }
 
             if ($order->status !== 'review') {
@@ -3195,19 +3204,18 @@ class CatalogController extends Controller
                 ]);
             }
 
-            // Send email to publisher
-            $publisher = null;
+            $publishers = [];
             foreach ($order->items as $item) {
-                $site = Site::find($item->site_id);
-                if ($site && $site->publisher_id) {
-                    $publisher = User::find($site->publisher_id);
-                    if ($publisher) {
-                        break;
-                    }
+                if ($item->isPayoutComplete()) {
+                    continue;
+                }
+                $publisher = $item->site?->publisher;
+                if ($publisher instanceof User && filled($publisher->email)) {
+                    $publishers[$publisher->id] = $publisher;
                 }
             }
 
-            if ($publisher && $publisher->email) {
+            foreach ($publishers as $publisher) {
                 try {
                     Mail::to($publisher->email)->send(new ModificationRequested($order, $request->reason));
                 } catch (\Exception $e) {
@@ -3355,11 +3363,33 @@ class CatalogController extends Controller
     /**
      * Re-run live URL reachability check for an order item (advertiser).
      */
-    public function recheckLiveUrl(int $id)
+    public function recheckLiveUrl(Request $request, int $id)
     {
+        $data = $request->validate([
+            'order_item_id' => 'nullable|integer',
+        ]);
+
         $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-        $item = $order->items->first();
-        if (! $item || ! filled($item->live_url)) {
+        $requestedItemId = isset($data['order_item_id']) ? (int) $data['order_item_id'] : null;
+        if ($requestedItemId) {
+            $item = $order->items->firstWhere('id', $requestedItemId);
+        } else {
+            $withLiveUrl = $order->items->filter(fn ($line) => filled($line->live_url));
+            $item = $withLiveUrl->count() === 1
+                ? $withLiveUrl->first()
+                : ($order->items->count() === 1 ? $order->items->first() : null);
+        }
+
+        if (! $item instanceof OrderItem) {
+            return response()->json([
+                'success' => false,
+                'message' => $order->items->count() > 1
+                    ? 'Please choose which placement to recheck.'
+                    : 'No live URL to check yet.',
+            ], 422);
+        }
+
+        if (! filled($item->live_url)) {
             return response()->json([
                 'success' => false,
                 'message' => 'No live URL to check yet.',
@@ -4125,14 +4155,17 @@ class CatalogController extends Controller
             ]);
 
             $order = Order::with('items')->where('user_id', auth()->id())->findOrFail($id);
-            $item = ! empty($data['order_item_id'])
-                ? $order->items->firstWhere('id', (int) $data['order_item_id'])
-                : $order->items->first();
+            $item = $this->resolveDisputableItem(
+                $order,
+                isset($data['order_item_id']) ? (int) $data['order_item_id'] : null,
+            );
             if (! $item) {
                 return response()->json([
                     'success' => false,
-                    'message' => 'Order has no items to dispute.',
-                ], 404);
+                    'message' => $order->items->count() > 1
+                        ? 'Please choose which placement to report.'
+                        : 'Order has no items to dispute.',
+                ], $order->items->count() > 1 ? 422 : 404);
             }
 
             $dispute = app(OrderClawbackService::class)->openDispute($item, $request->user(), $data['reason']);
@@ -4163,11 +4196,58 @@ class CatalogController extends Controller
 
     private function attachDisputeMeta(Order $order, ?OrderItem $item, OrderClawbackService $clawbacks): void
     {
-        $dispute = OrderItemDispute::tableAvailable() ? $item?->latestDispute : null;
-        $order->can_report_link_removed = $clawbacks->canOpenDispute($order, $item);
-        $order->dispute_status = $dispute?->status;
-        $order->dispute_id = $dispute?->id;
-        $order->dispute_reason = $dispute?->reason;
+        $reportable = false;
+        $open = null;
+        $latest = null;
+
+        foreach ($order->items as $line) {
+            $can = $clawbacks->canOpenDispute($order, $line);
+            $dispute = OrderItemDispute::tableAvailable() ? $line->latestDispute : null;
+            $line->setAttribute('can_report_link_removed', $can);
+            $line->setAttribute('dispute_status', $dispute?->status);
+            $line->setAttribute('dispute_id', $dispute?->id);
+            $reportable = $reportable || $can;
+            if ($dispute?->status === OrderItemDispute::STATUS_OPEN) {
+                $open = $dispute;
+            }
+            if ($dispute && ($latest === null || (int) $dispute->id > (int) $latest->id)) {
+                $latest = $dispute;
+            }
+        }
+
+        $shown = $open ?? $latest ?? (OrderItemDispute::tableAvailable() ? $item?->latestDispute : null);
+        $order->can_report_link_removed = $reportable;
+        $order->dispute_status = $shown?->status;
+        $order->dispute_id = $shown?->id;
+        $order->dispute_reason = $shown?->reason;
+    }
+
+    private function resolveDisputableItem(Order $order, ?int $orderItemId): ?OrderItem
+    {
+        if ($orderItemId) {
+            $item = $order->items->firstWhere('id', $orderItemId);
+
+            return $item instanceof OrderItem ? $item : null;
+        }
+
+        $clawbacks = app(OrderClawbackService::class);
+        $candidates = $order->items->filter(
+            fn ($line) => $line instanceof OrderItem && $clawbacks->canOpenDispute($order, $line)
+        );
+
+        if ($candidates->count() === 1) {
+            $item = $candidates->first();
+
+            return $item instanceof OrderItem ? $item : null;
+        }
+
+        if ($order->items->count() === 1) {
+            $item = $order->items->first();
+
+            return $item instanceof OrderItem ? $item : null;
+        }
+
+        return null;
     }
 
     /**
@@ -4501,25 +4581,32 @@ class CatalogController extends Controller
 
     private function attachSubmissionToOrder(ContentSubmission $submission, Order $order, OrderItem $item): void
     {
+        $locked = ContentSubmission::query()->whereKey($submission->id)->lockForUpdate()->first();
+        if (! $locked || $locked->isClaimedByAnotherOrder((int) $order->id)) {
+            throw new \RuntimeException(ContentSubmission::UNAVAILABLE_MESSAGE);
+        }
+
         // Each article is published on one site only. Keep the first order/item linkage on the
         // submission row; every OrderItem still stores its own content_submission_id.
         $payload = [
             'publication_mode' => $order->publication_mode,
             'scheduled_publish_at' => $order->scheduled_publish_at,
-            'timezone' => $order->schedule_timezone ?: $submission->timezone,
+            'timezone' => $order->schedule_timezone ?: $locked->timezone,
         ];
 
-        if (! $submission->order_id) {
+        if (! $locked->order_id) {
             $payload['order_id'] = $order->id;
             $payload['order_item_id'] = $item->id;
         }
 
         $filtered = app(CheckoutSchemaService::class)
-            ->filterExistingColumns($submission->getTable(), $payload);
+            ->filterExistingColumns($locked->getTable(), $payload);
 
         if ($filtered !== []) {
-            $submission->update($filtered);
+            $locked->update($filtered);
         }
+
+        $submission->setRawAttributes($locked->fresh()->getAttributes(), true);
     }
 
     /**
@@ -4948,27 +5035,6 @@ class CatalogController extends Controller
 
     private function releaseContentSubmissionsForOrder(Order $order): void
     {
-        ContentSubmission::query()
-            ->where('order_id', $order->id)
-            ->get()
-            ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
-
-        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
-            return;
-        }
-
-        $linkedIds = OrderItem::query()
-            ->where('order_id', $order->id)
-            ->whereNotNull('content_submission_id')
-            ->pluck('content_submission_id')
-            ->all();
-
-        if ($linkedIds !== []) {
-            ContentSubmission::query()
-                ->whereIn('id', $linkedIds)
-                ->whereNotNull('order_id')
-                ->get()
-                ->each(fn (ContentSubmission $submission) => $submission->releaseFromOrder());
-        }
+        ContentSubmission::releaseAllForOrder((int) $order->id);
     }
 }

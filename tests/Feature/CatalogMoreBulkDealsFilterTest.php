@@ -265,6 +265,17 @@ class CatalogMoreBulkDealsFilterTest extends TestCase
         $this->assertStringNotContainsString('Bulk Fragment Site', $html);
     }
 
+    public function test_live_results_empty_state_treats_on_sale_as_an_active_filter(): void
+    {
+        $html = (string) $this->actingAs($this->advertiser)
+            ->get(route('advertiser.catalog.results', ['on_sale' => '1']))
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No sites match your filters', $html);
+        $this->assertStringNotContainsString('No publishers available yet', $html);
+    }
+
     public function test_empty_recovery_urls_preserve_bulk_and_on_sale_params(): void
     {
         $request = Request::create('/advertiser/catalog', 'GET', [

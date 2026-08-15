@@ -186,6 +186,13 @@ class ContentSubmissionController extends Controller
             'image_rights_source.required_if' => 'Add the source URL or copyright/licence details for the images.',
         ]);
 
+        if ($blocked = ContentUploadService::articleHtmlBlockedMessage($data['preview_html'])) {
+            return response()->json([
+                'success' => false,
+                'message' => $blocked,
+            ], 422);
+        }
+
         // Apply a posted declaration on a replica first. Persisting before the
         // cover check let "this article has no images" overwrite a real claim
         // when the HTML still contained <img>.
@@ -201,7 +208,7 @@ class ContentSubmissionController extends Controller
         if (! $incoming->imageRightsCoverContent()) {
             return response()->json([
                 'success' => false,
-                'message' => 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.',
+                'message' => ContentUploadService::imageRightsRequiredMessage(),
                 'needs_image_rights' => true,
             ], 422);
         }
@@ -274,8 +281,38 @@ class ContentSubmissionController extends Controller
         }
 
         $request->validate([
-            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:5120'],
+            'image' => ['required', 'image', 'mimes:jpeg,png,jpg,gif,webp', 'max:'.ContentUploadService::IMAGE_MAX_KILOBYTES],
+            'content_submission_id' => ['required', 'integer', 'exists:content_submissions,id'],
+            'current_image_count' => ['required', 'integer', 'min:0', 'max:500'],
         ]);
+
+        $submission = ContentSubmission::query()->findOrFail((int) $request->input('content_submission_id'));
+        $this->authorizeSubmission($submission);
+
+        if ($submission->order_id) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This article is already linked to an order and cannot be edited.',
+            ], 422);
+        }
+
+        if ($submission->isArchived()) {
+            return response()->json(['success' => false, 'message' => 'Restore this article before editing.'], 422);
+        }
+
+        if ($submission->isExpired()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Expired articles are preview only. The original file cannot be edited.',
+            ], 422);
+        }
+
+        if ((int) $request->input('current_image_count') >= ContentUploadService::IMAGE_MAX_PER_ARTICLE) {
+            return response()->json([
+                'success' => false,
+                'message' => ContentUploadService::tooManyImagesMessage(),
+            ], 422);
+        }
 
         $file = $request->file('image');
         $binary = file_get_contents($file->getRealPath());
@@ -349,23 +386,30 @@ class ContentSubmissionController extends Controller
             || array_key_exists('target_url', $data)
             || array_key_exists('anchor_text', $data);
 
-        // Any content/link edit clears the previous approval until re-check finishes.
-        if ($contentChanged && $submission->isApproved()) {
-            $submission->forceFill([
-                'moderation_status' => ContentSubmission::STATUS_PROCESSING,
-                'evaluation_status' => 'processing',
-            ])->save();
+        $pendingHtml = null;
+        if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
+            $pendingHtml = $data['preview_html'];
+        } elseif (array_key_exists('links', $data)) {
+            $pendingHtml = (string) ($submission->preview_html ?? '');
         }
 
-        if (array_key_exists('links', $data)) {
-            $links = ArticleDetectedLinks::normalizeList($data['links'] ?? [], $anchorMax);
-            $html = array_key_exists('preview_html', $data)
-                ? (string) $data['preview_html']
-                : (string) ($submission->preview_html ?? '');
-            $submission->syncDetectedLinks($links, $html !== '' ? $html : null);
-            unset($data['links'], $data['preview_html']);
-            // Primary pair already synced; avoid overwriting with stale single fields if absent.
-            unset($data['anchor_text'], $data['target_url']);
+        if (is_string($pendingHtml) && $pendingHtml !== '') {
+            if ($blocked = ContentUploadService::articleHtmlBlockedMessage($pendingHtml)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => $blocked,
+                ], 422);
+            }
+
+            $incoming = $submission->replicate();
+            $incoming->preview_html = (new ArticleHtmlSanitizer)->sanitize($pendingHtml);
+            if (! $incoming->imageRightsCoverContent()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => ContentUploadService::imageRightsRequiredMessage(),
+                    'needs_image_rights' => true,
+                ], 422);
+            }
         }
 
         if (array_key_exists('title', $data)) {
@@ -421,6 +465,24 @@ class ContentSubmissionController extends Controller
         }
 
         unset($data['scheduled_date'], $data['scheduled_time']);
+
+        if ($contentChanged && $submission->isApproved()) {
+            $submission->forceFill([
+                'moderation_status' => ContentSubmission::STATUS_PROCESSING,
+                'evaluation_status' => 'processing',
+            ])->save();
+        }
+
+        if (array_key_exists('links', $data)) {
+            $links = ArticleDetectedLinks::normalizeList($data['links'] ?? [], $anchorMax);
+            $html = array_key_exists('preview_html', $data)
+                ? (string) $data['preview_html']
+                : (string) ($submission->preview_html ?? '');
+            $submission->syncDetectedLinks($links, $html !== '' ? $html : null);
+            unset($data['links'], $data['preview_html']);
+            // Primary pair already synced; avoid overwriting with stale single fields if absent.
+            unset($data['anchor_text'], $data['target_url']);
+        }
 
         if (array_key_exists('preview_html', $data) && is_string($data['preview_html'])) {
             $data['preview_html'] = (new ArticleHtmlSanitizer)->sanitize($data['preview_html']);
@@ -510,6 +572,8 @@ class ContentSubmissionController extends Controller
             'needs_image_rights' => $submission->hasImages() && ! $submission->imageRightsCoverContent(),
             'image_rights_covers' => $submission->imageRightsCoverContent(),
             'has_file' => $submission->hasStoredFile(),
+            'editor_notice' => $submission->editorNotice(),
+            'editor_notice_ok' => false,
         ]);
     }
 

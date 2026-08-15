@@ -7,16 +7,35 @@
             <h4 class="mb-1 fw-bold">Wallet ledger</h4>
             <p class="text-muted mb-0 small">All wallet_transactions — deposits, purchases, refunds, withdrawals, bonuses, publisher earnings (transfer_in), and role moves.</p>
         </div>
-        <a href="{{ route('admin.finance') }}" class="btn btn-sm btn-outline-secondary">
-            <i class="fa fa-chart-pie me-1"></i> Finance overview
-        </a>
+        <div class="d-flex flex-wrap gap-2">
+            <a href="{{ route('admin.finance.ledger.export', request()->query()) }}" class="btn btn-sm btn-outline-primary">
+                <i class="fa fa-file-csv me-1"></i> Export CSV
+            </a>
+            <a href="{{ route('admin.finance') }}" class="btn btn-sm btn-outline-secondary">
+                <i class="fa fa-chart-pie me-1"></i> Finance overview
+            </a>
+        </div>
     </div>
+
+    @if($ledgerUser)
+        <div class="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2 py-2 mb-3">
+            <div class="small mb-0">
+                Showing ledger for
+                <strong>{{ $ledgerUser->name }}</strong>
+                <span class="text-muted">{{ $ledgerUser->email }}</span>
+            </div>
+            <a href="{{ route('admin.finance.ledger', request()->except('user_id')) }}" class="btn btn-sm btn-outline-secondary">Clear user</a>
+        </div>
+    @endif
 
     <form method="GET" class="card border-0 shadow-sm mb-3">
         <div class="card-body">
+            @if($ledgerUser)
+                <input type="hidden" name="user_id" value="{{ $ledgerUser->id }}">
+            @endif
             <div class="row g-2 align-items-end">
                 <div class="col-md-3">
-                    <x-slb-search-field name="search" id="adminFinanceLedgerSearch" :value="request('search')" placeholder="User, email, reference…" />
+                    <x-slb-search-field name="search" id="adminFinanceLedgerSearch" :value="is_string(request('search')) ? request('search') : ''" placeholder="User, email, reference…" />
                 </div>
                 <div class="col-md-2">
                     <label class="form-label small text-muted">Type</label>

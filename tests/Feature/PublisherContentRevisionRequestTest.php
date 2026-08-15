@@ -268,6 +268,60 @@ class PublisherContentRevisionRequestTest extends TestCase
         $this->assertSame('no', $first->fresh()->content_revision_requested ?? 'no');
     }
 
+    public function test_fulfill_without_item_id_is_rejected_when_two_revisions_are_open(): void
+    {
+        $order = Order::create([
+            'user_id' => $this->advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'REF-'.random_int(1000, 9999),
+            'subtotal' => 160,
+            'tax' => 0,
+            'total_amount' => 160,
+            'payment_method' => 'wallet',
+            'payment_status' => 'paid',
+            'status' => 'processing',
+            'paid_at' => now(),
+        ]);
+
+        $first = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/first-old',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Revise the first placement.',
+        ]);
+        $second = OrderItem::create([
+            'order_id' => $order->id,
+            'site_id' => $this->site->id,
+            'site_name' => $this->site->site_name,
+            'site_url' => $this->site->site_url,
+            'content_link' => 'https://docs.example/second-old',
+            'price' => 80,
+            'accepted_at' => now(),
+            'publisher_status' => 'accepted',
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Revise the second placement.',
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $order->id), [
+                'content_link' => 'https://docs.example/ambiguous',
+            ])
+            ->assertStatus(422);
+
+        $this->assertTrue($first->fresh()->isContentRevisionRequested());
+        $this->assertTrue($second->fresh()->isContentRevisionRequested());
+        $this->assertSame('https://docs.example/first-old', $first->fresh()->content_link);
+        $this->assertSame('https://docs.example/second-old', $second->fresh()->content_link);
+    }
+
     public function test_fulfill_without_item_id_picks_open_revision_line(): void
     {
         $order = Order::create([
@@ -349,6 +403,30 @@ class PublisherContentRevisionRequestTest extends TestCase
                 ->where('type', 'content_revision_fulfilled')
                 ->exists()
         );
+    }
+
+    public function test_advertiser_cannot_fulfill_content_revision_when_unpaid(): void
+    {
+        $item = $this->makeProcessingItem();
+        $item->update([
+            'content_revision_requested' => 'yes',
+            'content_revision_requested_at' => now(),
+            'content_revision_reason' => 'Please send a cleaner draft with correct links.',
+        ]);
+        $item->order->update([
+            'payment_status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($this->advertiser)
+            ->postJson(route('advertiser.orders.fulfill-content-revision', $item->order_id), [
+                'content_link' => 'https://docs.example/unpaid-article',
+            ])
+            ->assertStatus(422);
+
+        $item->refresh();
+        $this->assertTrue($item->isContentRevisionRequested());
+        $this->assertSame('https://docs.example/old-article', $item->content_link);
     }
 
     public function test_publisher_can_cancel_after_accept_and_refunds_advertiser(): void

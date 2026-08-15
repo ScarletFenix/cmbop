@@ -13,7 +13,19 @@
                 Accounting truth for the period — GMV vs platform fees, cash in bank vs internal wallets, and what you owe publishers.
             </p>
         </div>
-        <div class="d-flex flex-wrap gap-2">
+        <div class="d-flex flex-wrap gap-2 align-items-start">
+            <form method="GET" action="{{ route('admin.finance') }}" class="d-flex flex-wrap gap-2 align-items-end">
+                <div style="min-width:220px">
+                    <x-slb-search-field
+                        name="q"
+                        id="adminFinanceUserSearch"
+                        :value="$userQuery"
+                        placeholder="Name, email, or user id…"
+                        label="Find user dossier"
+                    />
+                </div>
+                <button class="btn btn-sm btn-outline-primary mb-3">Open</button>
+            </form>
             <a href="{{ route('admin.finance.ledger') }}" class="btn btn-sm btn-outline-secondary">
                 <i class="fa fa-book me-1"></i> Wallet ledger
             </a>
@@ -53,6 +65,37 @@
             </div>
         </div>
     </form>
+
+    @if($userQuery !== '')
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-body py-3">
+                @if(strlen($userQuery) < 2)
+                    <p class="text-muted mb-0 small">Type at least 2 characters to find a user dossier.</p>
+                @elseif($userMatches->isEmpty())
+                    <p class="text-muted mb-0 small">No users match “{{ $userQuery }}”.</p>
+                @else
+                    <div class="small text-muted mb-2">{{ $userMatches->count() }} users match “{{ $userQuery }}”</div>
+                    <div class="table-responsive">
+                        <table class="table table-sm mb-0 align-middle">
+                            <tbody>
+                                @foreach($userMatches as $match)
+                                    <tr>
+                                        <td class="small">
+                                            <a href="{{ route('admin.finance.user', $match) }}">{{ $match->name }}</a>
+                                            <div class="text-muted">{{ $match->email }}</div>
+                                        </td>
+                                        <td class="text-end">
+                                            <a href="{{ route('admin.finance.user', $match) }}" class="btn btn-sm btn-outline-secondary">Dossier</a>
+                                        </td>
+                                    </tr>
+                                @endforeach
+                            </tbody>
+                        </table>
+                    </div>
+                @endif
+            </div>
+        </div>
+    @endif
 
     {{-- Payout liability (split so ops is not confused) --}}
     <div class="row g-3 mb-3">
@@ -112,7 +155,9 @@
                                 <tbody>
                                     @foreach($d['liability']['open_withdrawal_rows'] as $row)
                                         <tr>
-                                            <td class="small">WD-{{ $row['id'] }}</td>
+                                            <td class="small">
+                                                <a href="{{ $row['url'] }}">WD-{{ $row['id'] }}</a>
+                                            </td>
                                             <td class="small">
                                                 <a href="{{ route('admin.finance.user', $row['user_id']) }}">{{ $row['name'] }}</a>
                                                 <div class="text-muted">{{ $row['email'] }}</div>
@@ -160,7 +205,7 @@
 
     {{-- Ops queues --}}
     <div class="row g-3 mb-3">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <a href="{{ $d['ops']['pending_deposits']['url'] }}" class="text-decoration-none">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
@@ -177,7 +222,7 @@
                 </div>
             </a>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <a href="{{ $d['ops']['open_withdrawals']['url'] }}" class="text-decoration-none">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
@@ -188,7 +233,7 @@
                 </div>
             </a>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <a href="{{ $d['ops']['unpaid_orders']['url'] }}" class="text-decoration-none">
                 <div class="card border-0 shadow-sm h-100">
                     <div class="card-body">
@@ -199,7 +244,51 @@
                 </div>
             </a>
         </div>
+        <div class="col-md-3" id="finance-debt">
+            <a href="{{ $d['ops']['publisher_debt']['url'] }}" class="text-decoration-none">
+                <div class="card border-0 shadow-sm h-100 {{ ($d['ops']['publisher_debt']['amount'] ?? 0) > 0 ? 'border-start border-4 border-danger' : '' }}">
+                    <div class="card-body">
+                        <div class="text-muted small">Clawback debt</div>
+                        <div class="fs-4 fw-bold {{ ($d['ops']['publisher_debt']['amount'] ?? 0) > 0 ? 'text-danger' : '' }}">{{ $euro($d['ops']['publisher_debt']['amount'] ?? 0) }}</div>
+                        <div class="small">
+                            @if(($d['ops']['publisher_debt']['count'] ?? 0) > 0)
+                                {{ $d['ops']['publisher_debt']['count'] }} publisher wallet{{ $d['ops']['publisher_debt']['count'] === 1 ? '' : 's' }} blocked
+                            @else
+                                No outstanding clawback debt
+                            @endif
+                        </div>
+                    </div>
+                </div>
+            </a>
+        </div>
     </div>
+
+    @if(!empty($d['ops']['publisher_debt']['rows']))
+        <div class="card border-0 shadow-sm mb-3">
+            <div class="card-header bg-white fw-semibold">Publishers with clawback debt</div>
+            <div class="table-responsive">
+                <table class="table table-sm mb-0 align-middle">
+                    <thead class="table-light">
+                        <tr><th>Publisher</th><th>Debt</th><th></th></tr>
+                    </thead>
+                    <tbody>
+                        @foreach($d['ops']['publisher_debt']['rows'] as $row)
+                            <tr>
+                                <td class="small">
+                                    <a href="{{ $row['url'] }}">{{ $row['name'] }}</a>
+                                    <div class="text-muted">{{ $row['email'] }}</div>
+                                </td>
+                                <td class="fw-semibold text-danger">{{ $euro($row['debt']) }}</td>
+                                <td class="text-end">
+                                    <a href="{{ $row['url'] }}" class="btn btn-sm btn-outline-secondary">Dossier</a>
+                                </td>
+                            </tr>
+                        @endforeach
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    @endif
 
     {{-- Platform truth --}}
     <div class="card border-0 shadow-sm mb-3">
@@ -209,12 +298,12 @@
                 <div class="col-6 col-lg">
                     <div class="text-muted small">GMV (completed paid)</div>
                     <div class="fs-5 fw-bold">{{ $euro($d['platform']['gmv_completed']) }}</div>
-                    <div class="small text-muted">What advertisers paid on completed orders</div>
+                    <div class="small text-muted">What advertisers paid on completed orders · Dated by completed date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Order platform fees</div>
                     <div class="fs-5 fw-bold text-success">{{ $euro($d['platform']['order_fees']) }}</div>
-                    <div class="small text-muted">Your real product revenue</div>
+                    <div class="small text-muted">Your real product revenue · Dated by completed date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Withdrawal fees</div>
@@ -222,9 +311,9 @@
                     <div class="small text-muted">Config {{ rtrim(rtrim(number_format($d['platform']['withdrawal_fee_percent'], 2), '0'), '.') }}%</div>
                 </div>
                 <div class="col-6 col-lg">
-                    <div class="text-muted small">Refunds</div>
+                    <div class="text-muted small">Refunds (order totals)</div>
                     <div class="fs-5 fw-bold text-danger">{{ $euro($d['platform']['refunds']) }}</div>
-                    <div class="small text-muted">{{ $d['platform']['refund_orders_count'] }} orders · wallet refunds {{ $euro($d['platform']['wallet_refunds']) }}</div>
+                    <div class="small text-muted">{{ $d['platform']['refund_orders_count'] }} orders · fee reversals {{ $euro($d['platform']['refunded_order_fees'] ?? 0) }} · wallet refunds {{ $euro($d['platform']['wallet_refunds']) }} · Dated by refund date</div>
                 </div>
                 <div class="col-6 col-lg">
                     <div class="text-muted small">Bonuses issued</div>
@@ -232,9 +321,9 @@
                     <div class="small text-muted">Promo cost (not cash)</div>
                 </div>
                 <div class="col-6 col-lg">
-                    <div class="text-muted small">Est. margin</div>
+                    <div class="text-muted small">Est. fee margin</div>
                     <div class="fs-5 fw-bold {{ $d['platform']['margin'] >= 0 ? 'text-success' : 'text-danger' }}">{{ $euro($d['platform']['margin']) }}</div>
-                    <div class="small text-muted">Fees − refunds − bonuses<br><span class="fst-italic">Stripe fees not tracked</span></div>
+                    <div class="small text-muted">Fees − fee reversals − bonuses<br><span class="fst-italic">Stripe fees not tracked</span></div>
                 </div>
             </div>
         </div>
@@ -251,7 +340,7 @@
                             <span class="text-muted small">Deposits completed</span>
                             <strong>{{ $euro($d['money_in']['deposits_completed']['amount']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_in']['deposits_completed']['count'] }} requests · Stripe {{ $euro($d['money_in']['deposits_completed']['stripe']) }} · Manual {{ $euro($d['money_in']['deposits_completed']['manual']) }}</div>
+                        <div class="small text-muted">{{ $d['money_in']['deposits_completed']['count'] }} requests · Stripe {{ $euro($d['money_in']['deposits_completed']['stripe']) }} · Manual {{ $euro($d['money_in']['deposits_completed']['manual']) }} · Dated by approved date</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
@@ -262,6 +351,7 @@
                             Card {{ $euro($d['money_in']['orders_paid']['stripe_card']) }} ·
                             Wallet {{ $euro($d['money_in']['orders_paid']['wallet']) }} ·
                             Manual {{ $euro($d['money_in']['orders_paid']['manual']) }}
+                            · Dated by paid date
                         </div>
                     </div>
                     <div>
@@ -286,14 +376,14 @@
                             <span class="text-muted small">Earnings credited</span>
                             <strong>{{ $euro($d['money_out']['earnings_credited']['amount']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_out']['earnings_credited']['count'] }} line items · ledger transfer-in {{ $euro($d['money_out']['earnings_credited']['ledger_transfer_in']) }}</div>
+                        <div class="small text-muted">{{ $d['money_out']['earnings_credited']['count'] }} line items · ledger transfer-in {{ $euro($d['money_out']['earnings_credited']['ledger_transfer_in']) }} · Dated by completed date</div>
                     </div>
                     <div class="mb-3">
                         <div class="d-flex justify-content-between">
                             <span class="text-muted small">Withdrawals paid (net)</span>
                             <strong>{{ $euro($d['money_out']['withdrawals_paid']['net']) }}</strong>
                         </div>
-                        <div class="small text-muted">{{ $d['money_out']['withdrawals_paid']['count'] }} payouts · fees kept {{ $euro($d['money_out']['withdrawals_paid']['fees']) }}</div>
+                        <div class="small text-muted">{{ $d['money_out']['withdrawals_paid']['count'] }} payouts · fees kept {{ $euro($d['money_out']['withdrawals_paid']['fees']) }} · Dated by processed date</div>
                     </div>
                     <div>
                         <div class="d-flex justify-content-between">

@@ -144,6 +144,8 @@
                     </div>
                 </div>
             </div>
+        </div>
+    </div>
 
             <div class="card border-0 shadow-sm mb-3 border-primary-subtle">
                 <div class="card-body">
@@ -376,15 +378,34 @@
                                                             <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
                                                         </div>
                                                     </div>
-                                                    @error('items.'.$item->id.'.categories')
-                                                        <div class="invalid-feedback d-block">{{ $message }}</div>
-                                                    @enderror
-                                                </td>
-                                            </tr>
-                                        @endforeach
-                                    </tbody>
-                                </table>
-                            </div>
+                                                    <div class="multi-select-empty d-none" id="categoryEmpty-{{ $uid }}" role="status">No categories found</div>
+                                                </div>
+                                            </div>
+                                            @error('items.'.$item->id.'.categories')
+                                                <div class="invalid-feedback d-block">{{ $message }}</div>
+                                            @enderror
+                                        </div>
+                                    </div>
+                                    <div class="alert alert-warning border-0 py-2 px-3 small mb-0{{ $belowQuality ? '' : ' d-none' }}"
+                                         data-bulk-quality-warn
+                                         role="status">
+                                        These metrics are below the marketing Activate bar. You can still Done this row — the draft stays inactive until the publisher finishes details and staff Activate after the bar is met.
+                                    </div>
+                                    <div class="bulk-done-row__actions">
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" data-bulk-clear-row>
+                                            Clear row
+                                        </button>
+                                        <button type="button"
+                                                class="btn btn-sm btn-outline-secondary"
+                                                data-bulk-copy-above
+                                                @disabled($loop->first)>
+                                            Copy from row above
+                                        </button>
+                                    </div>
+                                </div>
+                            </details>
+                        @endforeach
+                    </div>
 
                             <div id="bulkRejectionNoteWrap" class="mb-3{{ $oldRejectedIds === [] && ! $errors->has('rejection_note') ? ' d-none' : '' }}">
                                 <label for="rejection_note" class="form-label small fw-semibold">Note to publisher (removed sites)</label>
@@ -405,18 +426,20 @@
                                 Fill at least one complete block (Language, Country, DA, DR, Traffic, Niches) before Done.
                             </div>
 
-                            <button type="submit"
-                                    id="bulkDoneSubmit"
-                                    class="btn btn-primary"
-                                    data-open="{{ $bulkRequest->canAddDraftSites() ? '1' : '0' }}"
-                                    disabled>
-                                Done — add filled sites &amp; notify publisher
-                            </button>
-                        </form>
-                    @endif
-                </div>
-            </div>
+                    <button type="submit"
+                            id="bulkDoneSubmit"
+                            class="btn btn-primary"
+                            data-open="{{ $bulkRequest->canAddDraftSites() ? '1' : '0' }}"
+                            disabled>
+                        Done — add filled sites &amp; notify publisher
+                    </button>
+                </form>
+            @endif
+        </div>
+    </div>
 
+    <div class="row g-3">
+        <div class="col-lg-8">
             <div class="card border-0 shadow-sm mb-3">
                 <div class="card-body">
                     <h6 class="fw-semibold mb-1">Advanced: seed with per-row metrics</h6>
@@ -523,6 +546,12 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const form = document.getElementById('bulkDoneForm');
     if (!form) return;
 
+    form.querySelectorAll('.bulk-done-row__summary a').forEach(function (link) {
+        link.addEventListener('click', function (e) {
+            e.stopPropagation();
+        });
+    });
+
     const submitBtn = document.getElementById('bulkDoneSubmit');
     const hint = document.getElementById('bulkDoneHint');
     const noteWrap = document.getElementById('bulkRejectionNoteWrap');
@@ -535,6 +564,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
     const draftKey = @json('bulkDoneDraft:'.$bulkRequest->id.':'.auth()->id());
     const draftTtlMs = 24 * 60 * 60 * 1000;
     const countryLanguageMap = @json($countryLanguageMap ?? new \stdClass());
+    const qualityMinDa = parseInt(form.getAttribute('data-min-da') || '30', 10);
+    const qualityMinDr = parseInt(form.getAttribute('data-min-dr') || '30', 10);
+    const qualityMinTraffic = parseInt(form.getAttribute('data-min-traffic') || '10000', 10);
 
     function refreshBulkDoneLanguages(row, preferredLanguage) {
         const countryEl = row.querySelector('[data-bulk-country]');
@@ -715,6 +747,9 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             } else if (categoriesInput && data.categories !== undefined && data.categories !== null) {
                 // Keep hidden field in sync even if multi-select init failed.
                 categoriesInput.value = String(data.categories || '');
+            }
+            if (row && rowStarted(row)) {
+                row.open = true;
             }
         });
     }
@@ -1000,6 +1035,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             if (partial.length > 0) {
                 const firstPartial = rowFields(partial[0]).find((el) => !fieldFilled(el));
                 if (firstPartial) {
+                    expandBulkDoneRow(firstPartial);
                     firstPartial.focus();
                     firstPartial.classList.add('is-invalid');
                 }
@@ -1021,6 +1057,7 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             } else {
                 const firstEmpty = fields().find((el) => !fieldFilled(el));
                 if (firstEmpty) {
+                    expandBulkDoneRow(firstEmpty);
                     firstEmpty.focus();
                     firstEmpty.classList.add('is-invalid');
                 }
@@ -1077,7 +1114,29 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         });
     });
 
+    function focusFirstInvalidDoneField() {
+        const invalids = Array.from(form.querySelectorAll('.is-invalid'));
+        if (!invalids.length) return;
+        const focusable = invalids.find(function (el) {
+            return el.type !== 'hidden' && typeof el.focus === 'function';
+        });
+        const target = focusable || invalids[0];
+        expandBulkDoneRow(target);
+        if (target.type === 'hidden') {
+            const row = target.closest('[data-bulk-done-row]');
+            const ms = row && row.querySelector('.multi-select-input');
+            if (ms && typeof ms.focus === 'function') {
+                ms.focus();
+                return;
+            }
+        }
+        if (typeof target.focus === 'function') {
+            target.focus();
+        }
+    }
+
     syncDoneState();
+    focusFirstInvalidDoneField();
 })();
 
 document.querySelectorAll('form.bulk-request-cancel').forEach(function (form) {

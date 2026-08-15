@@ -355,19 +355,14 @@ Route::post('/email/verification-notification', function (Request $request) {
 Route::post('/email/resend', function (Request $request) {
 
     $request->validate([
-        'email' => 'required|email|exists:users,email',
+        'email' => 'required|email',
     ]);
 
     $user = User::where('email', $request->email)->first();
 
-    if ($user->hasVerifiedEmail()) {
-        return response()->json([
-            'status' => 'error',
-            'message' => 'Email already verified.',
-        ]);
+    if ($user && ! $user->hasVerifiedEmail()) {
+        $user->sendEmailVerificationNotification();
     }
-
-    $user->sendEmailVerificationNotification();
 
     return response()->json([
         'status' => 'success',
@@ -435,6 +430,10 @@ $registerStaffOpsRoutes = function () {
         ->name('sites.manual-metrics');
     Route::post('/site-enrichment/rerun-failed', [SiteEnrichmentController::class, 'rerunFailed'])
         ->name('site-enrichment.rerun-failed');
+    Route::post('/site-enrichment/queue-stale', [SiteEnrichmentController::class, 'queueStale'])
+        ->name('site-enrichment.queue-stale');
+    Route::post('/sites/{id}/allow-api-metrics', [SiteEnrichmentController::class, 'allowApiOverwrite'])
+        ->name('sites.allow-api-metrics');
 
     // Activate/deactivate: admin and marketing (shared Sites Management).
     Route::post('/sites/{id}/active', [AdminSiteController::class, 'toggleActive'])
@@ -549,6 +548,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/finance', [AdminFinanceController::class, 'index'])->name('finance');
         Route::get('/finance/export', [AdminFinanceController::class, 'export'])->name('finance.export');
         Route::get('/finance/ledger', [AdminFinanceController::class, 'ledger'])->name('finance.ledger');
+        Route::get('/finance/ledger/export', [AdminFinanceController::class, 'ledgerExport'])->name('finance.ledger.export');
         Route::get('/finance/users/{user}', [AdminFinanceController::class, 'user'])->name('finance.user');
         Route::post('/finance/wallets/{wallet}/clear-debt', [AdminFinanceController::class, 'clearDebt'])->name('finance.wallets.clear-debt');
 
@@ -624,6 +624,7 @@ Route::middleware(['auth', 'verified', RedirectMarketingFromAdmin::class, RoleMi
         Route::get('/content-library', [AdminContentLibraryController::class, 'index'])->name('content-library.index');
         Route::get('/content-library/{submission}', [AdminContentLibraryController::class, 'show'])->name('content-library.show');
         Route::get('/content-library/{submission}/preview', [AdminContentLibraryController::class, 'preview'])->name('content-library.preview');
+        Route::get('/content-library/{submission}/download', [AdminContentLibraryController::class, 'download'])->name('content-library.download');
 
         Route::get('/orders', [AdminOrderController::class, 'index'])->name('orders.index');
         Route::get('/orders/data', [AdminOrderController::class, 'data'])->name('orders.data');

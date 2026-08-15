@@ -14,10 +14,12 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Testing\TestResponse;
+use Tests\Support\CreatesContentSubmissions;
 use Tests\TestCase;
 
 class StripeFirstCheckoutInvariantsTest extends TestCase
 {
+    use CreatesContentSubmissions;
     use RefreshDatabase;
 
     private string $webhookSecret = 'whsec_test_stripe_first_invariants';

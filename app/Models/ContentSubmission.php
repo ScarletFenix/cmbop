@@ -39,6 +39,8 @@ class ContentSubmission extends Model
     /** The article carries no images at all. */
     public const IMAGE_RIGHTS_NONE = 'none';
 
+    public const UNAVAILABLE_MESSAGE = 'Content Library article is no longer available';
+
     /** The advertiser owns or created every image. */
     public const IMAGE_RIGHTS_OWN = 'own';
 
@@ -205,14 +207,41 @@ class ContentSubmission extends Model
     public function canBeOrdered(): bool
     {
         // Uniqueness/quality are advisory only (same as ArticleEvaluationService):
-        // approved + file + market + not in use is enough to place an order.
+        // approved + file + market + rights + not in use is enough to place an order.
         return $this->moderation_status === self::STATUS_APPROVED
             && $this->path
             && $this->order_id === null
             && ! $this->isArchived()
             && ($this->expires_at === null || $this->expires_at->isFuture())
             && filled($this->country)
-            && filled($this->language);
+            && filled($this->language)
+            && $this->imageRightsCoverContent();
+    }
+
+    /**
+     * True when another checkout already owns this article (direct order_id
+     * or a paid, non-cancelled placement). Callers must lock the row first.
+     */
+    public function isClaimedByAnotherOrder(?int $orderId = null): bool
+    {
+        if ($this->order_id !== null && ($orderId === null || (int) $this->order_id !== $orderId)) {
+            return true;
+        }
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return false;
+        }
+
+        return OrderItem::query()
+            ->where('content_submission_id', $this->id)
+            ->whereHas('order', function ($q) use ($orderId) {
+                $q->where('payment_status', 'paid')
+                    ->where('status', '!=', 'cancelled');
+                if ($orderId !== null) {
+                    $q->where('orders.id', '!=', $orderId);
+                }
+            })
+            ->exists();
     }
 
     /**
@@ -233,6 +262,15 @@ class ContentSubmission extends Model
             ->whereNotNull('language')->where('language', '!=', '')
             ->where(function ($q) {
                 $q->whereNull('expires_at')->orWhere('expires_at', '>', now());
+            })
+            ->where(function ($q) {
+                $q->where(function ($noImages) {
+                    $noImages->whereNull('preview_html')
+                        ->orWhere('preview_html', 'not like', '%<img%');
+                })->orWhereIn('image_rights', [
+                    self::IMAGE_RIGHTS_OWN,
+                    self::IMAGE_RIGHTS_LICENSED,
+                ]);
             });
 
         return $query;
@@ -498,6 +536,22 @@ class ContentSubmission extends Model
         $summary = trim(scalar_text($report['summary'] ?? ''));
 
         return $summary !== '' ? $summary : 'Fix issues and resubmit.';
+    }
+
+    /**
+     * Shown in Edit article when the user reopens a rejected or undeclared article.
+     */
+    public function editorNotice(): string
+    {
+        if ($this->needsCorrection()) {
+            return $this->evaluationSummary();
+        }
+
+        if ($this->hasImages() && ! $this->imageRightsCoverContent()) {
+            return 'This article contains images. Confirm you own them, or add the source URL or copyright details.';
+        }
+
+        return '';
     }
 
     /**
@@ -791,6 +845,76 @@ class ContentSubmission extends Model
             'order_id' => null,
             'order_item_id' => null,
         ])->save();
+    }
+
+    /**
+     * Free every library article tied to an order (direct order_id or line link)
+     * so it can be placed again after cancel / reject / refund.
+     */
+    public static function releaseAllForOrder(int $orderId): void
+    {
+        if ($orderId <= 0) {
+            return;
+        }
+
+        static::query()
+            ->where('order_id', $orderId)
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return;
+        }
+
+        $linkedIds = OrderItem::query()
+            ->where('order_id', $orderId)
+            ->whereNotNull('content_submission_id')
+            ->pluck('content_submission_id')
+            ->all();
+
+        if ($linkedIds === []) {
+            return;
+        }
+
+        static::query()
+            ->whereIn('id', $linkedIds)
+            ->whereNotNull('order_id')
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+    }
+
+    /**
+     * Free the library article on one placement (dispute clawback),
+     * without unlocking sibling lines on the same order.
+     */
+    public static function releaseAllForOrderItem(int $orderItemId): void
+    {
+        if ($orderItemId <= 0) {
+            return;
+        }
+
+        static::query()
+            ->where('order_item_id', $orderItemId)
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
+
+        if (! Schema::hasColumn('order_items', 'content_submission_id')) {
+            return;
+        }
+
+        $linkedId = OrderItem::query()
+            ->whereKey($orderItemId)
+            ->value('content_submission_id');
+
+        if (! $linkedId) {
+            return;
+        }
+
+        static::query()
+            ->whereKey((int) $linkedId)
+            ->whereNotNull('order_id')
+            ->get()
+            ->each(fn (self $submission) => $submission->releaseFromOrder());
     }
 
     public function hasLink(): bool

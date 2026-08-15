@@ -5,7 +5,10 @@ namespace Tests\Feature;
 use App\Models\BulkSiteRequest;
 use App\Models\BulkSiteRequestItem;
 use App\Models\Category;
+use App\Models\Country;
+use App\Models\Language;
 use App\Models\Role;
+use App\Models\Site;
 use App\Models\User;
 use Database\Seeders\CategoriesTableSeeder;
 use Database\Seeders\CountriesTableSeeder;
@@ -70,6 +73,7 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
             ->assertSee('data-bulk-reject-row', false)
             ->assertSee('name="rejection_note"', false)
             ->assertSee('bulk-done-table-wrap', false)
+            ->assertSee('data-bulk-done-row', false)
             ->assertSee('bulkDoneDraft:'.$bulk->id.':'.$this->marketer->id, false)
             ->assertSee('sessionStorage', false)
             ->assertSee('restoreDraftIfNeeded', false)
@@ -78,17 +82,42 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $this->assertStringContainsString('Select niches', $html);
         $this->assertStringContainsString('bulk-done-niches-cell', $html);
+        $this->assertStringContainsString('bulk-done-row__summary', $html);
+        $this->assertStringContainsString('bulk-done-row__body', $html);
+        $this->assertStringContainsString('data-bulk-clear-row', $html);
+        $this->assertStringContainsString('data-bulk-copy-above', $html);
+        $this->assertStringContainsString('data-bulk-done-chip', $html);
+        $this->assertStringContainsString('function expandBulkDoneRow', $html);
+        $this->assertStringContainsString('function clearBulkDoneRow', $html);
+        $this->assertStringContainsString('function copyBulkDoneRowFromAbove', $html);
+        $this->assertStringContainsString('function updateBulkDoneChip', $html);
+        $this->assertStringContainsString('function refreshBulkDoneQuality', $html);
+        $this->assertStringContainsString('function focusFirstInvalidDoneField', $html);
+        $this->assertStringContainsString('row.open = true', $html);
+        $this->assertStringContainsString('[data-bulk-clear-row]', $html);
+        $this->assertStringContainsString('[data-bulk-copy-above]', $html);
+        $this->assertStringContainsString('data-bulk-quality-warn', $html);
+        $this->assertStringContainsString('data-bulk-quality-chip', $html);
+        $this->assertStringContainsString('data-min-da="'.Site::GOOD_MIN_DA.'"', $html);
+        $this->assertStringContainsString('data-min-dr="'.Site::GOOD_MIN_DR.'"', $html);
+        $this->assertStringContainsString('data-min-traffic="'.Site::GOOD_MIN_TRAFFIC.'"', $html);
+        $this->assertStringContainsString('Done below this is allowed', $html);
+        $this->assertStringContainsString('You can still Done this row', $html);
         $this->assertStringContainsString('No categories found', $html);
         $this->assertStringContainsString('Type to search niches', $html);
         $this->assertStringContainsString("emptyId: 'categoryEmpty-", $html);
         $this->assertStringNotContainsString('table-responsive mb-3', $html);
 
-        // The fixed grid layout now lives in the shared stylesheet, not inline.
         $this->assertStringContainsString('staff-sites.css', $html);
-        $this->assertStringContainsString('bulk-done-grid', $html);
+        $this->assertStringContainsString('bulk-done-list', $html);
         $staffCss = file_get_contents(public_path('assets/css/staff-sites.css'));
-        $this->assertStringContainsString('.bulk-done-grid', $staffCss);
-        $this->assertStringContainsString('table-layout: fixed', $staffCss);
+        $this->assertStringContainsString('.bulk-done-panel', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__fields', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-empty', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-partial', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-ready', $staffCss);
+        $this->assertStringContainsString('.bulk-done-row__chip.is-below-bar', $staffCss);
+        $this->assertStringNotContainsString('table-layout: fixed', $staffCss);
 
         $js = file_get_contents(public_path('js/multi-select.js'));
         $this->assertStringContainsString('multi-select-dropdown--fixed', $js);
@@ -136,5 +165,183 @@ class BulkDoneDraftAndNicheUiTest extends TestCase
 
         $appShell = file_get_contents(public_path('assets/css/app-shell.css'));
         $this->assertStringContainsString('max-width: var(--shell-sidebar-collapsed)', $appShell);
+    }
+
+    public function test_done_row_error_prefix_does_not_open_sibling_item_ids(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 3,
+        ]);
+
+        $this->insertDoneItem($bulk->id, 1, 'https://first.example', 'first.example', 40);
+        $this->insertDoneItem($bulk->id, 2, 'https://prefix.example', 'prefix.example', 50);
+        $this->insertDoneItem($bulk->id, 21, 'https://long.example', 'long.example', 60);
+
+        $html = $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->followingRedirects()
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    21 => [
+                        'da' => 10,
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->assertSee('Finish the boxes first.', false)
+            ->getContent();
+
+        $this->assertFalse(
+            $this->doneRowIsOpen($html, 'prefix.example'),
+            'items.21.country must not mark item 2 as having errors'
+        );
+        $this->assertTrue(
+            $this->doneRowIsOpen($html, 'long.example'),
+            'The row that actually has errors should stay expanded'
+        );
+
+        $blade = file_get_contents(resource_path('views/admin/bulk-site-requests/show.blade.php'));
+        $this->assertStringContainsString('$itemErrorPrefix = \'items.\'.$item->id.\'.\'', $blade);
+        $this->assertStringNotContainsString(
+            "str_starts_with((string) \$key, 'items.'.\$item->id)",
+            $blade
+        );
+    }
+
+    public function test_first_empty_done_row_opens_when_an_earlier_row_already_has_input(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 3,
+        ]);
+
+        $this->insertDoneItem($bulk->id, 1, 'https://filled.example', 'filled.example', 40);
+        $this->insertDoneItem($bulk->id, 2, 'https://empty-first.example', 'empty-first.example', 50);
+        $this->insertDoneItem($bulk->id, 3, 'https://empty-later.example', 'empty-later.example', 60);
+
+        [$country, $language] = $this->marketplaceCodes();
+        $category = Category::query()->firstOrFail();
+
+        $html = $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->followingRedirects()
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    1 => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 150,
+                        'dr' => 35,
+                        'traffic' => 15000,
+                        'categories' => $category->name,
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->assertSee('Finish the boxes first.', false)
+            ->getContent();
+
+        $this->assertTrue($this->doneRowIsOpen($html, 'filled.example'));
+        $this->assertTrue(
+            $this->doneRowIsOpen($html, 'empty-first.example'),
+            'The first empty row should open so the marketer can keep filling'
+        );
+        $this->assertFalse(
+            $this->doneRowIsOpen($html, 'empty-later.example'),
+            'Later empty rows stay collapsed'
+        );
+        $this->assertStringContainsString('function focusFirstInvalidDoneField', $html);
+    }
+
+    public function test_quality_hint_warns_below_the_bar_without_blocking_done(): void
+    {
+        $bulk = BulkSiteRequest::create([
+            'publisher_id' => $this->publisher->id,
+            'status' => BulkSiteRequest::STATUS_REQUESTED,
+            'estimated_count' => 1,
+        ]);
+        $this->insertDoneItem($bulk->id, 11, 'https://below-bar.example', 'below-bar.example', 55);
+
+        [$country, $language] = $this->marketplaceCodes();
+
+        $html = $this->actingAs($this->marketer)
+            ->from(route('marketing.bulk-site-requests.show', $bulk))
+            ->followingRedirects()
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'items' => [
+                    11 => [
+                        'language' => $language,
+                        'country' => $country,
+                        'da' => 10,
+                        'dr' => 12,
+                        'traffic' => 100,
+                    ],
+                ],
+            ])
+            ->assertOk()
+            ->assertSee('Finish the boxes first.', false)
+            ->getContent();
+
+        $this->assertTrue($this->doneRowIsOpen($html, 'below-bar.example'));
+        $row = $this->doneRowHtml($html, 'below-bar.example');
+        $this->assertStringContainsString('data-bulk-quality-warn', $row);
+        $this->assertStringContainsString('You can still Done this row', $row);
+        $this->assertStringContainsString('>Below bar<', $row);
+        $this->assertStringNotContainsString('mb-0 d-none', $row);
+        $this->assertStringNotContainsString('is-below-bar d-none', $row);
+
+        $controller = file_get_contents(app_path('Http/Controllers/Admin/BulkSiteRequestController.php'));
+        $this->assertStringNotContainsString('GOOD_MIN_DA', $controller);
+        $this->assertStringNotContainsString('hasGoodMetrics', $controller);
+    }
+
+    private function marketplaceCodes(): array
+    {
+        $country = Country::marketplace()->where('code', 'de')->first()
+            ?? Country::marketplace()->firstOrFail();
+        $language = Language::marketplace()->where('code', 'de')->first()
+            ?? Language::marketplace()->firstOrFail();
+
+        return [strtolower((string) $country->code), strtolower((string) $language->code)];
+    }
+
+    private function insertDoneItem(int $bulkId, int $id, string $url, string $domain, float $price): void
+    {
+        $item = new BulkSiteRequestItem([
+            'bulk_site_request_id' => $bulkId,
+            'site_url' => $url,
+            'domain' => $domain,
+            'price' => $price,
+        ]);
+        $item->id = $id;
+        $item->save();
+    }
+
+    private function doneRowHtml(string $html, string $domain): string
+    {
+        preg_match_all(
+            '/<details class="bulk-done-row" data-bulk-done-row([^>]*)>(.*?)<\/details>/s',
+            $html,
+            $matches,
+            PREG_SET_ORDER
+        );
+
+        foreach ($matches as $match) {
+            if (str_contains($match[2], $domain)) {
+                return $match[0];
+            }
+        }
+
+        $this->fail('Done row for '.$domain.' was not rendered');
+    }
+
+    private function doneRowIsOpen(string $html, string $domain): bool
+    {
+        $row = $this->doneRowHtml($html, $domain);
+
+        return (bool) preg_match('/<details class="bulk-done-row" data-bulk-done-row[^>]*\sopen(?:\s|>|$)/', $row);
     }
 }

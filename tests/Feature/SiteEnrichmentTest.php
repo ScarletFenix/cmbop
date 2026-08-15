@@ -6,12 +6,18 @@ use App\Jobs\EnrichSiteJob;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\SiteEnrichment\CountryDetectionService;
 use App\Services\SiteEnrichment\ImageOptimizationService;
+use App\Services\SiteEnrichment\Providers\SemrushMetricsProvider;
 use App\Services\SiteEnrichment\ScreenshotCaptureService;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use Database\Seeders\CategoriesTableSeeder;
+use Database\Seeders\CountriesTableSeeder;
+use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Http\Client\Request;
 use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Http;
@@ -272,7 +278,283 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame(50, $snapshot->domainAuthority);
         $this->assertSame(9000, $snapshot->monthlyOrganicTraffic);
         $this->assertSame(['manual'], $result['providers_used']);
+        $this->assertSame('manual', $snapshot->provider);
         $this->assertSame([], $result['errors']);
+
+        $run = app(SiteEnrichmentService::class)->refreshMetrics($site, 'test');
+        $this->assertSame('manual', $run->provider);
+        $this->assertSame('manual', $site->fresh()->metrics_provider);
+    }
+
+    public function test_metrics_manual_lock_skips_configured_api_providers(): void
+    {
+        Http::fake();
+        config([
+            'site_enrichment.default_provider' => 'ahrefs',
+            'site_enrichment.fallback_providers' => ['manual'],
+            'site_enrichment.providers.ahrefs.api_token' => 'tok',
+        ]);
+
+        $site = $this->makeSite(['metrics_manual' => true, 'dr' => 33, 'da' => 31, 'traffic' => 800]);
+        $result = app(SiteMetricsAggregator::class)->fetch($site);
+
+        Http::assertNothingSent();
+        $this->assertSame(['manual'], $result['providers_used']);
+        $this->assertSame('manual', $result['snapshot']->provider);
+        $this->assertSame(33, $result['snapshot']->domainRating);
+    }
+
+    public function test_aggregator_provider_is_who_filled_the_fields(): void
+    {
+        config([
+            'site_enrichment.default_provider' => 'ahrefs',
+            'site_enrichment.fallback_providers' => ['moz', 'manual'],
+            'site_enrichment.providers.ahrefs.api_token' => 'ahrefs-tok',
+            'site_enrichment.providers.moz.access_token' => 'moz-tok',
+        ]);
+        Http::fake([
+            'api.ahrefs.com/*' => Http::response([
+                'domain_rating' => 61,
+                'org_traffic' => 4400,
+            ], 200),
+            'lsapi.seomoz.com/*' => Http::response([
+                'results' => [['domain_authority' => 48]],
+            ], 200),
+        ]);
+
+        $site = $this->makeSite(['dr' => 10, 'da' => 11, 'traffic' => 12, 'metrics_manual' => false]);
+        $result = app(SiteMetricsAggregator::class)->fetch($site);
+
+        $this->assertSame('ahrefs,moz', $result['snapshot']->provider);
+        $this->assertSame(61, $result['snapshot']->domainRating);
+        $this->assertSame(48, $result['snapshot']->domainAuthority);
+        $this->assertSame(4400, $result['snapshot']->monthlyOrganicTraffic);
+        $this->assertSame(['ahrefs', 'moz'], $result['providers_used']);
+    }
+
+    public function test_failed_api_refresh_is_partial_when_existing_metrics_remain(): void
+    {
+        config([
+            'site_enrichment.default_provider' => 'ahrefs',
+            'site_enrichment.fallback_providers' => ['manual'],
+            'site_enrichment.providers.ahrefs.api_token' => 'tok',
+        ]);
+        Http::fake([
+            'api.ahrefs.com/*' => Http::response('nope', 500),
+        ]);
+
+        $site = $this->makeSite(['dr' => 55, 'da' => 50, 'traffic' => 9000, 'metrics_manual' => false]);
+        $run = app(SiteEnrichmentService::class)->refreshMetrics($site, 'test');
+        $site->refresh();
+
+        $this->assertSame('partial', $run->status);
+        $this->assertSame('partial', $site->enrichment_status);
+        $this->assertSame(55, $site->dr);
+        $this->assertNotEmpty($run->error);
+    }
+
+    public function test_semrush_uses_country_database_and_defaults_unknown_to_us(): void
+    {
+        $this->assertSame('de', SemrushMetricsProvider::databaseForCountry('de'));
+        $this->assertSame('uk', SemrushMetricsProvider::databaseForCountry('gb'));
+        $this->assertSame('us', SemrushMetricsProvider::databaseForCountry(null));
+        $this->assertSame('us', SemrushMetricsProvider::databaseForCountry('zz'));
+        $fromCountries = $this->makeSite([
+            'country' => '',
+            'countries' => ['de'],
+            'domain' => 'from-countries.example',
+            'site_url' => 'https://from-countries.example',
+        ]);
+        $this->assertSame('de', SemrushMetricsProvider::databaseForSite($fromCountries));
+        $blankCountries = $this->makeSite([
+            'country' => '',
+            'countries' => ['', '  '],
+            'domain' => 'blank-countries.example',
+            'site_url' => 'https://blank-countries.example',
+        ]);
+        $this->assertSame('us', SemrushMetricsProvider::databaseForSite($blankCountries));
+
+        config([
+            'site_enrichment.providers.semrush.api_key' => 'semrush-key',
+            'site_enrichment.providers.semrush.base_url' => 'https://api.semrush.com',
+        ]);
+        Http::fake([
+            'api.semrush.com/*' => Http::response("Dn;Rk;Or;Ot\nnews.de;1;2;8800", 200),
+        ]);
+
+        $site = $this->makeSite([
+            'domain' => 'news.de',
+            'site_url' => 'https://news.de',
+            'country' => 'de',
+        ]);
+        $snapshot = app(SemrushMetricsProvider::class)->fetch($site);
+
+        $this->assertTrue($snapshot->success);
+        $this->assertSame(8800, $snapshot->monthlyOrganicTraffic);
+        Http::assertSent(function ($request) {
+            return str_contains($request->url(), 'api.semrush.com')
+                && $request['database'] === 'de'
+                && $request['domain'] === 'news.de';
+        });
+    }
+
+    public function test_com_gtld_does_not_guess_united_states(): void
+    {
+        $detector = app(CountryDetectionService::class);
+
+        $this->assertNull($detector->fromTld('example.com'));
+        $this->assertNull($detector->fromTld('https://www.example.net/path'));
+        $this->assertSame('de', $detector->fromTld('news.de'));
+        $this->assertSame('gb', $detector->fromTld('news.co.uk'));
+
+        // Callback by host: sequential Http::fake() merges and the first '*' wins.
+        Http::fake(function (Request $request) {
+            return match (parse_url($request->url(), PHP_URL_HOST)) {
+                'example.com' => Http::response('<html><body>no lang</body></html>', 200),
+                'english-com.example.com' => Http::response('<html lang="en"><body>English .com</body></html>', 200),
+                'british-com.example.com' => Http::response('<html lang="en-GB"><body>UK English</body></html>', 200),
+                'portugal-com.example.com' => Http::response('<html lang="pt-PT"><body>Portugal</body></html>', 200),
+                default => Http::response('not stubbed', 404),
+            };
+        });
+
+        $site = $this->makeSite([
+            'domain' => 'example.com',
+            'site_url' => 'https://example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($site);
+        $site->refresh();
+
+        $this->assertTrue(blank($site->country));
+        $this->assertTrue(empty($site->countries));
+
+        $english = $this->makeSite([
+            'site_name' => 'English Com',
+            'domain' => 'english-com.example.com',
+            'site_url' => 'https://english-com.example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($english);
+        $english->refresh();
+        $this->assertTrue(blank($english->country), 'lang=en must not stamp United States');
+
+        $british = $this->makeSite([
+            'site_name' => 'British Com',
+            'domain' => 'british-com.example.com',
+            'site_url' => 'https://british-com.example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($british);
+        $british->refresh();
+        $this->assertSame('gb', $british->country);
+
+        $portugal = $this->makeSite([
+            'site_name' => 'Portugal Com',
+            'domain' => 'portugal-com.example.com',
+            'site_url' => 'https://portugal-com.example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($portugal);
+        $portugal->refresh();
+        $this->assertSame('pt', $portugal->country);
+    }
+
+    public function test_country_detection_does_not_overwrite_existing_country(): void
+    {
+        $site = $this->makeSite([
+            'domain' => 'example.com',
+            'country' => 'de',
+            'countries' => ['de'],
+        ]);
+
+        app(CountryDetectionService::class)->detectAndApply($site);
+        $site->refresh();
+
+        $this->assertSame('de', $site->country);
+    }
+
+    public function test_blank_countries_values_do_not_skip_tld_detection(): void
+    {
+        $site = $this->makeSite([
+            'domain' => 'news.de',
+            'site_url' => 'https://news.de',
+            'country' => '',
+            'countries' => ['', '  '],
+        ]);
+
+        app(CountryDetectionService::class)->detectAndApply($site);
+        $site->refresh();
+
+        $this->assertSame('de', $site->country);
+        $this->assertSame(['de'], $site->countries);
+    }
+
+    public function test_allow_api_overwrite_clears_manual_lock_without_queueing(): void
+    {
+        Queue::fake();
+        $this->seed(RolesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $site = $this->makeSite(['metrics_manual' => true, 'dr' => 40, 'da' => 41, 'traffic' => 900]);
+
+        $this->actingAs($admin)
+            ->postJson(route('admin.sites.allow-api-metrics', $site->id))
+            ->assertOk()
+            ->assertJsonPath('success', true);
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->metrics_manual);
+        $this->assertSame(40, $site->dr);
+        Queue::assertNothingPushed();
+    }
+
+    public function test_site_edit_unlock_is_not_nested_inside_the_update_form(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $this->seed(CountriesTableSeeder::class);
+        $this->seed(LanguagesTableSeeder::class);
+        $this->seed(CategoriesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $site = $this->makeSite(['metrics_manual' => true, 'dr' => 40, 'da' => 41, 'traffic' => 900]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('id="allow-api-overwrite-form"', false)
+            ->assertSee('form="allow-api-overwrite-form"', false)
+            ->assertSee('Allow API overwrite', false)
+            ->getContent();
+
+        $unlockPos = strpos($html, 'id="allow-api-overwrite-form"');
+        $updatePos = strpos($html, 'enctype="multipart/form-data"');
+        $this->assertNotFalse($unlockPos);
+        $this->assertNotFalse($updatePos);
+        $this->assertLessThan($updatePos, $unlockPos, 'Unlock form must sit outside the update form');
+
+        $this->actingAs($admin)
+            ->from(route('admin.sites.edit', $site->id))
+            ->post(route('admin.sites.allow-api-metrics', $site->id))
+            ->assertRedirect();
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->metrics_manual);
+        $this->assertSame(40, $site->dr);
     }
 
     public function test_refresh_screenshot_endpoint_reports_placeholder_as_failure(): void

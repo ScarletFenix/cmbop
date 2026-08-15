@@ -123,6 +123,11 @@ class WalletStripeDepositService
             ? $session->payment_intent
             : (string) ($session->payment_intent->id ?? ($session->payment_intent ?? ''));
 
+        $paymentStatus = $session->payment_status ?? null;
+        if ($paymentStatus !== 'paid') {
+            throw new \RuntimeException('wallet_deposit session not paid: '.($paymentStatus ?? 'missing'));
+        }
+
         // Never wallet-credit order / feature Checkout Sessions that land on Add Funds success.
         if (! $this->isWalletDepositType($type, $depositId)) {
             Log::warning('WalletStripeDepositService: refusing non-wallet Checkout Session', [
@@ -260,6 +265,11 @@ class WalletStripeDepositService
      */
     public function creditFromPaymentIntentObject(object $intent): float
     {
+        $intentStatus = $intent->status ?? null;
+        if ($intentStatus !== 'succeeded') {
+            throw new \RuntimeException('wallet_deposit PaymentIntent not succeeded: '.($intentStatus ?? 'missing'));
+        }
+
         $metadata = $this->metaArray($intent->metadata ?? null);
         $type = isset($metadata['type']) ? (string) $metadata['type'] : null;
         if (! $this->isWalletDepositType($type, $metadata['deposit_id'] ?? null)) {

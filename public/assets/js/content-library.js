@@ -246,6 +246,128 @@ function librarySizeAwareUploadMessage(fileBytes, serverMessage) {
 
 const LIBRARY_UPLOAD_CHUNK_BYTES = 512 * 1024;
 const LIBRARY_UPLOAD_PART_NAME = 'article.docx';
+const LIBRARY_IMAGE_MAX_BYTES = 5120 * 1024;
+const LIBRARY_IMAGE_MAX_PER_ARTICLE = 10;
+
+function libraryImageTooLargeMessage(file) {
+    if (file && file.size > LIBRARY_IMAGE_MAX_BYTES) {
+        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
+    }
+    return '';
+}
+
+function libraryTooManyImagesMessage() {
+    return 'This article can have up to 10 images. Remove one before adding another.';
+}
+
+function editorImageCount() {
+    return articleQuill ? articleQuill.root.querySelectorAll('img').length : 0;
+}
+
+function updateEditorImageCount() {
+    const el = document.getElementById('articleEditorImageCount');
+    if (!el) {
+        return;
+    }
+    const n = editorImageCount();
+    el.textContent = n + ' / ' + LIBRARY_IMAGE_MAX_PER_ARTICLE + ' images';
+    el.hidden = false;
+    el.classList.toggle('is-over', n > LIBRARY_IMAGE_MAX_PER_ARTICLE);
+}
+
+function librarySizeAwareImageMessage(fileBytes, serverMessage) {
+    const bytes = Number(fileBytes) || 0;
+    const text = String(serverMessage || '').trim();
+    if (bytes > LIBRARY_IMAGE_MAX_BYTES) {
+        return 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.';
+    }
+    if (text && !/under 5 MB/i.test(text) && !/greater than 5120/i.test(text)) {
+        return text;
+    }
+    return 'The image could not be uploaded. Please try again.';
+}
+
+async function uploadEditorImageFile(file) {
+    const feedback = document.getElementById('articleEditorFeedback');
+    if (!file || !articleQuill) return;
+    if (editorImageCount() >= LIBRARY_IMAGE_MAX_PER_ARTICLE) {
+        setFeedbackHtml(feedback, false, libraryTooManyImagesMessage());
+        return;
+    }
+    const tooLarge = libraryImageTooLargeMessage(file);
+    if (tooLarge) {
+        setFeedbackHtml(feedback, false, tooLarge);
+        return;
+    }
+    if (feedback) feedback.textContent = 'Uploading image…';
+    const fd = new FormData();
+    fd.append('image', file);
+    fd.append('content_submission_id', String(articleEditorSubmissionId || ''));
+    fd.append('current_image_count', String(editorImageCount()));
+    try {
+        const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
+            method: 'POST',
+            headers: libraryClientByteHeaders(file.size),
+            body: fd,
+        });
+        const data = await parseLibraryJson(res);
+        if (res.status === 419) {
+            setFeedbackHtml(feedback, false, 'Your session expired. Refresh the page and try again.');
+            return;
+        }
+        if (!data || !res.ok || !data.success || !data.url) {
+            const fallback = (res.status === 413 || res.status === 422)
+                ? librarySizeAwareImageMessage(file.size)
+                : 'Image upload failed';
+            setFeedbackHtml(feedback, false, librarySizeAwareImageMessage(
+                file.size,
+                firstErrorMessage(data, fallback)
+            ));
+            return;
+        }
+        const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
+        articleQuill.insertEmbed(range.index, 'image', data.url, 'user');
+        articleQuill.setSelection(range.index + 1);
+        updateEditorImageCount();
+        setFeedbackHtml(feedback, true, 'Image added. Select it and press Backspace, or use Remove.');
+    } catch (e) {
+        setFeedbackHtml(feedback, false, 'Network error while uploading image.');
+    }
+}
+
+function bindEditorImagePasteAndDrop() {
+    if (!articleQuill || !articleQuill.root || articleQuill.root.dataset.libraryImageIngest === '1') {
+        return;
+    }
+    articleQuill.root.dataset.libraryImageIngest = '1';
+    articleQuill.root.addEventListener('paste', function (e) {
+        const items = e.clipboardData && e.clipboardData.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].kind === 'file' && String(items[i].type || '').indexOf('image/') === 0) {
+                e.preventDefault();
+                e.stopPropagation();
+                uploadEditorImageFile(items[i].getAsFile());
+                return;
+            }
+        }
+    }, true);
+    articleQuill.root.addEventListener('drop', function (e) {
+        const files = e.dataTransfer && e.dataTransfer.files;
+        if (!files || !files.length) return;
+        let image = null;
+        for (let i = 0; i < files.length; i++) {
+            if (String(files[i].type || '').indexOf('image/') === 0) {
+                image = files[i];
+                break;
+            }
+        }
+        if (!image) return;
+        e.preventDefault();
+        e.stopPropagation();
+        uploadEditorImageFile(image);
+    }, true);
+}
 
 function libraryUploadFields(form) {
     const fd = new FormData();
@@ -990,6 +1112,7 @@ function loadArticleHtml(html) {
     hideImageRemoveOverlay();
     bindBrokenEditorImages();
     silenceArticleQuillSelectionScroll();
+    updateEditorImageCount();
 }
 
 function bindEditorImageChrome() {
@@ -1016,6 +1139,10 @@ function bindEditorImageChrome() {
         e.preventDefault();
         articleQuill.deleteText(imageIndex, 1, 'user');
         hideImageRemoveOverlay();
+    });
+
+    articleQuill.on('text-change', function () {
+        updateEditorImageCount();
     });
 
     articleQuill.on('selection-change', function (range) {
@@ -1370,40 +1497,11 @@ function ensureArticleQuill() {
         input.setAttribute('type', 'file');
         input.setAttribute('accept', 'image/png,image/jpeg,image/gif,image/webp');
         input.click();
-        input.onchange = async function () {
-            const file = input.files && input.files[0];
-            if (!file) return;
-            const feedback = document.getElementById('articleEditorFeedback');
-            feedback.textContent = 'Uploading image…';
-            const fd = new FormData();
-            fd.append('image', file);
-            try {
-                const res = await fetch(libraryUrlWithClientBytes(libraryImageUploadUrl, file.size), {
-                    method: 'POST',
-                    headers: libraryClientByteHeaders(file.size),
-                    body: fd,
-                });
-                const data = await parseLibraryJson(res);
-                if (res.status === 419) {
-                    setFeedbackHtml(feedback, false, 'Your session expired. Refresh the page and try again.');
-                    return;
-                }
-                if (!data || !res.ok || !data.success || !data.url) {
-                    const fallback = (res.status === 413 || res.status === 422)
-                        ? 'The image could not be uploaded. Use a JPG, PNG, GIF, or WebP under 5 MB and try again.'
-                        : 'Image upload failed';
-                    setFeedbackHtml(feedback, false, firstErrorMessage(data, fallback));
-                    return;
-                }
-                const range = articleQuill.getSelection(true) || { index: articleQuill.getLength() };
-                articleQuill.insertEmbed(range.index, 'image', data.url, 'user');
-                articleQuill.setSelection(range.index + 1);
-                setFeedbackHtml(feedback, true, 'Image added. Select it and press Backspace, or use Remove.');
-            } catch (e) {
-                setFeedbackHtml(feedback, false, 'Network error while uploading image.');
-            }
+        input.onchange = function () {
+            uploadEditorImageFile(input.files && input.files[0]);
         };
     });
+    bindEditorImagePasteAndDrop();
 
     applyArticleEditorScrollport();
     bindEditorImageChrome();
@@ -1533,6 +1631,10 @@ async function saveArticleEditor() {
     const feedback = document.getElementById('articleEditorFeedback');
     const btn = document.getElementById('articleEditorSaveBtn');
     const html = articleQuill.root.innerHTML;
+    if (editorImageCount() > LIBRARY_IMAGE_MAX_PER_ARTICLE) {
+        setFeedbackHtml(feedback, false, libraryTooManyImagesMessage());
+        return;
+    }
     const title = (document.getElementById('articleEditorTitle').value || '').trim();
     const wrap = document.getElementById('articleEditorImageRights');
     if (wrap && !wrap.classList.contains('d-none') && window.readImageRights) {

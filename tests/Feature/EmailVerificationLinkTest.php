@@ -256,6 +256,45 @@ class EmailVerificationLinkTest extends TestCase
         $this->assertTrue(function_exists('role_home_path'));
     }
 
+    public function test_verification_resend_does_not_reveal_whether_email_exists(): void
+    {
+        Notification::fake();
+
+        $unknown = $this->postJson(route('verification.resend'), [
+            'email' => 'nobody-here@example.com',
+        ]);
+        $unknown->assertOk()->assertJson([
+            'status' => 'success',
+            'message' => 'Verification email resent successfully.',
+        ]);
+
+        $verified = User::factory()->create([
+            'email' => 'already-verified@example.com',
+            'email_verified_at' => now(),
+        ]);
+        $this->postJson(route('verification.resend'), [
+            'email' => $verified->email,
+        ])->assertOk()->assertJson([
+            'status' => 'success',
+            'message' => 'Verification email resent successfully.',
+        ]);
+
+        Notification::assertNothingSent();
+
+        $unverified = User::factory()->create([
+            'email' => 'still-unverified@example.com',
+            'email_verified_at' => null,
+        ]);
+        $this->postJson(route('verification.resend'), [
+            'email' => $unverified->email,
+        ])->assertOk()->assertJson([
+            'status' => 'success',
+            'message' => 'Verification email resent successfully.',
+        ]);
+
+        Notification::assertSentTo($unverified, VerifyEmail::class);
+    }
+
     public function test_send_email_verification_notification_does_not_throw(): void
     {
         Notification::fake();

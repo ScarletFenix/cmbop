@@ -15,7 +15,7 @@
     $inputId = $id ?: $name.'SearchInput';
     $clearId = $inputId.'Clear';
     $statusId = $inputId.'Status';
-    $value = (string) $value;
+    $value = is_scalar($value) ? (string) $value : '';
 @endphp
 
 @if($showLabel)

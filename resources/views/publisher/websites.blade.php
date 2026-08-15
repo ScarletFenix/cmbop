@@ -721,8 +721,8 @@
 
     {{-- Guided bulk: publisher submits URL + price only (marketing fills metrics) --}}
     <div class="modal fade" id="bulkRequestModal" tabindex="-1" aria-hidden="true">
-        <div class="modal-dialog modal-lg modal-dialog-scrollable">
-            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm">
+        <div class="modal-dialog modal-xl modal-dialog-scrollable">
+            <form method="POST" action="{{ route('publisher.bulk-sites.request') }}" class="modal-content" id="bulkRequestForm" novalidate>
                 @csrf
                 <div class="modal-header">
                     <h5 class="modal-title">Add many websites</h5>
@@ -782,45 +782,76 @@
                         </button>
                     </div>
 
-                    <div class="table-responsive mb-3">
-                        <table class="table table-sm align-middle mb-0" id="bulkUrlPriceTable">
-                            <thead>
-                                <tr>
-                                    <th style="min-width:14rem;">Website URL</th>
-                                    <th style="width:8.5rem;">Price (€)</th>
-                                    <th style="width:2.5rem;"></th>
-                                </tr>
-                            </thead>
-                            <tbody id="bulkUrlPriceBody">
+                    <div class="bulk-url-price-list mb-3" id="bulkUrlPriceTable">
+                        <div id="bulkUrlPriceBody">
+                            @php
+                                $oldSites = old('sites');
+                                if (!is_array($oldSites) || count($oldSites) < 2) {
+                                    $oldSites = [['url' => '', 'price' => ''], ['url' => '', 'price' => '']];
+                                }
+                                $openedFirstEmpty = false;
+                            @endphp
+                            @foreach($oldSites as $i => $row)
                                 @php
-                                    $oldSites = old('sites');
-                                    if (!is_array($oldSites) || count($oldSites) < 2) {
-                                        $oldSites = [['url' => '', 'price' => ''], ['url' => '', 'price' => '']];
+                                    $oldUrl = old_text('sites.'.$i.'.url');
+                                    $oldPrice = old_text('sites.'.$i.'.price');
+                                    $filledCount = (trim($oldUrl) !== '' ? 1 : 0) + (trim($oldPrice) !== '' ? 1 : 0);
+                                    $rowHasErrors = $errors->has('sites.'.$i.'.url') || $errors->has('sites.'.$i.'.price');
+                                    $openAsFirstEmpty = $filledCount === 0 && ! $rowHasErrors && ! $openedFirstEmpty;
+                                    $rowOpen = $rowHasErrors || $filledCount > 0 || $openAsFirstEmpty;
+                                    if ($openAsFirstEmpty) {
+                                        $openedFirstEmpty = true;
                                     }
+                                    $chipLabel = $filledCount === 0
+                                        ? 'Empty'
+                                        : ($filledCount === 2 ? 'Ready' : '1/2 filled');
+                                    $chipClass = $filledCount === 0
+                                        ? 'is-empty'
+                                        : ($filledCount === 2 ? 'is-ready' : 'is-partial');
+                                    $summaryUrl = trim($oldUrl) !== '' ? $oldUrl : 'Website URL';
+                                    $summaryPrice = trim($oldPrice) !== '' ? '€'.$oldPrice : 'No price';
                                 @endphp
-                                @foreach($oldSites as $i => $row)
-                                    <tr class="bulk-url-price-row">
-                                        <td>
-                                            <input type="url" name="sites[{{ $i }}][url]"
-                                                   class="form-control form-control-sm @error('sites.'.$i.'.url') is-invalid @enderror"
-                                                   placeholder="https://example.com"
-                                                   value="{{ old_text('sites.'.$i.'.url') }}" required>
-                                            @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                                        </td>
-                                        <td>
-                                            <input type="number" name="sites[{{ $i }}][price]" step="0.01" min="0"
-                                                   class="form-control form-control-sm @error('sites.'.$i.'.price') is-invalid @enderror"
-                                                   placeholder="99"
-                                                   value="{{ old_text('sites.'.$i.'.price') }}" required>
-                                            @error('sites.'.$i.'.price')<div class="invalid-feedback">{{ $message }}</div>@enderror
-                                        </td>
-                                        <td class="text-end">
-                                            <button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">&times;</button>
-                                        </td>
-                                    </tr>
-                                @endforeach
-                            </tbody>
-                        </table>
+                                <details class="bulk-url-price-row" @if($rowOpen) open @endif>
+                                    <summary class="bulk-url-price-row__summary">
+                                        <span class="bulk-url-price-row__identity">
+                                            <span class="fw-semibold text-break" data-bulk-url-label>{{ $summaryUrl }}</span>
+                                        </span>
+                                        <span class="bulk-url-price-row__meta">
+                                            <span class="text-nowrap" data-bulk-price-label>{{ $summaryPrice }}</span>
+                                            <span class="bulk-url-price-row__chip {{ $chipClass }}" data-bulk-url-price-chip>{{ $chipLabel }}</span>
+                                        </span>
+                                    </summary>
+                                    <div class="bulk-url-price-row__body">
+                                        <div class="bulk-url-price-row__fields">
+                                            <div class="bulk-url-price-field">
+                                                <label class="form-label" for="bulk-url-{{ $i }}">Website URL <span class="text-danger">*</span></label>
+                                                <input type="url"
+                                                       id="bulk-url-{{ $i }}"
+                                                       name="sites[{{ $i }}][url]"
+                                                       class="form-control @error('sites.'.$i.'.url') is-invalid @enderror"
+                                                       placeholder="https://example.com"
+                                                       value="{{ $oldUrl }}">
+                                                @error('sites.'.$i.'.url')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                            </div>
+                                            <div class="bulk-url-price-field bulk-url-price-field--price">
+                                                <label class="form-label" for="bulk-price-{{ $i }}">Price (€) <span class="text-danger">*</span></label>
+                                                <input type="number"
+                                                       id="bulk-price-{{ $i }}"
+                                                       name="sites[{{ $i }}][price]"
+                                                       step="0.01"
+                                                       min="0"
+                                                       class="form-control @error('sites.'.$i.'.price') is-invalid @enderror"
+                                                       placeholder="99"
+                                                       value="{{ $oldPrice }}">
+                                                @error('sites.'.$i.'.price')<div class="invalid-feedback">{{ $message }}</div>@enderror
+                                            </div>
+                                        </div>
+                                        <button type="button" class="btn btn-sm btn-outline-danger bulk-remove-row" title="Remove row" aria-label="Remove row">Remove</button>
+                                    </div>
+                                </details>
+                            @endforeach
+                        </div>
+                        <div class="small text-danger mt-2 d-none" id="bulkUrlPriceError" role="alert"></div>
                     </div>
                     <div class="form-text mb-3">Minimum 2 sites. One open bulk request at a time. For a single site, use <strong>Add New Website</strong>. Agencies with full CSV data can use <strong>Bulk Import (Agency)</strong>.</div>
 

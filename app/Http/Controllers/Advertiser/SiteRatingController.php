@@ -100,6 +100,17 @@ class SiteRatingController extends Controller
             ];
         }
 
+        $existing = SiteRating::query()->where('order_item_id', $item->id)->first();
+        if ($existing && in_array($existing->status, [SiteRating::STATUS_HIDDEN, SiteRating::STATUS_PENDING], true)) {
+            return [
+                'status' => 422,
+                'body' => [
+                    'success' => false,
+                    'message' => 'This rating was hidden by staff and cannot be changed.',
+                ],
+            ];
+        }
+
         $rating = SiteRating::updateOrCreate(
             ['order_item_id' => $item->id],
             [
@@ -122,9 +133,9 @@ class SiteRatingController extends Controller
                 'success' => true,
                 'message' => 'Thanks — your rating helps other advertisers.',
                 'rating' => $rating,
-                'rating_avg' => (float) ($site->rating_avg ?? 0),
-                'rating_count' => (int) ($site->rating_count ?? 0),
-                'label' => $site?->ratingStarsLabel(),
+                'rating_avg' => (float) ($site?->rating_avg ?? 0),
+                'rating_count' => (int) ($site?->rating_count ?? 0),
+                'label' => $site?->ratingStarsLabel() ?? 'No ratings yet',
             ],
         ];
     }

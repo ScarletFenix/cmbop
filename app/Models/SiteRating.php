@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Support\Facades\Log;
 
 class SiteRating extends Model
 {
@@ -59,15 +60,28 @@ class SiteRating extends Model
 
     public static function refreshSiteAggregate(int $siteId): void
     {
-        $agg = static::query()
-            ->where('site_id', $siteId)
-            ->approved()
-            ->selectRaw('AVG(rating) as avg_rating, COUNT(*) as total')
-            ->first();
+        if ($siteId < 1
+            || ! Site::hasSitesColumn('rating_avg')
+            || ! Site::hasSitesColumn('rating_count')) {
+            return;
+        }
 
-        Site::query()->where('id', $siteId)->update([
-            'rating_avg' => round((float) ($agg->avg_rating ?? 0), 2),
-            'rating_count' => (int) ($agg->total ?? 0),
-        ]);
+        try {
+            $agg = static::query()
+                ->where('site_id', $siteId)
+                ->approved()
+                ->selectRaw('AVG(rating) as avg_rating, COUNT(*) as total')
+                ->first();
+
+            Site::query()->where('id', $siteId)->update([
+                'rating_avg' => round((float) ($agg->avg_rating ?? 0), 2),
+                'rating_count' => (int) ($agg->total ?? 0),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Failed to refresh site rating aggregate', [
+                'site_id' => $siteId,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

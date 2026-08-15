@@ -10,6 +10,8 @@ use App\Models\Site;
 use App\Models\SiteEnrichmentRun;
 use App\Services\ActivityLogger;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
+use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
@@ -19,47 +21,92 @@ class SiteEnrichmentController extends Controller
 {
     public function index(Request $request)
     {
-        $failures = new LengthAwarePaginator([], 0, 40);
+        $status = $this->attentionStatusFilter($request->query('status'));
+        $type = $this->attentionTypeFilter($request->query('type'));
+        $attention = new LengthAwarePaginator([], 0, 40);
+        $attention->withPath($request->url())->appends($request->only(['status', 'type']));
 
         try {
             if (Schema::hasTable('site_enrichment_runs')) {
                 $siteSelect = $this->siteRelationSelectColumns();
-                $failures = SiteEnrichmentRun::query()
+                $attention = SiteEnrichmentRun::query()
                     ->with(['site:'.implode(',', $siteSelect)])
-                    ->where('status', 'failed')
+                    ->needsAttention($status, $type)
                     ->latest('id')
-                    ->paginate(40);
+                    ->paginate(40)
+                    ->withQueryString();
             }
         } catch (\Throwable $e) {
-            Log::warning('Admin enrichment failures list failed', [
+            Log::warning('Admin enrichment attention list failed', [
                 'error' => $e->getMessage(),
             ]);
-            $failures = new LengthAwarePaginator([], 0, 40);
+            $attention = new LengthAwarePaginator([], 0, 40);
+            $attention->withPath($request->url())->appends($request->only(['status', 'type']));
         }
 
+        $aggregator = app(SiteMetricsAggregator::class);
         $config = [
             'enabled' => (bool) config('site_enrichment.enabled'),
             'default_provider' => (string) config('site_enrichment.default_provider'),
             'fallback_providers' => config('site_enrichment.fallback_providers'),
+            'has_api_keys' => $aggregator->anyApiProviderConfigured(),
             'refresh_frequency' => (string) config('site_enrichment.refresh_frequency'),
             'max_age_days' => (int) config('site_enrichment.max_age_days'),
-            'screenshot_provider' => (string) config('site_enrichment.screenshots.provider'),
+            'screenshot_provider' => $this->screenshotProviderLabel(),
         ];
 
+        $staleSites = new LengthAwarePaginator([], 0, 40);
+        $staleSites->withPath($request->url())->appends($request->query());
         $staleCount = 0;
+        $placeholderSiteIds = [];
+        $batchLimit = max(1, (int) config('site_enrichment.batch_limit', 40));
+        $marketingEditor = $this->isMarketingEditor($request);
+
         try {
-            $staleCount = $this->staleEnrichmentSiteCount();
+            $staleQuery = Site::query()
+                ->where('active', 1)
+                ->staleForEnrichment()
+                ->orderForStaleEnrichment();
+            $this->restrictToMarketingEditable($staleQuery, $request);
+
+            if (Schema::hasTable('site_enrichment_runs')) {
+                $staleQuery->with('latestEnrichmentRun');
+                $placeholderSiteIds = array_fill_keys(
+                    SiteEnrichmentRun::placeholderScreenshotSiteIds(),
+                    true
+                );
+            }
+
+            $staleSites = $staleQuery
+                ->paginate(40, ['*'], 'stale_page')
+                ->withQueryString();
+            $staleCount = $staleSites->total();
         } catch (\Throwable $e) {
-            Log::warning('Admin enrichment stale count failed', [
+            Log::warning('Admin enrichment stale list failed', [
                 'error' => $e->getMessage(),
             ]);
+            $staleSites = new LengthAwarePaginator([], 0, 40);
+            $staleSites->withPath($request->url())->appends($request->query());
         }
 
-        return view('admin.site-enrichment', compact('failures', 'config', 'staleCount'));
+        return view('admin.site-enrichment', compact(
+            'attention',
+            'config',
+            'staleCount',
+            'staleSites',
+            'placeholderSiteIds',
+            'batchLimit',
+            'status',
+            'type',
+            'marketingEditor'
+        ));
     }
 
     public function refreshMetrics(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
         $site = Site::findOrFail($id);
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
@@ -91,6 +138,9 @@ class SiteEnrichmentController extends Controller
 
     public function refreshScreenshot(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
         $site = Site::findOrFail($id);
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
@@ -141,6 +191,9 @@ class SiteEnrichmentController extends Controller
 
     public function enrich(Request $request, int $id, SiteEnrichmentService $enrichment)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
         $site = Site::findOrFail($id);
         if ($denied = $this->denyMarketingLockedListing($request, $site)) {
             return $denied;
@@ -198,8 +251,95 @@ class SiteEnrichmentController extends Controller
         ]);
     }
 
+    public function allowApiOverwrite(Request $request, int $id)
+    {
+        if (! Site::hasSitesColumn('metrics_manual')) {
+            return $request->wantsJson()
+                ? response()->json([
+                    'success' => false,
+                    'message' => 'Manual metrics lock is unavailable until the database migration has been run.',
+                ], 422)
+                : back()->withErrors(['metrics_manual' => 'Manual metrics lock is unavailable until the database migration has been run.']);
+        }
+
+        $site = Site::findOrFail($id);
+        if ($denied = $this->denyMarketingLockedListing($request, $site)) {
+            if ($request->wantsJson()) {
+                return $denied;
+            }
+
+            return back()->withErrors(['metrics_manual' => (string) data_get($denied->getData(true), 'message', 'Not allowed.')]);
+        }
+
+        $site->forceFill(['metrics_manual' => false])->save();
+
+        ActivityLogger::log(
+            'site.metrics_api_unlocked',
+            auth()->user()->name.' allowed API overwrite for "'.$site->site_name.'"',
+            $site,
+            [],
+            $site->site_name
+        );
+
+        $message = 'API overwrite allowed. Queue Enrich to fetch live metrics.';
+
+        if ($request->wantsJson()) {
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'site' => $site->fresh(),
+            ]);
+        }
+
+        return back()->with('success', $message);
+    }
+
+    public function queueStale(Request $request)
+    {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
+
+        $configured = max(1, (int) config('site_enrichment.batch_limit', 40));
+        $limit = min($configured, max(1, (int) $request->input('limit', $configured)));
+
+        try {
+            $ids = Site::query()
+                ->where('active', 1)
+                ->staleForEnrichment()
+                ->orderForStaleEnrichment();
+            $this->restrictToMarketingEditable($ids, $request);
+            $ids = $ids->limit($limit)->pluck('id');
+
+            foreach ($ids as $siteId) {
+                EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Queued '.$ids->count().' stale site(s)',
+                'count' => $ids->count(),
+                'site_ids' => $ids->values()->all(),
+            ]);
+        } catch (\Throwable $e) {
+            Log::warning('Admin enrichment queueStale failed', [
+                'error' => $e->getMessage(),
+            ]);
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Could not queue stale sites. Please try again after migrations are applied.',
+                'count' => 0,
+            ], 422);
+        }
+    }
+
     public function rerunFailed(Request $request)
     {
+        if ($denied = $this->denyIfEnrichmentDisabled()) {
+            return $denied;
+        }
+
         if (! Schema::hasTable('site_enrichment_runs')) {
             return response()->json([
                 'success' => false,
@@ -211,12 +351,19 @@ class SiteEnrichmentController extends Controller
         try {
             $limit = min(100, max(1, (int) $request->input('limit', 20)));
             $ids = SiteEnrichmentRun::query()
-                ->where('status', 'failed')
+                ->needsAttention()
                 ->latest('id')
-                ->limit($limit * 3)
+                ->limit($limit)
                 ->pluck('site_id')
                 ->unique()
-                ->take($limit);
+                ->filter();
+
+            if ($this->isMarketingEditor($request) && $ids->isNotEmpty()) {
+                $ids = Site::query()
+                    ->whereIn('id', $ids)
+                    ->editableByMarketing()
+                    ->pluck('id');
+            }
 
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
@@ -224,7 +371,7 @@ class SiteEnrichmentController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Queued '.$ids->count().' failed site(s) for re-scan',
+                'message' => 'Queued '.$ids->count().' site(s) for re-scan',
                 'count' => $ids->count(),
             ]);
         } catch (\Throwable $e) {
@@ -257,33 +404,70 @@ class SiteEnrichmentController extends Controller
         return $columns;
     }
 
-    private function staleEnrichmentSiteCount(): int
+    private function screenshotProviderLabel(): string
     {
-        $hasMetricsAt = Site::hasSitesColumn('metrics_fetched_at');
-        $hasScreenshot = Site::hasSitesColumn('screenshot_path');
+        $provider = (string) config('site_enrichment.screenshots.provider', 'thum_io');
 
-        if (! $hasMetricsAt && ! $hasScreenshot) {
-            return 0;
+        if ($provider === 'thum_io') {
+            return 'thum_io (unauthenticated)';
         }
 
-        $before = now()->subDays((int) config('site_enrichment.max_age_days', 90));
+        if ($provider === 'screenshotone') {
+            return filled(config('site_enrichment.screenshots.screenshotone_access_key'))
+                ? 'screenshotone'
+                : 'screenshotone (no key)';
+        }
 
-        return Site::query()
-            ->where('active', 1)
-            ->where(function ($q) use ($hasMetricsAt, $hasScreenshot, $before) {
-                if ($hasMetricsAt) {
-                    $q->whereNull('metrics_fetched_at')
-                        ->orWhere('metrics_fetched_at', '<', $before);
-                }
-                if ($hasScreenshot) {
-                    if ($hasMetricsAt) {
-                        $q->orWhereNull('screenshot_path');
-                    } else {
-                        $q->whereNull('screenshot_path');
-                    }
-                }
-            })
-            ->count();
+        if ($provider === 'url_api') {
+            return filled(config('site_enrichment.screenshots.api_url'))
+                ? 'url_api'
+                : 'url_api (no url)';
+        }
+
+        return $provider;
+    }
+
+    private function isMarketingEditor(Request $request): bool
+    {
+        $user = $request->user();
+
+        return (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function restrictToMarketingEditable($query, Request $request): void
+    {
+        if ($this->isMarketingEditor($request)) {
+            $query->editableByMarketing();
+        }
+    }
+
+    private function denyIfEnrichmentDisabled()
+    {
+        if (SiteEnrichmentService::enabled()) {
+            return null;
+        }
+
+        return response()->json([
+            'success' => false,
+            'message' => 'Site enrichment is disabled (SITE_ENRICHMENT_ENABLED=false).',
+        ], 422);
+    }
+
+    private function attentionStatusFilter(mixed $status): ?string
+    {
+        $status = is_string($status) ? strtolower(trim($status)) : '';
+
+        return in_array($status, SiteEnrichmentRun::ATTENTION_STATUSES, true) ? $status : null;
+    }
+
+    private function attentionTypeFilter(mixed $type): ?string
+    {
+        $type = is_string($type) ? strtolower(trim($type)) : '';
+
+        return in_array($type, ['metrics', 'screenshot'], true) ? $type : null;
     }
 
     private function denyMarketingLockedListing(Request $request, Site $site)

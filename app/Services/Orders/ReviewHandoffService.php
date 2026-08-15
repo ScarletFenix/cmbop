@@ -63,6 +63,24 @@ class ReviewHandoffService
                 $lockedItem = OrderItem::query()->whereKey($item->id)->lockForUpdate()->firstOrFail();
                 $order = Order::query()->whereKey($lockedItem->order_id)->lockForUpdate()->firstOrFail();
 
+                if ($order->payment_status !== 'paid') {
+                    throw ValidationException::withMessages([
+                        'order' => 'Order payment is not confirmed yet',
+                    ]);
+                }
+
+                if ($order->status === 'cancelled' || $order->payment_status === 'refunded') {
+                    throw ValidationException::withMessages([
+                        'order' => 'This order is no longer open for a live URL update.',
+                    ]);
+                }
+
+                if ($lockedItem->isPayoutComplete()) {
+                    throw ValidationException::withMessages([
+                        'order' => 'This placement has already been paid. The live URL cannot be replaced from here.',
+                    ]);
+                }
+
                 if ($lockedItem->isContentRevisionRequested()) {
                     throw ValidationException::withMessages([
                         'order' => 'Wait for the advertiser to send the revised article before handing this back for review.',

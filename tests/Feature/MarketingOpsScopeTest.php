@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\EnrichSiteJob;
 use App\Mail\SiteStatusNotification;
 use App\Models\Category;
 use App\Models\Role;
@@ -13,6 +14,7 @@ use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class MarketingOpsScopeTest extends TestCase
@@ -223,6 +225,51 @@ class MarketingOpsScopeTest extends TestCase
         $this->actingAs($this->marketer)
             ->get(route('marketing.site-enrichment.index'))
             ->assertOk();
+    }
+
+    public function test_marketer_cannot_enrich_or_unlock_live_site(): void
+    {
+        $site = $this->makeSite([
+            'site_name' => 'Live Enrich Lock',
+            'site_url' => 'https://live-enrich-lock.example',
+            'domain' => 'live-enrich-lock.example',
+            'verified' => true,
+            'active' => true,
+            'metrics_manual' => true,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.enrich', $site->id))
+            ->assertForbidden()
+            ->assertJsonPath('success', false);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.sites.allow-api-metrics', $site->id))
+            ->assertForbidden();
+
+        $this->assertTrue((bool) $site->fresh()->metrics_manual);
+    }
+
+    public function test_marketer_queue_stale_skips_live_listings(): void
+    {
+        Queue::fake();
+        $this->makeSite([
+            'site_name' => 'Live Stale',
+            'site_url' => 'https://live-stale.example',
+            'domain' => 'live-stale.example',
+            'verified' => true,
+            'active' => true,
+            'metrics_fetched_at' => null,
+            'screenshot_path' => null,
+        ]);
+
+        $this->actingAs($this->marketer)
+            ->postJson(route('marketing.site-enrichment.queue-stale'), ['limit' => 5])
+            ->assertOk()
+            ->assertJsonPath('success', true)
+            ->assertJsonPath('count', 0);
+
+        Queue::assertNotPushed(EnrichSiteJob::class);
     }
 
     public function test_marketer_nav_excludes_ratings_community_activity(): void

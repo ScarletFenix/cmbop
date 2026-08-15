@@ -258,6 +258,23 @@ class PublisherReportsTest extends TestCase
             ->assertJsonPath('success', false);
     }
 
+    public function test_order_details_hide_unpaid_placements(): void
+    {
+        $publisher = $this->publisher();
+        $advertiser = $this->advertiser();
+        $site = $this->site($publisher);
+        $item = $this->createOrderItem($advertiser, $site, [
+            'payment_status' => 'pending',
+            'status' => 'pending',
+            'paid_at' => null,
+        ]);
+
+        $this->actingAs($publisher)
+            ->getJson(route('publisher.reports.order.details', $item->id))
+            ->assertNotFound()
+            ->assertJsonPath('success', false);
+    }
+
     public function test_withdrawals_payload_includes_reference_fee_and_net(): void
     {
         $publisher = $this->publisher();
