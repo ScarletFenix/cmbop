@@ -13,16 +13,20 @@ use App\Models\Project;
 use App\Models\User;
 use App\Services\CartPricingService;
 use App\Services\EmailNotificationService;
+use App\Services\Wallet\WelcomeBonusService;
 use App\Support\BillingCustomerMailSuppressor;
 use App\Support\MarketingOpsQueues;
 use App\Support\OrderLifecycleMailSuppressor;
 use App\Support\PublicStorageLink;
 use Illuminate\Auth\Middleware\RedirectIfAuthenticated;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
 use Illuminate\Pagination\Paginator;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 use Illuminate\Support\ServiceProvider;
@@ -66,6 +70,14 @@ class AppServiceProvider extends ServiceProvider
         // pagination SVGs render as giant arrows when w-5/h-5/hidden utilities
         // are missing — switch to Bootstrap 5 views sitewide (catalog + admin).
         Paginator::useBootstrapFive();
+
+        // Register flood control must use the same place key as the €20 claim.
+        // Default throttle:N,M follows Request::ip() / X-Forwarded-For.
+        RateLimiter::for('register', function (Request $request) {
+            $place = app(WelcomeBonusService::class)->placeKey($request);
+
+            return Limit::perMinute(5)->by('register-http:'.$place);
+        });
 
         // Authenticated users hitting /login or /register go to their role dashboard.
         RedirectIfAuthenticated::redirectUsing(function () {

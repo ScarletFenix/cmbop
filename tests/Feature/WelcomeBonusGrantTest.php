@@ -28,12 +28,13 @@ class WelcomeBonusGrantTest extends TestCase
     {
         parent::setUp();
         $this->seed(RolesTableSeeder::class);
-        RateLimiter::clear('register:1.2.3.4');
-        RateLimiter::clear('register:9.9.9.9');
-        RateLimiter::clear('register:10.0.0.2');
-        RateLimiter::clear('register:127.0.0.1');
-        RateLimiter::clear('register:8.8.8.8');
-        RateLimiter::clear('register:11.11.11.11');
+        foreach ([
+            '1.2.3.4', '9.9.9.9', '10.0.0.2', '127.0.0.1',
+            '8.8.8.8', '11.11.11.11', '203.0.113.80',
+        ] as $ip) {
+            RateLimiter::clear('register:'.$ip);
+            RateLimiter::clear('register-http:'.$ip);
+        }
     }
 
     public function test_first_advertiser_from_ip_receives_bonus_and_claim(): void
@@ -65,6 +66,9 @@ class WelcomeBonusGrantTest extends TestCase
         RateLimiter::clear('register:9.9.9.9');
         RateLimiter::clear('register:8.8.8.8');
         RateLimiter::clear('register:1.2.3.4');
+        RateLimiter::clear('register-http:1.2.3.4');
+        RateLimiter::clear('register-http:9.9.9.9');
+        RateLimiter::clear('register-http:8.8.8.8');
 
         $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
             ->withHeaders(['X-Forwarded-For' => '8.8.8.8'])
@@ -89,6 +93,7 @@ class WelcomeBonusGrantTest extends TestCase
             ->assertOk();
 
         RateLimiter::clear('register:1.2.3.4');
+        RateLimiter::clear('register-http:1.2.3.4');
 
         $this->withServerVariables(['REMOTE_ADDR' => '1.2.3.4'])
             ->postJson('/register', $this->registerPayload('second-ip@example.com'))
@@ -211,6 +216,28 @@ class WelcomeBonusGrantTest extends TestCase
         $second = User::where('email', 'google-second@example.com')->first();
         $this->assertNotNull($second);
         $this->assertAdvertiserBonus($second, 0.0);
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_register_rate_limit_ignores_forwarded_for_spoof(): void
+    {
+        Notification::fake();
+
+        $remote = '203.0.113.80';
+        for ($i = 1; $i <= 5; $i++) {
+            $this->withServerVariables(['REMOTE_ADDR' => $remote])
+                ->withHeaders(['X-Forwarded-For' => '198.51.100.'.$i])
+                ->postJson('/register', $this->registerPayload("xff-limit-{$i}@example.com"))
+                ->assertOk()
+                ->assertJsonPath('status', 'success');
+        }
+
+        $this->withServerVariables(['REMOTE_ADDR' => $remote])
+            ->withHeaders(['X-Forwarded-For' => '198.51.100.99'])
+            ->postJson('/register', $this->registerPayload('xff-limit-blocked@example.com'))
+            ->assertStatus(429);
+
+        $this->assertNull(User::where('email', 'xff-limit-blocked@example.com')->first());
         $this->assertSame(1, WelcomeBonusClaim::query()->count());
     }
 

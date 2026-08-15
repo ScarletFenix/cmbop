@@ -21,6 +21,7 @@ class RegisterPageTest extends TestCase
         parent::setUp();
         $this->seed(RolesTableSeeder::class);
         RateLimiter::clear('register:127.0.0.1');
+        RateLimiter::clear('register-http:127.0.0.1');
     }
 
     public function test_register_page_renders(): void

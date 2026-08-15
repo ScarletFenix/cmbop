@@ -202,6 +202,47 @@ class WelcomeBonusServiceTest extends TestCase
         $this->assertSame(0.0, $this->service->amountFor($this->request('1.2.3.4'), 'advertiser'));
     }
 
+    public function test_legacy_full_ipv6_claim_row_blocks_the_slash64(): void
+    {
+        WelcomeBonusClaim::query()->create([
+            'user_id' => User::factory()->create()->id,
+            'ip_address' => '2001:db8:1:2:aaaa::1',
+            'source' => 'registration',
+            'amount' => 20,
+        ]);
+
+        $this->assertSame(0.0, $this->service->amountFor(
+            $this->request('2001:db8:1:2:bbbb::2'),
+            'advertiser'
+        ));
+        $this->assertFalse($this->service->recordClaim(
+            User::factory()->create(),
+            $this->request('2001:db8:1:2:cccc::3'),
+            20.0,
+            'registration'
+        ));
+        $this->assertSame(20.0, $this->service->amountFor(
+            $this->request('2001:db8:1:3::1'),
+            'advertiser'
+        ));
+        $this->assertSame(1, WelcomeBonusClaim::query()->count());
+    }
+
+    public function test_place_key_ignores_forwarded_for_and_locks_ipv6_at_slash64(): void
+    {
+        $spoofed = $this->request('1.2.3.4', [], [
+            'HTTP_X_FORWARDED_FOR' => '9.9.9.9',
+        ]);
+        $this->assertSame('1.2.3.4', $this->service->placeKey($spoofed));
+
+        $this->assertSame('2001:db8:1:2::', $this->service->placeKey(
+            $this->request('2001:db8:1:2:aaaa::1')
+        ));
+        $this->assertSame('unknown', $this->service->placeKey(
+            $this->request('not-an-ip-address')
+        ));
+    }
+
     public function test_invalid_ip_string_is_ignored(): void
     {
         $request = $this->request('not-an-ip-address');

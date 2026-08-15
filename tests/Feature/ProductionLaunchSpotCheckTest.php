@@ -32,6 +32,7 @@ class ProductionLaunchSpotCheckTest extends TestCase
         parent::setUp();
         $this->seed(RolesTableSeeder::class);
         RateLimiter::clear('register:127.0.0.1');
+        RateLimiter::clear('register-http:127.0.0.1');
         config(['content_moderation.enabled' => false]);
     }
 

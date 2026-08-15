@@ -291,7 +291,7 @@ Route::get('auth/google/callback', [SocialiteController::class, 'handleGoogleCal
 
 // Registration routes
 Route::post('/register', [RegisterController::class, 'register'])
-    ->middleware('throttle:5,1'); // 5 requests per minute
+    ->middleware('throttle:register');
 
 // Authentication routes (login, logout)
 Route::post('/login', [LoginController::class, 'login'])->name('login.post');
