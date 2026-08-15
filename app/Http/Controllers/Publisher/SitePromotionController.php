@@ -185,14 +185,6 @@ class SitePromotionController extends Controller
             }
 
             if ($result['success'] ?? false) {
-                ActivityLogger::log(
-                    'site.featured_stripe',
-                    auth()->user()->name.' featured "'.$site->site_name.'" via Stripe',
-                    $site,
-                    ['session_id' => $sessionId, 'days' => $this->promotions->featureDays()],
-                    $site->site_name
-                );
-
                 $message = $result['message'] ?? 'Website featured successfully.';
                 if ($site->isArchived()) {
                     $message .= ' Restore the site from Archive to show the feature in the catalog.';

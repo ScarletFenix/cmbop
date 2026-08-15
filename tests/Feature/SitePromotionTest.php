@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Mail\SiteDiscountEnded;
+use App\Models\ActivityLog;
 use App\Models\BulkSiteRequest;
 use App\Models\Role;
 use App\Models\Site;
@@ -292,8 +293,11 @@ class SitePromotionTest extends TestCase
         $second = $promotions->featureFromStripePayment($site->fresh(), $publisher, 'cs_test_feature_dup');
 
         $this->assertTrue($first['success']);
+        $this->assertFalse($first['already'] ?? false);
         $this->assertTrue($second['success']);
+        $this->assertTrue($second['already']);
         $this->assertSame(1, SiteFeaturePurchase::where('stripe_session_id', 'cs_test_feature_dup')->count());
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
 
         $until = $site->fresh()->featured_until;
         $this->assertNotNull($until);
@@ -416,8 +420,12 @@ class SitePromotionTest extends TestCase
 
         $apply = $promotions->featureFromStripePayment($site->fresh(), $newOwner, 'cs_feature_mismatch');
         $this->assertTrue($apply['success']);
+        $this->assertTrue($apply['already']);
+        $this->assertTrue($apply['credited']);
         $this->assertNull($site->fresh()->featured_until);
         $this->assertStringContainsString('changed owner', $first['message']);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.feature_stripe_credited')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
     }
 
     public function test_feature_from_stripe_credits_cancelled_bulk_leftover(): void
@@ -440,6 +448,8 @@ class SitePromotionTest extends TestCase
         $this->assertTrue($first['credited']);
         $this->assertFalse($first['already']);
         $this->assertTrue($second['already']);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'site.feature_stripe_credited')->count());
+        $this->assertSame(0, ActivityLog::query()->where('action', 'site.featured_stripe')->count());
         $this->assertStringContainsString('no longer in the catalog', $first['message']);
         $this->assertNull($site->fresh()->featured_until);
         $this->assertEqualsWithDelta(15.0, (float) Wallet::where('user_id', $publisher->id)->value('balance'), 0.01);

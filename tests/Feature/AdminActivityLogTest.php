@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\AgencySiteImport;
 use App\Models\DepositRequest;
 use App\Models\EmailCampaign;
 use App\Models\Order;
@@ -436,6 +437,43 @@ class AdminActivityLogTest extends TestCase
         $this->assertSame(1, substr_count($html, 'value="catalog_activity.exempt_toggled"'));
         $this->assertStringNotContainsString('value="catalog_pace_exempted"', $html);
         $this->assertStringContainsString('Toggled catalog pace exemption (2)', $html);
+        $this->assertStringNotContainsString('<code class="small text-muted">catalog_pace_exempted</code>', $html);
+        $this->assertStringContainsString('<code class="small text-muted">catalog_activity.exempt_toggled</code>', $html);
+    }
+
+    public function test_agency_import_row_links_to_publisher_not_a_dead_import_id(): void
+    {
+        $publisher = User::factory()->create([
+            'name' => 'Agency Publisher',
+            'email' => 'agency-pub@example.com',
+            'email_verified_at' => now(),
+        ]);
+
+        $log = $this->makeLog([
+            'action' => 'agency_import.submitted',
+            'description' => 'Submitted agency CSV import #42',
+            'subject_type' => AgencySiteImport::class,
+            'subject_id' => 42,
+            'subject_label' => 'Agency import #42',
+            'properties' => ['publisher_id' => $publisher->id, 'import_id' => 42],
+        ]);
+
+        $lookup = AdminActivityDisplay::preload([$log]);
+        $this->assertSame(
+            route('admin.users.index', ['user' => $publisher->id]),
+            AdminActivityDisplay::subjectUrl($log, $lookup)
+        );
+
+        $gone = $this->makeLog([
+            'action' => 'agency_import.submitted',
+            'description' => 'Submitted agency CSV import #43',
+            'subject_type' => AgencySiteImport::class,
+            'subject_id' => 43,
+            'subject_label' => 'Agency import #43',
+            'properties' => ['publisher_id' => 999999, 'import_id' => 43],
+        ]);
+
+        $this->assertNull(AdminActivityDisplay::subjectUrl($gone, AdminActivityDisplay::preload([$gone])));
     }
 
     public function test_batch_payout_and_inbox_rows_have_labels_and_safe_links(): void

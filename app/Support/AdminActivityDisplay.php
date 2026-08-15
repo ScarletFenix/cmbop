@@ -4,6 +4,7 @@ namespace App\Support;
 
 use App\Models\ActivityLog;
 use App\Models\AdBanner;
+use App\Models\AgencySiteImport;
 use App\Models\Blog;
 use App\Models\BulkSiteRequest;
 use App\Models\ContentSubmission;
@@ -99,6 +100,8 @@ class AdminActivityDisplay
                 'site_id' => 'site',
                 'bulk_site_request_id' => 'bulk',
                 'user_id' => 'user',
+                'publisher_id' => 'user',
+                'payer_id' => 'user',
                 'order_id' => 'order',
                 'deposit_id' => 'deposit',
                 'withdrawal_id' => 'withdrawal',
@@ -162,6 +165,14 @@ class AdminActivityDisplay
             if ($url) {
                 return $url;
             }
+        }
+
+        if ($type === AgencySiteImport::class) {
+            $publisherId = (int) data_get(is_array($log->properties) ? $log->properties : [], 'publisher_id');
+
+            return $publisherId > 0 && isset($lookup['existingUserIds'][$publisherId])
+                ? route('admin.users.index', ['user' => $publisherId])
+                : null;
         }
 
         // Only fall back to site/bulk when this row is about a site or bulk

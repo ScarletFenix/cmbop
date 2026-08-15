@@ -129,7 +129,7 @@
                             </td>
                             <td>
                                 <div class="fw-semibold">{{ activity_action_label($log->action) }}</div>
-                                <code class="small text-muted">{{ $log->action }}</code>
+                                <code class="small text-muted">{{ activity_action_canonical($log->action) }}</code>
                             </td>
                             <td class="small">
                                 @if($subjectUrl)

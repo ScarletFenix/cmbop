@@ -23,6 +23,7 @@ class PanelController extends Controller
         'site.deleted_by_marketing',
         'site.updated',
         'site.activated',
+        'site.approved',
         'site.deactivated',
         'site.assigned_for_acceptance',
         'site.image_uploaded',

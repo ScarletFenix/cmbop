@@ -5,6 +5,7 @@ namespace App\Services\Catalog;
 use App\Models\CatalogCopyEvent;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ActivityLogger;
 use App\Services\InAppNotificationService;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
@@ -163,11 +164,13 @@ class CatalogCopyStrikeGuard
         });
 
         if (in_array($result['status'], [self::STATUS_WARNING, self::STATUS_HIDE_MODE], true)) {
+            $subject = User::query()->find($user->id) ?? $user;
             $this->announce(
-                User::query()->find($user->id) ?? $user,
+                $subject,
                 $result['status'],
                 (int) $result['distinct_in_window']
             );
+            $this->logEnforcement($subject, $result);
         }
 
         return $result;
@@ -414,6 +417,28 @@ class CatalogCopyStrikeGuard
         } catch (\Throwable) {
             return false;
         }
+    }
+
+    /**
+     * @param  array{status:string, distinct_in_window:int, hide_until?:string|null, strike_count?:int}  $result
+     */
+    private function logEnforcement(User $user, array $result): void
+    {
+        $hide = $result['status'] === self::STATUS_HIDE_MODE;
+
+        ActivityLogger::tryLog(
+            $hide ? 'catalog_hide_applied' : 'catalog_copy_warned',
+            $hide
+                ? 'Catalog hide mode applied for '.$user->email.' after a second copy-harvest wave.'
+                : 'Catalog copy-harvest warning issued to '.$user->email.'.',
+            $user,
+            [
+                'strikes' => (int) ($user->catalog_copy_strike_count ?? $result['strike_count'] ?? 0),
+                'distinct_in_window' => (int) $result['distinct_in_window'],
+                'hide_until' => $result['hide_until'] ?? $user->catalog_hide_until?->toIso8601String(),
+            ],
+            $user->email
+        );
     }
 
     private function announce(User $user, string $status, int $distinct): void
