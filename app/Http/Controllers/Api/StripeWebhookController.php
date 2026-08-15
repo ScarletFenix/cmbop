@@ -193,7 +193,15 @@ class StripeWebhookController extends Controller
             return;
         }
 
-        if ($paymentType && ! in_array($paymentType, ['order_payment', 'order'], true)) {
+        // Same rule as completed-session routing: wallet deposits also carry
+        // reference_code. An untyped expiry must not fail colliding card
+        // checkouts or refund their reserved bonus.
+        if (! in_array($paymentType, ['order_payment', 'order'], true)) {
+            Log::warning('Ignoring checkout.session.expired without explicit order type', [
+                'session_id' => $session->id ?? null,
+                'type' => $paymentType,
+            ]);
+
             return;
         }
 
