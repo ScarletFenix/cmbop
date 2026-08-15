@@ -30,9 +30,9 @@ class EmailCenterController extends Controller
         $recentLogs = EmailLog::query()
             ->when($filters['status'] ?? null, fn ($q, $status) => $q->where('status', $status))
             ->when($filters['template_key'] ?? null, fn ($q, $key) => $q->where('template_key', $key))
-            ->when($filters['to_email'] ?? null, fn ($q, $email) => $q->where('to_email', 'like', '%'.$this->escapeLike($email).'%'))
-            ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereDate('created_at', '>=', $from))
-            ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereDate('created_at', '<=', $to))
+            ->when($filters['to_email'] ?? null, fn ($q, $email) => $this->applyToEmailFilter($q, $email))
+            ->when($filters['date_from'] ?? null, fn ($q, $from) => $q->whereRaw('date(coalesce(sent_at, created_at)) >= ?', [$from]))
+            ->when($filters['date_to'] ?? null, fn ($q, $to) => $q->whereRaw('date(coalesce(sent_at, created_at)) <= ?', [$to]))
             ->latest('id')
             ->paginate(50)
             ->withQueryString()
@@ -47,15 +47,19 @@ class EmailCenterController extends Controller
             ->keyBy('template_key');
 
         $settingRows = EmailNotificationSetting::query()->pluck('enabled', 'type');
-        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows) {
+        $preferenceLabels = collect(config('email_notifications.preference_keys', []))
+            ->map(fn (array $meta) => $meta['label'] ?? null);
+        $settings = collect(config('email_notifications.types', []))->map(function (array $meta, string $type) use ($settingRows, $preferenceLabels) {
             $default = (bool) ($meta['default_enabled'] ?? true);
+            $preference = $meta['preference'] ?? null;
 
             return [
                 'type' => $type,
                 'name' => $meta['name'] ?? $type,
                 'audience' => $meta['audience'] ?? 'user',
                 'enabled' => $settingRows->has($type) ? (bool) $settingRows->get($type) : $default,
-                'preference' => $meta['preference'] ?? null,
+                'preference' => $preference,
+                'preference_label' => $preference ? ($preferenceLabels[$preference] ?? $preference) : null,
                 'framework' => (bool) ($meta['framework'] ?? false),
             ];
         })->values();
@@ -440,6 +444,18 @@ class EmailCenterController extends Controller
         return $date->format('Y-m-d') === $value ? $value : null;
     }
 
+    protected function applyToEmailFilter($query, string $email)
+    {
+        $like = '%'.$this->escapeLike($email).'%';
+        $driver = $query->getConnection()->getDriverName();
+
+        if (in_array($driver, ['mysql', 'mariadb', 'sqlite'], true)) {
+            return $query->whereRaw('to_email LIKE ? ESCAPE ?', [$like, '\\']);
+        }
+
+        return $query->where('to_email', 'like', $like);
+    }
+
     protected function escapeLike(string $value): string
     {
         return str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $value);
@@ -484,7 +500,7 @@ class EmailCenterController extends Controller
     {
         return match ($key) {
             'password_reset' => $this->renderMarkdown('emails.password-reset-preview', [
-                'resetUrl' => url('/password/reset/preview-token'),
+                'resetUrl' => rtrim(app_public_url(), '/').'/password/reset/preview-token',
             ]),
             'email_verification' => $this->renderMarkdown('emails.email-verification-preview', [
                 'verifyUrl' => EmailCatalog::previewVerificationUrl(),

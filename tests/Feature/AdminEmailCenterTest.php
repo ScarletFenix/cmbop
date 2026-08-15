@@ -471,6 +471,17 @@ class AdminEmailCenterTest extends TestCase
         }
     }
 
+    public function test_password_reset_preview_uses_public_preview_token(): void
+    {
+        $admin = $this->userWithRole('admin');
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.preview', 'password_reset'))
+            ->assertOk()
+            ->assertSee('/password/reset/preview-token', false)
+            ->assertSee(rtrim(app_public_url(), '/'), false);
+    }
+
     public function test_email_verification_preview_is_a_placeholder(): void
     {
         $admin = $this->userWithRole('admin');
@@ -893,7 +904,9 @@ class AdminEmailCenterTest extends TestCase
             ->assertSee('audience=publisher', false)
             ->assertSee('audience=admin', false)
             ->assertSee('Managed by Laravel auth', false)
-            ->assertSee('Open Campaigns', false);
+            ->assertSee('Open Campaigns', false)
+            ->assertSee('Order Emails', false)
+            ->assertSee('Payment Emails', false);
     }
 
     public function test_recent_logs_can_be_filtered_and_opened(): void
@@ -946,7 +959,36 @@ class AdminEmailCenterTest extends TestCase
             ->get(route('admin.emails.index', ['status' => 'failed', 'to_email' => 'nobody-matches@example.com']))
             ->assertOk()
             ->assertSee('No emails match these filters', false)
-            ->assertDontSee('No emails logged yet', false);
+            ->assertDontSee('No emails logged yet', false)
+            ->assertSee('Clear', false);
+
+        $failed = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => 'failed-row@example.com',
+            'subject' => 'Welcome failed',
+            'status' => EmailLog::STATUS_FAILED,
+            'error' => 'SMTP down',
+            'sent_at' => now()->subDay(),
+        ]);
+        $sentToday = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'template_key' => 'welcome',
+            'to_email' => 'sent-today@example.com',
+            'subject' => 'Welcome sent today',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now(),
+        ]);
+        $sentToday->forceFill(['created_at' => now()->subDay()])->save();
+
+        $this->actingAs($admin)
+            ->get(route('admin.emails.index', [
+                'date_from' => now()->toDateString(),
+                'date_to' => now()->toDateString(),
+            ]))
+            ->assertOk()
+            ->assertSee('sent-today@example.com', false)
+            ->assertSee(route('admin.emails.log', $failed), false);
     }
 
     public function test_recent_logs_are_paginated(): void

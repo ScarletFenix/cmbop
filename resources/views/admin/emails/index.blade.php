@@ -101,6 +101,9 @@
                             <div class="d-flex gap-1">
                                 <input type="date" name="date_to" class="form-control form-control-sm" value="{{ $logFilters['date_to'] ?? '' }}" aria-label="To date">
                                 <button class="btn btn-sm btn-outline-secondary" type="submit">Filter</button>
+                                @if(collect($logFilters)->filter()->isNotEmpty())
+                                    <a href="{{ route('admin.emails.index') }}#ec-recent" class="btn btn-sm btn-outline-secondary">Clear</a>
+                                @endif
                             </div>
                         </div>
                     </form>
@@ -355,7 +358,7 @@
                                 <tr data-audience="{{ $setting['audience'] }}">
                                     <td class="fw-semibold">{{ $setting['name'] }}</td>
                                     <td><span class="badge bg-light text-dark">{{ $setting['audience'] }}</span></td>
-                                    <td class="small text-muted">{{ $setting['preference'] ?: '—' }}</td>
+                                    <td class="small text-muted">{{ $setting['preference_label'] ?: '—' }}</td>
                                     <td class="text-end">
                                         @if(!empty($setting['framework']))
                                             <div class="d-flex flex-column align-items-end gap-1">
@@ -428,14 +431,17 @@
                                     </td>
                                     <td class="small text-muted">{{ $log->created_at?->diffForHumans() }}</td>
                                     <td class="text-end">
-                                        <form method="post" action="{{ route('admin.emails.retry') }}"
-                                              data-slb-confirm="Retry this failed email?"
-                                              data-slb-confirm-title="Retry email?"
-                                              data-slb-confirm-text="Retry">
-                                            @csrf
-                                            <input type="hidden" name="log_id" value="{{ $log->id }}">
-                                            <button class="btn btn-sm btn-outline-danger" type="submit">Retry</button>
-                                        </form>
+                                        <div class="d-flex justify-content-end gap-2">
+                                            <a href="{{ route('admin.emails.log', $log) }}" class="btn btn-sm btn-outline-secondary">View</a>
+                                            <form method="post" action="{{ route('admin.emails.retry') }}"
+                                                  data-slb-confirm="Retry this failed email?"
+                                                  data-slb-confirm-title="Retry email?"
+                                                  data-slb-confirm-text="Retry">
+                                                @csrf
+                                                <input type="hidden" name="log_id" value="{{ $log->id }}">
+                                                <button class="btn btn-sm btn-outline-danger" type="submit">Retry</button>
+                                            </form>
+                                        </div>
                                     </td>
                                 </tr>
                             @endforeach
