@@ -593,10 +593,22 @@ class OrderPaymentService
             // after cancel, held is 0 but the JSON still lists the promo.
             $held = app(CheckoutIntentService::class)->heldBonus($userId, $ref);
             if ($held > 0.009) {
-                $roleId = Wallet::advertiserRoleId();
-                if ($roleId) {
-                    $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
-                    $wallet->refundReserved($held, $held);
+                $alreadySettled = Order::query()
+                    ->where('reference_code', $ref)
+                    ->where('user_id', $userId)
+                    ->where(function ($query) {
+                        $query->where('status', 'completed')
+                            ->orWhere('payment_status', 'refunded');
+                    })
+                    ->exists();
+                // Approve/reject already moved this leftover in the wallet.
+                // refundReserved() here would drain another checkout's reserve.
+                if (! $alreadySettled) {
+                    $roleId = Wallet::advertiserRoleId();
+                    if ($roleId) {
+                        $wallet = Wallet::lockOrCreateForRole($userId, $roleId);
+                        $wallet->refundReserved($held, $held);
+                    }
                 }
                 app(CheckoutIntentService::class)->takeBonus($userId, $ref, $held);
             }

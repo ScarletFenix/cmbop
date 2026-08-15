@@ -1996,6 +1996,48 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
         );
     }
 
+    public function test_release_abandoned_does_not_steal_from_stale_approved_hold(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $site = $this->makeSite($publisher, 'stale-approved-hold.example', 80);
+        $wallet = $this->advertiserWallet($advertiser, 20);
+        $payments = app(OrderPaymentService::class);
+        $intents = app(CheckoutIntentService::class);
+
+        Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'APPROVED-STALE-HOLD-1',
+            'subtotal' => 80,
+            'tax' => 0,
+            'total_amount' => 80,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'completed',
+            'completed_at' => now(),
+        ]);
+        $intents->rememberBonus($advertiser->id, 'APPROVED-STALE-HOLD-1', 20);
+
+        $liveRef = 'LIVE-AFTER-APPROVE-1';
+        $livePackage = $this->package($advertiser, [
+            $this->lineFor($site, 80),
+        ], 60, 20);
+        $livePackage['stripe_session_id'] = 'cs_live_after_approve';
+        $payments->storePendingCheckout($liveRef, $livePackage);
+        $intents->rememberBonus($advertiser->id, $liveRef, 20);
+        $wallet->reserveBonusOnly(20);
+
+        $payments->releaseAbandonedStripeFirstBonus($advertiser->id, 'NEW-AFTER-APPROVE-1');
+
+        $wallet->refresh();
+        $this->assertEqualsWithDelta(20.0, (float) $wallet->bonus_reserved, 0.01);
+        $this->assertEqualsWithDelta(0.0, (float) $wallet->bonus_balance, 0.01);
+        $this->assertEqualsWithDelta(20.0, $intents->heldBonus($advertiser->id, $liveRef), 0.01);
+        $this->assertEqualsWithDelta(0.0, $intents->heldBonus($advertiser->id, 'APPROVED-STALE-HOLD-1'), 0.01);
+        $this->assertNotNull($payments->getPendingCheckout($liveRef));
+    }
+
     public function test_stale_cheaper_session_credits_card_and_leaves_package_for_matching_pay(): void
     {
         $advertiser = $this->makeUser('advertiser');

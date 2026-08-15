@@ -237,6 +237,9 @@ class OrderRefundService
             $holdCap = $this->walletHoldBonusCap($wallet, $order, $total);
             $bonusShare = $this->checkoutBonusShare($wallet, $order, $total, $holdCap);
             $wallet->consumeReserved($total, $bonusShare);
+            if ($bonusShare > 0) {
+                $this->syncCheckoutBonusAfterLeftoverRestore($order, $bonusShare);
+            }
 
             return;
         }
@@ -254,8 +257,8 @@ class OrderRefundService
         if ($bonusShare > 0) {
             $wallet->consumeReserved($bonusShare, $bonusShare);
             // Pair leftover consume with the leftover hold. Leaving the peek
-            // after approve made otherLiveCheckoutBonusExists stay true, so a
-            // later card leftover with no hold capped at 0 and minted cash.
+            // after approve made releaseAbandonedStripeFirstBonus refundReserved
+            // another in-flight checkout's promo.
             $this->syncCheckoutBonusAfterLeftoverRestore($order, $bonusShare);
         }
     }
