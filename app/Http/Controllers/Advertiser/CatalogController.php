@@ -215,7 +215,7 @@ class CatalogController extends Controller
         try {
             $orderableScope = ContentSubmission::query()
                 ->where('user_id', auth()->id())
-                ->availableForPicker();
+                ->checkoutReady();
 
             // Count must not reuse a limited list — same exists-style gate as the dashboard.
             $approvedArticleCount = (clone $orderableScope)->count();
@@ -1508,15 +1508,6 @@ class CatalogController extends Controller
             (int) auth()->id(),
             [$submissionId]
         );
-        $submission = $submission->fresh() ?? $submission;
-
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
-            return response()->json([
-                'success' => false,
-                'error' => $submission->libraryFixSummary()
-                    ?: 'Choose an approved Content Library article that is still available to order.',
-            ], 422);
-        }
 
         $ids[$copyIndex] = $submission->id;
         $cart[$lineKey] = $this->applyCartLineContentIds($cart[$lineKey], $ids);
@@ -1621,19 +1612,22 @@ class CatalogController extends Controller
                     }
 
                     $alreadyAssigned = $this->cartUsesSubmissionId($cart, (int) $librarySubmission->id);
+                    $existingLineKey = null;
+                    foreach ($cart as $key => $item) {
+                        if ($this->cartLineMatches($item, (int) $id, $sensitiveType, $resolvedHomepageDays)) {
+                            $existingLineKey = $key;
+                            break;
+                        }
+                    }
+                    $slotEmpty = $existingLineKey === null
+                        || (($this->cartLineContentIds($cart[$existingLineKey])[0] ?? 0) <= 0);
 
-                    if (! $alreadyAssigned) {
+                    if (! $alreadyAssigned && $slotEmpty) {
                         app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
                             (int) auth()->id(),
                             [$sessionArticleId]
                         );
-                        $librarySubmission = $librarySubmission->fresh() ?? $librarySubmission;
-                        if (! $librarySubmission->canBeOrdered() || ! $librarySubmission->isReadyForCheckout()) {
-                            session()->forget(['checkout_content_submission_id', 'ordering_from_library']);
-                            $librarySubmission = null;
-                        } else {
-                            $attachArticleId = (int) $librarySubmission->id;
-                        }
+                        $attachArticleId = (int) $librarySubmission->id;
                     }
                 }
             }
@@ -1906,7 +1900,7 @@ class CatalogController extends Controller
             return redirect()->route('advertiser.catalog')->with('error', 'Your cart is empty or contains sites you can’t order.');
         }
 
-        $partition = $this->partitionCartByCheckoutReadiness($cart);
+        $partition = $this->partitionCartByCheckoutReadiness($cart, null, null, true);
         $payableCart = $partition['payable'];
         $deferredCart = $partition['deferred'];
 

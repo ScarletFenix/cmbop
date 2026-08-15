@@ -1066,8 +1066,10 @@ class ContentSubmission extends Model
     }
 
     /**
-     * Catalog / wizard / cart may list this row. Replace runs on assign,
-     * checkout, or Order — not when the picker merely opens.
+     * Catalog / wizard / cart may list this row. Replace runs when a cart
+     * assign or add-to-cart actually attaches the article, or when checkout
+     * is about to charge — not when Order opens the catalog or the picker
+     * merely opens.
      */
     public function isAvailableForPicker(): bool
     {

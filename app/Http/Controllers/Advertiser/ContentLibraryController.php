@@ -11,7 +11,6 @@ use App\Services\Advertiser\ContentLibrarySearchQuery;
 use App\Services\ContentUpload\ContentUploadService;
 use App\Services\Marketplace\CountryLanguagePairs;
 use App\Services\Marketplace\LanguageCountryMap;
-use App\Services\OrderPaymentService;
 use Illuminate\Http\Request;
 use Illuminate\Http\UploadedFile;
 use Illuminate\Support\Facades\Log;
@@ -521,25 +520,8 @@ class ContentLibraryController extends Controller
                     ?: 'Only approved Content Library articles can be ordered. Please edit and resubmit if corrections are needed.');
         }
 
-        app(OrderPaymentService::class)->replaceUnpaidLeftoversForSubmissions(
-            (int) auth()->id(),
-            [(int) $submission->id]
-        );
-        $submission = $submission->fresh() ?? $submission;
-
-        if (! $submission->canBeOrdered() || ! $submission->isReadyForCheckout()) {
-            $message = $submission->isExpired()
-                ? 'Expired articles are preview only and cannot be ordered.'
-                : ($submission->hasImages() && ! $submission->imageRightsCoverContent()
-                    ? ContentUploadService::imageRightsRequiredMessage()
-                    : ($submission->libraryFixSummary() ?: ContentSubmission::CHECKOUT_LINK_MESSAGE));
-
-            return redirect()
-                ->route('advertiser.content-library')
-                ->with('error', $message);
-        }
-
-        // Keep existing cart sites and any publication date already chosen at checkout.
+        // Keep Pay again until the advertiser actually assigns this article
+        // or a checkout is about to charge. Opening Catalog is not a replace.
         session()->put('checkout_content_submission_id', $submission->id);
         session()->put('ordering_from_library', true);
 
