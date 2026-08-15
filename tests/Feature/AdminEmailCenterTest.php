@@ -915,8 +915,7 @@ class AdminEmailCenterTest extends TestCase
             'template_key' => 'order_accepted',
             'to_email' => 'other@example.com',
             'subject' => 'Order accepted',
-            'status' => EmailLog::STATUS_FAILED,
-            'error' => 'SMTP down',
+            'status' => EmailLog::STATUS_PENDING,
             'sent_at' => now(),
         ]);
 
