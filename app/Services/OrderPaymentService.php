@@ -1109,7 +1109,7 @@ class OrderPaymentService
         foreach ($order->items as $item) {
             $id = (int) ($item->content_submission_id ?? 0);
             if ($id <= 0) {
-                if ($this->itemLooksLikeLibraryLine($item)) {
+                if ($item->looksLikeLibraryLine()) {
                     return 'missing';
                 }
 
@@ -1129,13 +1129,6 @@ class OrderPaymentService
         }
 
         return 'ok';
-    }
-
-    private function itemLooksLikeLibraryLine(OrderItem $item): bool
-    {
-        return (int) ($item->content_submission_id ?? 0) > 0
-            || filled($item->content_path)
-            || filled($item->content_original_name);
     }
 
     private function refreshOrderItemLibraryFields(Order $order): void
