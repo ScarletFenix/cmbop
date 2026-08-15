@@ -117,16 +117,6 @@ class EmailCampaign extends Model
                 $payload['status'] = self::STATUS_FAILED;
                 $payload['sent_at'] = $this->sent_at ?? now();
             }
-        } elseif ($this->status === self::STATUS_SENDING) {
-            $pending = $this->recipients()
-                ->where('status', EmailCampaignRecipient::STATUS_PENDING)
-                ->count();
-            if ($pending === 0 && $queued === 0) {
-                $payload['status'] = $delivered > 0
-                    ? self::STATUS_SENT
-                    : self::STATUS_FAILED;
-                $payload['sent_at'] = $this->sent_at ?? now();
-            }
         }
 
         $this->update($payload);
@@ -310,11 +300,12 @@ class EmailCampaign extends Model
                         'skip_reason' => EmailCampaignRecipient::SKIP_ERROR,
                     ]);
                 $campaign->clearFailStreak();
-                $campaign->recountRecipientTotals();
                 $campaign->update([
                     'status' => self::STATUS_FAILED,
                     'sent_at' => $campaign->sent_at ?? now(),
                 ]);
+                $campaign->refresh();
+                $campaign->recountRecipientTotals();
 
                 continue;
             }
