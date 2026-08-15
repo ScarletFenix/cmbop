@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\UniqueConstraintViolationException;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -23,7 +24,7 @@ class WelcomeBonusSetting extends Model
         }
 
         try {
-            $row = static::query()->where('key', $key)->first();
+            $row = static::query()->where('key', $key)->orderBy('id')->first();
 
             return $row?->value ?? $default;
         } catch (\Throwable) {
@@ -37,7 +38,14 @@ class WelcomeBonusSetting extends Model
             return;
         }
 
-        static::query()->updateOrCreate(['key' => $key], ['value' => $value]);
+        $row = static::query()->where('key', $key)->orderBy('id')->first();
+        if ($row === null) {
+            static::query()->create(['key' => $key, 'value' => $value]);
+        } else {
+            $row->value = $value;
+            $row->save();
+            static::query()->where('key', $key)->where('id', '!=', $row->id)->delete();
+        }
         Cache::forget('welcome_bonus_setting:'.$key);
     }
 
@@ -101,9 +109,10 @@ class WelcomeBonusSetting extends Model
 
         $write = function () use ($enabled, $updatedBy): void {
             DB::transaction(function () use ($enabled, $updatedBy) {
-                $row = static::query()->where('key', 'config')->lockForUpdate()->first();
+                $rows = static::configRows(true);
+                $keep = $rows->first();
                 try {
-                    $current = is_array($row?->value) ? $row->value : [];
+                    $current = is_array($keep?->value) ? $keep->value : [];
                 } catch (\Throwable) {
                     $current = [];
                 }
@@ -114,7 +123,13 @@ class WelcomeBonusSetting extends Model
                     $current['updated_by'] = $updatedBy;
                 }
 
-                static::query()->updateOrCreate(['key' => 'config'], ['value' => $current]);
+                if ($keep === null) {
+                    static::query()->create(['key' => 'config', 'value' => $current]);
+                } else {
+                    $keep->value = $current;
+                    $keep->save();
+                    static::query()->where('key', 'config')->where('id', '!=', $keep->id)->delete();
+                }
                 Cache::forget('welcome_bonus_setting:config');
             });
         };
@@ -166,12 +181,8 @@ class WelcomeBonusSetting extends Model
                 return ['state' => 'missing', 'value' => null];
             }
 
-            $query = static::query()->where('key', 'config');
-            if ($lock) {
-                $query->lockForUpdate();
-            }
-            $row = $query->first();
-            if ($row === null && $lock) {
+            $rows = static::configRows($lock);
+            if ($rows->isEmpty() && $lock) {
                 $defaultOn = static::parseEnabledFlag(config('welcome_bonus.enabled_default', true), true);
                 try {
                     static::query()->create([
@@ -181,15 +192,58 @@ class WelcomeBonusSetting extends Model
                 } catch (UniqueConstraintViolationException) {
                     // Another grant or Disable created the row first.
                 }
-                $row = static::query()->where('key', 'config')->lockForUpdate()->first();
+                $rows = static::configRows(true);
             }
-            if ($row === null) {
+            if ($rows->isEmpty()) {
                 return ['state' => 'missing', 'value' => null];
             }
 
-            return ['state' => 'present', 'value' => $row->value];
+            return ['state' => 'present', 'value' => static::authoritativeConfigValue($rows)];
         } catch (\Throwable) {
             return ['state' => 'unreadable', 'value' => null];
         }
+    }
+
+    /**
+     * @return Collection<int, static>
+     */
+    private static function configRows(bool $lock)
+    {
+        $query = static::query()->where('key', 'config')->orderBy('id');
+        if ($lock) {
+            $query->lockForUpdate();
+        }
+
+        return $query->get();
+    }
+
+    /**
+     * Duplicate config rows (no unique on key) can leave Disable on one row
+     * and enabled=true on another. Any explicit off wins so Disable sticks.
+     *
+     * @param  Collection<int, static>  $rows
+     */
+    private static function authoritativeConfigValue($rows): mixed
+    {
+        $latestOn = null;
+        foreach ($rows as $row) {
+            try {
+                $value = $row->value;
+            } catch (\Throwable) {
+                return null;
+            }
+
+            if (! is_array($value) || ! array_key_exists('enabled', $value)) {
+                return is_array($value) ? $value : null;
+            }
+
+            if (! static::parseEnabledFlag($value['enabled'], false)) {
+                return $value;
+            }
+
+            $latestOn = $value;
+        }
+
+        return $latestOn;
     }
 }

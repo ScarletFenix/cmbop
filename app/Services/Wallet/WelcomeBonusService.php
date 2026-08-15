@@ -131,12 +131,26 @@ class WelcomeBonusService
 
             // Settings-row lock serializes grants only when that table exists.
             // Per-place lock covers Hostinger drift (no unique IP index yet).
+            // Lock-store failures must not abort signup — unique IP + row
+            // locks still refuse a second €20. Do not retry insert() if it
+            // already ran (lock release can throw after a successful write).
+            $ran = false;
+            $result = false;
+            $insertOnce = function () use ($insert, &$ran, &$result): bool {
+                if (! $ran) {
+                    $ran = true;
+                    $result = $insert();
+                }
+
+                return $result;
+            };
+
             try {
-                return Cache::lock('welcome-bonus-claim:'.$ip, 15)->block(8, $insert);
+                return Cache::lock('welcome-bonus-claim:'.$ip, 15)->block(8, $insertOnce);
             } catch (LockTimeoutException) {
                 return false;
-            } catch (\BadMethodCallException) {
-                return $insert();
+            } catch (\Throwable) {
+                return $insertOnce();
             }
         };
 

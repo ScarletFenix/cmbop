@@ -128,7 +128,10 @@ class Wallet extends Model
         }
 
         try {
-            $claimed = DB::table('welcome_bonus_claims')->where('user_id', $userId)->value('amount');
+            $claimed = DB::table('welcome_bonus_claims')
+                ->where('user_id', $userId)
+                ->orderBy('id')
+                ->value('amount');
         } catch (\Throwable) {
             return 0.0;
         }
