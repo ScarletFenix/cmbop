@@ -237,6 +237,10 @@ class RevealPaceGuard
      */
     public function seriesLooksMetronomic(array $ordered, int $samples, float $limit): bool
     {
+        $ordered = array_values(array_filter(
+            $ordered,
+            fn ($at) => $at instanceof \DateTimeInterface
+        ));
         if ($limit <= 0 || count($ordered) < $samples) {
             return false;
         }

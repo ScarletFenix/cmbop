@@ -61,6 +61,7 @@ class CatalogActivityController extends Controller
         $counts = SiteUrlReveal::query()
             ->select('user_id', DB::raw('COUNT(*) as total'), DB::raw('MAX(created_at) as last_at'))
             ->where('created_at', '>=', now()->subDays($days))
+            ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->when($matchingIds !== null, fn ($query) => $query->whereIn('user_id', $matchingIds))
             ->groupBy('user_id')
             ->orderByDesc('total')
@@ -79,12 +80,14 @@ class CatalogActivityController extends Controller
             ->select('user_id', DB::raw('COUNT(*) as total'))
             ->whereIn('user_id', $userIds)
             ->where('created_at', '>=', now()->subHour())
+            ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->groupBy('user_id')
             ->pluck('total', 'user_id');
 
         $recent = SiteUrlReveal::query()
             ->whereIn('user_id', $userIds)
             ->where('created_at', '>=', now()->subHour())
+            ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->orderBy('created_at')
             ->get(['user_id', 'created_at'])
             ->groupBy('user_id');
@@ -112,7 +115,11 @@ class CatalogActivityController extends Controller
                 'established' => $establishedIds->has((int) $row->user_id),
                 'last_hour' => (int) ($lastHour[$row->user_id] ?? 0),
                 'metronomic' => $pace->seriesLooksMetronomic(
-                    $recent->get($row->user_id, collect())->pluck('created_at')->all(),
+                    $recent->get($row->user_id, collect())
+                        ->pluck('created_at')
+                        ->filter(fn ($at) => $at instanceof \DateTimeInterface)
+                        ->values()
+                        ->all(),
                     $samples,
                     $stddev
                 ),
@@ -426,19 +433,50 @@ class CatalogActivityController extends Controller
             return [collect(), false];
         }
 
-        $users = User::query()
-            ->where(function ($q) {
-                $q->where('catalog_copy_strike_count', '>', 0)
-                    ->orWhere(function ($q2) {
-                        $q2->whereNotNull('catalog_hide_until')
-                            ->where('catalog_hide_until', '>', now())
-                            ->where('catalog_hide_until', '>=', User::PLAUSIBLE_SQL_DATETIME_FLOOR)
-                            ->where('catalog_hide_until', '<=', User::PLAUSIBLE_SQL_DATETIME_CEIL);
-                    });
+        $copyFilter = $request->query('copy') === 'all' ? 'all' : 'attention';
+        $q = trim((string) $request->query('q', ''));
+        $focusUserId = max(0, (int) $request->integer('user'));
+        $matchingIds = $this->matchingUserIds($q);
+        $attentionSince = now()->subDays(self::COPY_ATTENTION_DAYS);
+        $floor = User::PLAUSIBLE_SQL_DATETIME_FLOOR;
+        $ceil = User::PLAUSIBLE_SQL_DATETIME_CEIL;
+
+        $query = User::query()
+            ->where(function ($outer) use ($copyFilter, $attentionSince, $floor, $ceil) {
+                $outer->where(function ($q) use ($floor, $ceil) {
+                    $q->whereNotNull('catalog_hide_until')
+                        ->where('catalog_hide_until', '>', now())
+                        ->where('catalog_hide_until', '>=', $floor)
+                        ->where('catalog_hide_until', '<=', $ceil);
+                });
+
+                if ($copyFilter === 'all') {
+                    $outer->orWhere('catalog_copy_strike_count', '>', 0);
+
+                    return;
+                }
+
+                $outer->orWhere(function ($q) use ($attentionSince, $floor, $ceil) {
+                    $q->where('catalog_copy_strike_count', '>', 0)
+                        ->where(function ($recent) use ($attentionSince, $floor, $ceil) {
+                            $recent->where(function ($warned) use ($attentionSince, $floor, $ceil) {
+                                $warned->where('catalog_copy_warned_at', '>=', $attentionSince)
+                                    ->where('catalog_copy_warned_at', '>=', $floor)
+                                    ->where('catalog_copy_warned_at', '<=', $ceil);
+                            })->orWhere(function ($hidden) use ($attentionSince, $floor, $ceil) {
+                                $hidden->where('catalog_hide_until', '>=', $attentionSince)
+                                    ->where('catalog_hide_until', '>=', $floor)
+                                    ->where('catalog_hide_until', '<=', $ceil);
+                            });
+                        });
+                });
             })
+            ->when($matchingIds !== null, fn ($q2) => $q2->whereIn('id', $matchingIds));
+
+        $users = $query
             ->orderByRaw(
                 'CASE WHEN catalog_hide_until IS NOT NULL AND catalog_hide_until > ? AND catalog_hide_until >= ? AND catalog_hide_until <= ? THEN 0 ELSE 1 END',
-                [now(), User::PLAUSIBLE_SQL_DATETIME_FLOOR, User::PLAUSIBLE_SQL_DATETIME_CEIL]
+                [now(), $floor, $ceil]
             )
             ->orderByDesc('catalog_hide_until')
             ->orderByDesc('catalog_copy_strike_count')
@@ -462,14 +500,25 @@ class CatalogActivityController extends Controller
             return [collect(), $capped];
         }
 
-        $copyCounts = collect();
-        if (Schema::hasTable('catalog_copy_events')) {
-            $window = max(30, (int) config('catalog.copy_strikes.window_seconds', 120));
-            $copyCounts = CatalogCopyEvent::query()
-                ->select('user_id', DB::raw('COUNT(*) as recent_copies'))
-                ->whereIn('user_id', $users->pluck('id'))
-                ->where('created_at', '>=', now()->subSeconds($window))
-                ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
+        $userIds = $users->pluck('id');
+        $windowStart = now()->subDays($days);
+        $unlocks = collect();
+        $lastHour = collect();
+
+        if (Schema::hasTable('site_url_reveals')) {
+            $unlocks = SiteUrlReveal::query()
+                ->select('user_id', DB::raw('COUNT(*) as total'))
+                ->whereIn('user_id', $userIds)
+                ->where('created_at', '>=', $windowStart)
+                ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
+                ->groupBy('user_id')
+                ->pluck('total', 'user_id');
+
+            $lastHour = SiteUrlReveal::query()
+                ->select('user_id', DB::raw('COUNT(*) as total'))
+                ->whereIn('user_id', $userIds)
+                ->where('created_at', '>=', now()->subHour())
+                ->where('created_at', '<=', SiteUrlReveal::PLAUSIBLE_SQL_DATETIME_CEIL)
                 ->groupBy('user_id')
                 ->pluck('total', 'user_id');
         }
@@ -613,6 +662,7 @@ class CatalogActivityController extends Controller
             ->select('user_id', DB::raw('COUNT(DISTINCT site_id) as total'))
             ->whereIn('user_id', $userIds)
             ->where('created_at', '>=', $since)
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNotNull('site_id')
             ->groupBy('user_id')
             ->pluck('total', 'user_id');
@@ -621,6 +671,7 @@ class CatalogActivityController extends Controller
             ->select('user_id', DB::raw('COUNT(DISTINCT normalized_host) as total'))
             ->whereIn('user_id', $userIds)
             ->where('created_at', '>=', $since)
+            ->where('created_at', '<=', CatalogCopyEvent::PLAUSIBLE_SQL_DATETIME_CEIL)
             ->whereNull('site_id')
             ->groupBy('user_id')
             ->pluck('total', 'user_id');
@@ -650,20 +701,24 @@ class CatalogActivityController extends Controller
 
     private function parseDbTimestamp(mixed $value): ?Carbon
     {
-        if ($value instanceof Carbon) {
-            return $value;
-        }
+        try {
+            if ($value instanceof Carbon) {
+                return $value;
+            }
 
-        if ($value instanceof \DateTimeInterface) {
-            return Carbon::parse($value->format('Y-m-d H:i:s'), 'UTC');
-        }
+            if ($value instanceof \DateTimeInterface) {
+                return Carbon::parse($value->format('Y-m-d H:i:s'), 'UTC');
+            }
 
-        $raw = trim((string) $value);
-        if ($raw === '') {
+            $raw = trim((string) $value);
+            if ($raw === '') {
+                return null;
+            }
+
+            return Carbon::parse($raw, 'UTC');
+        } catch (\Throwable) {
             return null;
         }
-
-        return Carbon::parse($raw, 'UTC');
     }
 
     /**
