@@ -90,7 +90,8 @@ class CountryDetectionService
 
                 // Weak mapping from language to likely country (only when country missing).
                 return match ($lang) {
-                    'en' => 'us',
+                    // English is spoken in many markets — do not stamp US.
+                    'en' => null,
                     'de' => 'de',
                     'fr' => 'fr',
                     'es' => 'es',

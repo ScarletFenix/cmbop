@@ -459,7 +459,7 @@ class SiteController extends Controller
             'description' => $site->description,
             'enrichment_status' => $site->enrichment_status,
             'enrichment_error' => $site->enrichment_error,
-            'metrics_manual' => (bool) $site->metrics_manual,
+            'metrics_manual' => Site::hasSitesColumn('metrics_manual') && (bool) $site->metrics_manual,
             'metrics_fetched_at' => optional($site->metrics_fetched_at)?->toIso8601String(),
             'site_image' => $site->site_image,
             'screenshot_path' => $site->screenshot_path,

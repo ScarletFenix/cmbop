@@ -79,6 +79,24 @@ class SemrushMetricsProvider implements SiteMetricsProvider
         return self::COUNTRY_DATABASES[$code] ?? 'us';
     }
 
+    /**
+     * Prefer the primary country column, then the first countries[] value.
+     */
+    public static function databaseForSite(Site $site): string
+    {
+        $code = $site->country;
+        if (! filled($code) && is_array($site->countries)) {
+            foreach ($site->countries as $candidate) {
+                if (is_scalar($candidate) && filled($candidate)) {
+                    $code = $candidate;
+                    break;
+                }
+            }
+        }
+
+        return self::databaseForCountry(is_scalar($code) ? (string) $code : null);
+    }
+
     public function fetch(Site $site): SiteMetricsSnapshot
     {
         $apiKey = (string) config('site_enrichment.providers.semrush.api_key');
@@ -94,7 +112,7 @@ class SemrushMetricsProvider implements SiteMetricsProvider
                 'key' => $apiKey,
                 'export_columns' => 'Dn,Rk,Or,Ot,Oc,Ad,At,Ac',
                 'domain' => $site->domain,
-                'database' => self::databaseForCountry($site->country),
+                'database' => self::databaseForSite($site),
             ]);
 
             if (! $response->successful()) {

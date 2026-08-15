@@ -12,6 +12,9 @@ use App\Services\SiteEnrichment\Providers\SemrushMetricsProvider;
 use App\Services\SiteEnrichment\ScreenshotCaptureService;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use Database\Seeders\CategoriesTableSeeder;
+use Database\Seeders\CountriesTableSeeder;
+use Database\Seeders\LanguagesTableSeeder;
 use Database\Seeders\RolesTableSeeder;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Log\Events\MessageLogged;
@@ -330,6 +333,13 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame('uk', SemrushMetricsProvider::databaseForCountry('gb'));
         $this->assertSame('us', SemrushMetricsProvider::databaseForCountry(null));
         $this->assertSame('us', SemrushMetricsProvider::databaseForCountry('zz'));
+        $fromCountries = $this->makeSite([
+            'country' => '',
+            'countries' => ['de'],
+            'domain' => 'from-countries.example',
+            'site_url' => 'https://from-countries.example',
+        ]);
+        $this->assertSame('de', SemrushMetricsProvider::databaseForSite($fromCountries));
 
         config([
             'site_enrichment.providers.semrush.api_key' => 'semrush-key',
@@ -379,6 +389,20 @@ class SiteEnrichmentTest extends TestCase
 
         $this->assertTrue(blank($site->country));
         $this->assertTrue(empty($site->countries));
+
+        Http::fake([
+            '*' => Http::response('<html lang="en"><body>English .com</body></html>', 200),
+        ]);
+        $english = $this->makeSite([
+            'site_name' => 'English Com',
+            'domain' => 'english-com.example.com',
+            'site_url' => 'https://english-com.example.com',
+            'country' => '',
+            'countries' => [],
+        ]);
+        $detector->detectAndApply($english);
+        $english->refresh();
+        $this->assertTrue(blank($english->country), 'lang=en must not stamp United States');
     }
 
     public function test_country_detection_does_not_overwrite_existing_country(): void
@@ -417,6 +441,45 @@ class SiteEnrichmentTest extends TestCase
         $this->assertFalse((bool) $site->metrics_manual);
         $this->assertSame(40, $site->dr);
         Queue::assertNothingPushed();
+    }
+
+    public function test_site_edit_unlock_is_not_nested_inside_the_update_form(): void
+    {
+        $this->seed(RolesTableSeeder::class);
+        $this->seed(CountriesTableSeeder::class);
+        $this->seed(LanguagesTableSeeder::class);
+        $this->seed(CategoriesTableSeeder::class);
+        $adminRole = Role::where('name', 'admin')->firstOrFail();
+        $admin = User::factory()->create([
+            'email_verified_at' => now(),
+            'active_role_id' => $adminRole->id,
+        ]);
+        $admin->roles()->attach($adminRole->id);
+
+        $site = $this->makeSite(['metrics_manual' => true, 'dr' => 40, 'da' => 41, 'traffic' => 900]);
+
+        $html = $this->actingAs($admin)
+            ->get(route('admin.sites.edit', $site->id))
+            ->assertOk()
+            ->assertSee('id="allow-api-overwrite-form"', false)
+            ->assertSee('form="allow-api-overwrite-form"', false)
+            ->assertSee('Allow API overwrite', false)
+            ->getContent();
+
+        $unlockPos = strpos($html, 'id="allow-api-overwrite-form"');
+        $updatePos = strpos($html, 'enctype="multipart/form-data"');
+        $this->assertNotFalse($unlockPos);
+        $this->assertNotFalse($updatePos);
+        $this->assertLessThan($updatePos, $unlockPos, 'Unlock form must sit outside the update form');
+
+        $this->actingAs($admin)
+            ->from(route('admin.sites.edit', $site->id))
+            ->post(route('admin.sites.allow-api-metrics', $site->id))
+            ->assertRedirect();
+
+        $site->refresh();
+        $this->assertFalse((bool) $site->metrics_manual);
+        $this->assertSame(40, $site->dr);
     }
 
     public function test_refresh_screenshot_endpoint_reports_placeholder_as_failure(): void

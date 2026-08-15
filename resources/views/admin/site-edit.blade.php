@@ -64,6 +64,12 @@
         </div>
     @endif
 
+    @if($site->metrics_manual && ! $marketingListingLocked)
+        <form id="allow-api-overwrite-form" method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}">
+            @csrf
+        </form>
+    @endif
+
     <div class="card border-0 shadow-sm">
         <div class="card-body">
             @if($isMarketingEditor)
@@ -216,10 +222,7 @@
                         <div class="col-12">
                             <div class="alert alert-warning border-0 py-2 mb-0 d-flex flex-wrap align-items-center gap-2">
                                 <span>Manual lock skips API providers.</span>
-                                <form method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-dark">Allow API overwrite</button>
-                                </form>
+                                <button type="submit" form="allow-api-overwrite-form" class="btn btn-sm btn-outline-dark">Allow API overwrite</button>
                             </div>
                         </div>
                         @endif
@@ -376,10 +379,7 @@
                         <div class="col-12">
                             <div class="alert alert-warning border-0 py-2 mb-0 d-flex flex-wrap align-items-center gap-2">
                                 <span>Manual lock skips API providers.</span>
-                                <form method="POST" action="{{ staff_route('sites.allow-api-metrics', $site->id) }}" class="d-inline">
-                                    @csrf
-                                    <button type="submit" class="btn btn-sm btn-outline-dark">Allow API overwrite</button>
-                                </form>
+                                <button type="submit" form="allow-api-overwrite-form" class="btn btn-sm btn-outline-dark">Allow API overwrite</button>
                             </div>
                         </div>
                         @endif
