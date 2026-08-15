@@ -9,6 +9,7 @@ use App\Models\OrderItem;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
+use App\Services\ContentModeration\ContentModerationService;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Route;
 use Tests\Support\CreatesContentSubmissions;
@@ -379,7 +380,13 @@ class AdminContentLibraryTest extends TestCase
         $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
         $this->assertTrue((bool) $log->fresh()->admin_override);
         $this->assertTrue((bool) $log->fresh()->passed);
+        $this->assertNotEmpty($log->fresh()->signals['override_fingerprint'] ?? null);
         $this->assertTrue($submission->fresh()->isReadyForCheckout());
+
+        config(['content_moderation.enabled' => true]);
+        $check = app(ContentModerationService::class)
+            ->assertSubmissionsApproved([$submission->fresh()], $advertiser);
+        $this->assertTrue($check['ok'], json_encode($check['failures']));
     }
 
     public function test_reject_while_paid_is_forbidden(): void
@@ -483,7 +490,10 @@ class AdminContentLibraryTest extends TestCase
         ]);
 
         $this->actingAs($admin)
-            ->post(route('admin.moderation.override', $log))
+            ->from(route('admin.content-library.show', $submission))
+            ->post(route('admin.moderation.override', $log), [
+                'notes' => 'False positive on brand name.',
+            ])
             ->assertRedirect(route('admin.content-library.show', $submission))
             ->assertSessionHas('success');
 

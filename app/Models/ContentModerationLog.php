@@ -162,13 +162,45 @@ class ContentModerationLog extends Model
 
     public function isUsableApproval(int $withinSeconds = 900): bool
     {
-        if ($this->admin_override && $this->passed) {
-            return true;
+        if ($this->wasSkipped()) {
+            return false;
         }
 
         return $this->passed
             && $this->status === self::STATUS_APPROVED
             && $this->created_at
             && $this->created_at->gte(now()->subSeconds($withinSeconds));
+    }
+
+    /**
+     * Queue override may only change the article's current scan, not an older row.
+     * URL-only logs (no linked article) are always their own current decision.
+     */
+    public function isCurrentDecision(?ContentSubmission $submission = null): bool
+    {
+        $submission ??= $this->submission;
+        if (! $submission instanceof ContentSubmission) {
+            return true;
+        }
+
+        $currentId = (int) ($submission->moderation_log_id ?? 0);
+        if ($currentId === 0) {
+            return true;
+        }
+
+        return $currentId === (int) $this->id;
+    }
+
+    public function isOverridable(?ContentSubmission $submission = null): bool
+    {
+        if ($this->wasSkipped() || $this->admin_override || $this->passed) {
+            return false;
+        }
+
+        if (! in_array($this->status, [self::STATUS_REJECTED, self::STATUS_ERROR], true)) {
+            return false;
+        }
+
+        return $this->isCurrentDecision($submission);
     }
 }
