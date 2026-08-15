@@ -2,8 +2,6 @@
 
 namespace App\Console\Commands;
 
-use App\Models\Blog;
-use App\Models\BlogTranslation;
 use App\Models\User;
 use App\Services\CuratedBlogWriter;
 use App\Support\AcheterGuestPostsFrBlogPost;
@@ -15,10 +13,8 @@ use App\Support\GastpostsKopenNlBlogPost;
 use App\Support\GuestPostsEuropeEnBlogPost;
 use App\Support\GuestPostsUkUsBlogPost;
 use App\Support\PublisherGuideDeBlogPost;
-use App\Support\PublicI18n;
 use App\Support\UitgeversKiezenNlBlogPost;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Schema;
 
 /**
  * Publish/update language + market gap pillars (EN twins, DE how-tos, FR/NL, UK/US).
@@ -58,10 +54,6 @@ class UpsertLanguageMarketBlogs extends Command
                 continue;
             }
 
-            if (! $blog->manually_edited_at) {
-                $this->syncPrimaryTranslation($blog);
-            }
-
             $this->info('Upserted blog #'.$blog->id.' ('.$blog->slug.') locale='.($blog->primary_locale ?: 'null'));
             $ok++;
         }
@@ -95,30 +87,5 @@ class UpsertLanguageMarketBlogs extends Command
         if (! BlogInlineImages::publishFeatured($class::FEATURED_STORAGE, $class::FEATURED_ASSET)) {
             $this->warn('Featured asset missing: '.public_path($class::FEATURED_ASSET));
         }
-    }
-
-    private function syncPrimaryTranslation(Blog $blog): void
-    {
-        if (! Schema::hasTable('blog_translations')) {
-            return;
-        }
-
-        $locale = PublicI18n::isSupported($blog->primary_locale)
-            ? $blog->primary_locale
-            : 'en';
-
-        BlogTranslation::query()->updateOrCreate(
-            [
-                'blog_id' => $blog->id,
-                'locale' => $locale,
-            ],
-            [
-                'title' => $blog->title,
-                'slug' => $blog->slug,
-                'excerpt' => $blog->excerpt,
-                'content' => $blog->content,
-                'is_published' => $blog->status === 'published',
-            ]
-        );
     }
 }

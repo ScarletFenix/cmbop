@@ -51,14 +51,7 @@ class CuratedBlogWriter
             return null;
         }
 
-        $existing = Blog::query()
-            ->where(function ($query) use ($slug) {
-                $query->where('slug', $slug);
-                if (Schema::hasColumn('blogs', 'curated_key')) {
-                    $query->orWhere('curated_key', $slug);
-                }
-            })
-            ->first();
+        $existing = self::findExisting($slug);
 
         if ($existing && $existing->manually_edited_at) {
             if (Schema::hasColumn('blogs', 'curated_key') && ! $existing->curated_key) {
@@ -90,6 +83,15 @@ class CuratedBlogWriter
             if ($existing->featured_image) {
                 $data['featured_image'] = $existing->featured_image;
             }
+            // Keep draft/unpublish. Payload is always "published"; overwriting
+            // here republishes pillars that were toggled before manually_edited_at
+            // was set, or unpublished directly in the DB.
+            if (filled($existing->status)) {
+                $data['status'] = $existing->status;
+            }
+            if (isset($data['slug']) && self::publicSlugTakenByAnother((string) $data['slug'], $existing->id)) {
+                $data['slug'] = $existing->slug;
+            }
         }
 
         if ($existing) {
@@ -106,12 +108,40 @@ class CuratedBlogWriter
         return $created;
     }
 
+    private static function publicSlugTakenByAnother(string $slug, int $blogId): bool
+    {
+        if (Blog::query()->where('slug', $slug)->where('id', '!=', $blogId)->exists()) {
+            return true;
+        }
+
+        if (! Schema::hasTable('blog_translations')) {
+            return false;
+        }
+
+        return BlogTranslation::query()
+            ->where('slug', $slug)
+            ->where('blog_id', '!=', $blogId)
+            ->exists();
+    }
+
+    private static function findExisting(string $slug): ?Blog
+    {
+        if (Schema::hasColumn('blogs', 'curated_key')) {
+            $byKey = Blog::query()->where('curated_key', $slug)->first();
+            if ($byKey) {
+                return $byKey;
+            }
+        }
+
+        return Blog::query()->where('slug', $slug)->first();
+    }
+
     /**
      * Public locale URLs read blog_translations, not blogs.content.
      * Upsert commands that only write blogs.* leave DE/FR/NL pillars stale
      * after a deploy until an admin full-saves the post.
      */
-    private static function syncPrimaryTranslation(Blog $blog): void
+    public static function syncPrimaryTranslation(Blog $blog): void
     {
         if (! Schema::hasTable('blog_translations')) {
             return;

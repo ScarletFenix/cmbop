@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Blog;
 use App\Models\BlogTranslation;
 use App\Services\CuratedBlogSync;
 use App\Support\PublicI18n;
@@ -86,7 +87,9 @@ class SitemapController extends Controller
             ->orderByDesc('blogs.published_at')
             ->get();
 
+        $listedIds = [];
         foreach ($translations as $translation) {
+            $listedIds[] = (int) $translation->blog_id;
             $path = 'blog/'.$translation->slug;
             $slugsByLocale = BlogTranslation::query()
                 ->where('blog_id', $translation->blog_id)
@@ -101,6 +104,30 @@ class SitemapController extends Controller
 
             $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', $availableLocales, $pathByLocale);
             $entry['lastmod'] = optional($translation->updated_at)?->toAtomString();
+            $urls[] = $entry;
+        }
+
+        // DE-primary pillars (and legacy rows) are public at /blog/{blogs.slug}
+        // even when they have no EN translation. Locale sitemaps that only join
+        // blog_translations omit those URLs.
+        $fallbackBlogs = Blog::published()
+            ->with(['translations' => function ($query) {
+                $query->where('is_published', true);
+            }])
+            ->when($listedIds !== [], fn ($query) => $query->whereNotIn('id', $listedIds))
+            ->get();
+
+        foreach ($fallbackBlogs as $blog) {
+            $path = 'blog/'.$blog->slug;
+            $slugsByLocale = $blog->translations->pluck('slug', 'locale')->all();
+            $slugsByLocale[$locale] = $blog->slug;
+            $pathByLocale = [];
+            foreach ($slugsByLocale as $altLocale => $slug) {
+                $pathByLocale[$altLocale] = 'blog/'.$slug;
+            }
+
+            $entry = $this->urlEntry($path, $locale, 'monthly', '0.6', array_keys($slugsByLocale), $pathByLocale);
+            $entry['lastmod'] = optional($blog->updated_at)?->toAtomString();
             $urls[] = $entry;
         }
 

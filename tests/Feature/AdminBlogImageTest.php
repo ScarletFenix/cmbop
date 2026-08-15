@@ -313,6 +313,22 @@ class AdminBlogImageTest extends TestCase
         Storage::disk('public')->assertMissing($path);
     }
 
+    public function test_admin_cannot_delete_content_image_via_encoded_traversal(): void
+    {
+        Storage::fake('public');
+        $admin = $this->adminUser();
+        $path = UploadedFile::fake()->image('keep.webp')->store('blogs/content', 'public');
+
+        $this->actingAs($admin)
+            ->deleteJson(route('admin.blogs.delete-content-image'), [
+                'url' => '/media/blogs/content/%2e%2e/'.$path,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false);
+
+        Storage::disk('public')->assertExists($path);
+    }
+
     public function test_admin_blog_images_js_deletes_media_and_storage_urls(): void
     {
         $js = file_get_contents(public_path('assets/js/admin-blog-images.js'));
