@@ -145,7 +145,14 @@ class EmailCampaignPhpSyntaxTest extends TestCase
 
         $center = (string) file_get_contents($files[3]);
         $this->assertSame(1, preg_match_all('/function markRetriedMailLogsPending\b/', $center));
+        $this->assertSame(1, preg_match_all('/function closeFailedLogsAlreadyDelivered\b/', $center));
         $this->assertSame(1, preg_match_all('/function failedJobMatchesLog\b/', $center));
+        $this->assertTrue((bool) preg_match(
+            '/protected function markRetriedMailLogsPending\(array \$uuids, array \$payloadsByUuid = \[\]\): void\s*\{(.*?)\n    \/\*\*/s',
+            $center,
+            $mark
+        ));
+        $this->assertStringContainsString('$claimedUuids[$stored] = true;', $mark[1]);
         $this->assertTrue((bool) preg_match(
             '/protected function requeueFailedCampaignRecipient\(EmailLog \$log\): void\s*\{(.*)\n    protected function failedJobUuidForLog/s',
             $center,
