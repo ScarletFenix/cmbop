@@ -1097,4 +1097,88 @@ class CommunityFeedbackTest extends TestCase
         $this->assertSame('pending', $suggestion->fresh()->status);
         Mail::assertNothingQueued();
     }
+
+    public function test_reopening_then_resolving_again_sends_a_second_review_email(): void
+    {
+        Mail::fake();
+
+        $admin = $this->userWithRole('admin');
+        $advertiser = $this->userWithRole('advertiser');
+        $report = ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+            'admin_notes' => 'Fixed.',
+        ])->assertOk();
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'pending',
+        ])->assertOk();
+
+        $this->actingAs($admin)->patchJson(route('admin.community.problems.update', $report->id), [
+            'status' => 'resolved',
+            'admin_notes' => 'Fixed again.',
+        ])->assertOk();
+
+        $queued = Mail::queued(CommunityFeedbackReviewed::class);
+        $this->assertCount(2, $queued);
+        $this->assertNotSame($queued[0]->dedupeKey, $queued[1]->dedupeKey);
+        $this->assertSame('Fixed.', $queued[0]->notes);
+        $this->assertSame('Fixed again.', $queued[1]->notes);
+    }
+
+    public function test_review_mail_survives_submitter_account_deletion(): void
+    {
+        $advertiser = $this->userWithRole('advertiser');
+        $report = ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'resolved',
+            'admin_notes' => 'Fixed the mobile CTA.',
+        ]);
+
+        $mail = new CommunityFeedbackReviewed($report, 'problem', 'resolved', 'Fixed the mobile CTA.');
+        $this->assertSame($advertiser->id, $mail->recipientUserId);
+        $this->assertNull($mail->recipientUser);
+
+        $advertiser->delete();
+
+        $restored = unserialize(serialize($mail));
+        $this->assertInstanceOf(CommunityFeedbackReviewed::class, $restored);
+        $this->assertSame('resolved', $restored->status);
+        $this->assertStringContainsString('marked this report as resolved', $restored->render());
+    }
+
+    public function test_pending_status_does_not_notify_the_submitter(): void
+    {
+        Mail::fake();
+
+        $advertiser = $this->userWithRole('advertiser');
+        $report = ProblemReport::create([
+            'user_id' => $advertiser->id,
+            'name' => $advertiser->name,
+            'email' => $advertiser->email,
+            'subject' => 'Checkout broken',
+            'message' => 'The pay button does nothing on mobile.',
+            'status' => 'pending',
+        ]);
+
+        app(CommunityInboxNotifier::class)->notifySubmitterReviewed($report, CommunityInbox::TAB_PROBLEMS);
+
+        Mail::assertNothingQueued();
+        $this->assertDatabaseMissing('in_app_notifications', [
+            'user_id' => $advertiser->id,
+            'title' => 'We reviewed your report — Checkout broken',
+        ]);
+    }
 }

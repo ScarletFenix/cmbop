@@ -121,7 +121,7 @@ class CommunityInboxTest extends TestCase
     public function test_create_listing_query_prefills_safe_http_and_iso_codes(): void
     {
         $suggestion = new WebsiteSuggestion([
-            'website_name' => 'Fresh Tech Blog',
+            'website_name' => "Fresh\r\nTech Blog",
             'website_url' => 'https://fresh-tech.example',
             'country' => 'US',
             'language' => 'en',

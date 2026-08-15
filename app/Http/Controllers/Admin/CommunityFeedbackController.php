@@ -289,13 +289,25 @@ class CommunityFeedbackController extends Controller
             ], 422);
         }
 
-        $model->refresh();
-        $model->loadMissing('user');
+        try {
+            $model->refresh();
+            $model->loadMissing('user');
+        } catch (\Throwable $e) {
+            Log::warning('Failed to reload community item after status update: '.$e->getMessage(), [
+                'tab' => $tab,
+                'id' => $model->id,
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Updated.',
+            ]);
+        }
 
         try {
             ActivityLogger::log(
                 $activityType,
-                auth()->user()->name.' updated '.$activityType.' #'.$model->id,
+                (auth()->user()?->name ?? 'Staff').' updated '.$activityType.' #'.$model->id,
                 $model,
                 $data
             );

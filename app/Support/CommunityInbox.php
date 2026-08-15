@@ -236,7 +236,7 @@ class CommunityInbox
     public static function createListingQuery(WebsiteSuggestion $suggestion): array
     {
         $params = ['suggestion_id' => (int) $suggestion->id];
-        $name = search_text($suggestion->website_name);
+        $name = self::plainLine($suggestion->website_name);
         if ($name !== '') {
             $params['site_name'] = $name;
         }

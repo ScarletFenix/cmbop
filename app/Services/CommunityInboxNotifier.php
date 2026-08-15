@@ -85,6 +85,10 @@ class CommunityInboxNotifier
 
     public function notifySubmitterReviewed(ProblemReport|Suggestion|WebsiteSuggestion $item, string $tab): void
     {
+        if (CommunityInbox::plainLine($item->status) === 'pending') {
+            return;
+        }
+
         $item->loadMissing(['user']);
 
         try {
@@ -106,18 +110,22 @@ class CommunityInboxNotifier
 
         try {
             $notes = trim((string) ($item->admin_notes ?? ''));
+            $reviewKey = bin2hex(random_bytes(4));
             $mailable = $item instanceof WebsiteSuggestion
                 ? new WebsiteSuggestionReviewed(
                     $item,
                     (string) $item->status,
                     $notes,
                     (string) ($item->website_name ?: ($item->domain ?: 'the website')),
+                    $reviewKey,
                 )
                 : new CommunityFeedbackReviewed(
                     $item,
                     $tab === CommunityInbox::TAB_SUGGESTIONS ? 'suggestion' : 'problem',
                     (string) $item->status,
                     $notes,
+                    $item instanceof ProblemReport ? (string) ($item->subject ?: 'your report') : 'your suggestion',
+                    $reviewKey,
                 );
 
             Mail::to($email)->send($mailable);
