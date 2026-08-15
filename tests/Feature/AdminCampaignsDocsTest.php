@@ -44,6 +44,8 @@ class AdminCampaignsDocsTest extends TestCase
         $this->assertStringContainsString('queued row with a pending Email Center log', $body);
         $this->assertStringContainsString('only one failed log per job UUID', $body);
         $this->assertStringContainsString('already has a delivered/failed log FK', $body);
+        $this->assertStringContainsString('second database table without `payload`', $body);
+        $this->assertStringContainsString('failed_jobs', $body);
         $this->assertStringContainsString('must **not** look like “no job”', $body);
         $this->assertStringContainsString('ops-mail-reminders.md', $body);
         $this->assertStringContainsString('even if that staff account also has a marketplace role', $body);

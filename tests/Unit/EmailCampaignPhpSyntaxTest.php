@@ -146,5 +146,8 @@ class EmailCampaignPhpSyntaxTest extends TestCase
             '/function test_matches_email_log_require_token_rejects_unidentified_payload\b/',
             $payloadTest
         ));
+        $this->assertStringContainsString('$mailFailed = true;', $inFlight[1]);
+        $this->assertStringNotContainsString('if (! Schema::hasColumn($table, \'payload\')) {
+                    return null;', $inFlight[1]);
     }
 }

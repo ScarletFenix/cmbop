@@ -274,6 +274,13 @@ class EmailCampaign extends Model
                 continue;
             }
 
+            // Reconcile can flip this row to a terminal status before we
+            // dispatch. A no-op SendEmailCampaignJob still burns the queue.
+            if (in_array($campaign->status, [self::STATUS_SENT, self::STATUS_FAILED], true)
+                && ! $campaign->hasInFlightRecipients()) {
+                continue;
+            }
+
             if ($campaign->status === self::STATUS_SENT && $campaign->hasInFlightRecipients()) {
                 $campaign->finalizeIfIdle();
                 $campaign->refresh();
@@ -510,7 +517,28 @@ class EmailCampaign extends Model
             }
         }
 
-        if ($sawUnscoped) {
+        // A mailable that already failed is still retryable from Email
+        // Center. Reclaiming that user would dispatch a second send.
+        try {
+            $failedTable = (string) config('queue.failed.table', 'failed_jobs');
+            if (Schema::hasTable($failedTable)) {
+                if (! Schema::hasColumn($failedTable, 'payload')) {
+                    return null;
+                }
+
+                self::collectCampaignMailUserIdsFromTable(
+                    $failedTable,
+                    $campaignId,
+                    $prefix,
+                    $ids,
+                    $sawUnscoped
+                );
+            }
+        } catch (\Throwable) {
+            return null;
+        }
+
+        if ($sawUnscoped || $mailFailed) {
             return null;
         }
 
@@ -522,6 +550,46 @@ class EmailCampaign extends Model
         }
 
         return array_map('intval', array_keys($ids));
+    }
+
+    /**
+     * @param  array<int, true>  $ids
+     */
+    protected static function collectCampaignMailUserIdsFromTable(
+        string $table,
+        int $campaignId,
+        string $prefix,
+        array &$ids,
+        bool &$sawUnscoped
+    ): void {
+        DB::table($table)
+            ->where(function ($query) use ($prefix) {
+                $query->where('payload', 'like', '%AudienceCampaignMail%')
+                    ->orWhere('payload', 'like', '%'.$prefix.'%');
+            })
+            ->orderBy('id')
+            ->select(['id', 'payload'])
+            ->chunkById(100, function ($rows) use ($campaignId, &$ids, &$sawUnscoped) {
+                foreach ($rows as $row) {
+                    $payload = (string) $row->payload;
+                    if (! MailJobPayload::containsCampaignMail($payload, $campaignId)) {
+                        continue;
+                    }
+
+                    $extracted = MailJobPayload::campaignMailUserIds($payload, $campaignId);
+                    if ($extracted === []) {
+                        $sawUnscoped = true;
+
+                        return false;
+                    }
+
+                    foreach ($extracted as $userId) {
+                        $ids[$userId] = true;
+                    }
+                }
+
+                return true;
+            });
     }
 
     /**
@@ -677,6 +745,7 @@ class EmailCampaign extends Model
         }
 
         $cutoff = now()->subMinutes(max(1, $staleMinutes));
+        $attachedIds = self::healQueuedRecipientsWithTerminalLog();
         $rows = EmailCampaignRecipient::query()
             ->whereNull('email_log_id')
             ->where('updated_at', '<=', $cutoff)
@@ -690,6 +759,10 @@ class EmailCampaign extends Model
             ->get(['id', 'email_campaign_id', 'user_id', 'status', 'updated_at']);
 
         if ($rows->isEmpty()) {
+            foreach ($attachedIds as $id) {
+                static::query()->find($id)?->recountRecipientTotals();
+            }
+
             return;
         }
 
@@ -709,11 +782,15 @@ class EmailCampaign extends Model
             ->get()
             ->groupBy('dedupe_key');
 
+        $campaignIds = array_fill_keys($attachedIds, true);
+
         if ($logs->isEmpty()) {
+            foreach (array_keys($campaignIds) as $id) {
+                static::query()->find($id)?->recountRecipientTotals();
+            }
+
             return;
         }
-
-        $campaignIds = [];
 
         foreach ($rows as $row) {
             $group = $logs->get(EmailCampaignRecipient::dedupeKey(
@@ -786,41 +863,33 @@ class EmailCampaign extends Model
     }
 
     /**
-     * A queued row that already has a delivered/failed log FK is finished.
-     * Expire and reclaim both require a null FK, so these sat queued forever
-     * on a failed campaign.
+     * Queued + a terminal log FK is not in-flight. Expire used to skip
+     * those rows forever, so a failed campaign could keep a queued leftover.
+     *
+     * @return list<int>
      */
-    protected static function syncQueuedRecipientsWithAttachedLogs(): void
+    protected static function healQueuedRecipientsWithTerminalLog(): array
     {
-        try {
-            if (! Schema::hasTable((new EmailCampaignRecipient)->getTable())
-                || ! Schema::hasTable((new EmailLog)->getTable())) {
-                return;
-            }
-        } catch (\Throwable) {
-            return;
-        }
-
         $rows = EmailCampaignRecipient::query()
             ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
             ->whereNotNull('email_log_id')
             ->get(['id', 'email_campaign_id', 'email_log_id']);
 
         if ($rows->isEmpty()) {
-            return;
+            return [];
         }
 
         $logs = EmailLog::query()
-            ->whereIn('id', $rows->pluck('email_log_id')->unique()->filter()->all())
+            ->whereIn('id', $rows->pluck('email_log_id')->filter()->unique()->all())
             ->whereIn('status', [
                 EmailLog::STATUS_DELIVERED,
                 EmailLog::STATUS_FAILED,
             ])
-            ->get()
+            ->get(['id', 'status'])
             ->keyBy('id');
 
         if ($logs->isEmpty()) {
-            return;
+            return [];
         }
 
         $campaignIds = [];
@@ -832,10 +901,10 @@ class EmailCampaign extends Model
             }
 
             $delivered = $log->status === EmailLog::STATUS_DELIVERED;
-            $updated = EmailCampaignRecipient::query()
+            EmailCampaignRecipient::query()
                 ->whereKey($row->id)
                 ->where('status', EmailCampaignRecipient::STATUS_QUEUED)
-                ->where('email_log_id', $log->id)
+                ->where('email_log_id', (int) $log->id)
                 ->update([
                     'status' => $delivered
                         ? EmailCampaignRecipient::STATUS_DELIVERED
@@ -843,14 +912,10 @@ class EmailCampaign extends Model
                     'skip_reason' => $delivered ? null : EmailCampaignRecipient::SKIP_ERROR,
                 ]);
 
-            if ($updated) {
-                $campaignIds[(int) $row->email_campaign_id] = true;
-            }
+            $campaignIds[(int) $row->email_campaign_id] = true;
         }
 
-        foreach (array_keys($campaignIds) as $id) {
-            static::query()->find($id)?->recountRecipientTotals();
-        }
+        return array_keys($campaignIds);
     }
 
     /**
@@ -970,7 +1035,10 @@ class EmailCampaign extends Model
             return;
         }
 
-        $now = now();
+        $keys = $expired->map(fn (EmailCampaignRecipient $row) => EmailCampaignRecipient::dedupeKey(
+            (int) $row->email_campaign_id,
+            (int) $row->user_id
+        ))->unique()->values()->all();
 
         try {
             foreach (array_chunk($keys, 500) as $chunk) {
@@ -980,11 +1048,14 @@ class EmailCampaign extends Model
                     ->update([
                         'status' => EmailLog::STATUS_FAILED,
                         'error' => 'Expired: campaign mail was not confirmed',
-                        'updated_at' => $now,
                     ]);
             }
         } catch (\Throwable) {
             // Missing email_logs table must not break recover.
+        }
+
+        foreach ($expired->pluck('email_campaign_id')->unique()->filter()->all() as $id) {
+            static::query()->find($id)?->recountRecipientTotals();
         }
     }
 }
