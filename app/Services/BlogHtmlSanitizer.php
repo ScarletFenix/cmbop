@@ -2,6 +2,8 @@
 
 namespace App\Services;
 
+use App\Support\BlogInlineImages;
+
 /**
  * Sanitize stored blog HTML (Quill editor output) before it is rendered.
  *
@@ -87,11 +89,23 @@ class BlogHtmlSanitizer
     }
 
     /**
+     * Hostinger-safe blog image URLs for render, editor boot, and save.
+     * /assets/img/blog/... must be rewritten before sanitize, or those imgs
+     * are dropped as untrusted and a routine admin save wipes pillar screenshots.
+     */
+    public static function rewritePublicBlogUrls(?string $html): string
+    {
+        return self::rewriteStorageBlogUrls(
+            BlogInlineImages::rewriteLegacyAssetUrls((string) $html)
+        );
+    }
+
+    /**
      * Encode stored HTML for the Quill boot script, with Hostinger-safe image URLs.
      */
     public static function encodeForEditor(?string $html): string
     {
-        return self::encodeForScript(self::rewriteStorageBlogUrls($html));
+        return self::encodeForScript(self::rewritePublicBlogUrls($html));
     }
 
     public function sanitize(?string $html): string
@@ -100,7 +114,7 @@ class BlogHtmlSanitizer
             return '';
         }
 
-        $html = self::rewriteStorageBlogUrls(trim((string) $html));
+        $html = self::rewritePublicBlogUrls(trim((string) $html));
 
         // strip_tags keeps inner text, so remove these elements with their contents first.
         $html = preg_replace('/<(script|style|noscript|template)\b[^>]*>.*?<\/\1>/isu', '', $html) ?? $html;

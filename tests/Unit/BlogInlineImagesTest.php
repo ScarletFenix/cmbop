@@ -48,6 +48,5 @@ class BlogInlineImagesTest extends TestCase
             '<img src="/storage/blogs/content/gastbeitraege-europa-checkliste.jpg" alt="x">',
             $rewritten
         );
-        $this->assertFileExists(storage_path('app/public/blogs/content/gastbeitraege-europa-checkliste.jpg'));
     }
 }

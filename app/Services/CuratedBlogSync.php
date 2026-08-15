@@ -212,11 +212,15 @@ class CuratedBlogSync
                     static fn (string $slug): bool => ! CuratedBlogWriter::isTombstoned($slug)
                 ));
                 $found = Blog::query()
-                    ->whereIn('slug', $slugs)
-                    ->pluck('slug')
-                    ->all();
+                    ->where(function ($query) use ($slugs) {
+                        $query->whereIn('slug', $slugs);
+                        if (Schema::hasColumn('blogs', 'curated_key')) {
+                            $query->orWhereIn('curated_key', $slugs);
+                        }
+                    })
+                    ->count();
 
-                if ($slugs === [] || count($found) >= count($slugs)) {
+                if ($slugs === [] || $found >= count($slugs)) {
                     return true;
                 }
 
@@ -251,9 +255,20 @@ class CuratedBlogSync
             BlogInlineImages::publishAllFromPublicAssets();
             BlogInlineImages::publishAllFeaturedFromCatalog();
 
+            $slugs = self::curatedSlugs();
             $needsRewrite = Blog::query()
-                ->whereIn('slug', self::curatedSlugs())
-                ->where('content', 'like', '%/assets/img/blog/%')
+                ->where(function ($query) use ($slugs) {
+                    $query->whereIn('slug', $slugs);
+                    if (Schema::hasColumn('blogs', 'curated_key')) {
+                        $query->orWhereIn('curated_key', $slugs);
+                    }
+                })
+                ->where(function ($query) {
+                    $query->where('content', 'like', '%/assets/img/blog/%')
+                        ->orWhereHas('translations', function ($translations) {
+                            $translations->where('content', 'like', '%/assets/img/blog/%');
+                        });
+                })
                 ->exists();
 
             if (! $needsRewrite) {

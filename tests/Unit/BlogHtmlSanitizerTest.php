@@ -103,6 +103,19 @@ class BlogHtmlSanitizerTest extends TestCase
         $this->assertStringNotContainsString('/storage/blogs/content/demo.jpg', $encoded);
     }
 
+    public function test_legacy_asset_blog_images_are_rewritten_not_stripped(): void
+    {
+        $html = '<p>Keep</p><img src="/assets/img/blog/gastbeitraege-europa-sprachen.jpg" alt="A">';
+        $clean = $this->sanitizer->sanitize($html);
+        $encoded = BlogHtmlSanitizer::encodeForEditor($html);
+
+        $this->assertStringContainsString('Keep', $clean);
+        $this->assertStringContainsString('src="/media/blogs/content/gastbeitraege-europa-sprachen.jpg"', $clean);
+        $this->assertStringNotContainsString('/assets/img/blog/', $clean);
+        $this->assertStringContainsString('/media/blogs/content/gastbeitraege-europa-sprachen.jpg', $encoded);
+        $this->assertStringNotContainsString('/assets/img/blog/', $encoded);
+    }
+
     public function test_image_with_untrusted_media_prefix_is_removed(): void
     {
         $clean = $this->sanitizer->sanitize('<img src="/media/sites/cover.webp" alt="No">');

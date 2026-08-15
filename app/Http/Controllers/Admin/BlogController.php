@@ -366,11 +366,14 @@ class BlogController extends Controller
     {
         try {
             $blog = Blog::with('translations')->findOrFail($id);
-            $this->deleteStoredBlogImages($blog);
-
+            $imagePaths = $this->collectStoredBlogImagePaths($blog);
             $blogTitle = $blog->title;
             CuratedBlogWriter::rememberDeleted($blog);
             $blog->delete();
+
+            foreach ($imagePaths as $path) {
+                $this->deletePublicBlogPath($path);
+            }
 
             Log::info('Blog deleted successfully', [
                 'blog_id' => $id,
@@ -596,14 +599,6 @@ class BlogController extends Controller
         }
 
         return array_values(array_unique($resolved));
-    }
-
-    private function deleteStoredBlogImages(Blog $blog): void
-    {
-        foreach ($this->collectStoredBlogImagePaths($blog) as $path) {
-            $this->deletePublicBlogPath($path, $blog->id);
-            Log::info('Blog image deleted with post', ['path' => $path]);
-        }
     }
 
     /**
