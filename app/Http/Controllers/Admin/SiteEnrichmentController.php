@@ -11,6 +11,7 @@ use App\Models\SiteEnrichmentRun;
 use App\Services\ActivityLogger;
 use App\Services\SiteEnrichment\SiteEnrichmentService;
 use App\Services\SiteEnrichment\SiteMetricsAggregator;
+use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\Log;
@@ -59,12 +60,14 @@ class SiteEnrichmentController extends Controller
         $staleCount = 0;
         $placeholderSiteIds = [];
         $batchLimit = max(1, (int) config('site_enrichment.batch_limit', 40));
+        $marketingEditor = $this->isMarketingEditor($request);
 
         try {
             $staleQuery = Site::query()
                 ->where('active', 1)
                 ->staleForEnrichment()
                 ->orderForStaleEnrichment();
+            $this->restrictToMarketingEditable($staleQuery, $request);
 
             if (Schema::hasTable('site_enrichment_runs')) {
                 $staleQuery->with('latestEnrichmentRun');
@@ -94,7 +97,8 @@ class SiteEnrichmentController extends Controller
             'placeholderSiteIds',
             'batchLimit',
             'status',
-            'type'
+            'type',
+            'marketingEditor'
         ));
     }
 
@@ -303,9 +307,9 @@ class SiteEnrichmentController extends Controller
             $ids = Site::query()
                 ->where('active', 1)
                 ->staleForEnrichment()
-                ->orderForStaleEnrichment()
-                ->limit($limit)
-                ->pluck('id');
+                ->orderForStaleEnrichment();
+            $this->restrictToMarketingEditable($ids, $request);
+            $ids = $ids->limit($limit)->pluck('id');
 
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
@@ -353,6 +357,13 @@ class SiteEnrichmentController extends Controller
                 ->pluck('site_id')
                 ->unique()
                 ->filter();
+
+            if ($this->isMarketingEditor($request) && $ids->isNotEmpty()) {
+                $ids = Site::query()
+                    ->whereIn('id', $ids)
+                    ->editableByMarketing()
+                    ->pluck('id');
+            }
 
             foreach ($ids as $siteId) {
                 EnrichSiteJob::dispatch((int) $siteId, 'admin', true, true);
@@ -407,7 +418,30 @@ class SiteEnrichmentController extends Controller
                 : 'screenshotone (no key)';
         }
 
+        if ($provider === 'url_api') {
+            return filled(config('site_enrichment.screenshots.api_url'))
+                ? 'url_api'
+                : 'url_api (no url)';
+        }
+
         return $provider;
+    }
+
+    private function isMarketingEditor(Request $request): bool
+    {
+        $user = $request->user();
+
+        return (bool) ($user?->isMarketing() && ! $user?->isAdmin());
+    }
+
+    /**
+     * @param  Builder<Site>  $query
+     */
+    private function restrictToMarketingEditable($query, Request $request): void
+    {
+        if ($this->isMarketingEditor($request)) {
+            $query->editableByMarketing();
+        }
     }
 
     private function denyIfEnrichmentDisabled()

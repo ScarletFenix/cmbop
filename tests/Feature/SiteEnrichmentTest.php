@@ -332,6 +332,27 @@ class SiteEnrichmentTest extends TestCase
         $this->assertSame(['ahrefs', 'moz'], $result['providers_used']);
     }
 
+    public function test_failed_api_refresh_is_partial_when_existing_metrics_remain(): void
+    {
+        config([
+            'site_enrichment.default_provider' => 'ahrefs',
+            'site_enrichment.fallback_providers' => ['manual'],
+            'site_enrichment.providers.ahrefs.api_token' => 'tok',
+        ]);
+        Http::fake([
+            'api.ahrefs.com/*' => Http::response('nope', 500),
+        ]);
+
+        $site = $this->makeSite(['dr' => 55, 'da' => 50, 'traffic' => 9000, 'metrics_manual' => false]);
+        $run = app(SiteEnrichmentService::class)->refreshMetrics($site, 'test');
+        $site->refresh();
+
+        $this->assertSame('partial', $run->status);
+        $this->assertSame('partial', $site->enrichment_status);
+        $this->assertSame(55, $site->dr);
+        $this->assertNotEmpty($run->error);
+    }
+
     public function test_semrush_uses_country_database_and_defaults_unknown_to_us(): void
     {
         $this->assertSame('de', SemrushMetricsProvider::databaseForCountry('de'));

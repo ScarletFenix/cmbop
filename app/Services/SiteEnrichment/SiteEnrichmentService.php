@@ -38,10 +38,14 @@ class SiteEnrichmentService
             $result = $this->metrics->fetch($site, $provider);
             $snapshot = $result['snapshot'];
 
+            $runStatus = $result['errors']
+                ? ($snapshot->hasAnyMetric() ? 'partial' : 'failed')
+                : 'success';
+
             $updates = [
                 'metrics_provider' => $snapshot->provider,
                 'metrics_fetched_at' => now(),
-                'enrichment_status' => $result['errors'] ? 'partial' : 'ready',
+                'enrichment_status' => $runStatus === 'success' ? 'ready' : $runStatus,
                 'enrichment_error' => $result['errors'] ? implode('; ', $result['errors']) : null,
             ];
 
@@ -59,7 +63,7 @@ class SiteEnrichmentService
             $site->forceFill($updates)->save();
 
             $run->update([
-                'status' => $result['errors'] && ! $snapshot->hasAnyMetric() ? 'failed' : 'success',
+                'status' => $runStatus,
                 'provider' => $snapshot->provider ?: $run->provider,
                 'payload' => [
                     'dr' => $snapshot->domainRating,
@@ -89,7 +93,7 @@ class SiteEnrichmentService
             ]);
         }
 
-        return $run->fresh();
+        return $run->fresh() ?? $run;
     }
 
     public function refreshScreenshot(Site $site, string $triggeredBy = 'system'): SiteEnrichmentRun

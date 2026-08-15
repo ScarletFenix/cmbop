@@ -897,6 +897,17 @@ class Site extends Model
     }
 
     /**
+     * Pending listings marketing may change (not live, verified, or archived).
+     *
+     * @param  Builder<Site>  $query
+     * @return Builder<Site>
+     */
+    public function scopeEditableByMarketing(Builder $query): Builder
+    {
+        return $query->where('verified', 0)->where('active', 0)->notArchived();
+    }
+
+    /**
      * Hard delete is safe only for pending listings that were never ordered.
      */
     public function canBeHardDeleted(): bool

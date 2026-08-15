@@ -413,6 +413,15 @@ class AdminSiteEnrichmentPageTest extends TestCase
             ->assertSee('no API keys', false)
             ->assertSee('thum_io (unauthenticated)', false)
             ->assertSee('manual lock skips API providers', false);
+
+        config([
+            'site_enrichment.screenshots.provider' => 'url_api',
+            'site_enrichment.screenshots.api_url' => '',
+        ]);
+        $this->actingAs($this->admin)
+            ->get(route('admin.site-enrichment.index'))
+            ->assertOk()
+            ->assertSee('url_api (no url)', false);
     }
 
     public function test_stale_row_can_unlock_manual_metrics(): void

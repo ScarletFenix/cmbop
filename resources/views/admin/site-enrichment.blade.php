@@ -133,7 +133,7 @@
                             <td>{{ $run->provider ?: '—' }}</td>
                             <td class="small text-danger" style="max-width:320px;">{{ Str::limit($run->error, 160) }}</td>
                             <td class="text-end">
-                                @if($run->site)
+                                @if($run->site && (! $marketingEditor || ! $run->site->isLockedForMarketingEdits()))
                                     <button type="button" class="btn btn-sm btn-outline-primary enrich-site-btn" data-id="{{ $run->site->id }}">
                                         Re-run
                                     </button>
@@ -205,14 +205,16 @@
                                 @endif
                             </td>
                             <td class="text-end">
-                                @if($site->metrics_manual)
-                                    <button type="button" class="btn btn-sm btn-outline-secondary allow-api-overwrite-btn" data-id="{{ $site->id }}">
-                                        Allow API overwrite
+                                @if(! $marketingEditor || ! $site->isLockedForMarketingEdits())
+                                    @if($site->metrics_manual)
+                                        <button type="button" class="btn btn-sm btn-outline-secondary allow-api-overwrite-btn" data-id="{{ $site->id }}">
+                                            Allow API overwrite
+                                        </button>
+                                    @endif
+                                    <button type="button" class="btn btn-sm btn-outline-primary enrich-site-btn" data-id="{{ $site->id }}">
+                                        Queue
                                     </button>
                                 @endif
-                                <button type="button" class="btn btn-sm btn-outline-primary enrich-site-btn" data-id="{{ $site->id }}">
-                                    Queue
-                                </button>
                             </td>
                         </tr>
                     @empty
