@@ -439,10 +439,19 @@ class EmailCenterController extends Controller
 
         foreach ($failed as $log) {
             $stored = (string) data_get($log->meta, 'failed_job_uuid');
-            if ($stored !== '' && in_array($stored, $uuids, true)) {
-                $this->pendingMarkRetriedLog($log);
-                $marked[$log->id] = true;
+            if ($stored === '' || ! in_array($stored, $uuids, true)) {
+                continue;
             }
+
+            // A stale stamp from an unidentified Welcome job must not
+            // pending-mark a different recipient. Same token rule as search.
+            $payload = (string) ($payloadsByUuid[$stored] ?? '');
+            if ($payload === '' || ! MailJobPayload::matchesEmailLog($payload, $log, requireToken: true)) {
+                continue;
+            }
+
+            $this->pendingMarkRetriedLog($log);
+            $marked[$log->id] = true;
         }
 
         foreach ($uuids as $uuid) {
@@ -589,7 +598,7 @@ class EmailCenterController extends Controller
 
     protected function failedJobMatchesLog(string $payload, EmailLog $log): bool
     {
-        return MailJobPayload::matchesEmailLog($payload, $log);
+        return MailJobPayload::matchesEmailLog($payload, $log, requireToken: true);
     }
 
     protected function refreshFailedJobQueuedAt(string $uuid): void
