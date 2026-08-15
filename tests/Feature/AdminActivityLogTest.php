@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\ActivityLog;
+use App\Models\Order;
 use App\Models\Role;
 use App\Models\Site;
 use App\Models\User;
@@ -246,6 +247,16 @@ class AdminActivityLogTest extends TestCase
             ->assertRedirect(route('marketing.dashboard'));
     }
 
+    public function test_export_refuses_invalid_dates_instead_of_dumping_all_rows(): void
+    {
+        $this->makeLog(['description' => 'Must not be exported on bad dates']);
+
+        $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.export', ['from' => 'not-a-date']))
+            ->assertRedirect(route('admin.activity-logs.index', ['from' => 'not-a-date']))
+            ->assertSessionHas('error', 'Use a valid From date.');
+    }
+
     public function test_company_update_is_logged(): void
     {
         $user = User::factory()->create([
@@ -271,12 +282,12 @@ class AdminActivityLogTest extends TestCase
     {
         $this->makeLog([
             'action' => 'site.activated',
-            'description' => 'Staff made the listing live',
+            'description' => 'Ada Admin activated site "Live Site"',
             'subject_label' => 'Live Site',
         ]);
         $this->makeLog([
             'action' => 'site.deactivated',
-            'description' => 'Staff took the listing offline',
+            'description' => 'Ada Admin deactivated site "Offline Site"',
             'subject_label' => 'Offline Site',
         ]);
 
@@ -313,6 +324,48 @@ class AdminActivityLogTest extends TestCase
 
         $this->assertStringNotContainsString(route('admin.users.index', ['user' => $other->id]), $html);
         $this->assertStringNotContainsString(route('admin.sites.edit', 999999), $html);
+    }
+
+    public function test_gone_order_does_not_link_to_unrelated_site_id_in_properties(): void
+    {
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $site = Site::create([
+            'publisher_id' => $publisher->id,
+            'site_name' => 'Unrelated Order Site',
+            'site_url' => 'https://unrelated-order.example',
+            'domain' => 'unrelated-order.example',
+            'da' => 10,
+            'dr' => 10,
+            'traffic' => 100,
+            'country' => 'us',
+            'language' => 'en',
+            'category' => 'News',
+            'price' => 20,
+            'publication_time' => 'permanent',
+            'description' => 'Unrelated',
+            'link_type' => 'dofollow',
+            'verified' => false,
+            'active' => false,
+        ]);
+
+        $this->makeLog([
+            'action' => 'order.status_overridden',
+            'description' => 'Moved an order that was later removed',
+            'subject_type' => Order::class,
+            'subject_id' => 888888,
+            'subject_label' => 'ORD-GONE',
+            'properties' => ['site_id' => $site->id, 'from' => 'processing', 'to' => 'completed'],
+        ]);
+
+        $html = $this->actingAs($this->admin)
+            ->get(route('admin.activity-logs.index'))
+            ->assertOk()
+            ->assertSee('ORD-GONE', false)
+            ->assertSee('Removed', false)
+            ->getContent();
+
+        $this->assertStringNotContainsString(route('admin.sites.edit', $site->id), $html);
+        $this->assertStringNotContainsString(route('admin.orders.show', 888888), $html);
     }
 
     public function test_flag_status_change_is_hidden_and_observed_actions_appear_in_filter(): void

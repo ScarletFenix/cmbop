@@ -5,6 +5,7 @@ namespace Tests\Feature;
 use App\Mail\DepositApproved;
 use App\Mail\PaymentSuccessfulInvoiceMail;
 use App\Mail\WithdrawalStatusUpdated;
+use App\Models\ActivityLog;
 use App\Models\Invoice;
 use App\Models\Order;
 use App\Models\OrderItem;
@@ -339,6 +340,30 @@ class AdminInvoiceOpsTest extends TestCase
         $invoice = Invoice::where('order_id', $order->id)->where('type', Invoice::TYPE_TAX_INVOICE)->first();
         $this->assertNotNull($invoice);
         $this->assertSame(Invoice::STATUS_ISSUED, $invoice->status);
+        $this->assertSame(1, ActivityLog::query()->where('action', 'invoice.generated')->count());
+    }
+
+    public function test_generate_reuse_does_not_log_again(): void
+    {
+        Mail::fake();
+        Storage::fake('local');
+
+        $advertiser = $this->advertiser();
+        $admin = $this->admin();
+        $order = $this->paidOrder($advertiser);
+        Invoice::query()->where('order_id', $order->id)->delete();
+
+        $this->actingAs($admin)
+            ->post(route('admin.invoices.generate'), ['order_id' => $order->id])
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'invoice.generated')->count());
+
+        $this->actingAs($admin)
+            ->post(route('admin.invoices.generate'), ['order_id' => $order->id])
+            ->assertRedirect();
+
+        $this->assertSame(1, ActivityLog::query()->where('action', 'invoice.generated')->count());
     }
 
     public function test_admin_download_does_not_increment_customer_download_count(): void

@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Marketing;
 use App\Http\Controllers\Controller;
 use App\Models\ActivityLog;
 use App\Support\ActivityLogDateBounds;
+use App\Support\ActivityLogTextSearch;
 use App\Support\MarketingOpsQueues;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Http\Request;
@@ -116,12 +117,15 @@ class PanelController extends Controller
             $request->input('to')
         );
 
-        $searchNeedle = mb_strtolower(search_text($request->input('q')));
+        $searchNeedle = search_text($request->input('q'));
         if ($searchNeedle !== '') {
             $matchedActions = marketing_task_actions_matching($searchNeedle);
-            $query->where(function ($q) use ($searchNeedle, $matchedActions) {
-                $this->whereHistoryDescriptionHasWord($q, $searchNeedle);
-                $q->orWhereRaw('LOWER(COALESCE(subject_label, \'\')) LIKE ?', ['%'.$searchNeedle.'%']);
+            $like = like_contains($searchNeedle);
+            $query->where(function ($q) use ($searchNeedle, $matchedActions, $like) {
+                $q->whereRaw('subject_label LIKE ? ESCAPE ?', [$like, '\\']);
+                $q->orWhere(function ($inner) use ($searchNeedle) {
+                    ActivityLogTextSearch::whereDescriptionHasWord($inner, $searchNeedle);
+                });
                 if ($matchedActions !== []) {
                     $q->orWhereIn('action', $matchedActions);
                 }
@@ -169,19 +173,5 @@ class PanelController extends Controller
             ->where('user_id', $userId)
             ->where('role', 'marketing')
             ->whereIn('action', self::TRACKED_ACTIONS);
-    }
-
-    /**
-     * Word-aware description match so "Activated" does not hit "Deactivated".
-     */
-    private function whereHistoryDescriptionHasWord(Builder $q, string $needle): void
-    {
-        $pattern = '% '.$needle.' %';
-        $driver = $q->getConnection()->getDriverName();
-        $haystack = in_array($driver, ['sqlite', 'pgsql'], true)
-            ? "(' ' || LOWER(COALESCE(description, '')) || ' ')"
-            : "CONCAT(' ', LOWER(COALESCE(description, '')), ' ')";
-
-        $q->whereRaw($haystack.' LIKE ?', [$pattern]);
     }
 }
