@@ -407,7 +407,7 @@ class ContentUploadService
             return [
                 'ok' => false,
                 'approved' => false,
-                'message' => 'Embedded images cannot be saved. Insert each picture with the image button (JPG, PNG, GIF, or WebP under 5 MB).',
+                'message' => self::embeddedImageSaveMessage(),
             ];
         }
 
@@ -638,6 +638,34 @@ class ContentUploadService
     public static function tooManyImagesMessage(): string
     {
         return 'This article can have up to '.self::IMAGE_MAX_PER_ARTICLE.' images. Remove one before adding another.';
+    }
+
+    public static function embeddedImageSaveMessage(): string
+    {
+        return 'Embedded images cannot be saved. Insert each picture with the image button (JPG, PNG, GIF, or WebP under 5 MB).';
+    }
+
+    public static function imageRightsRequiredMessage(): string
+    {
+        return 'This article now contains images. Confirm you own them, or add the source URL or copyright details, before saving.';
+    }
+
+    /**
+     * Reasons not to persist article HTML (embedded data images or over the cap).
+     */
+    public static function articleHtmlBlockedMessage(string $html): ?string
+    {
+        if (str_contains(strtolower($html), 'data:image')) {
+            return self::embeddedImageSaveMessage();
+        }
+
+        $sanitizer = new ArticleHtmlSanitizer;
+        $clean = ArticlePreviewHtml::normalize($sanitizer->sanitize($html));
+        if ($sanitizer->countImages($clean) > self::IMAGE_MAX_PER_ARTICLE) {
+            return self::tooManyImagesMessage();
+        }
+
+        return null;
     }
 
     /**

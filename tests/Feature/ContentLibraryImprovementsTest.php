@@ -1010,6 +1010,90 @@ class ContentLibraryImprovementsTest extends TestCase
         $this->assertSame(ContentUploadService::tooManyImagesMessage(), $result['submission']->editorNotice());
     }
 
+    public function test_preview_link_save_rejects_eleven_images_and_keeps_approval(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'tool A', 'url' => 'https://example.com/a'],
+                ],
+                'preview_html' => $this->articleHtmlWithImages(11),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $fresh = $submission->fresh();
+        $this->assertSame($original, (string) $fresh->preview_html);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+        $this->assertSame('https://example.com/tools', $fresh->target_url);
+    }
+
+    public function test_preview_html_patch_does_not_leave_approved_article_processing(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'preview_html' => $this->articleHtmlWithImages(11),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $submission->fresh()->moderation_status);
+    }
+
+    public function test_preview_link_save_requires_image_rights_when_adding_pictures(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $original = (string) $submission->preview_html;
+
+        $this->actingAs($advertiser)
+            ->patchJson(route('advertiser.content-submissions.update', $submission), [
+                'links' => [
+                    ['anchor' => 'helpful guide', 'url' => 'https://example.com/new-guide'],
+                ],
+                'preview_html' => $this->articleHtmlWithImages(1),
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('success', false)
+            ->assertJsonPath('needs_image_rights', true);
+
+        $fresh = $submission->fresh();
+        $this->assertSame($original, (string) $fresh->preview_html);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+    }
+
+    public function test_editor_save_does_not_keep_a_rights_declaration_when_eleven_images_are_rejected(): void
+    {
+        config(['content_moderation.enabled' => false]);
+        $advertiser = $this->advertiser();
+        $submission = $this->createApprovedSubmission($advertiser);
+        $this->assertNull($submission->image_rights);
+
+        $this->actingAs($advertiser)
+            ->putJson(route('advertiser.content-submissions.content', $submission), [
+                'preview_html' => $this->articleHtmlWithImages(11),
+                'title' => $submission->title,
+                'image_rights' => ContentSubmission::IMAGE_RIGHTS_OWN,
+            ])
+            ->assertStatus(422)
+            ->assertJsonPath('message', ContentUploadService::tooManyImagesMessage());
+
+        $fresh = $submission->fresh();
+        $this->assertNull($fresh->image_rights);
+        $this->assertSame(ContentSubmission::STATUS_APPROVED, $fresh->moderation_status);
+    }
+
     public function test_editor_image_php_reject_does_not_blame_article_docx_cap(): void
     {
         $advertiser = $this->advertiser();
