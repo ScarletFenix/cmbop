@@ -221,6 +221,7 @@ class BulkSiteRequestController extends Controller
         }
 
         $rejectedItemIds = $this->pendingRejectedItemIds($request, $pendingIds);
+        $request->merge(['rejected_item_ids' => $rejectedItemIds]);
 
         // Only validate rows the marketer started or completed. Empty pending rows stay for later.
         $completeItemIds = [];
@@ -291,14 +292,9 @@ class BulkSiteRequestController extends Controller
                 if (in_array($itemId, $rejectedItemIds, true)) {
                     continue;
                 }
-                if (! in_array($itemId, $pendingIds, true)) {
-                    $validator->errors()->add('items.'.$itemId, 'This row is not a pending website on this request.');
-
-                    continue;
-                }
-                if (! is_array($row)) {
-                    $validator->errors()->add('items.'.$itemId, 'Invalid row data.');
-
+                // Stale keys (already seeded, or leftover draft ids) must not
+                // block Done on the remaining pending rows.
+                if (! in_array($itemId, $pendingIds, true) || ! is_array($row)) {
                     continue;
                 }
 
@@ -515,11 +511,16 @@ class BulkSiteRequestController extends Controller
         $createdDomains = [];
         $deletedCount = 0;
         $deletedDomains = [];
+        $rejectedIds = array_values(array_unique(array_map(
+            static fn (array $item): int => (int) $item['id'],
+            $rejectedItems
+        )));
 
         DB::transaction(function () use (
             $bulkRequest,
             $rows,
             $rejectedItems,
+            $rejectedIds,
             &$created,
             &$failures,
             &$createdDomains,
@@ -585,10 +586,6 @@ class BulkSiteRequestController extends Controller
                 $createdDomains[] = $domain;
             }
 
-            $rejectedIds = array_values(array_unique(array_map(
-                static fn (array $item): int => (int) $item['id'],
-                $rejectedItems
-            )));
             if ($rejectedIds !== []) {
                 $kept = $bulkRequest->items()
                     ->whereIn('id', $rejectedIds)
@@ -599,6 +596,16 @@ class BulkSiteRequestController extends Controller
                     ->whereIn('id', $rejectedIds)
                     ->whereNull('site_id')
                     ->delete();
+                if ($deletedCount > 0 && $deletedDomains === []) {
+                    $deletedDomains = array_values(array_filter(array_map(
+                        static function (array $item): string {
+                            $domain = trim((string) ($item['domain'] ?? ''));
+
+                            return $domain !== '' ? $domain : trim((string) ($item['site_url'] ?? ''));
+                        },
+                        $rejectedItems
+                    )));
+                }
 
                 if ($deletedCount > 0) {
                     $bulkRequest->forceFill([
@@ -650,7 +657,9 @@ class BulkSiteRequestController extends Controller
             }
 
             try {
-                app(InAppNotificationService::class)->notifyPublisherBulkSitesAdded($fresh, $created);
+                if ($fresh) {
+                    app(InAppNotificationService::class)->notifyPublisherBulkSitesAdded($fresh, $created);
+                }
             } catch (\Throwable $e) {
                 Log::warning('Failed to send in-app bulk Done notice: '.$e->getMessage());
             }
@@ -675,7 +684,7 @@ class BulkSiteRequestController extends Controller
             try {
                 if ($fresh && $publisher?->email) {
                     Mail::to($publisher->email)->send(
-                        new BulkSiteItemsRejected($fresh, $publisher, $deletedDomains, $note)
+                        new BulkSiteItemsRejected($fresh, $publisher, $deletedDomains, $note, $rejectedIds)
                     );
                 }
             } catch (\Throwable $e) {
@@ -728,7 +737,7 @@ class BulkSiteRequestController extends Controller
     {
         $raw = $request->input('rejected_item_ids', []);
         if (! is_array($raw)) {
-            $raw = [];
+            $raw = ($raw === null || $raw === '') ? [] : [$raw];
         }
 
         return collect($raw)

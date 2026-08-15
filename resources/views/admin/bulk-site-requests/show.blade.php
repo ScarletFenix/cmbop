@@ -711,9 +711,14 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
             .filter(Boolean);
     }
 
+    function noteCharCount(note) {
+        // Match PHP mb_strlen (Unicode code points), not UTF-16 .length.
+        return Array.from(String(note || '')).length;
+    }
+
     function rejectionNoteOk() {
-        const note = String((noteEl && noteEl.value) || '').trim();
-        return note.length >= 10 && note.length <= 1000;
+        const count = noteCharCount(String((noteEl && noteEl.value) || '').trim());
+        return count >= 10 && count <= 1000;
     }
 
     function markRowRejected(row) {
@@ -756,6 +761,11 @@ document.getElementById('bulkCopySeedStarter')?.addEventListener('click', functi
         doneRows().forEach(function (row) {
             if (rowFilled(row)) return;
             row.querySelectorAll('select, input, textarea, button').forEach(function (el) {
+                if (!disabled && el.hasAttribute('data-bulk-language')) {
+                    const country = row.querySelector('[data-bulk-country]');
+                    el.disabled = !country || String(country.value || '').trim() === '';
+                    return;
+                }
                 el.disabled = !!disabled;
             });
         });

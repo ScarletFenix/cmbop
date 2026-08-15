@@ -159,6 +159,7 @@ class BulkDoneRejectRowsTest extends TestCase
         $this->assertStringContainsString('rejected_item_ids[]', $blade);
         $this->assertStringContainsString('function markRowRejected', $blade);
         $this->assertStringContainsString('function doneFormReady', $blade);
+        $this->assertStringContainsString('function noteCharCount', $blade);
         $this->assertStringContainsString('rejected.length === 0 || noteOk', $blade);
         $this->assertStringNotContainsString('route(\'admin.bulk-site-requests.done\'', $blade);
     }
@@ -413,6 +414,111 @@ class BulkDoneRejectRowsTest extends TestCase
             $this->assertDatabaseHas('bulk_site_request_items', ['id' => $pending->id]);
             Mail::assertNothingQueued();
         }
+    }
+
+    public function test_stale_already_seeded_item_key_does_not_block_done(): void
+    {
+        foreach ($this->staffActors() as [$prefix, $user]) {
+            Mail::fake();
+            [$bulk, $items] = $this->makeBulkWithItems(3, $prefix.'-stale');
+            [$linked, $keep, $drop] = $items;
+
+            $site = Site::create([
+                'publisher_id' => $this->publisher->id,
+                'bulk_site_request_id' => $bulk->id,
+                'site_name' => $linked->domain,
+                'site_url' => $linked->site_url,
+                'domain' => $linked->domain,
+                'example_url' => $linked->site_url,
+                'da' => 10,
+                'dr' => 10,
+                'traffic' => 100,
+                'country' => 'de',
+                'language' => 'de',
+                'category' => 'Pending',
+                'price' => 50,
+                'publication_time' => 'permanent',
+                'link_type' => 'dofollow',
+                'description' => str_repeat('Placeholder description text. ', 3),
+                'verified' => false,
+                'active' => false,
+                'onboarding_status' => Site::ONBOARDING_AWAITING_DETAILS,
+            ]);
+            $linked->forceFill(['site_id' => $site->id])->save();
+
+            $this->actingAs($user)
+                ->from(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->post(route($prefix.'.bulk-site-requests.done', $bulk), [
+                    'items' => $this->completeRow($keep) + [
+                        $linked->id => [
+                            'da' => 11,
+                        ],
+                    ],
+                    'rejected_item_ids' => [$drop->id],
+                    'rejection_note' => 'Dropping the leftover URL after a stale draft key.',
+                ])
+                ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertSessionHas('success');
+
+            $this->assertDatabaseHas('sites', ['domain' => $keep->domain]);
+            $this->assertDatabaseHas('sites', ['id' => $site->id]);
+            $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $drop->id]);
+            $this->assertDatabaseHas('bulk_site_request_items', [
+                'id' => $linked->id,
+                'site_id' => $site->id,
+            ]);
+        }
+    }
+
+    public function test_emoji_publisher_note_uses_character_count(): void
+    {
+        foreach ($this->staffActors() as [$prefix, $user]) {
+            Mail::fake();
+            [$bulk, $items] = $this->makeBulkWithItems(1, $prefix.'-emoji-short');
+
+            $this->actingAs($user)
+                ->from(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->post(route($prefix.'.bulk-site-requests.done', $bulk), [
+                    'rejected_item_ids' => [$items[0]->id],
+                    'rejection_note' => '😀😀😀😀😀',
+                ])
+                ->assertRedirect(route($prefix.'.bulk-site-requests.show', $bulk))
+                ->assertSessionHasErrors('rejection_note');
+
+            $this->assertDatabaseHas('bulk_site_request_items', ['id' => $items[0]->id]);
+            Mail::assertNothingQueued();
+        }
+
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'emoji-ok');
+
+        $this->actingAs($this->marketer)
+            ->post(route('marketing.bulk-site-requests.done', $bulk), [
+                'rejected_item_ids' => [$items[0]->id],
+                'rejection_note' => '😀😀😀😀😀😀😀😀😀😀',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $items[0]->id]);
+        Mail::assertQueued(BulkSiteItemsRejected::class, 1);
+    }
+
+    public function test_scalar_rejected_item_id_is_accepted(): void
+    {
+        Mail::fake();
+        [$bulk, $items] = $this->makeBulkWithItems(1, 'scalar-id');
+
+        $this->actingAs($this->admin)
+            ->post(route('admin.bulk-site-requests.done', $bulk), [
+                'rejected_item_ids' => $items[0]->id,
+                'rejection_note' => 'Single id posted without an array wrapper.',
+            ])
+            ->assertRedirect()
+            ->assertSessionHas('success');
+
+        $this->assertDatabaseMissing('bulk_site_request_items', ['id' => $items[0]->id]);
+        Mail::assertQueued(BulkSiteItemsRejected::class, 1);
     }
 
     public function test_complete_row_wins_over_same_id_in_rejected_list(): void

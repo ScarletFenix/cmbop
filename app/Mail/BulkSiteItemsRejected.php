@@ -15,18 +15,20 @@ class BulkSiteItemsRejected extends PlatformMailable
 {
     /**
      * @param  list<string>  $domains
+     * @param  list<int>  $itemIds
      */
     public function __construct(
         public BulkSiteRequest $bulkRequest,
         public User $publisher,
         public array $domains,
         public string $note,
+        array $itemIds = [],
     ) {
         parent::__construct();
 
         $this->notificationType = 'bulk_request_items_rejected';
         $this->recipientUser = $publisher;
-        $sorted = $domains;
+        $sorted = $itemIds !== [] ? $itemIds : $domains;
         sort($sorted);
         $this->dedupeKey = 'bulk_request_items_rejected:'.$bulkRequest->id.':'.sha1(implode(',', $sorted));
     }
