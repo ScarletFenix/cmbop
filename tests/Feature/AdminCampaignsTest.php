@@ -3897,20 +3897,89 @@ class AdminCampaignsTest extends TestCase
         $this->assertSame(EmailCampaign::STATUS_FAILED, $campaign->fresh()->status);
     }
 
-    public function test_campaign_mail_stays_duplicate_after_the_transactional_window(): void
+    public function test_reconcile_attaches_delivered_log_despite_leftover_pending(): void
     {
         $admin = $this->makeUser('admin');
         $advertiser = $this->makeUser('advertiser');
+
         $campaign = EmailCampaign::create([
-            'name' => 'One shot',
-            'subject' => 'One shot',
+            'name' => 'Delivered with leftover pending',
+            'subject' => 'Delivered with leftover pending',
             'body_html' => '<p>Hi</p>',
             'audience' => 'advertisers',
             'recipients_count' => 1,
-            'status' => EmailCampaign::STATUS_SENT,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
             'respect_preferences' => false,
             'created_by' => $admin->id,
         ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        $row->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
+        $pending = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Delivered with leftover pending',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 2,
+        ]);
+        EmailLog::query()->whereKey($pending->id)->update(['updated_at' => now()->subHours(3)]);
+        $delivered = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Delivered with leftover pending',
+            'status' => EmailLog::STATUS_DELIVERED,
+            'sent_at' => now()->subMinutes(4),
+            'attempts' => 1,
+        ]);
+        $campaign->forceFill(['updated_at' => now()->subMinutes(5)])->save();
+
+        EmailCampaign::recoverStalled();
+
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_DELIVERED, $fresh->status);
+        $this->assertSame($delivered->id, $fresh->email_log_id);
+        $this->assertSame(EmailLog::STATUS_FAILED, $pending->fresh()->status);
+        $this->assertSame('Closed: duplicate open log for the same send', $pending->fresh()->error);
+        $this->assertSame(EmailCampaign::STATUS_SENT, $campaign->fresh()->status);
+    }
+
+    public function test_reconcile_does_not_attach_delivered_over_a_newer_pending_retry(): void
+    {
+        $admin = $this->makeUser('admin');
+        $advertiser = $this->makeUser('advertiser');
+
+        $campaign = EmailCampaign::create([
+            'name' => 'Retry after delivered',
+            'subject' => 'Retry after delivered',
+            'body_html' => '<p>Hi</p>',
+            'audience' => 'advertisers',
+            'recipients_count' => 1,
+            'sent_count' => 1,
+            'status' => EmailCampaign::STATUS_SENDING,
+            'respect_preferences' => false,
+            'created_by' => $admin->id,
+        ]);
+        $row = EmailCampaignRecipient::create([
+            'email_campaign_id' => $campaign->id,
+            'user_id' => $advertiser->id,
+            'email' => $advertiser->email,
+            'status' => EmailCampaignRecipient::STATUS_QUEUED,
+        ]);
+        EmailCampaignRecipient::query()->whereKey($row->id)->update(['updated_at' => now()->subMinutes(5)]);
+
         $dedupe = EmailCampaignRecipient::dedupeKey((int) $campaign->id, (int) $advertiser->id);
         $delivered = EmailLog::create([
             'uuid' => (string) Str::uuid(),
@@ -3918,21 +3987,33 @@ class AdminCampaignsTest extends TestCase
             'template_key' => 'audience_campaign',
             'dedupe_key' => $dedupe,
             'to_email' => $advertiser->email,
-            'subject' => 'One shot',
+            'subject' => 'Retry after delivered',
             'status' => EmailLog::STATUS_DELIVERED,
-            'sent_at' => now()->subMinutes(20),
+            'sent_at' => now()->subHours(2),
             'attempts' => 1,
         ]);
-        EmailLog::query()->whereKey($delivered->id)->update([
-            'created_at' => now()->subMinutes(20),
-            'updated_at' => now()->subMinutes(20),
+        EmailLog::query()->whereKey($delivered->id)->update(['updated_at' => now()->subHours(2)]);
+        $pending = EmailLog::create([
+            'uuid' => (string) Str::uuid(),
+            'mailable' => AudienceCampaignMail::class,
+            'template_key' => 'audience_campaign',
+            'dedupe_key' => $dedupe,
+            'to_email' => $advertiser->email,
+            'subject' => 'Retry after delivered',
+            'status' => EmailLog::STATUS_PENDING,
+            'attempts' => 2,
         ]);
+        EmailLog::query()->whereKey($pending->id)->update(['updated_at' => now()->subMinutes(3)]);
+        EmailCampaign::query()->whereKey($campaign->id)->update(['updated_at' => now()->subMinutes(5)]);
+        $this->useDatabaseMailQueue();
+        $this->insertQueuedCampaignMailJob((int) $campaign->id, (int) $advertiser->id);
 
-        $mailable = new AudienceCampaignMail($campaign, $advertiser);
-        $mailable->dedupeKey = $dedupe;
-        $method = new \ReflectionMethod($mailable, 'isDuplicate');
-        $method->setAccessible(true);
+        EmailCampaign::recoverStalled();
 
-        $this->assertTrue($method->invoke($mailable, $dedupe));
+        $fresh = $row->fresh();
+        $this->assertSame(EmailCampaignRecipient::STATUS_QUEUED, $fresh->status);
+        $this->assertNull($fresh->email_log_id);
+        $this->assertSame(EmailLog::STATUS_PENDING, $pending->fresh()->status);
+        $this->assertSame(EmailLog::STATUS_DELIVERED, $delivered->fresh()->status);
     }
 }
