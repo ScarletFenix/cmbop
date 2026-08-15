@@ -147,6 +147,61 @@ class CardCheckoutCreatesPendingOrdersTest extends TestCase
         $this->assertSame('CARD42', session('pending_card_reference'));
     }
 
+    public function test_card_checkout_rotates_reference_when_prior_orders_exist(): void
+    {
+        config(['content_moderation.enabled' => false]);
+
+        $advertiser = $this->advertiser();
+        $publisherRole = Role::firstOrCreate(['name' => 'publisher']);
+        $publisher = User::factory()->create(['email_verified_at' => now()]);
+        $publisher->roles()->attach($publisherRole->id);
+        $site = $this->activeSite($publisher);
+        $submission = $this->createApprovedSubmission($advertiser, $site->id);
+
+        Order::create([
+            'user_id' => $advertiser->id,
+            'order_number' => (string) random_int(100000, 999999),
+            'reference_code' => 'CARD42',
+            'subtotal' => 40,
+            'tax' => 0,
+            'total_amount' => 40,
+            'payment_method' => 'card',
+            'payment_status' => 'paid',
+            'status' => 'pending',
+        ]);
+
+        $this->fakeStripeCheckoutSession('cs_test_card_rotate');
+
+        $response = $this->actingAs($advertiser)
+            ->withSession([
+                'cart' => [[
+                    'id' => $site->id,
+                    'name' => $site->site_name,
+                    'quantity' => 1,
+                    'price' => 100,
+                    'sensitive_type' => null,
+                ]],
+            ])
+            ->postJson(route('advertiser.checkout.process'), [
+                'payment_method' => 'card',
+                'reference_code' => 'CARD42',
+                'publication_mode' => 'immediate',
+                'content_submissions' => [
+                    $site->id => [$submission->id],
+                ],
+            ]);
+
+        $response->assertOk()->assertJson([
+            'success' => true,
+            'requires_payment' => true,
+        ]);
+        $newRef = (string) $response->json('reference_code');
+        $this->assertNotSame('CARD42', $newRef);
+        $this->assertMatchesRegularExpression('/^\d{6}$/', $newRef);
+        $this->assertNull(Cache::get('pending_card_checkout:CARD42'));
+        $this->assertNotNull(Cache::get('pending_card_checkout:'.$newRef));
+    }
+
     public function test_card_checkout_rolls_back_pending_orders_when_stripe_fails(): void
     {
         config(['content_moderation.enabled' => false]);

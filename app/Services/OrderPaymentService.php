@@ -540,12 +540,12 @@ class OrderPaymentService
             ->where('payment_method', 'card')
             ->count();
 
-        if ($existingCount > 0) {
-            return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
-        }
-
         $package = $this->getPendingCheckout($referenceCode);
         if ($package === null) {
+            if ($existingCount > 0) {
+                return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+            }
+
             Log::warning('No pending card checkout package to materialize', [
                 'reference_code' => $referenceCode,
                 'session_id' => $session->id ?? null,
@@ -604,10 +604,6 @@ class OrderPaymentService
                 ->where('payment_method', 'card')
                 ->lockForUpdate()
                 ->get();
-
-            if ($already->isNotEmpty()) {
-                return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
-            }
 
             $userId = (int) ($package['user_id'] ?? 0);
             $buyer = $userId > 0 ? User::query()->find($userId) : null;
@@ -758,11 +754,17 @@ class OrderPaymentService
                 ->where('status', '!=', 'cancelled')
                 ->get();
             if ($existing->isNotEmpty()) {
-                return $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+                $marked = $this->markOrdersPaidFromStripeSession($referenceCode, $session);
+                if ($marked->isNotEmpty()) {
+                    $this->forgetPendingCheckout($referenceCode);
+
+                    return $marked;
+                }
             }
 
             $userId = (int) ($package['user_id'] ?? 0);
-            if ($userId > 0) {
+            $unmaterialized = $this->packageHasUnmaterializedLines($package, $referenceCode);
+            if ($userId > 0 && ($existing->isEmpty() || $unmaterialized)) {
                 $this->refundBonusReservedForReference(
                     $userId,
                     $referenceCode,
@@ -899,6 +901,29 @@ class OrderPaymentService
     protected function freshOrderNumber(): string
     {
         return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+    }
+
+    /**
+     * @param  array<string, mixed>  $package
+     */
+    private function packageHasUnmaterializedLines(array $package, string $referenceCode): bool
+    {
+        $lines = is_array($package['lines'] ?? null) ? $package['lines'] : [];
+        foreach ($lines as $index => $line) {
+            if (! is_array($line)) {
+                continue;
+            }
+            $siteId = isset($line['site_id']) ? (int) $line['site_id'] : 0;
+            $key = $this->checkoutLineKey($referenceCode, $siteId, (int) $index);
+            if ($key === '') {
+                continue;
+            }
+            if (! Order::query()->where('checkout_line_key', $key)->exists()) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function checkoutLineKey(string $referenceCode, int $siteId, int $index): string

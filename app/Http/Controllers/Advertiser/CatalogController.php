@@ -1968,11 +1968,11 @@ class CatalogController extends Controller
 
         $scheduleContext = $this->checkoutScheduleContext();
 
-        $checkoutReferenceCode = session('checkout_reference_code');
-        if (! is_string($checkoutReferenceCode) || ! preg_match('/^\d{6}$/', $checkoutReferenceCode)) {
-            $checkoutReferenceCode = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
-            session(['checkout_reference_code' => $checkoutReferenceCode]);
-        }
+        $checkoutReferenceCode = $this->allocateCheckoutReference(
+            session('checkout_reference_code'),
+            (int) auth()->id()
+        );
+        session(['checkout_reference_code' => $checkoutReferenceCode]);
 
         return view('advertiser.checkout', array_merge(compact(
             'cartItems',
@@ -2077,8 +2077,13 @@ class CatalogController extends Controller
             // Keep not-ready sites in the cart after this payment.
             session()->put('checkout_deferred_cart', array_values($deferredCart));
 
-            // Generate reference code
-            $referenceCode = $userReferenceCode ?? str_pad(mt_rand(1, 999999), 6, '0', STR_PAD_LEFT);
+            // Never reuse a reference that already has orders — a second card
+            // charge would be treated as an idempotent replay of the first.
+            $referenceCode = $this->allocateCheckoutReference(
+                is_string($userReferenceCode) ? $userReferenceCode : null,
+                (int) $userId
+            );
+            session(['checkout_reference_code' => $referenceCode]);
             $useBonus = $request->boolean('use_bonus');
 
             // Bank / Wise / crypto fund the wallet via invoice — not order checkout.
@@ -3026,6 +3031,7 @@ class CatalogController extends Controller
                 'checkout_content_submission_id',
                 'checkout_schedule',
                 'checkout_deferred_cart',
+                'checkout_reference_code',
             ]);
 
             $orderNumbers = $paidOrders->pluck('order_number')->implode(', ');
@@ -4745,6 +4751,45 @@ class CatalogController extends Controller
         app(CheckoutIntentService::class)->forgetBonus($userId, $referenceCode);
     }
 
+    /**
+     * Fresh 6-digit checkout reference that is not already tied to orders.
+     * An in-progress Stripe-first package for this user may keep the same code.
+     */
+    private function allocateCheckoutReference(?string $requested, int $userId): string
+    {
+        if ($this->checkoutReferenceAvailable($requested, $userId)) {
+            return (string) $requested;
+        }
+
+        for ($attempt = 0; $attempt < 16; $attempt++) {
+            $code = str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT);
+            if ($this->checkoutReferenceAvailable($code, $userId)) {
+                return $code;
+            }
+        }
+
+        return str_pad((string) random_int(1, 999999), 6, '0', STR_PAD_LEFT)
+            .substr((string) random_int(10, 99), -2);
+    }
+
+    private function checkoutReferenceAvailable(?string $code, int $userId): bool
+    {
+        if (! is_string($code) || ! preg_match('/^\d{6}$/', $code)) {
+            return false;
+        }
+
+        if (Order::query()->where('reference_code', $code)->exists()) {
+            return false;
+        }
+
+        $package = app(OrderPaymentService::class)->getPendingCheckout($code);
+        if ($package === null) {
+            return true;
+        }
+
+        return $userId > 0 && (int) ($package['user_id'] ?? 0) === $userId;
+    }
+
     private function refundCheckoutBonus(int $userId, string $referenceCode): void
     {
         $failed = Order::query()
@@ -4862,6 +4907,7 @@ class CatalogController extends Controller
             'checkout_content_submission_id',
             'checkout_schedule',
             'pending_card_reference',
+            'checkout_reference_code',
             'ordering_from_library',
             GuestPostWizardController::SESSION_KEY,
         ]);

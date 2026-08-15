@@ -243,7 +243,7 @@ class StripeWebhookController extends Controller
                 ->where('payment_status', 'paid')
                 ->count();
 
-            if ($existingPaid > 0) {
+            if ($existingPaid > 0 && $paymentService->getPendingCheckout($referenceCode) === null) {
                 Log::info('Order payment already finalized (idempotent webhook)', [
                     'reference_code' => $referenceCode,
                     'paid_count' => $existingPaid,
@@ -254,6 +254,7 @@ class StripeWebhookController extends Controller
 
             // Stripe-first checkouts store a cache package and create orders only after pay.
             // Materialize via finalize if the browser never hit the success URL.
+            // A reused reference can already have paid rows and a new pending package.
             $newlyPaid = $paymentService->finalizeStripeFirstCheckout($referenceCode, $session);
 
             if ($newlyPaid->isEmpty()) {
@@ -304,7 +305,7 @@ class StripeWebhookController extends Controller
                 ->where('payment_status', 'paid')
                 ->count();
 
-            if ($existingPaid > 0) {
+            if ($existingPaid > 0 && $paymentService->getPendingCheckout($referenceCode) === null) {
                 Log::info('Order PI payment already finalized (idempotent webhook)', [
                     'reference_code' => $referenceCode,
                 ]);

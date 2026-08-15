@@ -1080,4 +1080,60 @@ class StripeFirstCheckoutInvariantsTest extends TestCase
             $q->where('reference_code', $ref);
         })->value('site_id'));
     }
+
+    public function test_reused_reference_with_new_package_materializes_second_checkout(): void
+    {
+        $advertiser = $this->makeUser('advertiser');
+        $publisher = $this->makeUser('publisher');
+        $first = $this->makeSite($publisher, 'reuse-first.example', 40);
+        $second = $this->makeSite($publisher, 'reuse-second.example', 80);
+        $ref = 'REUSE-1';
+        $payments = app(OrderPaymentService::class);
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($first, 40),
+        ], 40));
+
+        $firstPaid = $payments->finalizeStripeFirstCheckout(
+            $ref,
+            $this->paidSession($ref, 40, 'cs_reuse_first')
+        );
+        $this->assertCount(1, $firstPaid);
+        $this->assertNull($payments->getPendingCheckout($ref));
+
+        $payments->storePendingCheckout($ref, $this->package($advertiser, [
+            $this->lineFor($second, 80),
+        ], 80));
+
+        $this->signedWebhook([
+            'id' => 'evt_reuse_'.uniqid(),
+            'object' => 'event',
+            'type' => 'checkout.session.completed',
+            'data' => [
+                'object' => [
+                    'id' => 'cs_reuse_second',
+                    'object' => 'checkout.session',
+                    'payment_status' => 'paid',
+                    'amount_total' => 8000,
+                    'payment_intent' => 'pi_reuse_second',
+                    'metadata' => [
+                        'type' => 'order_payment',
+                        'reference_code' => $ref,
+                        'user_id' => (string) $advertiser->id,
+                        'expected_amount' => '80',
+                    ],
+                ],
+            ],
+        ])->assertOk();
+
+        $this->assertSame(2, Order::query()->where('reference_code', $ref)->where('payment_status', 'paid')->count());
+        $this->assertEqualsCanonicalizing(
+            [$first->id, $second->id],
+            OrderItem::query()
+                ->whereIn('order_id', Order::query()->where('reference_code', $ref)->pluck('id'))
+                ->pluck('site_id')
+                ->map(fn ($id) => (int) $id)
+                ->all()
+        );
+        $this->assertEqualsWithDelta(0.0, $payments->unfulfilledCardCreditAmount($ref), 0.01);
+    }
 }
