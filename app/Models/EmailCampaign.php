@@ -69,35 +69,18 @@ class EmailCampaign extends Model
             ])
             ->count();
 
-        $this->update([
+        $payload = [
             'sent_count' => $sent,
             'skipped_count' => $skipped,
-        ]);
+        ];
 
-        $this->reconcileTerminalStatus();
-    }
-
-    /**
-     * After queued mail later fails or is skipped, a campaign can sit on
-     * `sent` with sent_count = 0. Only downgrade; a crashed job stays
-     * `failed` even if leftover queued rows still deliver.
-     */
-    protected function reconcileTerminalStatus(): void
-    {
-        if ($this->status !== self::STATUS_SENT || $this->sent_count > 0) {
-            return;
+        // Finalize treats queued mail as sent. After a retry or a late
+        // failure, keep the terminal status honest against those totals.
+        if (in_array($this->status, [self::STATUS_SENT, self::STATUS_FAILED], true)) {
+            $payload['status'] = $sent > 0 ? self::STATUS_SENT : self::STATUS_FAILED;
         }
 
-        $open = $this->recipients()
-            ->whereIn('status', [
-                EmailCampaignRecipient::STATUS_PENDING,
-                EmailCampaignRecipient::STATUS_QUEUED,
-            ])
-            ->exists();
-
-        if (! $open) {
-            $this->update(['status' => self::STATUS_FAILED]);
-        }
+        $this->update($payload);
     }
 
     public static function labelForAudience(?string $audience): string
